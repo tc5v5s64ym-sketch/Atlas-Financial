@@ -1,0 +1,525 @@
+{
+  "before": {
+    "320-light": {
+      "boardBg": "rgb(236, 238, 242)",
+      "boardGap": "18px",
+      "heroBg": "rgb(238, 249, 244)",
+      "heroBorder": "1px solid rgba(11, 12, 16, 0.12)",
+      "heroShadow": "rgba(16, 18, 27, 0.03) 0px 1px 1px 0px, rgba(16, 18, 27, 0.12) 0px 8px 24px -10px, rgba(16, 18, 27, 0.2) 0px 28px 56px -32px",
+      "heroRadius": "28px",
+      "hero": {
+        "left": 12,
+        "top": 236,
+        "width": 296,
+        "height": 500
+      },
+      "pixels": {
+        "gap": [
+          217,
+          219,
+          223
+        ],
+        "corner": [
+          235,
+          237,
+          241
+        ],
+        "margin": [
+          236,
+          238,
+          242
+        ],
+        "maxGapMarginDelta": 19
+      }
+    },
+    "390-light": {
+      "boardBg": "rgb(236, 238, 242)",
+      "boardGap": "18px",
+      "heroBg": "rgb(238, 249, 244)",
+      "heroBorder": "1px solid rgba(11, 12, 16, 0.12)",
+      "heroShadow": "rgba(16, 18, 27, 0.03) 0px 1px 1px 0px, rgba(16, 18, 27, 0.12) 0px 8px 24px -10px, rgba(16, 18, 27, 0.2) 0px 28px 56px -32px",
+      "heroRadius": "28px",
+      "hero": {
+        "left": 12,
+        "top": 236,
+        "width": 366,
+        "height": 500
+      },
+      "pixels": {
+        "gap": [
+          217,
+          219,
+          223
+        ],
+        "corner": [
+          235,
+          237,
+          241
+        ],
+        "margin": [
+          236,
+          238,
+          242
+        ],
+        "maxGapMarginDelta": 19
+      }
+    },
+    "1280-light": {
+      "boardBg": "rgb(236, 238, 242)",
+      "boardGap": "18px",
+      "heroBg": "rgba(255, 255, 255, 0.64)",
+      "heroBorder": "1px solid rgba(11, 12, 16, 0.12)",
+      "heroShadow": "rgba(16, 18, 27, 0.03) 0px 1px 1px 0px, rgba(16, 18, 27, 0.12) 0px 8px 24px -10px, rgba(16, 18, 27, 0.2) 0px 28px 56px -32px, rgba(12, 14, 22, 0.055) 0px 0px 0px 1px inset",
+      "heroRadius": "28px",
+      "hero": {
+        "left": 40,
+        "top": 256,
+        "width": 689.5,
+        "height": 420
+      },
+      "pixels": {
+        "gap": [
+          217,
+          219,
+          223
+        ],
+        "corner": [
+          235,
+          237,
+          241
+        ],
+        "margin": [
+          236,
+          238,
+          242
+        ],
+        "maxGapMarginDelta": 19
+      }
+    },
+    "320-dark": {
+      "boardBg": "rgb(5, 5, 7)",
+      "boardGap": "18px",
+      "heroBg": "rgb(5, 17, 13)",
+      "heroBorder": "1px solid rgba(255, 255, 255, 0.14)",
+      "heroShadow": "rgba(16, 18, 27, 0.03) 0px 1px 1px 0px, rgba(16, 18, 27, 0.12) 0px 8px 24px -10px, rgba(16, 18, 27, 0.2) 0px 28px 56px -32px",
+      "heroRadius": "28px",
+      "hero": {
+        "left": 12,
+        "top": 236,
+        "width": 296,
+        "height": 500
+      },
+      "pixels": {
+        "gap": [
+          4,
+          4,
+          6
+        ],
+        "corner": [
+          4,
+          4,
+          6
+        ],
+        "margin": [
+          5,
+          5,
+          7
+        ],
+        "maxGapMarginDelta": 1
+      }
+    },
+    "390-dark": {
+      "boardBg": "rgb(5, 5, 7)",
+      "boardGap": "18px",
+      "heroBg": "rgb(5, 17, 13)",
+      "heroBorder": "1px solid rgba(255, 255, 255, 0.14)",
+      "heroShadow": "rgba(16, 18, 27, 0.03) 0px 1px 1px 0px, rgba(16, 18, 27, 0.12) 0px 8px 24px -10px, rgba(16, 18, 27, 0.2) 0px 28px 56px -32px",
+      "heroRadius": "28px",
+      "hero": {
+        "left": 12,
+        "top": 236,
+        "width": 366,
+        "height": 500
+      },
+      "pixels": {
+        "gap": [
+          4,
+          4,
+          6
+        ],
+        "corner": [
+          4,
+          4,
+          6
+        ],
+        "margin": [
+          5,
+          5,
+          7
+        ],
+        "maxGapMarginDelta": 1
+      }
+    },
+    "1280-dark": {
+      "boardBg": "rgb(5, 5, 7)",
+      "boardGap": "18px",
+      "heroBg": "rgb(5, 17, 13)",
+      "heroBorder": "1px solid rgba(255, 255, 255, 0.14)",
+      "heroShadow": "rgba(16, 18, 27, 0.03) 0px 1px 1px 0px, rgba(16, 18, 27, 0.12) 0px 8px 24px -10px, rgba(16, 18, 27, 0.2) 0px 28px 56px -32px, rgba(12, 14, 22, 0.055) 0px 0px 0px 1px inset",
+      "heroRadius": "28px",
+      "hero": {
+        "left": 40,
+        "top": 256,
+        "width": 689.5,
+        "height": 420
+      },
+      "pixels": {
+        "gap": [
+          4,
+          4,
+          6
+        ],
+        "corner": [
+          4,
+          4,
+          6
+        ],
+        "margin": [
+          5,
+          5,
+          7
+        ],
+        "maxGapMarginDelta": 1
+      }
+    }
+  },
+  "bindings": {
+    "runs": {
+      "before": {
+        "source": {
+          "head": "5faac95f70415e90c442c2d0339d466c94cd108f",
+          "tree": "b9c204764e8b57a6bdf8e66bed2d92fe26651109"
+        },
+        "checkoutHead": "8305ba816dfec694cb6a6d46eba1e008208de2ea",
+        "checkoutTree": "b9c204764e8b57a6bdf8e66bed2d92fe26651109",
+        "css": {
+          "path": "public/budget-gface.css",
+          "sha256": "645bc22636fcd9e6c0e8f7d53a2c543e65bfddba56beb19fbe18ef74c01d679a"
+        },
+        "fixture": {
+          "path": "test/fixtures/budget-surface-data.js",
+          "sha256": "f6a3c46fb037c41f7371aaaef08ffaab5256bda97cb9bc5f994e4ee54e5fac0b"
+        },
+        "script": {
+          "path": "test/browser-tile-separation.js",
+          "sha256": "3e12e88a9069af74f8cbb155da5cef2aab8e07164105a285e2eb7ae23d975f37"
+        },
+        "runtime": {
+          "browser": "Chromium",
+          "browserVersion": "156.0.8078.4",
+          "executable": "chrome-headless-shell",
+          "node": "v24.20.0",
+          "platform": "linux-x64"
+        },
+        "at": "2026-10-10T17:56:36.709Z"
+      },
+      "after": {
+        "source": {
+          "head": "36286146cfe2123144dc71ac196fc006d1f047b8",
+          "tree": "b9a3d4a9193cc42d520743a11fe011d4788395e4"
+        },
+        "checkoutHead": "36286146cfe2123144dc71ac196fc006d1f047b8",
+        "checkoutTree": "b9a3d4a9193cc42d520743a11fe011d4788395e4",
+        "css": {
+          "path": "public/budget-gface.css",
+          "sha256": "f092db61484388362c4925a913b0106df929f83b1b53bf7435e8686b783e8301"
+        },
+        "fixture": {
+          "path": "test/fixtures/budget-surface-data.js",
+          "sha256": "f6a3c46fb037c41f7371aaaef08ffaab5256bda97cb9bc5f994e4ee54e5fac0b"
+        },
+        "script": {
+          "path": "test/browser-tile-separation.js",
+          "sha256": "3e12e88a9069af74f8cbb155da5cef2aab8e07164105a285e2eb7ae23d975f37"
+        },
+        "runtime": {
+          "browser": "Chromium",
+          "browserVersion": "156.0.8078.4",
+          "executable": "chrome-headless-shell",
+          "node": "v24.20.0",
+          "platform": "linux-x64"
+        },
+        "at": "2026-10-10T17:59:28.253Z"
+      }
+    },
+    "pngSha256": {
+      "320-light-before.png": "7883f0d03278214d55e7938ec69a1e9338d8366ccef856ff92838ae0c4857a2a",
+      "390-light-before.png": "d0764051bfe38b1669b765b5903b2856e0b153cea837932f5fcb8c270c90e3c7",
+      "1280-light-before.png": "71944cdc6fc3aa476d14658b27a7c8d878f9e2fa01031060c09cec8895e689c6",
+      "320-dark-before.png": "27438ff813485aaaf82b334c9c02e9c9377c508d59031e1c04a3755a1f44f80f",
+      "390-dark-before.png": "22e4a86514a164a3db6821bced8d5e2431865341af42b5fb5ec8b08dd4927f79",
+      "1280-dark-before.png": "36c97ce9ceeeea00e543d689e08fbce9e8601869614cb493f8b4ebfa3e1a3379",
+      "320-light-after.png": "42cd5991b2a43b85064bad764ccabe2d94d5dbced1cc264192c46e48de2ac27b",
+      "390-light-after.png": "2cef70fd902c6a06149e6235273ec53bf600b0969d4e10bbddbdf5295c3caf4e",
+      "1280-light-after.png": "71944cdc6fc3aa476d14658b27a7c8d878f9e2fa01031060c09cec8895e689c6",
+      "320-dark-after.png": "3b1dbc9ce4356b05ea96ac74665d8a146babccbb9385a6e84c41da83db123233",
+      "390-dark-after.png": "740ba415ec12252ac06de0d41ff483a2f56d9df5185b94e7898b297267e6c9d1",
+      "1280-dark-after.png": "36c97ce9ceeeea00e543d689e08fbce9e8601869614cb493f8b4ebfa3e1a3379"
+    }
+  },
+  "after": {
+    "320-light": {
+      "boardBg": "rgba(0, 0, 0, 0)",
+      "boardGap": "18px",
+      "heroBg": "rgb(238, 249, 244)",
+      "heroBorder": "1px solid rgba(11, 12, 16, 0.12)",
+      "heroShadow": "rgba(16, 18, 27, 0.03) 0px 1px 1px 0px, rgba(16, 18, 27, 0.12) 0px 8px 24px -10px, rgba(16, 18, 27, 0.2) 0px 28px 56px -32px",
+      "heroRadius": "28px",
+      "hero": {
+        "left": 12,
+        "top": 236,
+        "width": 296,
+        "height": 500
+      },
+      "pixels": {
+        "gap": [
+          217,
+          219,
+          223
+        ],
+        "corner": [
+          235,
+          237,
+          241
+        ],
+        "margin": [
+          236,
+          238,
+          242
+        ],
+        "maxGapMarginDelta": 19
+      }
+    },
+    "390-light": {
+      "boardBg": "rgba(0, 0, 0, 0)",
+      "boardGap": "18px",
+      "heroBg": "rgb(238, 249, 244)",
+      "heroBorder": "1px solid rgba(11, 12, 16, 0.12)",
+      "heroShadow": "rgba(16, 18, 27, 0.03) 0px 1px 1px 0px, rgba(16, 18, 27, 0.12) 0px 8px 24px -10px, rgba(16, 18, 27, 0.2) 0px 28px 56px -32px",
+      "heroRadius": "28px",
+      "hero": {
+        "left": 12,
+        "top": 236,
+        "width": 366,
+        "height": 500
+      },
+      "pixels": {
+        "gap": [
+          217,
+          219,
+          223
+        ],
+        "corner": [
+          235,
+          237,
+          241
+        ],
+        "margin": [
+          236,
+          238,
+          242
+        ],
+        "maxGapMarginDelta": 19
+      }
+    },
+    "1280-light": {
+      "boardBg": "rgb(236, 238, 242)",
+      "boardGap": "18px",
+      "heroBg": "rgba(255, 255, 255, 0.64)",
+      "heroBorder": "1px solid rgba(11, 12, 16, 0.12)",
+      "heroShadow": "rgba(16, 18, 27, 0.03) 0px 1px 1px 0px, rgba(16, 18, 27, 0.12) 0px 8px 24px -10px, rgba(16, 18, 27, 0.2) 0px 28px 56px -32px, rgba(12, 14, 22, 0.055) 0px 0px 0px 1px inset",
+      "heroRadius": "28px",
+      "hero": {
+        "left": 40,
+        "top": 256,
+        "width": 689.5,
+        "height": 420
+      },
+      "pixels": {
+        "gap": [
+          217,
+          219,
+          223
+        ],
+        "corner": [
+          235,
+          237,
+          241
+        ],
+        "margin": [
+          236,
+          238,
+          242
+        ],
+        "maxGapMarginDelta": 19
+      }
+    },
+    "320-dark": {
+      "boardBg": "rgba(0, 0, 0, 0)",
+      "boardGap": "18px",
+      "heroBg": "rgb(5, 17, 13)",
+      "heroBorder": "1px solid rgba(255, 255, 255, 0.14)",
+      "heroShadow": "rgba(16, 18, 27, 0.03) 0px 1px 1px 0px, rgba(16, 18, 27, 0.12) 0px 8px 24px -10px, rgba(16, 18, 27, 0.2) 0px 28px 56px -32px",
+      "heroRadius": "28px",
+      "hero": {
+        "left": 12,
+        "top": 236,
+        "width": 296,
+        "height": 500
+      },
+      "pixels": {
+        "gap": [
+          4,
+          4,
+          6
+        ],
+        "corner": [
+          4,
+          4,
+          6
+        ],
+        "margin": [
+          5,
+          5,
+          7
+        ],
+        "maxGapMarginDelta": 1
+      }
+    },
+    "390-dark": {
+      "boardBg": "rgba(0, 0, 0, 0)",
+      "boardGap": "18px",
+      "heroBg": "rgb(5, 17, 13)",
+      "heroBorder": "1px solid rgba(255, 255, 255, 0.14)",
+      "heroShadow": "rgba(16, 18, 27, 0.03) 0px 1px 1px 0px, rgba(16, 18, 27, 0.12) 0px 8px 24px -10px, rgba(16, 18, 27, 0.2) 0px 28px 56px -32px",
+      "heroRadius": "28px",
+      "hero": {
+        "left": 12,
+        "top": 236,
+        "width": 366,
+        "height": 500
+      },
+      "pixels": {
+        "gap": [
+          4,
+          4,
+          6
+        ],
+        "corner": [
+          4,
+          4,
+          6
+        ],
+        "margin": [
+          5,
+          5,
+          7
+        ],
+        "maxGapMarginDelta": 1
+      }
+    },
+    "1280-dark": {
+      "boardBg": "rgb(5, 5, 7)",
+      "boardGap": "18px",
+      "heroBg": "rgb(5, 17, 13)",
+      "heroBorder": "1px solid rgba(255, 255, 255, 0.14)",
+      "heroShadow": "rgba(16, 18, 27, 0.03) 0px 1px 1px 0px, rgba(16, 18, 27, 0.12) 0px 8px 24px -10px, rgba(16, 18, 27, 0.2) 0px 28px 56px -32px, rgba(12, 14, 22, 0.055) 0px 0px 0px 1px inset",
+      "heroRadius": "28px",
+      "hero": {
+        "left": 40,
+        "top": 256,
+        "width": 689.5,
+        "height": 420
+      },
+      "pixels": {
+        "gap": [
+          4,
+          4,
+          6
+        ],
+        "corner": [
+          4,
+          4,
+          6
+        ],
+        "margin": [
+          5,
+          5,
+          7
+        ],
+        "maxGapMarginDelta": 1
+      }
+    }
+  },
+  "pixelDiff": {
+    "method": "before vs after full-page PNGs decoded in Chromium canvas (ImageData), per-pixel max RGB channel delta; desktop files additionally md5-compared; computed by this script during the after run",
+    "320-light": {
+      "size": "320x2124",
+      "differingPixels": 16539,
+      "differingPct": 2.43,
+      "maxChannelDelta": 14,
+      "maxDeltaOutsideNoiseBand": 14
+    },
+    "390-light": {
+      "size": "390x2108",
+      "differingPixels": 24149,
+      "differingPct": 2.94,
+      "maxChannelDelta": 164,
+      "maxDeltaOutsideNoiseBand": 14,
+      "maxDeltaNote": "max sits in the river-label noise band at y~82-99 (see noiseControl); every board-area delta in this pair is <=14, as in the clean pairs"
+    },
+    "1280-light": {
+      "size": "1280x1511",
+      "differingPixels": 0,
+      "differingPct": 0,
+      "maxChannelDelta": 0,
+      "maxDeltaOutsideNoiseBand": 0,
+      "md5Identical": true
+    },
+    "320-dark": {
+      "size": "320x2124",
+      "differingPixels": 18445,
+      "differingPct": 2.71,
+      "maxChannelDelta": 14,
+      "maxDeltaOutsideNoiseBand": 14
+    },
+    "390-dark": {
+      "size": "390x2108",
+      "differingPixels": 25166,
+      "differingPct": 3.06,
+      "maxChannelDelta": 14,
+      "maxDeltaOutsideNoiseBand": 14
+    },
+    "1280-dark": {
+      "size": "1280x1511",
+      "differingPixels": 0,
+      "differingPct": 0,
+      "maxChannelDelta": 0,
+      "maxDeltaOutsideNoiseBand": 0,
+      "md5Identical": true
+    },
+    "noiseControl": {
+      "experiment": "two --label after renders of 320-light on the identical tree within one proof run, diffed the same way",
+      "differingPixels": 1512,
+      "maxChannelDelta": 164,
+      "hotPixelsOver20": 580,
+      "hotBbox": [
+        89,
+        84,
+        229,
+        97
+      ],
+      "finding": "the river (timeline) canvas label-brightness band at y~84-97 varies between runs on an unchanged tree (animation-settle timing), independent of this change; it inflates differing-pixel counts slightly and accounts for every >14 max delta in the mobile pairs"
+    }
+  }
+}
