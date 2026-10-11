@@ -136,7 +136,13 @@
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const mobile = this.W < 640;
       this.padL = mobile ? 26 : 36; this.padR = this.padL;
-      this.top = 52; this.bot = this.H - (mobile ? 50 : 52);
+      // Owner-approved shorter tile (~25% less height): the plotting band
+      // stays centred between the playhead pill (bottom edge 31px) and the
+      // value labels (top edge 44px from the bottom) with equal clearances
+      // — 7px desktop, 5px mobile. The value domain is unchanged, so the
+      // zero line keeps its data-derived position inside the band.
+      this.top = mobile ? 36 : 38; this.bot = this.H - (mobile ? 49 : 51);
+      this.beamTop = 30; // 1px above the pill's bottom edge, as before
       const fit = this.N < 2 ? 0 : (this.W - this.padL - this.padR) / (this.N - 1), minSp = mobile ? 44 : 52;
       this.pan = this.N > 1 && fit < minSp;
       this.sp = this.pan ? minSp : fit;
@@ -198,6 +204,9 @@
       this.monthsEl.innerHTML = mh;
       this.valsEl.innerHTML = vh;
       this.valEls = Array.from(this.valsEl.children);
+      this._stepEl = null; // rebuilt label nodes carry no step-aside transform
+      this._stepBox = null; // ... and no stepped-label hit box (see hitIndex)
+      this._yielded = new Set(); // ... and no yielded (faded-out) state
       this.valEls.forEach((el, i) => { el.title = this.periods[i].fullLabel || ''; el.classList.toggle('is-est', !!this.periods[i].estimated);
         if (this.periods[i].label != null) el.dataset.riverNativeValue = this.periods[i].label;
       });
@@ -207,6 +216,28 @@
     xc(f) { return this.N < 2 ? this.W / 2 : this.padL + f * this.sp; },
     offFor(f) { return this.pan ? clamp(this.xc(f) - this.W / 2, 0, this.CW - this.W) : 0; },
     fOfScreen(x) { return this.N < 2 ? 0 : clamp((x + this.off - this.padL) / this.sp, 0, this.N - 1); },
+    /* Discrete pointer resolution (tap, hover). The raw mapping resolves
+       to the period whose data centre is nearest the pointer — but a
+       selected bottom-edge label steps sideways clear of the orb
+       (place()), possibly by more than half the period spacing, so its
+       visible centre can sit nearer the neighbouring period's centre
+       than its own, and a tap on the label the user sees would select
+       the neighbour. While a label is stepped, its period's marker for
+       this resolution is the label's visible centre: the pointer
+       resolves to whichever marker — the raw winner's data centre or
+       the stepped label's visible centre — is nearer, with ties keeping
+       the visible label. (The step cannot instead be capped: at mobile
+       spacing any orb-clearing step crosses a neighbour's centre, and
+       an uncapped step leaves the neighbouring period's own centre
+       resolving to that period, as before.) Placement, geometry and
+       the continuous drag/scrub mappings are unchanged; the drag paths
+       are deliberately not routed here. */
+    hitIndex(x) {
+      const raw = Math.round(this.fOfScreen(x)), b = this._stepBox;
+      if (!b || raw === b.i) return raw;
+      const centre = (b.l + b.r) / 2;
+      return Math.abs(x - centre) <= Math.abs(x - (this.xs[raw] - this.off)) ? b.i : raw;
+    },
     yAt(f) {
       f = clamp(f, 0, this.N - 1);
       if (this.N < 2 || Number.isInteger(f)) return this.ys[Math.round(f)];
@@ -218,7 +249,7 @@
     },
     bind() {
       const el = this.el, capture = this.captureTarget || el;
-      let lastX = 0, lastT = 0, vel = 0, downX = 0, downY = 0, downF = 0, moved = false, pid = null;
+      let lastX = 0, lastT = 0, vel = 0, downX = 0, downY = 0, downF = 0, moved = false, pid = null, downHit = null;
       this.listen(el, 'pointerdown', e => {
         if (!this.enabled || document.querySelector('dialog[open]')) return;
         if (e.isPrimary === false) return;
@@ -226,7 +257,15 @@
         pid = this.pointerId = e.pointerId; el.focus({ preventScroll: true }); this.dragging = true; moved = false; downX = e.clientX; downY = e.clientY; downF = this.head.x;
         lastX = e.clientX; lastT = performance.now(); vel = 0;
         el.classList.add('is-dragging'); this.request();
-        if (!this.pan) { const r = el.isConnected ? el.getBoundingClientRect() : this.lastRect; this.head.target = this.fOfScreen(e.clientX - r.left); }
+        const r = el.isConnected ? el.getBoundingClientRect() : this.lastRect;
+        // Resolve this press's discrete target now, against the geometry
+        // the user sees as they press: a stationary release commits this
+        // index (see end()), because in a non-pan layout the press also
+        // aims the spring at the raw fractional position and the ensuing
+        // spring/place motion can clear the stepped label's hit box
+        // before pointerup (Systems Review 5481846544).
+        downHit = this.hitIndex(e.clientX - r.left);
+        if (!this.pan) { this.head.target = this.fOfScreen(e.clientX - r.left); }
       });
       this.listen(root, 'pointermove', e => {
         if (!this.dragging || e.pointerId !== pid) return;
@@ -245,9 +284,21 @@
       const end = (e, cancelled = false) => {
         if (!this.dragging || e.pointerId !== pid) return;
         this.dragging = false; el.classList.remove('is-dragging');
+        const hit = downHit; downHit = null;
         if (capture.hasPointerCapture?.(pid)) capture.releasePointerCapture(pid);
         if (cancelled) { const native = this.onCancel?.(); if (Number.isInteger(native)) this.index = native; this.head.set(Math.max(0, this.index)); this.mark(this.index); this.request(); return; }
-        if (this.pan && !moved) { const r = el.isConnected ? el.getBoundingClientRect() : this.lastRect; this.go(Math.round(this.fOfScreen(e.clientX - r.left))); return; }
+        if (!moved) {
+          // Stationary press: commit the target resolved at pointerdown.
+          // Re-resolving the release coordinate here would measure it
+          // against geometry the hold itself changed — in a non-pan
+          // layout the spring travels to the raw fractional aim during
+          // the hold, the displaced label un-steps, and its hit box
+          // clears, so the release would commit the neighbouring period
+          // (Systems Review 5481846544). Once movement begins the press
+          // is a drag and takes the continuous path below, unchanged.
+          if (hit != null) { this.go(hit); return; }
+          const r = el.isConnected ? el.getBoundingClientRect() : this.lastRect; this.go(this.hitIndex(e.clientX - r.left)); return;
+        }
         const fresh = !this.reduce && performance.now() - lastT < 80 && Math.abs(vel) > 0.6;
         const fling = moved && fresh ? clamp((this.pan ? -vel : vel) * 140 / this.sp, -4, 4) : 0;
         this.go(Math.round(clamp(this.head.target + fling, 0, this.N - 1)));
@@ -282,7 +333,7 @@
         if (Math.abs(acc) > 60) { this.go(clamp(this.index + Math.sign(acc), 0, this.N - 1)); acc = 0; }
       }, { passive: false });
       if (matchMedia('(hover: hover)').matches) {
-        this.listen(el, 'pointermove', e => { if (this.dragging) return; const r = el.getBoundingClientRect(); this.hover = Math.round(this.fOfScreen(e.clientX - r.left)); this.hoverVal(); });
+        this.listen(el, 'pointermove', e => { if (this.dragging) return; const r = el.getBoundingClientRect(); this.hover = this.hitIndex(e.clientX - r.left); this.hoverVal(); });
         this.listen(el, 'pointerleave', () => { this.hover = null; this.hoverVal(); });
       }
     },
@@ -302,8 +353,59 @@
       const known = y != null;
       this.playhead.querySelector('.playhead-orb').hidden = this.playhead.querySelector('.playhead-beam').hidden = !known;
       if (known) this.playhead.style.setProperty('--orb-y', `${y.toFixed(2)}px`);
-      this.playhead.style.setProperty('--beam-top', `${this.top - 12}px`);
+      this.playhead.style.setProperty('--beam-top', `${this.beamTop ?? this.top - 12}px`);
       this.slide.style.transform = `translate3d(${(-this.off).toFixed(2)}px,0,0)`;
+      // Selected-extreme legibility: a point at the band's bottom edge parks
+      // the 20px orb one radius above the value-label row, so the disc covers
+      // the selected label's own text. Step that label sideways just clear of
+      // the disc (toward the side with more room, clamped inside the tile);
+      // any neighbouring label the disc or the stepped label would cover
+      // yields (fades out) instead of meshing, and returns when clear.
+      // Placement only — selection, domain, and gesture behaviour unchanged.
+      const selEl = this.valEls && this.index >= 0 ? this.valEls[this.index] : null;
+      if (this._stepEl && this._stepEl !== selEl) { this._stepEl.style.transform = ''; this._stepEl = null; this._stepBox = null; }
+      let stepDx = 0, selW = 0, selC = 0;
+      if (selEl) {
+        if (known && y + 10 > this.H - 44) {
+          selW = selEl.offsetWidth; selC = this.xs[this.index] - this.off;
+          const need = 12 + selW / 2 - Math.abs(selC - x);
+          if (need > 0) {
+            const dir = this.W - (selC + selW / 2) >= selC - selW / 2 ? 1 : -1;
+            stepDx = clamp(selC + dir * need, selW / 2 + 2, this.W - selW / 2 - 2) - selC;
+            if (Math.abs(selC + stepDx - x) < 12 + selW / 2) stepDx = 0; // no room either side: leave centred
+          }
+        }
+        const t = stepDx ? `translateX(-50%) translateX(${stepDx.toFixed(1)}px)` : '';
+        if (selEl.style.transform !== t) selEl.style.transform = t;
+        this._stepEl = stepDx ? selEl : null;
+        // The stepped label's visible box, in element coordinates: pointer
+        // resolution (hitIndex) honours it, because the box can sit inside
+        // the neighbouring period's raw hit region.
+        this._stepBox = stepDx ? { i: this.index, l: selC + stepDx - selW / 2, r: selC + stepDx + selW / 2 } : null;
+      }
+      if (this.valEls) {
+        if (!this._yielded) this._yielded = new Set();
+        const inBand = known && y + 10 > this.H - 44;
+        const selL = selC + stepDx - selW / 2, selR = selC + stepDx + selW / 2;
+        this.valEls.forEach((el, k) => {
+          if (k === this.index) {
+            // The selected label must never stay yielded: a label faded out
+            // as a neighbour keeps its node across selections (mark/adopt
+            // retain the nodes), so restore it before the skip — this loop is
+            // the only place its opacity is managed.
+            if (this._yielded.has(el)) { el.style.opacity = ''; this._yielded.delete(el); }
+            return;
+          }
+          let cover = false;
+          if (inBand) {
+            const ck = this.xs[k] - this.off, wk = el.offsetWidth;
+            cover = (ck + wk / 2 > x - 10 && ck - wk / 2 < x + 10)
+              || (selW > 0 && ck + wk / 2 > selL && ck - wk / 2 < selR);
+          }
+          if (cover && !this._yielded.has(el)) { el.style.opacity = '0'; this._yielded.add(el); }
+          else if (!cover && this._yielded.has(el)) { el.style.opacity = ''; this._yielded.delete(el); }
+        });
+      }
       if (this.index < 0) {
         this.playhead.style.transform = 'translate3d(8px,0,0)'; this.pill.style.transform = 'none';
         this.playhead.querySelector('.playhead-orb').hidden = this.playhead.querySelector('.playhead-beam').hidden = true;

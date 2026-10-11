@@ -36,7 +36,9 @@ async function proveRiverPort({ open, capture }) {
         x: label.left + label.width / 2, y: label.top + label.height / 2,
         spacing: pan ? (mobile ? 44 : 52) : fit, pan };
     }, width);
-    assert.equal(before.height, width < 760 ? 152 : 164, 'source height');
+    // Owner-approved shorter tile (Atlas decision, 2026-10-10): 123px desktop /
+  // 114px mobile. The prototype fixture below keeps the original 164/152.
+  assert.equal(before.height, width < 760 ? 114 : 123, 'approved tile height');
     assert.equal(before.radius, width < 760 ? '24px' : '28px', 'source radius');
     assert.equal(before.theme, theme);
     await page.mouse.move(before.x, before.y); await page.mouse.down();
@@ -149,7 +151,451 @@ async function proveRiverPort({ open, capture }) {
     await page.close();
   }
   const paired = await proveOriginal({ open, capture });
-  return { nativeLiveDrag: cases, originalComparison: paired };
+  const yielded = await proveYieldedNeighbourReselect({ open });
+  const displaced = await proveDisplacedLabelHitTargeting({ open });
+  const heldPress = await proveHeldPressNonPanTargeting({ open });
+  return { nativeLiveDrag: cases, originalComparison: paired, yieldedNeighbourReselect: yielded, displacedLabelHitTargeting: displaced, heldPressNonPanTargeting: heldPress };
+}
+
+// Regression (Systems Review 5480635465): place() skipped the selected label
+// before clearing yielded opacity. Selecting the minimum faded the adjacent
+// $150 label to opacity 0; selecting that label next retained its node
+// (mark/adopt keep the label nodes) but left it invisible — rectangle checks
+// pass on invisible text, so this regression asserts COMPUTED opacity
+// through the whole sequence: pointer, keyboard, reduced motion, and a
+// retained-node adopt() remount.
+async function proveYieldedNeighbourReselect({ open }) {
+  // Same invented publication as the geometry proof's negative scenario:
+  // index 1 is the minimum (-420, on the band's bottom edge) and index 2 is
+  // its $150 neighbour, which the selected minimum's stepped label covers.
+  const bads = [300, -420, 150, -80, 640, -260, 90, 480, -150, 720, 210, -40];
+  const MIN = 1, NEIGHBOUR = 2;
+  const cases = [];
+  const setup = async (width, theme, options = {}) => {
+    const page = await open(width, theme, { riverHarness: true, ...options });
+    await page.waitForFunction(() => typeof window.BudgetRiver !== 'undefined');
+    await page.evaluate(bads => {
+      document.body.innerHTML = '<main id="river-yield" style="padding:12px"></main>';
+      const host = document.querySelector('main');
+      const tree = '<nav class="tile t-river"><div class="river" tabindex="0"><canvas class="river-canvas"></canvas><div class="river-slide"><div class="river-vals"></div><div class="months"></div></div><div class="playhead"><div class="playhead-pill"><span>Test publication</span><b>$0.00</b></div><span class="playhead-beam"></span><span class="playhead-orb"></span></div></div></nav>';
+      const section = document.createElement('section');
+      section.className = 'budget-bento atlas-g';
+      section.innerHTML = '<div class="g-river-wrap">' + tree + '</div>';
+      host.appendChild(section);
+      const fmt = v => { const a = Math.abs(v), s = v < 0 ? '−' : ''; return a >= 999.5 ? s + '$' + (a / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : s + '$' + Math.round(a); };
+      const periods = bads.map((bad, i) => ({
+        start: '2026-' + String(1 + Math.floor(i / 2)).padStart(2, '0') + '-' + (i % 2 ? '15' : '01'),
+        end: '2026-' + String(1 + Math.floor(i / 2)).padStart(2, '0') + '-' + (i % 2 ? '28' : '14'),
+        bad, state: bad < 0 ? 'short' : 'healthy', role: i < 4 ? 'past' : i === 4 ? 'current' : 'future',
+      }));
+      const el = section.querySelector('.river');
+      const opts = {
+        el, canvas: section.querySelector('canvas'), playhead: section.querySelector('.playhead'),
+        pill: section.querySelector('.playhead-pill'), slide: section.querySelector('.river-slide'),
+        monthsEl: section.querySelector('.months'), valsEl: section.querySelector('.river-vals'),
+        periods, index: 4, cur: 4, enabled: true, dark: document.documentElement.dataset.theme === 'dark',
+        reduce: matchMedia('(prefers-reduced-motion: reduce)').matches, noIntro: true, fmt,
+        knownRuns: [periods.map((_, i) => i)], onChange: () => {},
+      };
+      window.__yieldOpts = opts;
+      window.__yieldRiver = BudgetRiver.create(opts);
+      window.__yieldRiver.place(4);
+    }, bads);
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.t-river')).opacity === '1');
+    await page.waitForFunction(() => window.__yieldRiver.head.settled && window.__yieldRiver.index === 4);
+    return page;
+  };
+  const settledAt = (page, k) => page.waitForFunction(k => {
+    const r = window.__yieldRiver; return r.index === k && r.head.settled;
+  }, k, { timeout: 5000 });
+  // Computed opacity is the assertion surface. Poll for the wanted value; on
+  // timeout return the actual value so the failure message names it.
+  const computedOpacity = async (page, k, want) => {
+    await page.waitForFunction(([k, want]) => getComputedStyle(window.__yieldRiver.valEls[k]).opacity === want,
+      [k, want], { timeout: 4000 }).catch(() => {});
+    return page.evaluate(k => getComputedStyle(window.__yieldRiver.valEls[k]).opacity, k);
+  };
+  const clickLabel = async (page, k) => {
+    const point = await page.evaluate(k => {
+      const b = window.__yieldRiver.valEls[k].getBoundingClientRect();
+      return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+    }, k);
+    await page.mouse.click(point.x, point.y);
+    await settledAt(page, k);
+  };
+  const runSequence = async (page, select, label) => {
+    await select(MIN);
+    const hiddenNeighbour = await computedOpacity(page, NEIGHBOUR, '0');
+    assert.equal(hiddenNeighbour, '0', label + ': selecting the minimum must yield (hide) the adjacent $150 label; computed opacity ' + hiddenNeighbour);
+    const minSelected = await computedOpacity(page, MIN, '1');
+    assert.equal(minSelected, '1', label + ': the selected minimum label itself must be visible; computed opacity ' + minSelected);
+    await select(NEIGHBOUR);
+    const reselected = await computedOpacity(page, NEIGHBOUR, '1');
+    assert.equal(reselected, '1', label + ': the newly selected label must compute opacity 1 after being yielded; got ' + reselected);
+    const state = await page.evaluate(k => ({
+      inline: window.__yieldRiver.valEls[k].style.opacity,
+      yielded: window.__yieldRiver._yielded ? window.__yieldRiver._yielded.has(window.__yieldRiver.valEls[k]) : null,
+    }), NEIGHBOUR);
+    assert.equal(state.inline, '', label + ': the selected label inline opacity must be cleared');
+    assert.equal(state.yielded, false, label + ': the selected label must be removed from the yielded set');
+    return { afterMinSelectNeighbourComputed: hiddenNeighbour, afterReselectNeighbourComputed: reselected, inlineCleared: true, removedFromYielded: true };
+  };
+  for (const width of [390, 320]) for (const theme of ['dark', 'light']) {
+    const page = await setup(width, theme);
+    const pointer = await runSequence(page, k => clickLabel(page, k), 'yield/pointer/' + width + '/' + theme);
+    // Keyboard: arrows step one period per press through the same go() path.
+    await page.locator('.river').focus();
+    await page.keyboard.press('ArrowLeft'); await settledAt(page, MIN);
+    const kbHidden = await computedOpacity(page, NEIGHBOUR, '0');
+    assert.equal(kbHidden, '0', 'yield/keyboard/' + width + '/' + theme + ': the minimum must re-yield the neighbour; computed opacity ' + kbHidden);
+    await page.keyboard.press('ArrowRight'); await settledAt(page, NEIGHBOUR);
+    const kbShown = await computedOpacity(page, NEIGHBOUR, '1');
+    assert.equal(kbShown, '1', 'yield/keyboard/' + width + '/' + theme + ': the newly selected label must compute opacity 1; got ' + kbShown);
+    const keyboard = { afterMinSelectNeighbourComputed: kbHidden, afterReselectNeighbourComputed: kbShown };
+    // Retained-node remount: adopt() on the unchanged publication keeps the
+    // canvas and every label node; the sequence must still restore opacity.
+    await page.evaluate(() => { window.__yieldNodes = [...window.__yieldRiver.valEls]; });
+    await page.evaluate(() => {
+      const r = window.__yieldRiver;
+      r.adopt({ ...window.__yieldOpts, index: r.index, cur: r.index });
+    });
+    await page.waitForFunction(() => window.__yieldRiver.head.settled);
+    const remountSeq = await runSequence(page, k => clickLabel(page, k), 'yield/remount/' + width + '/' + theme);
+    const retained = await page.evaluate(() => window.__yieldRiver.valEls.every((el, i) => el === window.__yieldNodes[i]));
+    assert.equal(retained, true, 'yield/remount/' + width + '/' + theme + ': adopt() must retain the original label nodes');
+    cases.push({ width, theme, pointer, keyboard, remount: { ...remountSeq, nodesRetainedAcrossAdopt: retained } });
+    await page.close();
+  }
+  // Reduced motion: same sequence with an instant head (go() sets, no spring).
+  {
+    const page = await setup(390, 'dark', { reducedMotion: 'reduce' });
+    assert.equal(await page.evaluate(() => window.__yieldRiver.reduce), true, 'yield/reduced-motion: controller must be in reduced-motion mode');
+    const reducedMotion = await runSequence(page, k => clickLabel(page, k), 'yield/reduced-motion/390/dark');
+    cases.push({ width: 390, theme: 'dark', reducedMotion });
+    await page.close();
+  }
+  return cases;
+}
+
+// Regression (Systems Review 5481562226, Codex discussion_r4239927349):
+// place() steps a selected bottom-edge label sideways clear of the orb — on
+// the mobile panning layout by ~30px, more than half the 44px period
+// spacing — but tap and hover resolution mapped the raw coordinate through
+// fOfScreen, so a pointer over the visibly displaced label resolved to the
+// neighbouring period. The fix records the stepped label's visible box in
+// place() and routes discrete resolution (tap, hover) through hitIndex().
+// This regression works from the label's RENDERED box: it first asserts
+// the displacement really enters the neighbour's raw hit region
+// (dx > sp/2 — without that precondition the raw mapping would still
+// resolve correctly and the regression would prove nothing), then asserts
+// a mouse tap and a touch tap on the visible centre keep the label's own
+// period selected, hover over it resolves to its own period, the
+// neighbouring period stays selectable at its own centre (the point the
+// stepped label's tail covers — the round-3 yield sequence's click), and
+// the keyboard path is unaffected. On the pre-fix code the tap selects
+// period 2 and hover reports 2.
+async function proveDisplacedLabelHitTargeting({ open }) {
+  // Same invented publication as the yield regression: index 1 is the
+  // minimum (-420, on the band's bottom edge) whose selected label steps
+  // aside; index 2 is the neighbour its visible centre lands on.
+  const bads = [300, -420, 150, -80, 640, -260, 90, 480, -150, 720, 210, -40];
+  const MIN = 1, NEIGHBOUR = 2;
+  const cases = [];
+  const setup = async (width, theme, options = {}) => {
+    const page = await open(width, theme, { riverHarness: true, ...options });
+    await page.waitForFunction(() => typeof window.BudgetRiver !== 'undefined');
+    await page.evaluate(bads => {
+      document.body.innerHTML = '<main id="river-hit" style="padding:12px"></main>';
+      const host = document.querySelector('main');
+      const tree = '<nav class="tile t-river"><div class="river" tabindex="0"><canvas class="river-canvas"></canvas><div class="river-slide"><div class="river-vals"></div><div class="months"></div></div><div class="playhead"><div class="playhead-pill"><span>Test publication</span><b>$0.00</b></div><span class="playhead-beam"></span><span class="playhead-orb"></span></div></div></nav>';
+      const section = document.createElement('section');
+      section.className = 'budget-bento atlas-g';
+      section.innerHTML = '<div class="g-river-wrap">' + tree + '</div>';
+      host.appendChild(section);
+      const fmt = v => { const a = Math.abs(v), s = v < 0 ? '−' : ''; return a >= 999.5 ? s + '$' + (a / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : s + '$' + Math.round(a); };
+      const periods = bads.map((bad, i) => ({
+        start: '2026-' + String(1 + Math.floor(i / 2)).padStart(2, '0') + '-' + (i % 2 ? '15' : '01'),
+        end: '2026-' + String(1 + Math.floor(i / 2)).padStart(2, '0') + '-' + (i % 2 ? '28' : '14'),
+        bad, state: bad < 0 ? 'short' : 'healthy', role: i < 4 ? 'past' : i === 4 ? 'current' : 'future',
+      }));
+      const el = section.querySelector('.river');
+      window.__hitChanges = [];
+      window.__hitRiver = BudgetRiver.create({
+        el, canvas: section.querySelector('canvas'), playhead: section.querySelector('.playhead'),
+        pill: section.querySelector('.playhead-pill'), slide: section.querySelector('.river-slide'),
+        monthsEl: section.querySelector('.months'), valsEl: section.querySelector('.river-vals'),
+        periods, index: 4, cur: 4, enabled: true, dark: document.documentElement.dataset.theme === 'dark',
+        reduce: matchMedia('(prefers-reduced-motion: reduce)').matches, noIntro: true, fmt,
+        knownRuns: [periods.map((_, i) => i)], onChange: (i, how) => window.__hitChanges.push({ i, how }),
+      });
+      window.__hitRiver.place(4);
+    }, bads);
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.t-river')).opacity === '1');
+    await page.waitForFunction(() => window.__hitRiver.head.settled && window.__hitRiver.index === 4);
+    return page;
+  };
+  const settledAt = (page, k) => page.waitForFunction(k => {
+    const r = window.__hitRiver; return r.index === k && r.head.settled;
+  }, k, { timeout: 5000 }).catch(() => {});
+  const labelCentre = (page, k) => page.evaluate(k => {
+    const b = window.__hitRiver.valEls[k].getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+  }, k);
+  // The displaced selected label's rendered centre vs its data centre.
+  const displaced = async (page, label) => {
+    const st = await page.evaluate(k => {
+      const r = window.__hitRiver, elB = r.el.getBoundingClientRect(), b = r.valEls[k].getBoundingClientRect();
+      return { index: r.index, pan: r.pan, sp: r.sp,
+        cx: b.left + b.width / 2, cy: b.top + b.height / 2,
+        dx: (b.left + b.width / 2) - (elB.left + r.xs[k] - r.off) };
+    }, MIN);
+    assert.equal(st.index, MIN, label + ': the minimum must be selected before its label can displace');
+    assert.equal(st.pan, true, label + ': the fixture must be on the mobile panning layout');
+    assert.ok(st.dx > st.sp / 2, label + ': the selected label must be displaced into the neighbouring hit region (dx ' + st.dx.toFixed(1) + 'px vs half-spacing ' + (st.sp / 2) + 'px)');
+    return st;
+  };
+  const tapKeepsMin = async (page, tap, label) => {
+    const st = await displaced(page, label);
+    await page.evaluate(() => { window.__hitChanges = []; });
+    await tap(st);
+    await settledAt(page, MIN);
+    const after = await page.evaluate(() => ({ index: window.__hitRiver.index, changes: window.__hitChanges.slice() }));
+    assert.equal(after.index, MIN, label + ': tapping the displaced selected label must keep its own period selected; got index ' + after.index);
+    assert.ok(after.changes.every(c => c.i === MIN), label + ': the tap must not publish another period ' + JSON.stringify(after.changes));
+    return { displacementPx: Number(st.dx.toFixed(1)), spacingPx: st.sp };
+  };
+  for (const width of [390, 320]) for (const theme of ['dark', 'light']) {
+    const page = await setup(width, theme);
+    const label = 'hit/mouse/' + width + '/' + theme;
+    // Select the minimum by clicking its (still undisplaced) label.
+    const natural = await labelCentre(page, MIN);
+    await page.mouse.click(natural.x, natural.y);
+    await settledAt(page, MIN);
+    assert.equal(await page.evaluate(() => window.__hitRiver.index), MIN, label + ': clicking the minimum label must select it');
+    // Tap on the displaced label's visible centre keeps its own period.
+    const tap = await tapKeepsMin(page, s => page.mouse.click(s.cx, s.cy), label + '/tap');
+    // Hover over the displaced label resolves to its own period.
+    const st = await displaced(page, label + '/hover');
+    await page.mouse.move(st.cx, st.cy);
+    await page.waitForFunction(k => window.__hitRiver.hover === k, MIN, { timeout: 4000 }).catch(() => {});
+    const hover = await page.evaluate(() => ({ hover: window.__hitRiver.hover,
+      marks: window.__hitRiver.valEls.map(e => e.classList.contains('is-hover')) }));
+    assert.equal(hover.hover, MIN, label + ': hover over the displaced label must resolve to its own period; got ' + hover.hover);
+    assert.ok(hover.marks[MIN] && !hover.marks[NEIGHBOUR], label + ': the displaced label itself must carry the hover mark ' + JSON.stringify(hover.marks));
+    // The neighbouring period stays selectable at its own centre, even
+    // though the stepped label's tail covers that point and its own label
+    // is currently yielded: the neighbour's centre is nearer that point
+    // than the stepped label's visible centre.
+    const neighbourCentre = await labelCentre(page, NEIGHBOUR);
+    await page.mouse.click(neighbourCentre.x, neighbourCentre.y);
+    await settledAt(page, NEIGHBOUR);
+    assert.equal(await page.evaluate(() => window.__hitRiver.index), NEIGHBOUR, label + ': clicking the neighbouring period centre must select it');
+    // Keyboard: arrows still step one period each way from the selection.
+    await page.locator('.river').focus();
+    await page.keyboard.press('ArrowLeft'); await settledAt(page, MIN);
+    assert.equal(await page.evaluate(() => window.__hitRiver.index), MIN, label + ': ArrowLeft must step back to the minimum');
+    await page.keyboard.press('ArrowRight'); await settledAt(page, NEIGHBOUR);
+    assert.equal(await page.evaluate(() => window.__hitRiver.index), NEIGHBOUR, label + ': ArrowRight must step to the neighbour');
+    cases.push({ width, theme, input: 'mouse', displacementPx: tap.displacementPx, spacingPx: tap.spacingPx, tapKeptSelection: true, hoverResolvedToOwnPeriod: true, neighbourSelectableAtOwnCentre: true, keyboard: { left: MIN, right: NEIGHBOUR } });
+    await page.close();
+  }
+  // Touch: a tap is pointerdown/pointerup with no move; the same end()
+  // resolution must honour the displaced label's visible box.
+  for (const [width, theme] of [[390, 'dark'], [320, 'light']]) {
+    const page = await setup(width, theme, { hasTouch: true });
+    const label = 'hit/touch/' + width + '/' + theme;
+    const natural = await labelCentre(page, MIN);
+    await page.touchscreen.tap(natural.x, natural.y);
+    await settledAt(page, MIN);
+    assert.equal(await page.evaluate(() => window.__hitRiver.index), MIN, label + ': tapping the minimum label must select it');
+    const tap = await tapKeepsMin(page, s => page.touchscreen.tap(s.cx, s.cy), label);
+    cases.push({ width, theme, input: 'touch', displacementPx: tap.displacementPx, spacingPx: tap.spacingPx, tapKeptSelection: true });
+    await page.close();
+  }
+  // Reduced motion: instant head, same tap resolution.
+  {
+    const page = await setup(390, 'dark', { reducedMotion: 'reduce' });
+    assert.equal(await page.evaluate(() => window.__hitRiver.reduce), true, 'hit/reduced-motion: controller must be in reduced-motion mode');
+    const label = 'hit/reduced-motion/390/dark';
+    const natural = await labelCentre(page, MIN);
+    await page.mouse.click(natural.x, natural.y);
+    await settledAt(page, MIN);
+    const tap = await tapKeepsMin(page, s => page.mouse.click(s.cx, s.cy), label);
+    cases.push({ width: 390, theme: 'dark', reducedMotion: { displacementPx: tap.displacementPx, tapKeptSelection: true } });
+    await page.close();
+  }
+  return cases;
+}
+
+// Regression (Systems Review 5481846544): round 4 fixed the IMMEDIATE tap
+// on a displaced selected label, but a STATIONARY HELD PRESS in non-pan
+// (fit) layouts still selected the neighbour. Mechanism: in a non-pan
+// layout pointerdown aims the spring at the RAW fractional position
+// (fOfScreen of the press point — 1.546 at the displaced centre here);
+// the spring/place motion during the hold travels to that fraction, the
+// selected label un-steps as the playhead leaves the band's bottom edge,
+// and place() clears the stepped label's hit box; pointerup then
+// re-resolved the release coordinate against the changed geometry and
+// committed the neighbouring period. The round-4 regression runs on the
+// panning layout (pan=true), where pointerdown never moves the spring,
+// so it cannot see this path. This regression uses the same invented
+// 12-point publication at 700px — element width 676, fit spacing ~54.9px
+// >= the 52px desktop minimum, so the layout is non-pan (fit mode). It
+// asserts the mis-target precondition from the RENDERED box (displaced
+// centre's raw fraction rounds to the neighbour), holds the press for
+// over a second while asserting the spring really travelled to the raw
+// fraction and the hit box really cleared (the defect's mechanism, true
+// before and after the fix), then asserts the release still commits the
+// pressed label's own period — for mouse and touch, both themes. A
+// held-press-then-drag case proves the continuous drag still takes over
+// once movement begins: the release must commit the DRAG's resting
+// period, not the press-time target. On the pre-fix code the held press
+// commits index 2 and this regression fails on its first case.
+async function proveHeldPressNonPanTargeting({ open }) {
+  const bads = [300, -420, 150, -80, 640, -260, 90, 480, -150, 720, 210, -40];
+  const MIN = 1, NEIGHBOUR = 2;
+  const HOLD_MS = 1100;
+  const cases = [];
+  const setup = async (width, theme, options = {}) => {
+    const page = await open(width, theme, { riverHarness: true, ...options });
+    await page.waitForFunction(() => typeof window.BudgetRiver !== 'undefined');
+    await page.evaluate(bads => {
+      document.body.innerHTML = '<main id="river-held" style="padding:12px"></main>';
+      const host = document.querySelector('main');
+      const tree = '<nav class="tile t-river"><div class="river" tabindex="0"><canvas class="river-canvas"></canvas><div class="river-slide"><div class="river-vals"></div><div class="months"></div></div><div class="playhead"><div class="playhead-pill"><span>Test publication</span><b>$0.00</b></div><span class="playhead-beam"></span><span class="playhead-orb"></span></div></div></nav>';
+      const section = document.createElement('section');
+      section.className = 'budget-bento atlas-g';
+      section.innerHTML = '<div class="g-river-wrap">' + tree + '</div>';
+      host.appendChild(section);
+      const fmt = v => { const a = Math.abs(v), s = v < 0 ? '−' : ''; return a >= 999.5 ? s + '$' + (a / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : s + '$' + Math.round(a); };
+      const periods = bads.map((bad, i) => ({
+        start: '2026-' + String(1 + Math.floor(i / 2)).padStart(2, '0') + '-' + (i % 2 ? '15' : '01'),
+        end: '2026-' + String(1 + Math.floor(i / 2)).padStart(2, '0') + '-' + (i % 2 ? '28' : '14'),
+        bad, state: bad < 0 ? 'short' : 'healthy', role: i < 4 ? 'past' : i === 4 ? 'current' : 'future',
+      }));
+      const el = section.querySelector('.river');
+      window.__heldChanges = [];
+      window.__heldRiver = BudgetRiver.create({
+        el, canvas: section.querySelector('canvas'), playhead: section.querySelector('.playhead'),
+        pill: section.querySelector('.playhead-pill'), slide: section.querySelector('.river-slide'),
+        monthsEl: section.querySelector('.months'), valsEl: section.querySelector('.river-vals'),
+        periods, index: 4, cur: 4, enabled: true, dark: document.documentElement.dataset.theme === 'dark',
+        reduce: matchMedia('(prefers-reduced-motion: reduce)').matches, noIntro: true, fmt,
+        knownRuns: [periods.map((_, i) => i)], onChange: (i, how) => window.__heldChanges.push({ i, how }),
+      });
+      window.__heldRiver.place(4);
+    }, bads);
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.t-river')).opacity === '1');
+    await page.waitForFunction(() => window.__heldRiver.head.settled && window.__heldRiver.index === 4);
+    return page;
+  };
+  const settledAt = (page, k) => page.waitForFunction(k => {
+    const r = window.__heldRiver; return r.index === k && r.head.settled;
+  }, k, { timeout: 5000 }).catch(() => {});
+  const labelCentre = (page, k) => page.evaluate(k => {
+    const b = window.__heldRiver.valEls[k].getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+  }, k);
+  // Select the minimum, then measure its displaced label from the rendered
+  // box and assert the fit-mode mis-target precondition.
+  const displacedFit = async (page, label) => {
+    const natural = await labelCentre(page, MIN);
+    await page.mouse.click(natural.x, natural.y);
+    await settledAt(page, MIN);
+    const st = await page.evaluate(k => {
+      const r = window.__heldRiver, elB = r.el.getBoundingClientRect(), b = r.valEls[k].getBoundingClientRect();
+      const cxEl = (b.left + b.width / 2) - elB.left;
+      return { index: r.index, pan: r.pan, sp: r.sp, cx: b.left + b.width / 2, cy: b.top + b.height / 2,
+        dx: (b.left + b.width / 2) - (elB.left + r.xs[k] - r.off), rawF: r.fOfScreen(cxEl) };
+    }, MIN);
+    assert.equal(st.index, MIN, label + ': the minimum must be selected before its label can displace');
+    assert.equal(st.pan, false, label + ': the 700px/12-point fixture must be a non-pan (fit) layout');
+    assert.ok(st.dx > st.sp / 2, label + ': the selected label must be displaced into the neighbouring hit region (dx ' + st.dx.toFixed(1) + 'px vs half-spacing ' + (st.sp / 2).toFixed(1) + 'px)');
+    assert.equal(Math.round(st.rawF), NEIGHBOUR, label + ': the displaced centre raw fraction must round to the neighbouring period (rawF ' + st.rawF.toFixed(3) + ')');
+    return st;
+  };
+  const duringHold = async (page, label) => {
+    const during = await page.evaluate(() => { const r = window.__heldRiver;
+      return { index: r.index, dragging: r.dragging, headTarget: r.head.target, headX: r.head.x, stepBox: r._stepBox }; });
+    assert.equal(during.dragging, true, label + ': the press must still be held');
+    assert.equal(during.index, MIN, label + ': nothing may commit during a stationary hold; got index ' + during.index);
+    assert.ok(during.headTarget > 1.5, label + ': the non-pan press must have aimed the spring at the raw fractional position (target ' + during.headTarget.toFixed(3) + ')');
+    assert.ok(Math.abs(during.headX - during.headTarget) < 0.01, label + ': the spring must have travelled to the raw fraction during the hold (head ' + during.headX.toFixed(3) + ' vs target ' + during.headTarget.toFixed(3) + ')');
+    assert.equal(during.stepBox, null, label + ': spring/place motion during the hold must have cleared the stepped hit box (the mechanism under repair)');
+    return during;
+  };
+  const releasedKeepsMin = async (page, label) => {
+    await settledAt(page, MIN);
+    const after = await page.evaluate(() => ({ index: window.__heldRiver.index, changes: window.__heldChanges.slice() }));
+    assert.equal(after.index, MIN, label + ': a stationary held press on the displaced selected label must keep its own period selected; got index ' + after.index);
+    assert.ok(after.changes.every(c => c.i === MIN), label + ': the held press must not publish another period ' + JSON.stringify(after.changes));
+    return after;
+  };
+  // Mouse held presses, both themes.
+  for (const theme of ['dark', 'light']) {
+    const page = await setup(700, theme);
+    const label = 'held/mouse/700/' + theme;
+    const st = await displacedFit(page, label);
+    await page.evaluate(() => { window.__heldChanges = []; });
+    await page.mouse.move(st.cx, st.cy);
+    await page.mouse.down();
+    await page.waitForTimeout(HOLD_MS);
+    const during = await duringHold(page, label);
+    await page.mouse.up();
+    await releasedKeepsMin(page, label);
+    cases.push({ width: 700, theme, input: 'mouse', layout: 'fit (non-pan)', holdMs: HOLD_MS,
+      displacementPx: Number(st.dx.toFixed(1)), spacingPx: Number(st.sp.toFixed(1)), rawFractionAtCentre: Number(st.rawF.toFixed(3)),
+      springTargetDuringHold: Number(during.headTarget.toFixed(3)), hitBoxClearedDuringHold: true, heldPressKeptSelection: true });
+    await page.close();
+  }
+  // Touch held presses, both themes (CDP touch, the native input path).
+  for (const theme of ['dark', 'light']) {
+    const page = await setup(700, theme, { hasTouch: true });
+    const label = 'held/touch/700/' + theme;
+    const st = await displacedFit(page, label);
+    await page.evaluate(() => { window.__heldChanges = []; });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: st.cx, y: st.cy }] });
+    await page.waitForTimeout(HOLD_MS);
+    const during = await duringHold(page, label);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await releasedKeepsMin(page, label);
+    await cdp.detach();
+    cases.push({ width: 700, theme, input: 'touch', layout: 'fit (non-pan)', holdMs: HOLD_MS,
+      displacementPx: Number(st.dx.toFixed(1)), spacingPx: Number(st.sp.toFixed(1)), rawFractionAtCentre: Number(st.rawF.toFixed(3)),
+      springTargetDuringHold: Number(during.headTarget.toFixed(3)), hitBoxClearedDuringHold: true, heldPressKeptSelection: true });
+    await page.close();
+  }
+  // Held press, THEN drag: once movement begins the continuous drag must
+  // take over — the release commits the drag's resting period, not the
+  // press-time target.
+  for (const theme of ['dark', 'light']) {
+    const page = await setup(700, theme);
+    const label = 'held-then-drag/mouse/700/' + theme;
+    const st = await displacedFit(page, label);
+    await page.evaluate(() => { window.__heldChanges = []; });
+    await page.mouse.move(st.cx, st.cy);
+    await page.mouse.down();
+    await page.waitForTimeout(700);
+    const during = await duringHold(page, label);
+    await page.mouse.move(st.cx + 2 * st.sp, st.cy, { steps: 10 });
+    await page.waitForTimeout(300); // outlast the fling freshness window while still held
+    const drag = await page.evaluate(() => { const r = window.__heldRiver;
+      return { index: r.index, headTarget: r.head.target, changes: window.__heldChanges.slice() }; });
+    assert.equal(drag.index, 4, label + ': the drag must scrub to the period under the pointer; got index ' + drag.index + ' (target ' + drag.headTarget.toFixed(3) + ')');
+    assert.ok(drag.changes.some(c => c.how === 'scrub'), label + ': the drag must publish live scrub selections ' + JSON.stringify(drag.changes));
+    await page.mouse.up();
+    await settledAt(page, 4);
+    const after = await page.evaluate(() => ({ index: window.__heldRiver.index, changes: window.__heldChanges.slice() }));
+    assert.equal(after.index, 4, label + ': the release after a drag must commit the drag resting period, not the press-time target; got index ' + after.index);
+    assert.equal(after.changes.at(-1).i, 4, label + ': the final commit must be the drag resting period ' + JSON.stringify(after.changes));
+    cases.push({ width: 700, theme, input: 'mouse', layout: 'fit (non-pan)', holdMs: 700,
+      displacementPx: Number(st.dx.toFixed(1)), spacingPx: Number(st.sp.toFixed(1)),
+      springTargetDuringHold: Number(during.headTarget.toFixed(3)), dragTookOver: true, releaseCommittedDragPeriod: 4 });
+    await page.close();
+  }
+  return cases;
 }
 
 async function proveOriginal({ open, capture }) {
@@ -182,25 +628,52 @@ async function proveOriginal({ open, capture }) {
       const geometry = r => ({W:r.W,H:r.H,pad:r.padL,sp:r.sp,pan:r.pan,top:r.top,bot:r.bot,xs:r.xs,ys:r.ys,ms:r.ms,parts:r.parts.length,samples:[0,.5,1.5,3.2,6.6,7].map(f=>r.yAt(f))});
       return {original:geometry(River),port:geometry(port)};
     });
-    assert.deepEqual(setup.port, setup.original, 'independent original geometry at ' + width + '/' + theme);
+    // The port no longer shares the prototype's vertical geometry: Atlas
+    // approved a ~25% shorter tile with rebalanced insets (2026-10-10), and
+    // the fixture keeps the original 164/152px geometry. Horizontal layout,
+    // run structure and behaviour must still match the prototype exactly, and
+    // every vertical position of the port must be the prototype's position
+    // affinely remapped from the old band onto the new band — the same value
+    // domain through different insets, not a new curve.
+    const { original, port } = setup;
+    assert.deepEqual(
+      { W: port.W, pad: port.pad, sp: port.sp, pan: port.pan, xs: port.xs, parts: port.parts },
+      { W: original.W, pad: original.pad, sp: original.sp, pan: original.pan, xs: original.xs, parts: original.parts },
+      'horizontal geometry and run structure at ' + width + '/' + theme);
+    const portMobileJs = port.W < 640;
+    assert.equal(port.H, width < 760 ? 114 : 123, 'approved port tile height at ' + width);
+    assert.equal(port.top, portMobileJs ? 36 : 38, 'approved port top inset at ' + width);
+    assert.equal(port.bot, port.H - (portMobileJs ? 49 : 51), 'approved port bottom inset at ' + width);
+    assert.equal(original.top, 52, 'prototype top inset unchanged at ' + width);
+    assert.equal(original.bot, original.H - (original.W < 640 ? 50 : 52), 'prototype bottom inset unchanged at ' + width);
+    const remapY = y => port.top + (y - original.top) * (port.bot - port.top) / (original.bot - original.top);
+    const remapped = (actual, expected, label) => assert.ok(Math.abs(actual - expected) < 0.05,
+      label + ' at ' + width + '/' + theme + ': ' + actual + ' vs affine remap ' + expected);
+    port.ys.forEach((y, i) => { if (y != null && original.ys[i] != null) remapped(y, remapY(original.ys[i]), 'curve y[' + i + ']'); });
+    port.samples.forEach((y, i) => remapped(y, remapY(original.samples[i]), 'yAt sample[' + i + ']'));
+    const slopeRatio = (port.bot - port.top) / (original.bot - original.top);
+    port.ms.forEach((m, i) => assert.ok(Math.abs(m - original.ms[i] * slopeRatio) < 0.05,
+      'slope m[' + i + '] at ' + width + '/' + theme + ': ' + m + ' vs scaled ' + (original.ms[i] * slopeRatio)));
     await page.waitForFunction(() => window.__riverPair.port.reveal === 1 && window.__riverPair.original.reveal === 1);
-    // Freeze to the same animation time and position: dark render pixels must match exactly.
-    const pixels = await page.evaluate(() => {
-      const {original,port} = window.__riverPair;
-      original.place(2);port.place(2);original.draw(12,2);port.draw(12,2);
-      const a=original.ctx.getImageData(0,0,original.canvas.width,original.canvas.height).data;
-      const b=port.ctx.getImageData(0,0,port.canvas.width,port.canvas.height).data;
-      let differences=0; for(let i=0;i<a.length;i++) if(a[i]!==b[i]) differences++;
-      return {differences,total:a.length};
+    // The canvases now have different heights, so a cross-canvas pixel diff is
+    // meaningless. Pixel proof is the port's own determinism: a settled frame
+    // redrawn at the same fixed time must reproduce exactly, and moving the
+    // camera to another settled position must change the frame.
+    const pixelProof = await page.evaluate(() => {
+      const { port } = window.__riverPair;
+      port.reduce = true; port.place(2); port.draw(12, 2);
+      const grab = () => port.ctx.getImageData(0, 0, port.canvas.width, port.canvas.height).data;
+      const a = grab(); port.place(2); port.draw(12, 2); const b = grab();
+      let selfDifferences = 0; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) selfDifferences++;
+      port.place(3); port.draw(12, 3); const c = grab();
+      let movedDifferences = 0; for (let i = 0; i < a.length; i++) if (a[i] !== c[i]) movedDifferences++;
+      port.place(2); port.draw(12, 2);
+      return { selfDifferences, movedDifferences };
     });
-    // Particles have evolved on different wall-clock RAFs; compare deterministic draw with motion disabled.
-    const staticPixels = await page.evaluate(() => {
-      const {original,port}=window.__riverPair;original.reduce=port.reduce=true;original.draw(12,2);port.draw(12,2);
-      const a=original.ctx.getImageData(0,0,original.canvas.width,original.canvas.height).data,b=port.ctx.getImageData(0,0,port.canvas.width,port.canvas.height).data;
-      let differences=0;for(let i=0;i<a.length;i++) if(a[i]!==b[i]) differences++;
-      return differences;
-    });
-    if(theme==='dark') assert.equal(staticPixels,0,'dark original curve, beads, lens and zero marker pixels');
+    assert.equal(pixelProof.selfDifferences, 0, 'port static frame is deterministic at ' + width + '/' + theme);
+    assert.ok(pixelProof.movedDifferences > 0, 'port frame changes with the camera at ' + width + '/' + theme);
+    const staticPixels = pixelProof.selfDifferences;
+    const pixels = { differences: pixelProof.movedDifferences };
     const input = async kind => {
       const rect = await page.evaluate(kind => {const r=window.__riverPair[kind],b=r.el.getBoundingClientRect();return{x:b.left+r.xc(2)-r.off,y:b.bottom-38,dx:r.pan?-r.sp:r.sp}},kind);
       await page.mouse.move(rect.x,rect.y);await page.mouse.down();await page.mouse.move(rect.x+rect.dx,rect.y,{steps:8});
@@ -224,7 +697,7 @@ async function proveOriginal({ open, capture }) {
     // Resize resets a canvas. Repaint both at the same fixed camera/time for
     // the paired capture; the original itself does not invalidate a settled reduced frame.
     await page.evaluate(()=>{for(const r of [__riverPair.original,__riverPair.port]){r.layout();r.head.set(3);r.index=3;r.mark(3);r.place(3);r.reveal=1;r.draw(12,3);r.pill.querySelector('b').textContent='$700.00'}});
-    results.push({width,theme,geometryIdentical:true,originalLiveInput:originalHeld,portLiveInput:portHeld,staticPixelDifferences:staticPixels,movingPixelDifferences:pixels.differences,springIdentical:true,resize:true,reducedMotion:true});
+    results.push({width,theme,geometryComparison:'horizontal identical; vertical affine remap onto approved insets',originalLiveInput:originalHeld,portLiveInput:portHeld,staticPixelDifferences:staticPixels,movingPixelDifferences:pixels.differences,springIdentical:true,resize:true,reducedMotion:true});
     if(capture)await capture(page,'budget-river-pair-'+width+'-'+theme+'.png');
     await page.close();
   }
@@ -237,11 +710,26 @@ if (require.main === module) {
   (async () => {
     const { chromium } = require('playwright');
     const root = path.resolve(__dirname, '..'), fx = require('./fixtures/budget-surface-data');
+    // Optional recorded result (Systems Review 5480338180): with
+    // RIVER_RESULT_JSON=<path>, the run's structured results are written to
+    // that path, source-bound via test/proof-source-binding.js — the PASS is
+    // then evidence in the receipt, not prose in a packet.
+    const receiptPath = process.env.RIVER_RESULT_JSON || null;
+    let binding = null, verifyBinding = null;
+    if (receiptPath) {
+      const sbl = require('./proof-source-binding');
+      binding = sbl.captureSourceBinding(root, [
+        'public/budget-river.js', 'public/budget-gface.css', 'public/budget-blend.css', 'public/budget-blend.js',
+        'public/styles.css', 'public/fonts.css', 'public/index.html', 'public/plan.js', 'public/forecast.js',
+        'test/browser-budget-river-port.js', 'test/proof-source-binding.js', 'test/fixtures/budget-surface-data.js',
+      ], process.env.PROOF_BASE_SHA || null);
+      verifyBinding = sbl.verifySourceBinding;
+    }
     const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
     try {
       const errors = [];
       const open = async (width, theme, options = {}) => {
-        const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme, reducedMotion: options.reducedMotion || 'no-preference' });
+        const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme, reducedMotion: options.reducedMotion || 'no-preference', hasTouch: !!options.hasTouch });
         page.on('pageerror', error => errors.push(error.message));
         await page.addInitScript(chosen => localStorage.setItem('hfd-theme', chosen), theme);
         await page.route('**/*', route => {
@@ -261,6 +749,19 @@ if (require.main === module) {
       };
       const capture = process.env.RIVER_DEV_SHOTS ? async (page,file) => {fs.mkdirSync(process.env.RIVER_DEV_SHOTS,{recursive:true});await page.screenshot({path:path.join(process.env.RIVER_DEV_SHOTS,file),fullPage:true,animations:'disabled'})} : null;
       const result = await proveRiverPort({ open, capture }); assert.deepEqual(errors, []);
+      if (receiptPath) {
+        verifyBinding(root, binding);
+        fs.writeFileSync(receiptPath, JSON.stringify({
+          proof: 'timeline-geometry-native-harness',
+          harness: 'test/browser-budget-river-port.js',
+          syntheticOnly: true,
+          runtime: { node: process.version, chromium: await browser.version() },
+          sourceBinding: { ...binding, unchangedAfterRun: true },
+          results: result,
+          pageErrors: errors,
+          failures: [],
+        }, null, 2));
+      }
       console.log('PASS native river live drag: ' + result.nativeLiveDrag.length + ' viewport/theme cases, amount-label starts and retained controller across native remounts');
     } finally { await browser.close(); }
   })().catch(error => { console.error(error); process.exitCode = 1; });
