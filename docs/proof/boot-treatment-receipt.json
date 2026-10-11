@@ -1,29 +1,30 @@
 {
   "proof": "browser-boot-treatment",
-  "baseMainSha": "2921aa62dddd452ddc7d56b6fd0c09f92f5cef9a",
+  "baseMainSha": "a96f911c252431ca4cfb2aba7bfda79134388d69",
   "claim": "visible during the genuine-load interval with no gaps observed at ~100ms sampling after first visibility, removed on arrival, no new blocking assets; timing comparison inconclusive — median paired delta and difference of medians recorded as measurements, not a no-delay conclusion",
   "scenarios": {
     "lightLong": {
       "delayMs": 5000,
-      "treatmentFirstVisibleMs": 204,
-      "contentRenderedMs": 7159,
-      "samples": 28,
+      "treatmentFirstVisibleMs": 526,
+      "contentRenderedMs": 6610,
+      "samples": 50,
       "visibilityGapsObserved": 0,
+      "noFlashAtRemoval": true,
       "servedSha": {
-        "public/index.html": "52444db8cc29f3bef684a1a86716fe612477679fe957d7602e472572467526a9",
+        "public/index.html": "620c5a5af2b1551cfc8ca4635024e0edfcb1dda9ae09ff5e983c8f4a1eab9670",
         "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
         "public/fonts.css": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
-        "public/styles.css": "3c347e12482327da3442c3e14115e0897a4add1ac32bbe38ad2f8d0f708ebd1c",
+        "public/styles.css": "2460588bdfa3508c6700aaa06e65be6032061c19eebae276967e9899642ff9f6",
         "public/household-view.css": "e5cb08cfe7d5663fab76da2eb51f68d4890b1c4b550cf80eb1f61930a749620e",
         "public/budget-polish.css": "29be9b313c3c7b4d402ff730abe76dfd09e07f38df4dfd04a26a12fa479d16fe",
         "public/bill-detail.css": "df5e707892d09bded4516822edd1c8a056b472e092c353062a645d7a79ef69c0",
         "public/savings-inventory.css": "39591b0f8fbb0c8109f5f2fe71dd707067dbaf54e85d467989ed96342e4e1a58",
         "public/running-build.css": "1121433390812139a1c0fc810a882a7b97903e17a6d42f19dcc93fa05a5327d5",
         "public/budget-surface.css": "34f593f9b4464c6f587ddb075c4de2cbb30cd921366a76806eaba4692f2626a0",
-        "public/budget-blend.css": "3beb02629718a9405387cff0371c5cc5588e1a8e6c37b3fede68670323135716",
-        "public/budget-gface.css": "31d5a21c98beb9dbcefd1cca3c6d89af11bfa17558c7686f777d2f43848631ad",
+        "public/budget-blend.css": "43ab6315177f95042f16b8f3239d9f9d85d49117cf9bcc3dd81483a3b74b1133",
+        "public/budget-gface.css": "88d1d1aba917bd267150862839a1e09e2b66598b058e686fbdd62a7834562a9a",
         "public/budget-sheet-motion.css": "94fc264a45ee8cbcdf3a56356e52a65cde695ba24bc0cb4f5e706c824bd90377",
-        "public/app.js": "8b99ebdecaad18f63fda3bdccf438b66a0312452b407662a9828e8d19d14528e",
+        "public/app.js": "a5bb97f813c3fffb3e2d4aed2eccf278f51bb356c216c4e915a3b6028a9e23bb",
         "public/forecast-card-period.js": "a0e1c461354da0a6e8c73ee55a2ba76510d6a9c8e840e4f729df3b627df9fb3b",
         "public/forecast.js": "5dcdf6106722b552b390a5f9be906a4ba43209000c37a256edbb7cd407e9b00c",
         "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
@@ -31,7 +32,7 @@
         "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
         "public/savings-inventory.js": "6e42b5a553d90ed8472bee9d63d5c71a0de042fd71589a097cce86ace4728e81",
         "public/budget-surface.js": "af32d9e29d1487496365a1025a0bfb65d2dc062f2534392b8095675857f9552b",
-        "public/budget-card-movements.js": "c46ac87bc11249154bfe756f3177d7b2b9430135d37113c7e2f1388c8aec4403",
+        "public/budget-card-movements.js": "8c471fa191d26a051162cf1911235f07530be8535da13e6e1e9189c333687333",
         "public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
         "public/plan.js": "be5aa3b1935d8268a02849f59e83ad02e48fe91e4c12d6be869266dfa99e3662",
         "public/household-view.js": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
@@ -41,88 +42,202 @@
         "public/budget-blend.js": "a1c41e131653a0a98f30b4188bee46debb7f6fd0801b615ceced85543f292385",
         "public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010"
       },
-      "pulseAnimationName": "boot-pulse"
+      "markAnimationName": "boot-blocks",
+      "overlayCoversViewport1440": true,
+      "headerCoveredByHitTest": true,
+      "blockSeparationRangesPx": [
+        2.99,
+        4.21,
+        3.6,
+        2.8
+      ],
+      "geometryRunDelayMs": 9000
     },
     "dark": {
       "delayMs": 1500,
       "treatmentVisibleObserved": true,
-      "screenshotAtMs": 1791740709117
+      "overlayCoversViewport1440": true,
+      "markAnimationName": "boot-blocks",
+      "screenshotAtMs": 1791758693231
     },
     "reducedMotion": {
       "delayMs": 2500,
       "animationName": "none",
-      "frameStable": true
+      "blockCentreDriftPx": 0,
+      "frameStable": true,
+      "overlayCoversViewport320": true
     },
     "billsDirectEntry": {
       "delayMs": 1500,
       "liveLayerVisible": true,
+      "overlayCoversViewport390": true,
+      "inContentNoteBoxesSeen": 0,
       "servedSha": {
         "public/bills.html": "4553fb11243604a1c2075c8b1a00644cedbf968115c84c3b919d8090971f0784",
-        "public/styles.css": "3c347e12482327da3442c3e14115e0897a4add1ac32bbe38ad2f8d0f708ebd1c",
+        "public/styles.css": "2460588bdfa3508c6700aaa06e65be6032061c19eebae276967e9899642ff9f6",
         "public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010",
-        "public/app.js": "8b99ebdecaad18f63fda3bdccf438b66a0312452b407662a9828e8d19d14528e",
+        "public/app.js": "a5bb97f813c3fffb3e2d4aed2eccf278f51bb356c216c4e915a3b6028a9e23bb",
         "public/forecast.js": "5dcdf6106722b552b390a5f9be906a4ba43209000c37a256edbb7cd407e9b00c",
         "public/bills.js": "e90da373b69868785a58b4d8d5d267f18b0e7a54d8cadcb9a2ca4139d259b764"
       }
     },
     "failureRetry": {
       "critTreatmentAbsent": true,
+      "critCoversViewport": true,
+      "critClassExact": true,
+      "critAnimationsRunning": 0,
+      "shellInertDuringCrit": true,
+      "retryKeyboardOperable": true,
+      "retryTouchOperable": true,
       "retryTreatmentVisible": true,
-      "removedAfterRetrySuccess": true
+      "removedAfterRetrySuccess": true,
+      "shellRestoredAfterSuccess": true,
+      "shellElementsProbed": 9
     },
     "cancelRetry": {
       "cancelTreatmentAbsent": true,
-      "retryTreatmentVisible": true,
-      "removedAfterRetrySuccess": true
+      "cancelledCoversViewport": true,
+      "cancelledClassExact": true,
+      "cancelledAnimationsRunning": 0,
+      "cancelFocusableDuringLoad": true,
+      "cancelTouchOperable": true,
+      "cyclesCompleted": 2,
+      "shellInertThroughCycles": true,
+      "removedAfterRetrySuccess": true,
+      "shellRestoredAfterSuccess": true,
+      "shellElementsProbed": 9
     },
     "staticStandalone": {
-      "computedVisible": true,
-      "pointerEvents": "none"
+      "w1440-light": {
+        "computedVisible": true,
+        "coversViewport": true,
+        "pointerEvents": "none",
+        "markAnimationName": "boot-blocks",
+        "blockSeparationRangesPx": [
+          3.04,
+          4.21,
+          3.91,
+          2.73
+        ]
+      },
+      "w1440-dark": {
+        "computedVisible": true,
+        "coversViewport": true
+      },
+      "w390-light": {
+        "computedVisible": true,
+        "coversViewport": true
+      },
+      "w320-dark": {
+        "computedVisible": true,
+        "coversViewport": true
+      },
+      "w390-reduced": {
+        "computedVisible": true,
+        "coversViewport": true,
+        "markAnimationName": "none",
+        "blockCentreDriftPx": 0
+      }
+    },
+    "inertFocus": {
+      "shellElementsProbed": 9,
+      "tabZonesSeen": [
+        "notice",
+        "body",
+        "notice",
+        "body",
+        "notice",
+        "body",
+        "notice",
+        "body",
+        "notice",
+        "body",
+        "notice",
+        "body",
+        "notice",
+        "body"
+      ],
+      "cancelReachableByTab": true,
+      "shellFocusDeniedDuringLoad": true,
+      "headerControlOperableAfterArrival": true,
+      "shellRestoredAfterArrival": true
+    },
+    "earlyReady": {
+      "delayMs": 0,
+      "noticeRemoved": true,
+      "residualInertOnTouchedShell": 0,
+      "priorStatePreservedOnFixtureElement": "#risks (inert + aria-hidden=\"true\" in the served fixture)",
+      "headerControlFocusable": true,
+      "fixturePatchedIndex": "served index.html carried inert + aria-hidden=\"true\" on #risks for this run only"
+    },
+    "critIsolation": {
+      "probePosition": "static",
+      "probeCoversViewport": false,
+      "renderedInContentNoteBoxesSeen": 0,
+      "method": "computed-style probe: a .note-box.crit element without the attribute, plus every rendered in-content note-box on the arrived page"
+    },
+    "directRoutes": {
+      "htmlDocumentsInPublic": 10,
+      "documents": [
+        "bills.html",
+        "credit.html",
+        "deepdive.html",
+        "index.html",
+        "modellers.html",
+        "plan-spend.html",
+        "planning.html",
+        "records.html",
+        "subscriptions.html",
+        "talk.html"
+      ],
+      "countedFrom": "public/ listing of the served tree at proof time"
     }
   },
   "baseComparison": {
     "delay5000": {
-      "baseContentRenderedMs": 5432,
+      "baseContentRenderedMs": 5944,
       "baseTreatmentsSeen": 0,
-      "branchContentRenderedMs": 7159,
-      "addedDelayMs": 1727
+      "branchContentRenderedMs": 6610,
+      "addedDelayMs": 666
     },
     "delay1500": {
-      "baseContentRenderedMs": 1935,
+      "baseContentRenderedMs": 2444,
       "baseTreatmentsSeen": 0
     }
   },
   "screenshots": {
-    "boot-treatment-light.png": "57594bcaab077dc5d661ed2a2b91ad7b4acf5532c023e7e2ef65cb402056fd6d",
-    "boot-treatment-after.png": "4fc9c286b2d1f66674be426280d59d07263386b06ce9b8c0dd70fd9bf88138ed",
-    "boot-treatment-dark.png": "231efb33bad5b4a859e3a6c11c915e840964646173e0724bbc91b22d2be718be",
-    "boot-treatment-reduced-motion.png": "8f60d79941e99de32b4ec348e844fed30986a77650b0302c2e991a518bd206e3",
-    "boot-treatment-bills.png": "ad705b65bd3fbd9aee90080658c9975063771881325a0807d70a691dbaa9f45a",
-    "boot-treatment-crit.png": "3de356250a2549a9c4f25b6b89fb6b1d04314acbd15c324f2b7f19c70feccb34",
-    "boot-treatment-retry.png": "8555695acf6bb37838c0d236a08a32c31c2c1e4723f3fccf125b6eaf2e6d2672",
-    "boot-treatment-static.png": "7427df36661b0e591f5a6435415c3da62255fa657bc207f508d818d49584fe25"
+    "boot-treatment-light.png": "2c5193d54af37427c9342aa9d2eaa46ad2eb86430be60ca5db99226c2c87ce21",
+    "boot-treatment-after.png": "9d6f2d673a153cb80b25f8c7e1fbd887fe5bc58b786f06fa2fcfb8b545accfa0",
+    "boot-treatment-dark.png": "8dcf164904b35226902efa9bc4a47c0e88c3a8d945e97dc03c618c4f8658287c",
+    "boot-treatment-reduced-motion.png": "646d9449f7104b5be241a957b5fcad76b033a4e2e22bbadd53e64f87e2e3c8ea",
+    "boot-treatment-bills.png": "bd0aeb881193f43a170196a824d00889e635e5160a609f77d7fd3f77e38b4640",
+    "boot-treatment-crit.png": "71c55b73ca207770d94bd4a5bd4c083e0d15059f8522bd6e476d1bb257cd6bbf",
+    "boot-treatment-retry.png": "fa863424dc20f755f5a254b212d65d142c17b463785cc36002bda3da95eb0590",
+    "boot-treatment-cancel.png": "04ae54e2a038828f76195355b24bea7abbabf695385d0fc55cd65cbed87f5118",
+    "boot-treatment-static.png": "bb888982725ff5aaef95c436860f16da3586dc94c6581c3cdfc3c86f8ad5be7d",
+    "boot-treatment-ready.png": "e990d310125b04ef4e279d09d01720e604b1e9bf3340c96ed92eee946741a149"
   },
   "repeatedTimingMeasures": {
     "method": "same nav->content measurement as the base comparison, fixed 5000ms /data.json delay, 3 alternating rounds per tree, headless Chromium on this machine",
     "branchMs": [
-      5416,
-      5491,
-      5468
+      5811,
+      6256,
+      5874
     ],
     "baseMs": [
-      5426,
-      5441,
-      5438
+      5879,
+      6062,
+      5960
     ],
     "pairedDeltasMs": [
-      -10,
-      50,
-      30
+      -68,
+      194,
+      -86
     ],
-    "branchMedianMs": 5468,
-    "baseMedianMs": 5438,
-    "medianPairedDeltaMs": 30,
-    "differenceOfMediansMs": 30,
+    "branchMedianMs": 5874,
+    "baseMedianMs": 5960,
+    "medianPairedDeltaMs": -68,
+    "differenceOfMediansMs": -86,
     "conclusion": "inconclusive",
     "note": "Per-round paired deltas vary more than either aggregate; the fixture post-arrival render dominates and fluctuates by ~1s between identical runs. These aggregates are measurements only and do not establish that the treatment adds no delay. The supported claim is narrower: the treatment adds no new blocking assets."
   }
