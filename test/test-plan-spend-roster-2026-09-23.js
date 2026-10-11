@@ -99,7 +99,7 @@ const FUSION_REMAINING_TOTAL = 1200 + 1200 + 900;
 const FUSION_PAID = { id: 'fusion-household-paid', date: '2026-09-10', amount: 1200 };
 const OPENING = '2026-08-19';
 const AFTER_FUSION_PAID = '2026-09-11';
-const TRIP_WINDOW = 'Jan 8\u20139, 2027';
+const TRIP_WINDOW = 'Jan 9\u201310, 2027';
 
 const rows = data.plan.commitments || [];
 const byId = Object.fromEntries(rows.map(r => [r.id, r]));
@@ -165,8 +165,8 @@ ok(byId['san-diego'] && byId['san-diego'].amount === 3000
 ok(independentMonth15('Jan 2027') === '2027-01-15'
     && independentMonth15(TRIP_WINDOW) == null,
   'January 2027 is the 15th; the trip window is not a cash date');
-ok(byId['san-diego'].date !== '2027-01-08' && byId['san-diego'].date !== '2027-01-09',
-  'San Diego cash date is not a trip-window endpoint');
+ok(byId['san-diego'].date !== '2027-01-09' && byId['san-diego'].date !== '2027-01-10',
+  'San Diego envelope cash date stays separate from the trip endpoints and hotel checkout');
 for (const hand of FUSION_REMAINING) {
   const row = byId[hand.id];
   ok(row && row.amount === hand.amount && row.date === hand.date && row.group === 'fusion-household',
@@ -215,8 +215,8 @@ oneCash('burrards-logan-team-fee-nov', '2026-11-01', -202.87);
 oneCash('burrards-linden-team-fee', '2026-10-20', -340);
 ok(!nowEvents.some(e => e.id === 'burrards-team-fees'),
   'the replaced aggregate emits no cash event; owner-dated Linden appears once');
-ok(!nowEvents.some(e => e.id === 'san-diego' && (e.date === '2027-01-08' || e.date === '2027-01-09')),
-  'San Diego does not also emit on January 8 or January 9');
+ok(!nowEvents.some(e => e.id === 'san-diego' && (e.date === '2027-01-09' || e.date === '2027-01-10')),
+  'San Diego envelope does not also emit on January 9 or January 10');
 oneCash('provincials', '2027-02-12', -1500);
 for (const hand of FUSION_REMAINING) {
   oneCash(hand.id, hand.date, -hand.amount);
@@ -431,13 +431,14 @@ const sanArticles = settledHtml.match(/data-plan-spend-id="san-diego"/g) || [];
 ok(sanArticles.length === 1, 'the page renders exactly one San Diego card');
 const sanGlance = sanHtml.split('<details')[0];
 ok(sanGlance.includes('>San Diego<') && sanGlance.includes(money2(3000)) && sanGlance.includes(TRIP_WINDOW),
-  'San Diego glance is the name, $3,000.00, and Jan 8–9, 2027');
+  'San Diego glance is the name, $3,000.00, and Jan 9–10, 2027');
 ok((sanGlance.match(/\$3,000\.00/g) || []).length === 1, 'the glance shows $3,000 once');
 ok(sanGlance.includes(TRIP_WINDOW) && sanGlance.includes(`Cash date ${longDate('2027-01-15')}`)
     && !sanGlance.includes(`Due ${longDate('2027-01-15')}`),
   'the Forecast cash date and distinct trip window both appear in the collapsed card');
-ok(!/2027-01-08|2027-01-09|January 8, 2027|January 9, 2027/.test(sanHtml),
-  'the card does not invent a trip-window payment day');
+ok(['2027-01-09', '2027-01-10'].every(date =>
+    !sanGlance.includes(`Cash date ${longDate(date)}`) && !sanGlance.includes(`Due ${longDate(date)}`)),
+  'the card does not redate the full envelope to a trip endpoint or hotel checkout');
 const lindenHtml = article(settledHtml, 'linden-birthday');
 const lindenArticles = settledHtml.match(/data-plan-spend-id="linden-birthday"/g) || [];
 ok(lindenArticles.length === 1, 'the page renders exactly one Linden birthday card');
@@ -476,9 +477,9 @@ const period = independentPeriodContaining(anchor, '2027-01-15');
 ok(period && period.payday <= '2027-01-15' && '2027-01-15' <= period.cycleEnd,
   'independent biweekly walk places 2027-01-15 in one Seaspan cycle',
   period && `${period.payday} through ${period.cycleEnd}`);
-const windowPeriod = independentPeriodContaining(anchor, '2027-01-08');
+const windowPeriod = independentPeriodContaining(anchor, '2027-01-09');
 ok(windowPeriod && (windowPeriod.payday !== period.payday),
-  'January 8 is a different Seaspan cycle from the cash date, so the window is not the payment period',
+  'January 9 is a different Seaspan cycle from the modeled cash date, so that period does not prove trip funding',
   windowPeriod && `${windowPeriod.payday} through ${windowPeriod.cycleEnd}`);
 const traj = F.baselineTrajectory(data.plan, data.debts, OPENING, { periods });
 ok(traj.status === 'ready', 'baseline trajectory is ready', traj.reason || traj.status);
