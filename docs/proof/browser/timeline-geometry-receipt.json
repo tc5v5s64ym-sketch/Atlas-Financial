@@ -6,16 +6,16 @@
     "chromium": "152.0.7977.82"
   },
   "sourceBinding": {
-    "sourceCommit": "d96afca4c1ee951c8f1cf6f308184e01652e02b1",
-    "sourceTree": "eed95f558345343a845f97ff392308f34f07f30c",
+    "sourceCommit": "dd0dedd911222203cfc1dcf1057d2fb81bd3d47e",
+    "sourceTree": "3db73cdb70aec943d8c922a2a6a36d355ae2442a",
     "baseCommit": null,
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
     "files": {
       "public/budget-blend.css": {
-        "gitBlob": "ea9a489b2ae6d90effd4018c7dfb919e15c27d46",
-        "sha256": "71ddb968b72dca60e8e08667d1646e5b7681d23d035f3b6eea5bdb0fb639a1b0",
-        "bytes": 69546
+        "gitBlob": "344b0722bba67a9a13fc9c9d241bf5eec7ce7475",
+        "sha256": "c0739b521eca4b134503ab3e10455a698140022cb5974517a95585b0023ed1a3",
+        "bytes": 70692
       },
       "public/budget-gface.css": {
         "gitBlob": "37f1f47226e3de0c144325194af24054f0b8ffbc",
@@ -23,9 +23,9 @@
         "bytes": 56306
       },
       "public/budget-river.js": {
-        "gitBlob": "fec2653206cc17cde0922a1fc56b33a926dffbc9",
-        "sha256": "1c63bc27ba89fbc2664078b8e1b2e8b493fc3456a5215eb7bc78b84dc0485b73",
-        "bytes": 30389
+        "gitBlob": "38f64e0f9c1f4fd8162e5fe05dfc2d3d7dc26e90",
+        "sha256": "dbff4d71770e510d65a1f79f8a3eaf489a42885dc286e66630b375b661818418",
+        "bytes": 31418
       },
       "public/fonts.css": {
         "gitBlob": "9a66cfaee2545afbb8169f7ef7009b4f0da6211a",
@@ -196,7 +196,7 @@
         "right": 191.7265625,
         "top": 79,
         "bottom": 95,
-        "text": "\u2212$420"
+        "text": "−$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -231,7 +231,7 @@
         "right": 191.7265625,
         "top": 79,
         "bottom": 95,
-        "text": "\u2212$420"
+        "text": "−$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -266,7 +266,7 @@
         "right": 118.1328125,
         "top": 70,
         "bottom": 86,
-        "text": "\u2212$420"
+        "text": "−$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -301,7 +301,7 @@
         "right": 118.1328125,
         "top": 70,
         "bottom": 86,
-        "text": "\u2212$420"
+        "text": "−$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -336,7 +336,7 @@
         "right": 118.1328125,
         "top": 70,
         "bottom": 86,
-        "text": "\u2212$420"
+        "text": "−$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -371,7 +371,7 @@
         "right": 118.1328125,
         "top": 70,
         "bottom": 86,
-        "text": "\u2212$420"
+        "text": "−$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -496,52 +496,44 @@
     }
   },
   "screenshotSha256": {
-    "after-positive-1280-dark.png": "30ab3b35cfefd92635982ea9ab2d4f560373b1fc3c06aa263c88762fc3aa4f1c",
-    "after-positive-1280-light.png": "2b7fb19e9ab06caa8ce6d49d4de90339bf8ba9ca03aa68495a10de5994d070c8",
-    "after-positive-390-dark.png": "12cc48f6ee4f5b7d1b5c5f468db1c083679082b6f4bf0e19d6e275b99490f7c9",
-    "after-positive-390-light.png": "98b07d1a941eccdc811e4c06212d391fa914ca572ba1716a9b973bd0abe25fe2",
-    "after-positive-320-dark.png": "8cfd3e298c66de497ff60eb71c26cfd66496b60c18e8fbe2a81fbe51c0b0364d",
-    "after-positive-320-light.png": "119711043ece3301ea92143e721ee2474fc6b3d9ebdbb1bbf718aabbdb65298d",
-    "after-negative-1280-dark.png": "6a6e73a3eab36bb5b4f5808616ae16fcf6e34eb458750321536a7be315b8e1ce",
-    "after-negative-1280-light.png": "7498099e9cf08c2d1333bf7dd57d73849cf7b315af89c1cfd87af9cdb080cfeb",
-    "after-negative-390-dark.png": "a87becaae6d33632ff0389f720bc25d343f4b16a2898f48a546044ab91088c1a",
-    "after-negative-390-light.png": "fcb92e53f86cde7a0d19284a5a3fa4d5cf2a18b06db88b51b9db109673589e3d",
-    "after-negative-320-dark.png": "7d9436a6c6e28a8f91ba6d5792248b640fee3ec6a11687cf09053aafb6b99ab4",
-    "after-negative-320-light.png": "67b7186215ea78157fa76ef59b97f5ca1a7ed8dcc41da605323ffb64693d369f",
-    "after-gap-1280-dark.png": "21e9cc2c0534d70b0cbd0b4ad7732031d42ba131b5d961eb2551abd299c55f35",
-    "after-gap-1280-light.png": "c611e5d0bb9de50cc3e77d53182aaded9c385cd35edde3b3476a45449168e024",
-    "after-gap-390-dark.png": "3c6966e0958f17fe0fdcf02b7a8bcd256e186531449619ccc62a098d277239aa",
-    "after-gap-390-light.png": "eb3630da971f8d586c51cbd46ebfe91a8a46f9076a3a0d6eeaf7157678802ce7",
-    "after-gap-320-dark.png": "cb79bb2dd615fadec9a1008f99c0e21aecb42d57f6f0b5a48d6f487e57c8a760",
-    "after-gap-320-light.png": "3b3c51bbb10e3c36313f3deef44b8f1fa9f307fb869e4384528ea7651d451c23",
-    "after-pan-1280-dark.png": "4719ecb0bb86389f2e7bc3ee9ea32677b60f1b986505580d4b393620a5309c7f",
-    "after-pan-1280-light.png": "027971b85282ee9df7e5ecfa5cf747f9e92ea3f2af9e64c04cdd3b1ecb517a4d",
-    "after-pan-390-dark.png": "1a13e450d6ab4ad08248be1b2495a647d617895644f2273722c0ad6e02f68346",
-    "after-pan-390-light.png": "28e5fb8fb6adba5073566973a8bdd006c69ed3175cdf9ebdc78d9c39d22b498a",
-    "after-pan-320-dark.png": "aa43cdb6af79ef4f8510257e08744c5eaaf42ae7638f65ebee7fdd125973a657",
-    "after-pan-320-light.png": "25840e7ace45a91a8c382233cc858a43dd97a4dffd0560fe4b308fbb18510fe7",
-    "after-selected-max-1280-dark.png": "0f81ab9dd58a003069577a4b6a9c5f4037fc12572d3e95fd9b9d3738ef115e1c",
-    "after-selected-max-1280-light.png": "542433e3ce5400510a283ba0ceec5fdeb5f4c112be0ea44bcb97725daa0ac1a6",
-    "after-selected-max-390-dark.png": "4ee1be936993cdeaf17faac472df9a5d4cc72f3ce78d81869c054d0b913cf1d0",
-    "after-selected-min-1280-dark.png": "9bba275e780266f5b858247b048ac9603a9746ad91d183c2845a7b925c96fe80",
-    "after-selected-min-1280-light.png": "4bb934fb92060968da77a4de2e8a2f5c008bb2934b6b54c1fc64943c6557761c",
-    "after-selected-min-390-dark.png": "7184d3fac7d9e4399cb3d340809c1cbf4efc410fff3df2994fa04616db501f55",
-    "after-selected-min-390-light.png": "eb4ade4034af6299048833c63ddaac71aca40c372b0ae416ee50ddd4ab04f96d",
-    "after-selected-min-320-dark.png": "0896c5a2f8e461cafeb2ec341e5d0cbce028a17b5a4fa5443460a16c4b88f36d",
-    "after-selected-min-320-light.png": "d4a7b1dbe329915df63d8cfec27ac8a8f27f2250f50243c1f0294f297c016480",
-    "after-held-drag-1280-dark.png": "1a3d70ecb994d98255feb7a93b0506ef7bb3b674a350444fb107e63988a0305b",
-    "after-held-drag-390-dark.png": "0e93df95de5ea3ab5c30a76b1a30665693cd4eb85979a63c2d6a2d992e6103f0",
-    "after-breakpoint-700-dark.png": "94a62ea455db3c4a67aefb090fba9683288cd72edcbf0599a3a9636f8713b997",
-    "after-breakpoint-narrow800-dark.png": "43cf1b21f88bfbf17fa41095164bfaefd4a77518d5e751a52c79503ed6a58cce",
+    "after-positive-1280-dark.png": "2abd0093c3e7444b6ce303bc1d91e943f72bd1d6863e30e0468471e5fca1a4c9",
+    "after-positive-1280-light.png": "a86526fb3b37e9e37239f79510f9ed97fcbf5bbc5a61c787e1e4a08b6f451868",
+    "after-positive-390-dark.png": "2c47e21d10fe353a757723a133b694126b3b62e3b0a1b9c72f2dd3207beeb3c7",
+    "after-positive-390-light.png": "3cd18a3e056d902107d4a4784f4e8cb00194907f7bdf4699f64ff25fa15d33c6",
+    "after-positive-320-dark.png": "a9ad1eb6d030667c4ed536189f2665892b9b8a6b995bc3847e1e86a7ca8c32b3",
+    "after-positive-320-light.png": "972ee3efca5045a90cf28bceeffc7e42c82f63b5fbf94390c1f04a153969662b",
+    "after-negative-1280-dark.png": "a5ce7c8b84547d94c39bdbe044e7710e8b52ec9ead234108235827b445548355",
+    "after-negative-1280-light.png": "6d989000886c06e4d2fcc726dd90a43f5f6e1f35b50c272aba9b5772ad72bd2d",
+    "after-negative-390-dark.png": "bd8caede9fe5069f49269af6a41c8581c1e9c4d50eee54d31b9d0c06690b7daf",
+    "after-negative-390-light.png": "7fe61075d4335de75cea2eb95d4eab74f361cdffe65794c50d57f1b25e1f1309",
+    "after-negative-320-dark.png": "ccf6dc152b256b4eac011f11df0d2d66f106680674a737b5658280b3b3e9ae59",
+    "after-negative-320-light.png": "3035fad77e92e890bbc9e5912344f486728e852c543cbdf7104abe0c2c79d96d",
+    "after-gap-1280-dark.png": "a33c478350b7c65ca6edaa97a6fea9902f4b262ebfb66ca1081d98439257de83",
+    "after-gap-1280-light.png": "fc5a9761e71c4280644bec4876af391283d8c01ca6e250a959d4285a65c451ea",
+    "after-gap-390-dark.png": "e11f128b41c27ed5f5ccb88ee43541f7c1177e72cc50bf941724d570424b9b6c",
+    "after-gap-390-light.png": "1113cf8ab6c731db64bef072433b0690b5a868e5c856fb6f232439ea011b5b6f",
+    "after-gap-320-dark.png": "29672e1be248622568a7a027ebc3c02c4f24ce414dc38e08584921ad77499898",
+    "after-gap-320-light.png": "b20a81bdf88a50c3e2311b82e1ca009539596a53208bee22f2fa31a617a1fd15",
+    "after-pan-1280-dark.png": "eb74df7fc29c9739d7157d3ad343933c12791ad346ee10e4c52187c8873f9c73",
+    "after-pan-1280-light.png": "8c7ee05a875a304b24e853912142726b26ab8f98d15c85b04bf83338c4d36a54",
+    "after-pan-390-dark.png": "e2b6d91b5217a23c419b549fabd7b272f257bb609e8efacfebd001e13b5adef0",
+    "after-pan-390-light.png": "49083a3ee9055fd637ae4d8e07afa2e765d7c373980893b6992c6ad9b3d59267",
+    "after-pan-320-dark.png": "0c276dde11782879dd5d9c7d2fa2615d28be08771a6bdc5aa043af41671df7ee",
+    "after-pan-320-light.png": "184324b38fabb10441b6ccb733432b4cf5751d0092d0c9b5667564b5f2d27cad",
+    "after-selected-max-1280-dark.png": "78192f9778ba38aade56562eda5beb128050655b94d657801ae1aff3f39009a5",
+    "after-selected-max-1280-light.png": "b7a6b368b85824576ace52012189b4b95d6bb5e762300c37b2cb4d18f0317d60",
+    "after-selected-max-390-dark.png": "298fea7869f5bef9491e1fce3db17ea79c90c38ae0fe8667649c86841a97c257",
+    "after-selected-min-1280-dark.png": "f55889a9b20aad8d3cfa62778b7201f83be010aeee89ee52f68cb077f6a17fce",
+    "after-selected-min-1280-light.png": "669026556a635069b063e31053f9dec090226af8064d0191ee4d4e07b84a8e2a",
+    "after-selected-min-390-dark.png": "1b13ef0c498be02750c5885bb78f963c8b6badf1bd988c67986d74d21d959a4b",
+    "after-selected-min-390-light.png": "00483c274366e0a19e41371d92aa608ef9a393959f9664d4bc88935423e61333",
+    "after-selected-min-320-dark.png": "34b46a40540dedf2c321d3f63a0331bd4138b9e10f2af29e5604859ad57bd7eb",
+    "after-selected-min-320-light.png": "c328f906352f34f6435e695a04f00861e5363301f521a0439001e1eedc878992",
+    "after-held-drag-1280-dark.png": "fd68a6bc0999804c5966616043cacf9f129ca10d620c8c61c4ac7c042f3f51c8",
+    "after-held-drag-390-dark.png": "041a4081446a949d91b672317fe2f7d1e1645dba9f3c1c01ded66b174b3ecf4f",
+    "after-breakpoint-700-dark.png": "88044f11b86f95f0c29f6e611a1ea8adf58d765baf3703f253910d685416bc9c",
+    "after-breakpoint-narrow800-dark.png": "e9906082fe0dca956357bd21d07327c1904a1835d722336a620c19a2e750e91a",
     "after-reduced-motion-390-dark.png": "113261769f7648aee280e515e3902c7bcfdbb5355abc2263ed1bcf96faa7f521"
   },
-  "failures": [],
-  "remoteVerification": {
-    "method": "GitHub API GET /git/trees/eed95f558345343a845f97ff392308f34f07f30c?recursive=1; each bound file's gitBlob compared to the pushed head tree",
-    "pushedHead": "d96afca4c1ee951c8f1cf6f308184e01652e02b1",
-    "headTree": "eed95f558345343a845f97ff392308f34f07f30c",
-    "filesChecked": 7,
-    "allBlobsMatch": true,
-    "verifiedAt": "2026-10-11T02:48:08Z"
-  }
+  "failures": []
 }

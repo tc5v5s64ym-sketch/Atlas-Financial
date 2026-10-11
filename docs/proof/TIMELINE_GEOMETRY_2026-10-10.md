@@ -230,6 +230,72 @@ was never changed to match the prose.
    needed, and the diff against that base remains confined to this PR's
    files plus the two production/harness files above.
 
+## Round 5 (Systems Review 5481846544)
+
+1. **Stationary held press in non-pan layouts still selected the
+   neighbour.** Review `5481846544` BLOCKED head `cc8c1c4e`: round 4's
+   immediate pan-mode centre targeting and receipt bindings were
+   supported, and the partial-label versus neighbouring-centre routing
+   was accepted as the stated design tradeoff — but in non-pan (fit)
+   layouts a stationary held press on the displaced selected label
+   still committed the neighbouring period (independent browser probe:
+   six of six non-pan held-press cases failed at the visible label
+   centre, both themes, native mouse input). Mechanism: in a non-pan
+   layout, `pointerdown` aims the spring at the raw fractional position
+   (`fOfScreen` of the press point — 1.546 at the displaced centre of
+   the 700px/12-point fixture); during the hold the spring travels to
+   that fraction, the playhead leaves the band's bottom edge, `place()`
+   un-steps the selected label and clears its hit box (`_stepBox`), and
+   `pointerup` re-resolved the release coordinate against the changed
+   geometry, committing index 2 instead of the selected index 1. The
+   round-4 regression runs on the panning layout — where pointerdown
+   never moves the spring — so it cannot see this path. Fix, confined
+   to `bind()` in `public/budget-river.js`: `pointerdown` now resolves
+   the press's discrete target once, against the geometry the user sees
+   as they press (`hitIndex()`, recorded for the press), and a
+   stationary release (`end()` with no movement) commits that
+   press-time index instead of re-resolving against geometry the hold
+   itself changed. Nothing else moves: the spring still aims and
+   travels exactly as before during the hold (the held case below
+   asserts the travel and the hit-box clearing still happen), and once
+   movement begins the press is a drag — scrub, fling, and the drag
+   release path are the prior behaviour unchanged, so a held press that
+   turns into a drag commits the drag's resting period, not the
+   press-time target. Placement, band geometry, domain, the
+   nearest-marker rule itself, hover, wheel, and keyboard behaviour are
+   unchanged.
+2. **Regression** (`test/browser-budget-river-port.js`, recorded in the
+   native receipt as `heldPressNonPanTargeting`). Same invented
+   publication as rounds 3–4 (index 1 = −$420 minimum, index 2 = $150
+   neighbour) at 700px: element width 676, fit spacing ≈54.9px ≥ the
+   52px desktop minimum, so the layout is non-pan — the review's
+   700px/12-point fit-mode case. Six cases: delayed (1.1s) held presses
+   at the displaced label's visible centre — mouse and touch, both
+   themes — plus held-press-then-drag cases in both themes. Each held
+   case asserts the mis-target precondition from the rendered box
+   (displacement ≈30px, beyond half the ≈54.9px spacing; the centre's
+   raw fraction 1.546 rounds to the neighbour), asserts mid-hold that
+   the spring really travelled to the raw fraction and the hit box
+   really cleared (the mechanism under repair, true before and after
+   the fix) with nothing committed during the hold, and asserts the
+   release keeps the minimum selected and publishes no other period.
+   The drag cases hold 0.7s, then drag two spacings: live scrub
+   publications fire, and the release commits the drag's resting period
+   (index 4), not the press-time target. On the pre-fix head tree the
+   harness fails the first case with the review's exact defect: "a
+   stationary held press on the displaced selected label must keep its
+   own period selected; got index 2". The round-4
+   `displacedLabelHitTargeting` regression (7 cases) and the round-3
+   `yieldedNeighbourReselect` regression (5 cases) pass unchanged, as
+   do the native harness's 8 live-drag cases and 6 prototype
+   comparisons and the geometry proof's 24 cases; both receipts were
+   re-issued against this head (see `remoteVerification` in each).
+3. **Integration.** This head integrates current main
+   `7885d5b7619720fe1b6dada66a26ca764e606ed7` (PR #575 card panels and
+   PR #578 savings-backed remaining gap; 29 files, none of them this
+   PR's files — the union is conflict-free), and the production/harness
+   diff against the new main remains confined to this PR's files.
+
 ## Before state
 
 `before-*.png` and `timeline-geometry-before-report.json` were captured
