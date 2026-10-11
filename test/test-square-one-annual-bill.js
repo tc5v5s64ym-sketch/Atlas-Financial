@@ -325,6 +325,36 @@ console.log('\n=== Plan Spend reprints one Square One card; Road Ahead counts it
     'removing Square One moves that pay-period stage2 result by $3,131.76 once');
 }
 
+console.log('\n=== Budget Jan 29-Feb 11 keeps Square One in planned savings, not paycheck Bills ===');
+{
+  const options = { debts: live.debts, periods };
+  const advice = F.recommend(plan, asOf, options);
+  const without = clone(plan);
+  without.bills = without.bills.filter(row => row.id !== 'square-one');
+  const adviceWithout = F.recommend(without, asOf, options);
+  const affected = advice.payPeriodViews.find(row => row.start === '2027-01-29');
+  const comparison = adviceWithout.payPeriodViews.find(row => row.start === '2027-01-29');
+  ok(affected && affected.end === '2027-02-11' && affected.timelineRole === 'future',
+    'native Budget selected period is the future Jan 29-Feb 11 window');
+  ok(affected && !affected.bills.some(row => row.id === 'square-one'),
+    'Square One is absent from selected-period Bills rows');
+  ok(affected && comparison && ['incomeTotal', 'periodBillLoad', 'budgetHold', 'balanceAfterDeductions']
+    .every(key => near(affected[key], comparison[key])),
+    'the annual expense is not a second income/Bills/Household Budget/BAD term');
+  ok(affected && near(affected.extraDebt.allocated, 0),
+    'unproven savings funding cannot release the premium into extra-debt allocation');
+  ok(affected && near(affected.bigPurchases.reduce((sum, row) => sum + row.allocation, 0), 0)
+    && near(affected.afterBigPurchases, affected.balanceAfterDeductions),
+    'unproven savings funding cannot release the premium into major purchases either');
+  const native = F.expandEvents(plan, '2027-01-29', '2027-02-11').filter(e => e.id === 'square-one');
+  ok(native.length === 1 && native[0].date === NEXT_DUE && near(-native[0].amount, PREMIUM)
+    && native[0].confidence === 'estimated', 'one dated estimated obligation remains in the native walk');
+  const current = advice.payPeriodViews.find(row => row.timelineRole === 'current');
+  const currentWithout = adviceWithout.payPeriodViews.find(row => row.timelineRole === 'current');
+  ok(current && currentWithout && ['incomeTotal', 'periodBillLoad', 'budgetHold', 'balanceAfterDeductions']
+    .every(key => near(current[key], currentWithout[key])), 'canonical current-period figures are unchanged');
+}
+
 console.log('\n=== ACCOUNT_FACTS records the standing terms ===');
 {
   ok(/policy\s+\*\*#5157890\*\*/.test(facts) && /2027-02-10/.test(facts)

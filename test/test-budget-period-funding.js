@@ -42,22 +42,34 @@ assert.equal(richFirst.incomeTotal, 1000);
 assert.equal(richFirst.plannedCostFunding.capacity, 500);
 assert.equal(richFirst.plannedCostFunding.contribution, 250);
 
-// An annual protected bill is already in the bill deduction. Earmarking and
-// paying it must not charge the same dollar twice. Gross funding capacity is
-// $350; consumption of the $600 proposed reserve offsets that bill once.
+// Explicit annual Savings goals are planned savings expenses, not payday Bills.
+// The independent period residual is $350; its $350 top-up follows the earlier
+// $250 top-up and the single $600 draw consumes that proposed reserve once.
 const annual = fixture(); annual.plan.commitments = [];
 annual.plan.bills.push({ id: 'annual-cost', label: 'Annual protected cost', amount: 600,
   frequency: 'yearly', month: 9, day: 10, firstDue: '2026-09-10', jointCash: false, confidence: 'confirmed' });
+annual.plan.savingsEarmarks = { version: 1, currency: 'CAD', history: [], pools: [
+  { id: 'home', accountId: 'savings', role: 'purpose-reserve', purpose: 'Invented annual cost',
+    goalRefs: [{ kind: 'yearly-bill', id: 'annual-cost' }] },
+  { id: 'spare', accountId: 'savings-dont-touch', role: 'purpose-reserve',
+    purpose: 'Invented spare reserve', reconciledOn: annual.meta.asOf, goalRefs: [] },
+] };
+annual.plan.savingsEarmarks.allocationPolicy = { order: 'due-date-first-combined-pool',
+  effectiveFrom: annual.meta.asOf, source: 'Independent invented annual savings instruction' };
+annual.plan.startingCash.heldElsewhere = [{ id: 'savings-dont-touch', value: 0, class: 'purpose-reserve' }];
+annual.plan.savingsPoolObservation = { asOf: annual.meta.asOf, accounts: ['savings', 'savings-dont-touch']
+  .map(accountId => ({ accountId, value: 0, currency: 'CAD', source: 'provider-observe:lunchmoney',
+    evidenceDate: annual.meta.asOf, pendingState: 'clear' })) };
 const annualAdvice = run(annual);
 const annualFirst = selected(annualAdvice, '2026-08-14').plannedCostFunding;
 const annualNextPeriod = selected(annualAdvice, '2026-08-28');
 const annualNext = annualNextPeriod.plannedCostFunding;
 assert.equal(annualFirst.contribution, 250);
-assert.equal(annualNextPeriod.periodBillLoad, 200 + 150 + 600);
+assert.equal(annualNextPeriod.periodBillLoad, 200 + 150);
 assert.equal(annualNext.capacity, 1000 - 200 - 150 - 300);
-assert.equal(annualNext.billPaymentsAlreadyDeducted, 600);
-assert.equal(annualNext.proposedFundingForBillPayments, 600);
-assert.equal(annualNext.afterProposedFunding, 1000 - 200 - 150 - 600 - 300 - 350 + 600);
+assert.equal(annualNext.billPaymentsAlreadyDeducted, 0);
+assert.equal(annualNext.proposedFundingForBillPayments, 0);
+assert.equal(annualNext.afterProposedFunding, 1000 - 200 - 150 - 300 - 350);
 assert.equal(annualNext.afterProposedFunding, 0);
 
 // Between paydays, no original allocation or missing actual spending is
