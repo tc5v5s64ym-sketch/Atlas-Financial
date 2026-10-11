@@ -1218,7 +1218,7 @@
     return svg;
   }
 
-  function categoryArc(share) {
+  function categoryArc(share, ratio) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 100 100');
     svg.setAttribute('class', 'blend-arc-ring');
@@ -1239,13 +1239,56 @@
     if (share > 0) {
       const circ = 2 * Math.PI * 44;
       const drawn = Math.max(0, Math.min(1, share)) * circ;
-      circle('rg-arc', {
+      const over = typeof ratio === 'number' && ratio > 1;
+      circle('rg-arc' + (over ? ' rg-lap1' : ''), {
         stroke: 'currentColor',
         'stroke-width': '7',
         'stroke-linecap': 'round',
         transform: 'rotate(-90 50 50)',
         'stroke-dasharray': drawn.toFixed(2) + ' ' + circ.toFixed(2),
+        ...(over ? { style: 'stroke: var(--blend-over)' } : {}),
       });
+      if (over) {
+        // Overflow decomposition (approved boundary, with Atlas's two
+        // corrections): past the published plan the ring laps. The
+        // red treatment covers the WHOLE ring — lap 1 above and this
+        // overflow lap alike. The second lap is drawn exactly through
+        // 200%: its fraction is ratio − 1, capped at a complete lap,
+        // so above 200% the geometry stays two full laps. Within the
+        // red treatment the overflow lap reads as a brighter core and
+        // its tip stays a distinct dot.
+        circle('rg-arc rg-lap2', {
+          'stroke-width': '3.5',
+          'stroke-linecap': 'round',
+          transform: 'rotate(-90 50 50)',
+          'stroke-dasharray': (Math.min(1, ratio - 1) * circ).toFixed(2) + ' ' + circ.toFixed(2),
+          style: 'stroke: color-mix(in srgb, var(--blend-over) 55%, white)',
+        });
+        // The budget-limit crossing marker: a fixed tick at the lap
+        // origin (top of the ring), painted above lap 1 and the
+        // overflow lap but below the tip, and long enough to stay
+        // legible at 200% and beyond, when the tip returns to the
+        // origin and paints over its middle.
+        const marker = document.createElementNS(ns, 'line');
+        marker.setAttribute('x1', '50');
+        marker.setAttribute('y1', '0.5');
+        marker.setAttribute('x2', '50');
+        marker.setAttribute('y2', '11.5');
+        marker.setAttribute('class', 'rg-limit-marker');
+        marker.setAttribute('stroke-width', '2.6');
+        marker.setAttribute('stroke-linecap', 'round');
+        marker.setAttribute('style', 'stroke: var(--blend-ink)');
+        svg.appendChild(marker);
+        const tipFraction = Math.min(1, ratio - 1);
+        const angle = tipFraction * 2 * Math.PI;
+        const tip = document.createElementNS(ns, 'circle');
+        tip.setAttribute('cx', (50 + 44 * Math.sin(angle)).toFixed(2));
+        tip.setAttribute('cy', (50 - 44 * Math.cos(angle)).toFixed(2));
+        tip.setAttribute('r', '4');
+        tip.setAttribute('class', 'rg-tip');
+        tip.setAttribute('style', 'fill: var(--blend-over); stroke: var(--blend-ink); stroke-width: 1.4');
+        svg.appendChild(tip);
+      }
     }
     const glass = document.createElementNS(ns, 'circle');
     glass.setAttribute('cx', '50');
@@ -1259,12 +1302,19 @@
 
   // Decorative liquid requires the same known spent/plan geometry as the
   // arc. Its level is existing --left; no financial state is derived.
+  // Spent semantics for every Household ring (Systems Review 5481323065
+  // R2): the liquid level IS the spent share, positioned by --left. A
+  // known zero returns no liquid at all — the wave surface would
+  // otherwise leave a visible sliver at the bottom of the glass — and a
+  // full share keeps its liquid: at --left 1 the surface sits above the
+  // glass top, so the interior reads full, matching the full arc.
   let categoryLiquidSequence = 0;
   function categoryLiquid(share) {
     if (typeof share !== 'number' || !Number.isFinite(share) || share < 0 || share > 1) return null;
+    if (share === 0) return null;
     const ns = 'http://www.w3.org/2000/svg';
     const liquid = document.createElementNS(ns, 'svg');
-    liquid.setAttribute('class', 'blend-ring-liquid' + (share === 1 ? ' is-drained' : ''));
+    liquid.setAttribute('class', 'blend-ring-liquid');
     liquid.setAttribute('viewBox', '0 0 100 100');
     liquid.setAttribute('aria-hidden', 'true');
     // Keep decorative waves in phase when native publication remounts a tile.
@@ -1338,6 +1388,26 @@
     return Math.max(0, Math.min(1, amounts[0] / amounts[1]));
   }
 
+  // The UNCLAMPED published spent/plan ratio, from the same printed
+  // meta tokens printedSpentPlanShare reads. The overflow
+  // decomposition (approved boundary, #atlas-coordination thread
+  // 1791643511.871799, approval ts 1791699806.567609) must see past
+  // 100%: lap 1 and the liquid keep the clamped share exactly as
+  // before; only the overflow lap, its budget-limit marker and tip,
+  // and the "2x+" threshold label read this ratio. A meta carrying no
+  // printed pair — no plan, an unknown actual, Other Spending's
+  // unassigned note — yields null, and nothing overflow is drawn.
+  function printedOverflowShare(row) {
+    const meta = row.querySelector('.budget-category-meta');
+    if (!meta) return null;
+    const clone = meta.cloneNode(true);
+    clone.querySelectorAll('.budget-cash-sr').forEach(node => node.remove());
+    const shown = text(clone);
+    const amounts = [...shown.matchAll(/-?\$[\d,]+\.\d{2}/g)].map(match => printedMagnitude(match[0]));
+    if (amounts.length < 2 || amounts[0] == null || amounts[1] == null || !(amounts[1] > 0)) return null;
+    return Math.max(0, amounts[0] / amounts[1]);
+  }
+
   function paintHouse(bento) {
     const section = bento.querySelector('[data-budget-browse="spending"]');
     if (!section || section.querySelector('[data-blend-rings]')) return;
@@ -1359,63 +1429,151 @@
       if (/\$[\d,]/.test(head)) return true;
       return /\$[\d,]/.test(text(row.querySelector('.budget-category-status')));
     };
+    // One spent treatment for every Household ring (Systems Review
+    // 5481323065 R1): the fill is the published spent/plan share and
+    // the liquid level is the spent share — circles start empty and
+    // fill as spending lands. Geometry reuses the incumbent
+    // printed-geometry path (the source row's numeric bar width first,
+    // then the printed spent/plan share); when no spent amount is
+    // printed the share stays unknown. Nothing here is written back
+    // as a figure.
+    // Face layout (owner amendment, Atlas boundary approval in
+    // #atlas-coordination thread 1791643511.871799, superseding the
+    // R1 amount-only centre): the centre carries the category NAME,
+    // and the category's published Actual / Planned pair prints
+    // beneath the circle. The full printed status — spent, planned,
+    // remaining and every qualification — stays in the ring's
+    // accessible name via the bridge below, exactly as before.
+    const spentShare = row => {
+      const bar = row.querySelector('.budget-category-bar');
+      const scale = bar && bar.getAttribute('data-budget-category-scale');
+      const fill = row.querySelector('.budget-category-fill');
+      const width = fill && fill.style.width ? parseFloat(fill.style.width) : NaN;
+      let share = scale === 'numeric' && Number.isFinite(width) && width >= 0
+        ? Math.max(0, Math.min(1, width / 100)) : null;
+      if (share == null) share = printedSpentPlanShare(row);
+      return spentPrinted(row) ? share : null;
+    };
+    // The spent amount as printed: the meta head carries it when a plan
+    // is published; the unassigned status is the spent amount itself; an
+    // unobserved row falls back to its status word.
+    const spentAmountText = (row, status) => {
+      const metaNode = row.querySelector('.budget-category-meta');
+      if (metaNode) {
+        const clone = metaNode.cloneNode(true);
+        clone.querySelectorAll('.budget-cash-sr').forEach(node => node.remove());
+        const head = (text(clone).split('/')[0] || '').trim();
+        if (moneyToken(head)) return head;
+      }
+      return moneyToken(status) || status;
+    };
+    // The category's published Actual / Planned pair, read from the
+    // source row's own printed meta with the screen-reader lead-ins
+    // stripped — the same clone the geometry fallback reads. The two
+    // printed tokens either side of the meta's " / " separator are the
+    // pair, verbatim (an unknown side prints its published word, never
+    // a zero). Nothing is computed. A meta carrying no pair — Other
+    // Spending's unassigned note — yields null.
+    const printedPair = row => {
+      const metaNode = row.querySelector('.budget-category-meta');
+      if (!metaNode) return null;
+      const clone = metaNode.cloneNode(true);
+      clone.querySelectorAll('.budget-cash-sr').forEach(node => node.remove());
+      const shown = text(clone);
+      const cut = shown.indexOf('/');
+      if (cut < 0) return null;
+      const actual = shown.slice(0, cut).trim();
+      const planned = shown.slice(cut + 1).trim();
+      return actual && planned ? { actual, planned } : null;
+    };
+    // Beneath each circle: the published Actual / Planned pair in the
+    // source meta's own idiom (screen-reader "Spent … / of planned …",
+    // visible tokens either side of the slash). When the row publishes
+    // no pair but does publish a spent amount (Other Spending's
+    // unassigned note in a period whose plan is withheld), the pair
+    // still prints in Actual / Planned order with the missing side
+    // explicitly Unavailable — never a lone amount, never an invented
+    // zero (Systems Review 5482743628). A row publishing no amount at
+    // all keeps its published status word alone.
+    const pairLabel = (row, status) => {
+      const label = document.createElement('span');
+      label.className = 'blend-ring-l';
+      const holder = document.createElement('span');
+      holder.className = 'blend-ring-pair';
+      const fillPair = (actual, planned) => {
+        const srSpent = document.createElement('span');
+        srSpent.className = 'budget-cash-sr';
+        srSpent.textContent = 'Spent ';
+        const sep = document.createElement('span');
+        sep.setAttribute('aria-hidden', 'true');
+        sep.textContent = ' / ';
+        const srPlan = document.createElement('span');
+        srPlan.className = 'budget-cash-sr';
+        srPlan.textContent = ' of planned ';
+        holder.append(srSpent, document.createTextNode(actual), sep,
+          srPlan, document.createTextNode(planned));
+      };
+      const pair = printedPair(row);
+      if (pair) {
+        fillPair(pair.actual, pair.planned);
+      } else {
+        const spent = spentAmountText(row, status);
+        if (moneyToken(spent)) fillPair(spent, 'Unavailable');
+        else holder.textContent = spent;
+      }
+      label.appendChild(holder);
+      return label;
+    };
+    // Display-only threshold label for spending past 200% of plan
+    // (approved boundary): it is not a computed or printed percentage,
+    // and it never enters the accessible name, which the bridge below
+    // builds from the source row alone.
+    const overBadge = () => {
+      const badge = document.createElement('span');
+      badge.className = 'blend-ring-x2';
+      badge.textContent = '2x+';
+      return badge;
+    };
     main.forEach(row => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'blend-ring';
       const categoryId = row.getAttribute('data-budget-category-open');
       if (categoryId) button.setAttribute('data-blend-cat', categoryId);
-      const bar = row.querySelector('.budget-category-bar');
-      const scale = bar && bar.getAttribute('data-budget-category-scale');
-      const fill = row.querySelector('.budget-category-fill');
-      const width = fill && fill.style.width ? parseFloat(fill.style.width) : NaN;
-      const known = scale === 'numeric' && Number.isFinite(width) && width >= 0;
-      let share = known ? Math.max(0, Math.min(1, width / 100)) : null;
-      if (share == null) {
-        const printed = printedSpentPlanShare(row);
-        if (printed != null) share = printed;
-      }
+      const share = spentShare(row);
+      // The overflow decomposition reads the unclamped published
+      // ratio, and only once the clamped share is full: a ring that
+      // has not reached its plan never grows overflow artefacts.
+      const ratio = share === 1 ? printedOverflowShare(row) : null;
       const hasSpend = spentPrinted(row);
-      if (!hasSpend) share = null;
       const status = text(row.querySelector('.budget-category-status')) || 'Unavailable';
-      // Numeric spent/plan geometry cannot qualify remaining. Only mirror
-      // the incumbent's explicit remaining/over/used publication.
-      const amountStatus = /^(?:≈\s*)?(?:estimated\s+)?-?\$[\d,]+(?:\.\d{2})?\s+(left|over|remaining)$/i.exec(status);
-      const remainingPublished = amountStatus
-        ? row.classList.contains(amountStatus[1].toLowerCase() === 'left' ? 'is-left' : 'is-over')
-        : row.classList.contains('is-used') && /^All used$/i.test(status);
-      const remainingGeometry = remainingPublished ? share : null;
-      if (remainingGeometry != null) {
+      if (share != null) {
         button.classList.add('is-known');
-        if (remainingGeometry < 1) button.classList.add('has-arc');
-        button.style.setProperty('--left', String(Math.max(0, Math.min(1, 1 - remainingGeometry))));
-        button.style.setProperty('--pct', remainingGeometry.toFixed(4));
+        if (share < 1) button.classList.add('has-arc');
+        // --left is the liquid level fraction: the spent share, so the
+        // level rises toward the plan exactly as the arc fills.
+        button.style.setProperty('--left', String(share));
+        button.style.setProperty('--pct', share.toFixed(4));
       } else button.classList.add('is-unknown');
-      const meta = text(row.querySelector('.budget-category-meta'));
-      const planned = (meta.match(/of planned\s+(.+)$/i) || [])[1];
       const name = text(row.querySelector('.budget-category-name')) || 'Category';
       const nothingPrinted = !hasSpend || (!(share > 0) && !/\$[\d,]/.test(status) && /not observed|unavailable|unknown|^$/i.test(status));
       const well = document.createElement('span');
       well.className = 'blend-ring-g' + (nothingPrinted ? ' is-empty' : '');
-      const value = ringCentre(status);
-      // The arc and liquid show the same remaining fraction. The selected
-      // share is spent / plan geometry; all monetary labels stay copied.
-      well.appendChild(categoryArc(remainingGeometry != null ? 1 - remainingGeometry : null));
-      const liquid = categoryLiquid(remainingGeometry);
+      // The centre carries the category name (owner amendment); the
+      // amounts move beneath the circle as the pair. The two personal
+      // rings print the approved short labels — exactly Dale /
+      // Amanda (Systems Review 5482743628) — in the visual centre
+      // only: the accessible name and the sheet identity keep the
+      // source row's full published label via the bridge below.
+      const centreName = categoryId === 'dale-guilt-free' ? 'Dale'
+        : categoryId === 'amanda-guilt-free' ? 'Amanda' : name;
+      const value = ringCentre(centreName);
+      well.appendChild(categoryArc(share, ratio));
+      const liquid = categoryLiquid(share);
       if (liquid) well.appendChild(liquid);
       well.appendChild(value);
-      const label = document.createElement('span');
-      label.className = 'blend-ring-l';
-      const categoryName = document.createElement('span');
-      categoryName.className = 'blend-ring-name';
-      categoryName.textContent = name;
-      label.appendChild(categoryName);
-      if (planned) {
-        const categoryPlan = document.createElement('span');
-        categoryPlan.className = 'blend-ring-plan';
-        categoryPlan.textContent = 'of ' + planned.trim();
-        label.append(document.createTextNode(' '), categoryPlan);
-      }
+      const label = pairLabel(row, status);
+      if (ratio != null && ratio > 2) label.appendChild(overBadge());
       button.append(well, label);
       if (row.classList.contains('is-over')) {
         button.classList.add('is-over');
@@ -1452,54 +1610,76 @@
       chev.textContent = '›';
       header.querySelector('h2')?.after(chev);
     }
-    if (header && facts) {
-      facts.classList.add('blend-house-facts');
-      header.appendChild(facts);
+    if (facts) {
+      // The published Actual / Planned pair leaves the tile header: it
+      // becomes the tile's bottom totals, printed verbatim (appended at
+      // the end of this painter). The Still planned / From today cell is
+      // evidence, not a header sentence; it moves into the sheet evidence
+      // body with the counts (see the remainBlock handling below).
+      facts.classList.add('blend-house-totals');
     }
     if (counts) counts.classList.add('blend-house-status');
     if (other[0]) {
-      const foot = document.createElement('button');
-      foot.type = 'button';
-      foot.className = 'blend-other other-chip';
-      const otherId = other[0].getAttribute('data-budget-category-open');
-      if (otherId) foot.setAttribute('data-blend-cat', otherId);
-      const status = text(other[0].querySelector('.budget-category-status'))
-        || text(other[0].querySelector('.budget-category-meta'))
-        || 'Unavailable';
-      const dot = document.createElement('i');
-      dot.className = 'blend-amber';
-      dot.setAttribute('aria-hidden', 'true');
-      const name = document.createElement('span');
-      name.className = 'blend-other-name';
-      name.textContent = text(other[0].querySelector('.budget-category-name')) || 'Other spending';
-      const rawOther = text(other[0]);
-      const attention = otherId
-        ? text(document.querySelector('[data-budget-browse="attention"] [data-budget-category-open="' + CSS.escape(otherId) + '"] strong'))
-        : '';
-      const needsCategory = /needs a category/i.test(rawOther) || /needs a category/i.test(attention);
-      foot.append(dot, name);
-      if (needsCategory) {
-        const badge = document.createElement('span');
-        badge.className = 'blend-need-badge';
-        badge.textContent = 'needs a category';
-        foot.appendChild(badge);
-      }
-      const amount = moneyToken(status) || moneyToken(rawOther);
-      if (amount) {
-        const shown = document.createElement('span');
-        shown.className = 'blend-other-amt';
-        shown.textContent = amount;
-        foot.appendChild(shown);
-      } else if (!needsCategory) {
+      // Other Spending is a ring like its sibling categories, not a
+      // footer chip: the duplicate chip (amber dot, amount, needs-a-
+      // category badge) is retired. The needs-a-category status already
+      // lives in the detail panel's context line and, in the unassigned
+      // state, in this row's own printed meta — the bridge below carries
+      // both into the ring's accessible name, as it did for the chip.
+      // Differences from the sibling rings, per the agreed rulings: the
+      // fill is spent / plan (siblings fill with what remains), and the
+      // amber identity is kept via blend-ring-other, outside the colour
+      // rotation. No figure is computed here; the share is the same
+      // printed spent/plan geometry the sibling rings already use.
+      const row = other[0];
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'blend-ring blend-ring-other';
+      const otherId = row.getAttribute('data-budget-category-open');
+      if (otherId) button.setAttribute('data-blend-cat', otherId);
+      const share = spentShare(row);
+      const ratio = share === 1 ? printedOverflowShare(row) : null;
+      const hasSpend = spentPrinted(row);
+      const status = text(row.querySelector('.budget-category-status')) || 'Unavailable';
+      // The spent amount as printed (see spentAmountText above).
+      const spentText = spentAmountText(row, status);
+      if (share != null) {
+        button.classList.add('is-known');
+        if (share < 1) button.classList.add('has-arc');
+        // --left is the liquid level fraction: spent here, so the level
+        // rises toward the plan exactly as the arc fills.
+        button.style.setProperty('--left', String(share));
+        button.style.setProperty('--pct', share.toFixed(4));
+      } else button.classList.add('is-unknown');
+      const nothingPrinted = !hasSpend || (!(share > 0) && !/\$[\d,]/.test(spentText)
+        && /not observed|unavailable|unknown|^$/i.test(status));
+      const otherName = text(row.querySelector('.budget-category-name')) || 'Other spending';
+      const well = document.createElement('span');
+      well.className = 'blend-ring-g' + (nothingPrinted ? ' is-empty' : '');
+      well.appendChild(categoryArc(share, ratio));
+      const liquid = categoryLiquid(share);
+      if (liquid) well.appendChild(liquid);
+      // The centre carries the published category name (owner
+      // amendment), like every sibling ring; the pair prints beneath.
+      well.appendChild(ringCentre(otherName));
+      const otherLabel = pairLabel(row, status);
+      if (ratio != null && ratio > 2) otherLabel.appendChild(overBadge());
+      button.append(well, otherLabel);
+      if (row.classList.contains('is-over')) {
+        button.classList.add('is-over');
+        const pill = document.createElement('span');
+        pill.className = 'blend-over-pill';
+        const amount = document.createElement('span');
+        amount.className = 'budget-cash-sr';
+        amount.textContent = status;
         const word = document.createElement('span');
-        word.className = 'blend-other-state';
-        const counted = rawOther.match(/\d+\s+to sort/i);
-        word.textContent = counted ? counted[0] : status;
-        foot.appendChild(word);
+        word.textContent = 'Over plan';
+        pill.append(amount, word);
+        button.appendChild(pill);
       }
-      markSheet(foot, other[0]);
-      rings.after(foot);
-      bridges.push([other[0], foot]);
+      markSheet(button, row);
+      rings.appendChild(button);
+      bridges.push([row, button]);
     }
     const sourceRoot = bento.closest('[data-budget-surface]') || bento;
     const sheet = sourceRoot.querySelector('[data-budget-detail-sheet]');
@@ -1507,7 +1687,10 @@
     body.className = 'blend-house-body';
     if (counts) body.appendChild(counts);
     const remainBlock = section.querySelector('[data-budget-browse-remaining]')?.parentElement;
-    if (remainBlock) remainBlock.classList.add('blend-house-remain');
+    if (remainBlock) {
+      remainBlock.classList.add('blend-house-remain');
+      body.appendChild(remainBlock);
+    }
     const cycle = section.querySelector('.budget-browse-cycle');
     if (cycle) body.appendChild(cycle);
     section.querySelectorAll('footer > p').forEach(node => body.appendChild(node));
@@ -1524,11 +1707,28 @@
       more.append(summary, body);
       (section.querySelector('.blend-other') || rings).after(more);
     }
+    // The Actual / Planned pair is the tile's bottom totals.
+    if (facts) section.appendChild(facts);
     // Only a complete, connected bridge may replace its source row on the
     // face. Keep the full printed status and amounts in its accessible name.
     // Unrepresented rows (including extra Other rows) remain visible.
     bridges.forEach(([row, button]) => {
-      const label = separatedText(row);
+      let label = separatedText(row);
+      // Completed-period Other (Systems Review 5483272344): when the
+      // Other row publishes a spent amount but no Actual / Planned
+      // pair (its meta is the unassigned note), the visible pair
+      // beneath the circle synthesizes the withheld plan side as
+      // Unavailable — but the source row text carries no such
+      // qualification, so the button's focus announcement omitted
+      // it. Synthesize the same qualification into this ring's
+      // accessible name only, after the full source label, status
+      // and amounts, preserved verbatim. Known-plan names (a printed
+      // pair exists) and every sibling ring are unchanged: their
+      // source text already carries the pair.
+      if (label && button.classList.contains('blend-ring-other') && !printedPair(row)) {
+        const status = text(row.querySelector('.budget-category-status')) || '';
+        if (moneyToken(spentAmountText(row, status))) label += '; planned Unavailable';
+      }
       if (label) button.setAttribute('aria-label', label);
       const id = row.getAttribute('data-budget-category-open');
       const source = id && sourceRoot.querySelector('[data-budget-category="' + CSS.escape(id) + '"]');
@@ -1812,7 +2012,7 @@
           ? bento.querySelector('#blend-bills-more')
           : null;
       const key = cat || bill || label;
-      if (!host || host.classList.contains('blend-other') || host.classList.contains('is-over') || host.querySelector('.blend-over-pill') || host.querySelector('[data-blend-badge="' + CSS.escape(key) + '"]')) return;
+      if (!host || host.classList.contains('blend-other') || host.classList.contains('blend-ring-other') || host.classList.contains('is-over') || host.querySelector('.blend-over-pill') || host.querySelector('[data-blend-badge="' + CSS.escape(key) + '"]')) return;
       const badge = document.createElement('span');
       badge.className = 'blend-face-badge';
       badge.setAttribute('data-blend-badge', key);

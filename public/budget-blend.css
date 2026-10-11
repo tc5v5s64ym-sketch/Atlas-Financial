@@ -1484,10 +1484,8 @@ body:has([data-budget-bento]) .sitenav {
 }
 
 .blend-ring:focus,
-.blend-other:focus,
 .blend-panel-toggle:focus,
 .blend-ring:focus-visible,
-.blend-other:focus-visible,
 .blend-panel-toggle:focus-visible {
   outline: 3px solid var(--blend-focus);
   outline-offset: 3px;
@@ -1509,6 +1507,8 @@ body:has([data-budget-bento]) .sitenav {
 .blend-ring:nth-child(3n+2) { color: var(--blend-income); }
 .blend-ring:nth-child(3n) { color: var(--blend-goals); }
 .blend-ring.is-unknown { color: var(--blend-ink-2); }
+.blend-rings .blend-ring.blend-ring-other { color: #d97706; }
+.blend-rings .blend-ring.blend-ring-other.is-unknown { color: var(--blend-ink-2); }
 .blend-ring-g {
   position: relative;
   display: grid;
@@ -1613,6 +1613,30 @@ body:has([data-budget-bento]) .sitenav {
 .blend-house-remain {
   margin-left: auto;
   white-space: nowrap;
+}
+.blend-house-totals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 14px 0 0;
+  color: var(--blend-ink-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+.blend-house-totals [data-budget-browse-hold] {
+  color: var(--blend-ink);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.blend-house-totals [data-budget-ratio-actual]::before {
+  content: "Actual ";
+  font-weight: 500;
+}
+.blend-house-totals [data-budget-ratio-plan]::before {
+  content: "Planned ";
+  font-weight: 500;
 }
 .blend-house-facts [data-budget-browse-remaining] {
   color: var(--blend-ink);
@@ -1731,31 +1755,21 @@ body:has([data-budget-bento]) .sitenav {
   white-space: normal;
   overflow-wrap: anywhere;
 }
-
-.blend-other {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  margin-top: 8px;
-  padding: 10px 0 2px;
-  border: 0;
-  border-top: 1px solid var(--blend-line);
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-.blend-other-name { font-weight: 700; }
-.blend-other-chev { margin-left: auto; color: var(--blend-ink-2); font-size: 16px; line-height: 1; }
-.blend-amber {
-  width: 8px;
-  height: 8px;
+/* Beneath the circle: the category's published Actual / Planned pair
+   (owner amendment — the name moved into the ring centre). */
+.blend-ring-pair { font-variant-numeric: tabular-nums; }
+/* Display-only threshold label beside the pair when spending passes
+   200% of plan (approved overflow boundary — not a percentage). */
+.blend-ring-x2 {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 0 5px;
   border-radius: 999px;
-  background: #d97706;
-  font-style: normal;
+  background: color-mix(in srgb, var(--blend-over) 16%, transparent);
+  color: var(--blend-over);
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: 1px;
 }
 
 .blend-goals {
@@ -2268,38 +2282,6 @@ dialog.budget-detail-sheet[open] {
     word-break: normal;
     overflow-wrap: normal;
   }
-  .blend-other {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    column-gap: 8px;
-    row-gap: 2px;
-    align-items: center;
-  }
-  .blend-other .blend-amber { grid-column: 1; grid-row: 1 / span 3; }
-  .blend-other-name {
-    grid-column: 2;
-    grid-row: 1;
-    white-space: nowrap;
-    overflow: visible;
-    text-overflow: clip;
-  }
-  .blend-other-state {
-    grid-column: 2;
-    grid-row: 2;
-    margin: 0;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-  }
-  .blend-other .blend-of-plan {
-    grid-column: 2;
-    grid-row: 3;
-    margin: 0;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-  }
-  .blend-other-chev { grid-column: 3; grid-row: 1 / span 3; margin-left: 0; }
 }
 
 @media (max-width: 360px) {

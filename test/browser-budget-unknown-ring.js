@@ -1,5 +1,12 @@
 'use strict';
-// Unobserved or incompletely qualified remaining amounts must not paint liquid/arc geometry.
+// Ring geometry is the published SPENT share (Systems Review 5481323065
+// R1): unobserved spending paints no geometry and never reads as zero;
+// a withheld REMAINING qualification does not erase the observed spent
+// figure Forecast still prints — it stays in the status and the
+// accessible name while the ring mirrors the printed spent/plan pair.
+// Face layout (owner amendment): the centre carries the published
+// category name and the printed Actual / Planned pair sits beneath
+// the circle; this suite asserts both alongside the geometry.
 // NODE_PATH=<Playwright modules> CHROME_PATH=<Chromium> node test/browser-budget-unknown-ring.js
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -58,10 +65,12 @@ const root = path.join(__dirname, '..');
         left: ring?.style.getPropertyValue('--left') ?? 'missing-ring',
         pct: ring?.style.getPropertyValue('--pct') ?? 'missing-ring',
         amount: ring?.querySelector('.blend-ring-v')?.textContent.trim(),
+        pair: (ring?.querySelector('.blend-ring-pair')?.textContent || '').replace(/\s+/g, ' ').trim(),
+        rowName: (row?.querySelector('.budget-category-name')?.textContent || '').trim(),
         label: ring?.getAttribute('aria-label') || '',
       };
     }, id);
-    const noRemainingGeometry = (row, reason) => {
+    const noRingGeometry = (row, reason) => {
       assert.equal(row.unknown, true, reason);
       assert.equal(row.known, false, reason);
       assert.equal(row.dotted, true, reason);
@@ -76,30 +85,37 @@ const root = path.join(__dirname, '..');
     }).join('\n'));
     assert.equal(/var\(\s*--left\s*,/.test(css), false, 'liquid height has no zero fallback');
     const known = await readRing(page, expected.groceries.id);
-    // Independent fixture cents: 22000 planned minus 11037 observed leaves 10963.
+    // Independent fixture cents: 11037 observed of 22000 planned is the
+    // spent share; 22000 minus 11037 leaves 10963 remaining (status).
+    const spentFraction = 11037 / 22000;
     assert.equal(known.status, expected.groceries.status);
     assert.ok(known.meta.includes(expected.groceries.spent));
     assert.ok(known.meta.includes(expected.groceries.planned));
-    assert.equal(known.amount, expected.groceries.status);
+    assert.equal(known.amount, known.rowName, 'centre is the published category name (owner amendment), not the spent amount');
+    assert.ok(known.amount, 'centre name is non-empty');
+    assert.equal(known.pair, 'Spent ' + expected.groceries.spent + ' / of planned ' + expected.groceries.planned,
+      'beneath the circle: the published Actual / Planned pair');
     assert.equal(known.known, true);
     assert.equal(known.liquid, true);
     assert.equal(known.arc, true);
-    assert.ok(Math.abs(Number(known.left) - expected.groceries.fraction) < 0.0001, 'liquid represents independently reconciled remaining fraction');
-    assert.ok(Math.abs(known.arcFraction - expected.groceries.fraction) < 0.0001, 'arc represents remaining, not spent');
+    assert.ok(Math.abs(Number(known.left) - spentFraction) < 0.0001, 'liquid represents the independently reconciled spent fraction');
+    assert.ok(Math.abs(known.arcFraction - spentFraction) < 0.0001, 'arc represents spent, not remaining');
+    assert.match(known.label, /\$109\.63 left/, 'accessible name keeps the full printed remaining status');
     const zero = await readRing(page, expected.zero.id);
     assert.equal(zero.status, expected.zero.status);
-    assert.equal(zero.amount, expected.zero.status);
+    assert.equal(zero.amount, zero.rowName, 'true zero: centre is the published category name');
+    assert.equal(zero.pair, 'Spent ' + expected.zero.spent + ' / of planned ' + expected.zero.planned,
+      'true zero: the pair prints the $0.00 actual as published');
     assert.equal(zero.scale, 'numeric');
     assert.equal(parseFloat(zero.spentWidth), 0, 'fixture publishes actual zero spending');
     assert.ok(zero.meta.includes(expected.zero.spent));
     assert.ok(zero.meta.includes(expected.zero.planned));
     assert.equal(zero.known, true);
     assert.equal(zero.unknown, false);
-    assert.equal(zero.liquid, true);
-    assert.equal(zero.arc, true);
+    assert.equal(zero.liquid, false, 'R2: no liquid at a known zero — visibly empty');
+    assert.equal(zero.arc, false, 'known zero draws no arc segment');
     assert.equal(zero.dotted, false);
-    assert.equal(Number(zero.left), expected.zero.fraction, 'confirmed zero spending leaves the full published plan');
-    assert.equal(zero.arcFraction, expected.zero.fraction);
+    assert.equal(Number(zero.left), 0, 'confirmed zero spending fills nothing');
     const pill = page.getByRole('button', { name: /^Choose period or month/ });
     await pill.click();
     assert.equal(await pill.getAttribute('aria-expanded'), 'true');
@@ -114,12 +130,16 @@ const root = path.join(__dirname, '..');
     assert.ok(unobserved.length > 0, 'the next period publishes Not observed categories');
     unobserved.forEach(row => {
       assert.equal(row.scale, 'unavailable');
-      noRemainingGeometry(row, 'unobserved categories never imply a remaining fraction');
+      noRingGeometry(row, 'unobserved categories never imply a spent fraction');
     });
     assert.equal(future.some(row => row.left === '0' && row.unknown), false);
     await page.close();
     // These fixtures retain real numeric spent/plan bars while the native
-    // publication withholds remaining because pending evidence is incomplete.
+    // publication withholds REMAINING because pending evidence is
+    // incomplete. The ring's subject is spent (R1): the observed spent
+    // figure Forecast still prints carries the geometry, and the
+    // remaining qualification survives untouched in the status and the
+    // accessible name — it is not the ring's geometry any more.
     for (const pendingCoverage of ['partial', 'unknown']) {
       const partialPage = await open({ pendingCoverage });
       const partial = await readRing(partialPage, expected.groceries.id);
@@ -128,18 +148,27 @@ const root = path.join(__dirname, '..');
       assert.ok(parseFloat(partial.spentWidth) > 0, 'observed spending survives the missing remaining qualification');
       assert.ok(partial.meta.includes(expected.groceries.spent));
       assert.ok(partial.meta.includes(expected.groceries.planned));
-      assert.equal(partial.amount, expected.incompleteStatus);
-      assert.match(partial.label, /Remaining unavailable/);
-      noRemainingGeometry(partial, `${pendingCoverage} evidence cannot qualify remaining`);
+      assert.equal(partial.amount, partial.rowName, 'centre is the published category name (owner amendment)');
+      assert.equal(partial.pair, 'Spent ' + expected.groceries.spent + ' / of planned ' + expected.groceries.planned,
+        'beneath the circle: the printed Actual / Planned pair survives the missing remaining qualification');
+      assert.match(partial.label, /Remaining unavailable/, 'remaining qualification stays in the accessible name');
+      assert.equal(partial.known, true, `${pendingCoverage}: observed spent paints the ring`);
+      assert.equal(partial.arc, true);
+      assert.equal(partial.liquid, true);
+      assert.ok(Math.abs(Number(partial.left) - 11037 / 22000) < 0.0001, 'liquid level is the spent share');
       const zeroPartial = await readRing(partialPage, expected.zero.id);
       assert.equal(zeroPartial.status, expected.incompleteStatus);
       assert.equal(zeroPartial.scale, 'numeric');
       assert.equal(parseFloat(zeroPartial.spentWidth), 0, 'incomplete fixture retains observed zero spending');
       assert.ok(zeroPartial.meta.includes(expected.zero.spent));
       assert.ok(zeroPartial.meta.includes(expected.zero.planned));
-      assert.equal(zeroPartial.amount, expected.incompleteStatus, 'zero spending must not replace remaining uncertainty with a dash');
+      assert.equal(zeroPartial.amount, zeroPartial.rowName, 'observed zero: centre is the published name; remaining uncertainty is not the centre');
+      assert.equal(zeroPartial.pair, 'Spent ' + expected.zero.spent + ' / of planned ' + expected.zero.planned,
+        'observed zero: the pair prints the $0.00 actual as published');
       assert.match(zeroPartial.label, /Remaining unavailable/);
-      noRemainingGeometry(zeroPartial, `${pendingCoverage} zero spending cannot qualify remaining`);
+      assert.equal(zeroPartial.known, true);
+      assert.equal(zeroPartial.arc, false, 'known zero draws no arc segment');
+      assert.equal(zeroPartial.liquid, false, 'R2: no liquid at a known zero');
       await partialPage.close();
     }
     for (const widthEvidence of ['missing', 'blank']) {
@@ -160,12 +189,12 @@ const root = path.join(__dirname, '..');
       await incomplete.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const missing = await readRing(incomplete, 'groceries');
       assert.equal(missing.spentWidth, '');
-      noRemainingGeometry(missing, widthEvidence + ' numeric evidence is not zero spending');
+      noRingGeometry(missing, widthEvidence + ' numeric evidence is not zero spending');
       await incomplete.close();
     }
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
-    console.log(`PASS remaining rings: independently reconciled known/zero fractions, ${unobserved.length} Not observed next period, partial/unknown/blank evidence withheld`);
+    console.log(`PASS spent rings: independently reconciled spent fractions, known zero empty, ${unobserved.length} Not observed next period, missing evidence withheld`);
   } finally {
     await browser.close();
   }

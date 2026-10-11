@@ -79,10 +79,24 @@ async function provePanelRepairs({ open, capture }) {
         if (term.estimatedCue) assert.match(term.title, /^Estimated/);
       }
       assert.ok(fit.pillFits && fit.footerFits && fit.badgesHidden && !fit.boardOverflow, `${width}/${theme} hero chrome fits: ${JSON.stringify(fit)}`);
-      const rings = await page.locator('.blend-ring-name').allTextContents();
-      const nativeNames = await page.locator('.budget-category-row:not([data-budget-category-open="other-spending"]) .budget-category-name').allTextContents();
-      for (const label of nativeNames) {
-        assert.ok(rings.includes(label.trim()), `${width}/${theme} native ${label} remains visible: ${rings}`);
+      const rings = await page.locator('[data-blend-rings] .blend-ring').evaluateAll(els => els.map(el => ({
+        id: el.getAttribute('data-blend-cat'),
+        centre: (el.querySelector('.blend-ring-v')?.textContent || '').trim(),
+      })));
+      const nativeNames = await page.locator('.budget-category-row:not([data-budget-category-open="other-spending"])').evaluateAll(rows => rows.map(row => ({
+        id: row.getAttribute('data-budget-category-open'),
+        name: (row.querySelector('.budget-category-name')?.textContent || '').trim(),
+      })));
+      // The centre carries the native name, except the two personal
+      // rings whose VISUAL centre is exactly the approved short label
+      // (Systems Review 5482743628); their full native names stay in
+      // the accessible names.
+      const centreFor = ({ id, name }) => id === 'dale-guilt-free' ? 'Dale'
+        : id === 'amanda-guilt-free' ? 'Amanda' : name;
+      for (const row of nativeNames) {
+        const expected = centreFor(row);
+        assert.ok(rings.some(ring => ring.id === row.id && ring.centre === expected),
+          `${width}/${theme} native ${row.name} remains visible as centre "${expected}": ${JSON.stringify(rings)}`);
       }
       assert.ok(rings.length >= 5, 'Household includes the personal rows');
       const heloc = page.locator('[data-budget-card-toggle="heloc"]');
@@ -109,7 +123,7 @@ async function provePanelRepairs({ open, capture }) {
     const reason = page.locator('[data-budget-spending-unavailable]');
     assert.equal(await reason.isVisible(), true, 'Household copies its native unavailable reason onto the face');
     assert.ok((await reason.innerText()).length > 10, 'missing evidence has an explanation');
-    assert.ok((await page.locator('.blend-ring-v').allTextContents()).every(text => /unavailable/i.test(text)),
+    assert.ok((await page.locator('.blend-ring-pair').allTextContents()).every(text => /unavailable/i.test(text)),
       'missing observations never become zero or remaining dollars');
     const heloc = page.locator('[data-budget-card-toggle="heloc"]');
     assert.match(await heloc.innerText(), /Unavailable/);
