@@ -4,10 +4,13 @@
 // the synthetic budget-surface fixture, exactly as in
 // test/browser-budget-blend-proof.js, and only presentation facts are
 // read back — the computed background of .blend-board, the hero tile's
-// glass / border / shadow / radius and the board gap that must not
-// move, and rendered pixels in a tile gap and a tile corner cutout
-// versus the page margin. The hero is the only tile whose computed
-// style is sampled; no other tile's internals are measured.
+// glass / border / shadow / radius and the board gap (18px when this
+// proof was written for #572; the 2026-10-11 tile-spacing amendment
+// repins it to 9px at <=759px and keeps 18px on desktop), and
+// rendered pixels in a tile gap and a tile corner cutout versus the
+// page margin. The hero is the only tile whose computed style is
+// sampled; the amendment additionally measures every stacked tile's
+// box geometry (rendered gaps, horizontal overflow, clipping).
 //
 // CHROME_PATH=<Chromium> node test/browser-tile-separation.js --label before
 // CHROME_PATH=<Chromium> node test/browser-tile-separation.js --label=after
@@ -262,9 +265,35 @@ async function captureCombo(browser, theme, width) {
         if (!below || r.top < below.top) below = { el, top: r.top + window.scrollY, left: r.left };
       }
     }
+    // Tile boxes for the tile-spacing amendment's rendered-delta,
+    // overflow and clipping facts: geometry only — the hero remains
+    // the only tile whose computed style is sampled.
+    const tileSelectors = [
+      ['hero', '.blend-hero'],
+      ['bills', '[data-budget-browse="bills"]'],
+      ['spending', '[data-budget-browse="spending"]'],
+      ['cards', '.budget-blend-card-movements'],
+      ['savings', '[data-budget-savings-goals]'],
+    ];
+    const tiles = [];
+    for (const [tileKey, selector] of tileSelectors) {
+      const el = board.querySelector(selector);
+      if (!el) continue;
+      const g = doc(el);
+      if (!(g.height > 0)) continue;
+      tiles.push({
+        key: tileKey,
+        top: g.top,
+        bottom: g.top + g.height,
+        clip: el.scrollHeight - el.clientHeight,
+      });
+    }
+    tiles.sort((a, b) => a.top - b.top);
     return {
       boardBg: cs.backgroundColor,
       boardGap: cs.gap,
+      tiles,
+      overflowX: document.documentElement.scrollWidth - window.innerWidth,
       heroBg: hs.backgroundColor,
       heroBorder: hs.borderTopWidth + ' ' + hs.borderTopStyle + ' ' + hs.borderTopColor,
       heroShadow: hs.boxShadow,
@@ -366,7 +395,24 @@ async function captureCombo(browser, theme, width) {
         const beforeFile = path.join(outDir, `${key}-before.png`);
         const afterFile = path.join(outDir, `${key}-after.png`);
         const d = await diffPngBuffers(browser2, fs.readFileSync(beforeFile), fs.readFileSync(afterFile), band);
-        assert.ok(!d.sizeMismatch, `${key}: before/after PNG sizes differ`);
+        if (d.sizeMismatch) {
+          // A per-pixel diff needs equal sizes. Two things break
+          // that here: the committed before PNGs are the pre-#572
+          // baseline rendered on an older tree (page content has
+          // moved since), and at <=759px the tile-spacing amendment
+          // itself shortens the stacked page (four gaps of 9px
+          // instead of 18px). A diff across different heights would
+          // measure translation and baseline drift, not this change,
+          // so record the sizes and let the computed/rendered
+          // assertion set below carry the spacing evidence. (For a
+          // same-tree before/after pair the strict diff above still
+          // applies unchanged.)
+          pixelDiff[key] = {
+            sizeMismatch: d.sizeMismatch,
+            note: 'before/after page sizes differ (pre-#572 baseline from an older tree; at <=759px the stacked page is also shorter with 9px gaps); pixel diff not computed for this pair',
+          };
+          continue;
+        }
         const entry = {
           size: `${d.width}x${d.height}`,
           differingPixels: d.differing,
@@ -386,7 +432,9 @@ async function captureCombo(browser, theme, width) {
         const mobileKeys = Object.keys(facts).filter(k => Number(k.split('-')[0]) <= 759);
         const allAccounted = band && mobileKeys.every(k => {
           const e = pixelDiff[k];
-          return e.maxChannelDelta <= 14 || e.maxDeltaOutsideNoiseBand <= 14;
+          // Pairs recorded as sizeMismatch carry no channel deltas
+          // (see above); they are accounted for by their own note.
+          return e.maxChannelDelta === undefined || e.maxChannelDelta <= 14 || e.maxDeltaOutsideNoiseBand <= 14;
         });
         pixelDiff.noiseControl = {
           experiment: `two --label after renders of ${noiseControl.key} on the identical tree within one proof run, diffed the same way`,
@@ -430,7 +478,47 @@ async function captureCombo(browser, theme, width) {
   for (const [key, f] of Object.entries(facts)) {
     const width = Number(key.split('-')[0]);
     assert.notEqual(f.heroBg, 'rgba(0, 0, 0, 0)', `${key}: tile glass must stay painted`);
-    assert.equal(f.boardGap, '18px', `${key}: board gap must stay 18px`);
+    // Tile-spacing amendment (2026-10-11, owner-directed via Atlas):
+    // the stacked board gap is 9px at <=759px; desktop keeps 18px.
+    // The amendment supersedes the value this proof pinned for #572,
+    // not the separation invariant asserted around it.
+    const expectedGap = width <= 759 ? '9px' : '18px';
+    assert.equal(f.boardGap, expectedGap, `${key}: board gap must be ${expectedGap}`);
+    if (width <= 759) {
+      // Rendered spacing: the five stacked tiles in reading order,
+      // each adjacent pair separated by exactly the board gap.
+      assert.deepEqual(
+        f.tiles.map(t => t.key),
+        ['hero', 'bills', 'spending', 'cards', 'savings'],
+        `${key}: stacked tile order changed`,
+      );
+      for (let i = 1; i < f.tiles.length; i++) {
+        const delta = f.tiles[i].top - f.tiles[i - 1].bottom;
+        assert.ok(
+          Math.abs(delta - 9) <= 0.6,
+          `${key}: rendered gap before ${f.tiles[i].key} is ${delta}, expected 9`,
+        );
+      }
+      assert.equal(
+        f.overflowX,
+        0,
+        `${key}: horizontal overflow (scrollWidth - innerWidth = ${f.overflowX})`,
+      );
+      // No tile content clipped by the tighter spacing: each tile's
+      // scrollable overflow (scrollHeight - clientHeight) equals the
+      // pristine-main baseline measured on 2921aa62 at these widths
+      // (the spending tile carries a 9px internal overflow allowance
+      // by design; every other tile is 0). The board gap sits outside
+      // the tiles' boxes, so any change here is spacing-caused.
+      const baselineClip = { hero: 0, bills: 0, spending: 9, cards: 0, savings: 0 };
+      for (const t of f.tiles) {
+        assert.equal(
+          t.clip,
+          baselineClip[t.key],
+          `${key}: ${t.key} tile clipping changed (${t.clip} vs baseline ${baselineClip[t.key]})`,
+        );
+      }
+    }
     if (label === 'before') {
       assert.notEqual(f.boardBg, 'rgba(0, 0, 0, 0)', `${key}: baseline board must be opaque`);
     } else if (width <= 759) {

@@ -2,28 +2,28 @@
   "synthetic": true,
   "generatedBy": "test/browser-card-period-movements.js",
   "runtime": {
-    "node": "v24.20.0",
-    "chromium": "152.0.7977.82",
-    "platform": "linux"
+    "node": "v24.18.0",
+    "chromium": "154.0.4258.62",
+    "platform": "win32"
   },
   "sourceBlobs": {
-    "public/index.html": "ca13c1404c18780d26d8a8992394600f32b8ca15",
-    "public/app.js": "74909f85f9857f9f2543e92fdc9afec6c936c515",
+    "public/index.html": "519c380684f69a87206458945295374edde25f2e",
+    "public/app.js": "b2046e58e7b3917c8918ae6314009c88be363a63",
     "public/plan.js": "8ca17db6229425681ad20628a83e3a36d05c051f",
     "public/forecast.js": "3f7a9086313c012369dbbf7c8d89e3d426d97759",
     "public/budget-surface.js": "da8a27f58eb83575ba2a275aae4829d9527ea0bf",
     "public/budget-card-movements.js": "d842048302535a4ca672b4e5b3de16bd7c307985",
     "public/budget-blend.js": "e03b04d8784f84c332be37f3e21da8dc4c5c433c",
     "public/budget-river.js": "38f64e0f9c1f4fd8162e5fe05dfc2d3d7dc26e90",
-    "public/budget-blend.css": "8563bae3bb8c9d5732d8203282cae8325b8cc92a",
+    "public/budget-blend.css": "22b371ddeea9efd86221db6457453b2e4fe4815b",
     "public/budget-surface.css": "d221e8e9b93ff52ce149035c61d687b460d9aa7b",
-    "public/budget-gface.css": "0de1e3dcc27be6ce01558f60870e16954835f373",
+    "public/budget-gface.css": "f07523d2b384ae9c31c9d171c184be1aa2c0447e",
     "public/budget-sheet-motion.css": "0505a8438fdb4a1dac1ef9254c49289fe7a734fa",
     "test/browser-card-period-movements.js": "de22c605a8a94031c9c5d8f6cc10a4bc1c181de1",
     "test/fixtures/card-period-movements-data.js": "bee1a5dd4f71816b76872d741cdd385b72c7b210",
     "test/fixtures/budget-surface-data.js": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc"
   },
-  "basedOn": "2921aa62dddd452ddc7d56b6fd0c09f92f5cef9a",
+  "basedOn": "3cdd2a9f09bb19b9dc785423839f5415b2f37e31",
   "screenshots": [
     {
       "file": "complete-strip-1440-light.png",
@@ -31,7 +31,7 @@
       "width": 1440,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "dc236e746a38cc49b68d350556632b37faa3dcf7d1fda5afdeef8e1cae5dab76"
+      "sha256": "7ba81afed5586cbd4cc95ba095eb930b8d17b72ed7b5efb08278036e6dbf45e1"
     },
     {
       "file": "complete-open-1440-dark.png",
@@ -39,7 +39,7 @@
       "width": 1440,
       "theme": "dark",
       "subject": "card sheet open",
-      "sha256": "2d6eac64e13601759e7cecfa7e84ab1118f0934bf3e856096ff4471d09b2d9ef"
+      "sha256": "2a00f77f6d53c724aed70de0e1901663bf87213ecfc7485937c170726d9d34ef"
     },
     {
       "file": "complete-open-1440-light.png",
@@ -47,7 +47,7 @@
       "width": 1440,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "a4037f2ce7912372c542599333becea57a3f1d178730cc35618eafb8f0de0c74"
+      "sha256": "db27880fbf2a06ba3e017fe73d6d85cde564ed204e0101483ac24fca1dd504cb"
     },
     {
       "file": "opening-missing-strip-1440-light.png",
@@ -55,7 +55,7 @@
       "width": 1440,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "692cf093aae72421d17011db177d47865f0a23f62c1f13a8df63b11d63dacd41"
+      "sha256": "e18290337ba0d79b05e5221926e34e39e462435ad1456368a30db3a80dd1081e"
     },
     {
       "file": "opening-missing-open-1440-light.png",
@@ -63,7 +63,7 @@
       "width": 1440,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "a043240f0a588149b607230d52721be2422150906530e77e7dc65a77ba442ca4"
+      "sha256": "89abac3480f325aa48bee0e185598ea6ddffeabd3674001ea42d23c79d81bb00"
     },
     {
       "file": "truncated-strip-1440-light.png",
@@ -71,7 +71,7 @@
       "width": 1440,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "68982ae8d54d8fd9dae797e61620867246a740c11504bb11e995876eb24bfe33"
+      "sha256": "a96221e6b26d7942a75830d07939d55cfcfdb2691957c14ce5628756c475e2b9"
     },
     {
       "file": "truncated-open-1440-light.png",
@@ -79,7 +79,7 @@
       "width": 1440,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "84e675811641f561330432e7412d2a0ee44c31730a6a65228171796b6f8a61b8"
+      "sha256": "1ed622976bf19e2970e32fdf8148a657925a983632cbfbcf55ad01f17b0fab38"
     },
     {
       "file": "pending-unknown-strip-1440-light.png",
@@ -87,7 +87,7 @@
       "width": 1440,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "dc236e746a38cc49b68d350556632b37faa3dcf7d1fda5afdeef8e1cae5dab76"
+      "sha256": "7ba81afed5586cbd4cc95ba095eb930b8d17b72ed7b5efb08278036e6dbf45e1"
     },
     {
       "file": "pending-unknown-open-1440-light.png",
@@ -95,7 +95,7 @@
       "width": 1440,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "31e1b11e2bfd65ec33dea43a97551cb315dee05b7fc2a682b7d284d7159f84c0"
+      "sha256": "6eb851966b02476a9cf9bb8cef6fe12b33c686c79d212dc3d55fb948e978ab30"
     },
     {
       "file": "credit-ambiguous-strip-1440-light.png",
@@ -103,7 +103,7 @@
       "width": 1440,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "dc236e746a38cc49b68d350556632b37faa3dcf7d1fda5afdeef8e1cae5dab76"
+      "sha256": "7ba81afed5586cbd4cc95ba095eb930b8d17b72ed7b5efb08278036e6dbf45e1"
     },
     {
       "file": "credit-ambiguous-open-1440-light.png",
@@ -111,7 +111,7 @@
       "width": 1440,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "20997013b8cbd7da12833bdcc7ae5e95b6b8160e91d6b349fcc84095ec1eba06"
+      "sha256": "919ff899d9bdba8871abd62093146713dd8dd8a33de7d0c1e505130673a34a85"
     },
     {
       "file": "complete-strip-390-light.png",
@@ -119,7 +119,7 @@
       "width": 390,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "27ea3ae2ed930f13fa551562dd8dc22b23446ee6588e9aa199ed7d7d46e39a5a"
+      "sha256": "8c30ee80b1b51108e94e325229356611b0fdaf82eb1c4db939e320774896b67d"
     },
     {
       "file": "complete-open-390-dark.png",
@@ -127,7 +127,7 @@
       "width": 390,
       "theme": "dark",
       "subject": "card sheet open",
-      "sha256": "2d8a441c9739e02ef686c04936ffcc64cd22e825e1af2e5ca0589316f661dde7"
+      "sha256": "38abcda277bc6f5a9cf1fac30cb0e0c56231753af3d7a81e18a186374f636ff7"
     },
     {
       "file": "complete-open-390-light.png",
@@ -135,7 +135,7 @@
       "width": 390,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "21249a7647cd3a9201e493347b4598c9faa67c5f2299a2dc52f1ec1db81e1874"
+      "sha256": "39f0477b78a9c2b6d10882cd78058da4cdca12f5b7335b646512f0a2aaa9baad"
     },
     {
       "file": "opening-missing-strip-390-light.png",
@@ -143,7 +143,7 @@
       "width": 390,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "ae1c64801ce4abc6894b651edbe1e1e43b83f750a2bb0f2689acace3a504093a"
+      "sha256": "403a4ee61c28e2cdb112acb3b3aeb606cf412c16184e27085f64b001e162ef3d"
     },
     {
       "file": "opening-missing-open-390-light.png",
@@ -151,7 +151,7 @@
       "width": 390,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "41eaeb31e519b8db3a4a19929064ff369ac35d549a049b96480aa9ecc8bbf741"
+      "sha256": "d3a96040b18974f4ebefff259ae224c0008dd45f35fe71f0247eee1edf31efbb"
     },
     {
       "file": "truncated-strip-390-light.png",
@@ -159,7 +159,7 @@
       "width": 390,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "99b2cc91a8b85d1eb43fe4cb57403865b3f21ec72846362dfdc09600882a9661"
+      "sha256": "2c395780d8d5645e85daf6a0be77235715d22be2133fa02aac1e1436d193aedc"
     },
     {
       "file": "truncated-open-390-light.png",
@@ -167,7 +167,7 @@
       "width": 390,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "cbb9e0293430ee85de94dc0d6f03802b4d91d22f0cdf433ccd7cf84b7e6d1303"
+      "sha256": "2adf2cd6b90adabfb113ed41206468dedd6f98a1a5577a2e2851cac1b87b1c96"
     },
     {
       "file": "pending-unknown-strip-390-light.png",
@@ -175,7 +175,7 @@
       "width": 390,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "22f00b93b6540ee2efffcc975798633286919f88751bc4bfb39722c44cc93d20"
+      "sha256": "221de8f593cebe6c705ad0f573272a8a3a8583fc45882874b48987c11ede8195"
     },
     {
       "file": "pending-unknown-open-390-light.png",
@@ -183,7 +183,7 @@
       "width": 390,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "d273c813b4514ef203c47f69594eb56bfed6f80873bb9c87e2536fd48fb4967d"
+      "sha256": "cac6f91a5a34d8eab4496d08fea9a39f779d9d64ab5fcc98e9f0c09e0367bbbf"
     },
     {
       "file": "credit-ambiguous-strip-390-light.png",
@@ -191,7 +191,7 @@
       "width": 390,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "27ea3ae2ed930f13fa551562dd8dc22b23446ee6588e9aa199ed7d7d46e39a5a"
+      "sha256": "8c30ee80b1b51108e94e325229356611b0fdaf82eb1c4db939e320774896b67d"
     },
     {
       "file": "credit-ambiguous-open-390-light.png",
@@ -199,7 +199,7 @@
       "width": 390,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "a7405b99ffed5d734d8e865ce4216afef424d714ff74c0b0fc093bb179e9615a"
+      "sha256": "b9ce1131d34420721a46dbb7ef95077edfee4c565543a212be872da5e9c284cb"
     },
     {
       "file": "complete-strip-320-light.png",
@@ -207,7 +207,7 @@
       "width": 320,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "f14a2842d9079f8802fc981da84bd2d5bc9dfa4e83db5144d3389c1a8ef40303"
+      "sha256": "fc7e156a1a29dbcba181795fe7b3a3850220c61b3e79d94886940b72ebfc900d"
     },
     {
       "file": "complete-open-320-dark.png",
@@ -215,7 +215,7 @@
       "width": 320,
       "theme": "dark",
       "subject": "card sheet open",
-      "sha256": "a28890f7b9380f10d920a16bb5d7ef18efe9e94bf149d887e7d038d93288525a"
+      "sha256": "60a5a7c2899b860db0683ef8d3269c83d9e6c5796aa3156b315f7aa9d54b82c2"
     },
     {
       "file": "complete-open-320-light.png",
@@ -223,7 +223,7 @@
       "width": 320,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "33ab5b9a63dfc0e65f0822fb143e24a9ad0080b7f851c4ed11b61a73cf8c5ef8"
+      "sha256": "5d9d2cf6d41a91af8815eecbad89af23d0882265de2902c1a732942d7f5a334e"
     },
     {
       "file": "opening-missing-strip-320-light.png",
@@ -231,7 +231,7 @@
       "width": 320,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "a1a18fd833558268c2584b5179fb9994f1720a2f0a62422d953fad5ee950aa07"
+      "sha256": "7813c3e2eb5f4e63d84c3ea9aa0b7282519b8f38716619756e4820b36f955084"
     },
     {
       "file": "opening-missing-open-320-light.png",
@@ -239,7 +239,7 @@
       "width": 320,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "0265c96f69f5631d1b251fc87d4c5074f1886ad719b2a10ba44a7b5e5d9f10f7"
+      "sha256": "6138b35aad09fbfc96a18be63306b177313a54b6fdc093c44cbd48eff7b4e94b"
     },
     {
       "file": "truncated-strip-320-light.png",
@@ -247,7 +247,7 @@
       "width": 320,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "6dfd8bef6abdac98ad3130b4e68e0422f5f921fc440475b96d9dea0765199461"
+      "sha256": "c642b4958b41717b6ee595ef7377910b2c713995197ba35404578f5c869c0338"
     },
     {
       "file": "truncated-open-320-light.png",
@@ -255,7 +255,7 @@
       "width": 320,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "02cb56b6a24e8e95b53968c0502f610b9974c3408f4b40258d1e03aa3589dfe2"
+      "sha256": "372a6fd1549372500ef69d3ecac498542f402fd58d96a66d580844bf0e09172b"
     },
     {
       "file": "pending-unknown-strip-320-light.png",
@@ -263,7 +263,7 @@
       "width": 320,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "78d1e2499fd0e9a0bac1e253754c97b6ad374afd80addbf11bc07ad41374dccb"
+      "sha256": "3b56a179a5f91011774064bf4ed7cc4530b2bef5726dc93ec6a8c97c4b6735ca"
     },
     {
       "file": "pending-unknown-open-320-light.png",
@@ -271,7 +271,7 @@
       "width": 320,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "aefb11cadfe71c294803bbb012281864ffc287d97005df8792abe8958a24d814"
+      "sha256": "2d4d3948b1a057f159d23a3756f5b48a4391948e43c8b6e8f45e46ee80c6bac6"
     },
     {
       "file": "credit-ambiguous-strip-320-light.png",
@@ -279,7 +279,7 @@
       "width": 320,
       "theme": "light",
       "subject": "card strip, closed",
-      "sha256": "f14a2842d9079f8802fc981da84bd2d5bc9dfa4e83db5144d3389c1a8ef40303"
+      "sha256": "fc7e156a1a29dbcba181795fe7b3a3850220c61b3e79d94886940b72ebfc900d"
     },
     {
       "file": "credit-ambiguous-open-320-light.png",
@@ -287,7 +287,7 @@
       "width": 320,
       "theme": "light",
       "subject": "card sheet open",
-      "sha256": "80b16196b1606f06d27e8e40a78123355cbb25c2b897b90aec53a553e36a50ba"
+      "sha256": "6d1450d1847ce59aef868f5a36e17013e3587a3e27524bdaae49efd2dd33ec8f"
     },
     {
       "file": "plan-unavailable-strip-1440-light.png",
@@ -295,7 +295,7 @@
       "width": 1440,
       "theme": "light",
       "subject": "card strip on the plan-unavailable branch",
-      "sha256": "0d659c18cf5038fb101cf34b61f33532450047bce2342c499de483eab120a78a"
+      "sha256": "5bcbed665891099032879bce6f8f3e04b9e9d204e560383722de17f288415ef3"
     },
     {
       "file": "plan-unavailable-card-open-1440-light.png",
@@ -303,7 +303,7 @@
       "width": 1440,
       "theme": "light",
       "subject": "card sheet open on the plan-unavailable branch",
-      "sha256": "66923e4ba57eba595480d3f475e5a82f3eb4a6941e4025f8f3b793e199e9ae28"
+      "sha256": "0c89f0f91a8040fd8c92bdb1dc9440c02cd7d533065f03a0405a79101ab0d29f"
     },
     {
       "file": "plan-unavailable-strip-390-light.png",
@@ -311,7 +311,7 @@
       "width": 390,
       "theme": "light",
       "subject": "card strip on the plan-unavailable branch",
-      "sha256": "e24b7550b31de4f7bba3b3a9b89ebb9f538508dd786074ff6ddde828342170c4"
+      "sha256": "e76aba4744fd7e7a3861c4dd6fdb5d46aca50bf6728ab64ea24c0db8ef2c7eab"
     },
     {
       "file": "plan-unavailable-card-open-390-light.png",
@@ -319,7 +319,7 @@
       "width": 390,
       "theme": "light",
       "subject": "card sheet open on the plan-unavailable branch",
-      "sha256": "1abc02726666d27f29456f2115ca56cfe835942d908be97de426e15f6e59c8c3"
+      "sha256": "d2133c349d8f2f417d33fb897806e87959e8b4657710cf5e9df6b15492177eb5"
     },
     {
       "file": "plan-unavailable-strip-320-light.png",
@@ -327,7 +327,7 @@
       "width": 320,
       "theme": "light",
       "subject": "card strip on the plan-unavailable branch",
-      "sha256": "d9438cb49e71866131c88fda8c8b0d3ff4d1cd7f4dec15309169dab28f0806d7"
+      "sha256": "cba60d8c1b77a0ccc7a89fdf229677dc26fe109d01aeaddb986eccae74f53313"
     },
     {
       "file": "plan-unavailable-card-open-320-light.png",
@@ -335,7 +335,7 @@
       "width": 320,
       "theme": "light",
       "subject": "card sheet open on the plan-unavailable branch",
-      "sha256": "9df64705546fcd68d86868859b44f8f9ad0179f2719256ef1bc7d22eb29263e1"
+      "sha256": "0c7be6c099919bdaa1b3f39150313e72d603ec080b9e18fafa315371829720a6"
     },
     {
       "file": "plan-unavailable-heloc-open-320-dark.png",
@@ -343,7 +343,7 @@
       "width": 320,
       "theme": "dark",
       "subject": "HELOC sheet open on the plan-unavailable branch",
-      "sha256": "e7f70c29f22287b56141b65a593c6424f62705eef772f4986d0206a835ffb9a7"
+      "sha256": "4796a194cf3295e10a87f5474952c72f49af51709f7309d876b30e3e18047d94"
     }
   ],
   "states": [

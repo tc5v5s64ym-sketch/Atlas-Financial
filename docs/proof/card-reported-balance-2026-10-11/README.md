@@ -73,3 +73,13 @@ at "balance precedes the delta in reading order".
 `proof.json` (written by the test) records the runtime, the exercised
 sources' git blob SHAs, every state/width pass with its contrast checks,
 and SHA-256 for each screenshot in this directory.
+
+## Integration refresh on current main (2026-10-11)
+
+This refresh integrates main `3cdd2a9f09bb19b9dc785423839f5415b2f37e31`, including the released boot lifecycle, strip gap and glyph CSS. The three production deltas are unchanged from the original reviewed change. The renderer and both test scripts retain their exact reviewed bytes.
+
+The existing targeted browser script was freshly run against a snapshot whose filesystem bytes were checked against every Git blob. Its current receipt binds 15 exercised source blobs and SHA-256 hashes for all 40 fresh screenshots, with 18 state/width entries across 1440, 390 and 320 pixels. Runtime: v24.18.0, Chromium 154.0.4258.62, win32. Errors, writes and external requests are empty. The existing unit suite also passed 561 assertions.
+
+Canonical id `mbna` is named Amazon whenever rendered, including past and future periods. Its full panel publication label remains Amazon Mastercard. Canonical id `triangle` remains Triangle. This clarifies the name claim; balance availability still controls the emphasis swap.
+
+The while-open period change still uses the app window-step control because the modal makes the background inert. The invisible manual-statement Dated suffix is not asserted. Earlier bite checks and the independent 252-case Root renderer review are historical evidence, not rerun claims. The full stock browser receipt remains excluded. This refresh does not claim the full browser harness, a local full suite, WebKit/iPhone, screen-reader validation, signed-in household UI or feature activation. No financial publication, Forecast, data, credentials or grants change.
