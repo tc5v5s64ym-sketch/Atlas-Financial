@@ -205,6 +205,7 @@
       this.valsEl.innerHTML = vh;
       this.valEls = Array.from(this.valsEl.children);
       this._stepEl = null; // rebuilt label nodes carry no step-aside transform
+      this._stepBox = null; // ... and no stepped-label hit box (see hitIndex)
       this._yielded = new Set(); // ... and no yielded (faded-out) state
       this.valEls.forEach((el, i) => { el.title = this.periods[i].fullLabel || ''; el.classList.toggle('is-est', !!this.periods[i].estimated);
         if (this.periods[i].label != null) el.dataset.riverNativeValue = this.periods[i].label;
@@ -215,6 +216,28 @@
     xc(f) { return this.N < 2 ? this.W / 2 : this.padL + f * this.sp; },
     offFor(f) { return this.pan ? clamp(this.xc(f) - this.W / 2, 0, this.CW - this.W) : 0; },
     fOfScreen(x) { return this.N < 2 ? 0 : clamp((x + this.off - this.padL) / this.sp, 0, this.N - 1); },
+    /* Discrete pointer resolution (tap, hover). The raw mapping resolves
+       to the period whose data centre is nearest the pointer — but a
+       selected bottom-edge label steps sideways clear of the orb
+       (place()), possibly by more than half the period spacing, so its
+       visible centre can sit nearer the neighbouring period's centre
+       than its own, and a tap on the label the user sees would select
+       the neighbour. While a label is stepped, its period's marker for
+       this resolution is the label's visible centre: the pointer
+       resolves to whichever marker — the raw winner's data centre or
+       the stepped label's visible centre — is nearer, with ties keeping
+       the visible label. (The step cannot instead be capped: at mobile
+       spacing any orb-clearing step crosses a neighbour's centre, and
+       an uncapped step leaves the neighbouring period's own centre
+       resolving to that period, as before.) Placement, geometry and
+       the continuous drag/scrub mappings are unchanged; the drag paths
+       are deliberately not routed here. */
+    hitIndex(x) {
+      const raw = Math.round(this.fOfScreen(x)), b = this._stepBox;
+      if (!b || raw === b.i) return raw;
+      const centre = (b.l + b.r) / 2;
+      return Math.abs(x - centre) <= Math.abs(x - (this.xs[raw] - this.off)) ? b.i : raw;
+    },
     yAt(f) {
       f = clamp(f, 0, this.N - 1);
       if (this.N < 2 || Number.isInteger(f)) return this.ys[Math.round(f)];
@@ -255,7 +278,8 @@
         this.dragging = false; el.classList.remove('is-dragging');
         if (capture.hasPointerCapture?.(pid)) capture.releasePointerCapture(pid);
         if (cancelled) { const native = this.onCancel?.(); if (Number.isInteger(native)) this.index = native; this.head.set(Math.max(0, this.index)); this.mark(this.index); this.request(); return; }
-        if (this.pan && !moved) { const r = el.isConnected ? el.getBoundingClientRect() : this.lastRect; this.go(Math.round(this.fOfScreen(e.clientX - r.left))); return; }
+        if (this.pan && !moved) { const r = el.isConnected ? el.getBoundingClientRect() : this.lastRect; this.go(this.hitIndex(e.clientX - r.left)); return; }
+        if (!moved) { const r = el.isConnected ? el.getBoundingClientRect() : this.lastRect; this.go(this.hitIndex(e.clientX - r.left)); return; }
         const fresh = !this.reduce && performance.now() - lastT < 80 && Math.abs(vel) > 0.6;
         const fling = moved && fresh ? clamp((this.pan ? -vel : vel) * 140 / this.sp, -4, 4) : 0;
         this.go(Math.round(clamp(this.head.target + fling, 0, this.N - 1)));
@@ -290,7 +314,7 @@
         if (Math.abs(acc) > 60) { this.go(clamp(this.index + Math.sign(acc), 0, this.N - 1)); acc = 0; }
       }, { passive: false });
       if (matchMedia('(hover: hover)').matches) {
-        this.listen(el, 'pointermove', e => { if (this.dragging) return; const r = el.getBoundingClientRect(); this.hover = Math.round(this.fOfScreen(e.clientX - r.left)); this.hoverVal(); });
+        this.listen(el, 'pointermove', e => { if (this.dragging) return; const r = el.getBoundingClientRect(); this.hover = this.hitIndex(e.clientX - r.left); this.hoverVal(); });
         this.listen(el, 'pointerleave', () => { this.hover = null; this.hoverVal(); });
       }
     },
@@ -320,7 +344,7 @@
       // yields (fades out) instead of meshing, and returns when clear.
       // Placement only — selection, domain, and gesture behaviour unchanged.
       const selEl = this.valEls && this.index >= 0 ? this.valEls[this.index] : null;
-      if (this._stepEl && this._stepEl !== selEl) { this._stepEl.style.transform = ''; this._stepEl = null; }
+      if (this._stepEl && this._stepEl !== selEl) { this._stepEl.style.transform = ''; this._stepEl = null; this._stepBox = null; }
       let stepDx = 0, selW = 0, selC = 0;
       if (selEl) {
         if (known && y + 10 > this.H - 44) {
@@ -335,6 +359,10 @@
         const t = stepDx ? `translateX(-50%) translateX(${stepDx.toFixed(1)}px)` : '';
         if (selEl.style.transform !== t) selEl.style.transform = t;
         this._stepEl = stepDx ? selEl : null;
+        // The stepped label's visible box, in element coordinates: pointer
+        // resolution (hitIndex) honours it, because the box can sit inside
+        // the neighbouring period's raw hit region.
+        this._stepBox = stepDx ? { i: this.index, l: selC + stepDx - selW / 2, r: selC + stepDx + selW / 2 } : null;
       }
       if (this.valEls) {
         if (!this._yielded) this._yielded = new Set();

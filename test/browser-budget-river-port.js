@@ -152,7 +152,8 @@ async function proveRiverPort({ open, capture }) {
   }
   const paired = await proveOriginal({ open, capture });
   const yielded = await proveYieldedNeighbourReselect({ open });
-  return { nativeLiveDrag: cases, originalComparison: paired, yieldedNeighbourReselect: yielded };
+  const displaced = await proveDisplacedLabelHitTargeting({ open });
+  return { nativeLiveDrag: cases, originalComparison: paired, yieldedNeighbourReselect: yielded, displacedLabelHitTargeting: displaced };
 }
 
 // Regression (Systems Review 5480635465): place() skipped the selected label
@@ -270,6 +271,156 @@ async function proveYieldedNeighbourReselect({ open }) {
     assert.equal(await page.evaluate(() => window.__yieldRiver.reduce), true, 'yield/reduced-motion: controller must be in reduced-motion mode');
     const reducedMotion = await runSequence(page, k => clickLabel(page, k), 'yield/reduced-motion/390/dark');
     cases.push({ width: 390, theme: 'dark', reducedMotion });
+    await page.close();
+  }
+  return cases;
+}
+
+// Regression (Systems Review 5481562226, Codex discussion_r4239927349):
+// place() steps a selected bottom-edge label sideways clear of the orb — on
+// the mobile panning layout by ~30px, more than half the 44px period
+// spacing — but tap and hover resolution mapped the raw coordinate through
+// fOfScreen, so a pointer over the visibly displaced label resolved to the
+// neighbouring period. The fix records the stepped label's visible box in
+// place() and routes discrete resolution (tap, hover) through hitIndex().
+// This regression works from the label's RENDERED box: it first asserts
+// the displacement really enters the neighbour's raw hit region
+// (dx > sp/2 — without that precondition the raw mapping would still
+// resolve correctly and the regression would prove nothing), then asserts
+// a mouse tap and a touch tap on the visible centre keep the label's own
+// period selected, hover over it resolves to its own period, the
+// neighbouring period stays selectable at its own centre (the point the
+// stepped label's tail covers — the round-3 yield sequence's click), and
+// the keyboard path is unaffected. On the pre-fix code the tap selects
+// period 2 and hover reports 2.
+async function proveDisplacedLabelHitTargeting({ open }) {
+  // Same invented publication as the yield regression: index 1 is the
+  // minimum (-420, on the band's bottom edge) whose selected label steps
+  // aside; index 2 is the neighbour its visible centre lands on.
+  const bads = [300, -420, 150, -80, 640, -260, 90, 480, -150, 720, 210, -40];
+  const MIN = 1, NEIGHBOUR = 2;
+  const cases = [];
+  const setup = async (width, theme, options = {}) => {
+    const page = await open(width, theme, { riverHarness: true, ...options });
+    await page.waitForFunction(() => typeof window.BudgetRiver !== 'undefined');
+    await page.evaluate(bads => {
+      document.body.innerHTML = '<main id="river-hit" style="padding:12px"></main>';
+      const host = document.querySelector('main');
+      const tree = '<nav class="tile t-river"><div class="river" tabindex="0"><canvas class="river-canvas"></canvas><div class="river-slide"><div class="river-vals"></div><div class="months"></div></div><div class="playhead"><div class="playhead-pill"><span>Test publication</span><b>$0.00</b></div><span class="playhead-beam"></span><span class="playhead-orb"></span></div></div></nav>';
+      const section = document.createElement('section');
+      section.className = 'budget-bento atlas-g';
+      section.innerHTML = '<div class="g-river-wrap">' + tree + '</div>';
+      host.appendChild(section);
+      const fmt = v => { const a = Math.abs(v), s = v < 0 ? '−' : ''; return a >= 999.5 ? s + '$' + (a / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : s + '$' + Math.round(a); };
+      const periods = bads.map((bad, i) => ({
+        start: '2026-' + String(1 + Math.floor(i / 2)).padStart(2, '0') + '-' + (i % 2 ? '15' : '01'),
+        end: '2026-' + String(1 + Math.floor(i / 2)).padStart(2, '0') + '-' + (i % 2 ? '28' : '14'),
+        bad, state: bad < 0 ? 'short' : 'healthy', role: i < 4 ? 'past' : i === 4 ? 'current' : 'future',
+      }));
+      const el = section.querySelector('.river');
+      window.__hitChanges = [];
+      window.__hitRiver = BudgetRiver.create({
+        el, canvas: section.querySelector('canvas'), playhead: section.querySelector('.playhead'),
+        pill: section.querySelector('.playhead-pill'), slide: section.querySelector('.river-slide'),
+        monthsEl: section.querySelector('.months'), valsEl: section.querySelector('.river-vals'),
+        periods, index: 4, cur: 4, enabled: true, dark: document.documentElement.dataset.theme === 'dark',
+        reduce: matchMedia('(prefers-reduced-motion: reduce)').matches, noIntro: true, fmt,
+        knownRuns: [periods.map((_, i) => i)], onChange: (i, how) => window.__hitChanges.push({ i, how }),
+      });
+      window.__hitRiver.place(4);
+    }, bads);
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.t-river')).opacity === '1');
+    await page.waitForFunction(() => window.__hitRiver.head.settled && window.__hitRiver.index === 4);
+    return page;
+  };
+  const settledAt = (page, k) => page.waitForFunction(k => {
+    const r = window.__hitRiver; return r.index === k && r.head.settled;
+  }, k, { timeout: 5000 }).catch(() => {});
+  const labelCentre = (page, k) => page.evaluate(k => {
+    const b = window.__hitRiver.valEls[k].getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+  }, k);
+  // The displaced selected label's rendered centre vs its data centre.
+  const displaced = async (page, label) => {
+    const st = await page.evaluate(k => {
+      const r = window.__hitRiver, elB = r.el.getBoundingClientRect(), b = r.valEls[k].getBoundingClientRect();
+      return { index: r.index, pan: r.pan, sp: r.sp,
+        cx: b.left + b.width / 2, cy: b.top + b.height / 2,
+        dx: (b.left + b.width / 2) - (elB.left + r.xs[k] - r.off) };
+    }, MIN);
+    assert.equal(st.index, MIN, label + ': the minimum must be selected before its label can displace');
+    assert.equal(st.pan, true, label + ': the fixture must be on the mobile panning layout');
+    assert.ok(st.dx > st.sp / 2, label + ': the selected label must be displaced into the neighbouring hit region (dx ' + st.dx.toFixed(1) + 'px vs half-spacing ' + (st.sp / 2) + 'px)');
+    return st;
+  };
+  const tapKeepsMin = async (page, tap, label) => {
+    const st = await displaced(page, label);
+    await page.evaluate(() => { window.__hitChanges = []; });
+    await tap(st);
+    await settledAt(page, MIN);
+    const after = await page.evaluate(() => ({ index: window.__hitRiver.index, changes: window.__hitChanges.slice() }));
+    assert.equal(after.index, MIN, label + ': tapping the displaced selected label must keep its own period selected; got index ' + after.index);
+    assert.ok(after.changes.every(c => c.i === MIN), label + ': the tap must not publish another period ' + JSON.stringify(after.changes));
+    return { displacementPx: Number(st.dx.toFixed(1)), spacingPx: st.sp };
+  };
+  for (const width of [390, 320]) for (const theme of ['dark', 'light']) {
+    const page = await setup(width, theme);
+    const label = 'hit/mouse/' + width + '/' + theme;
+    // Select the minimum by clicking its (still undisplaced) label.
+    const natural = await labelCentre(page, MIN);
+    await page.mouse.click(natural.x, natural.y);
+    await settledAt(page, MIN);
+    assert.equal(await page.evaluate(() => window.__hitRiver.index), MIN, label + ': clicking the minimum label must select it');
+    // Tap on the displaced label's visible centre keeps its own period.
+    const tap = await tapKeepsMin(page, s => page.mouse.click(s.cx, s.cy), label + '/tap');
+    // Hover over the displaced label resolves to its own period.
+    const st = await displaced(page, label + '/hover');
+    await page.mouse.move(st.cx, st.cy);
+    await page.waitForFunction(k => window.__hitRiver.hover === k, MIN, { timeout: 4000 }).catch(() => {});
+    const hover = await page.evaluate(() => ({ hover: window.__hitRiver.hover,
+      marks: window.__hitRiver.valEls.map(e => e.classList.contains('is-hover')) }));
+    assert.equal(hover.hover, MIN, label + ': hover over the displaced label must resolve to its own period; got ' + hover.hover);
+    assert.ok(hover.marks[MIN] && !hover.marks[NEIGHBOUR], label + ': the displaced label itself must carry the hover mark ' + JSON.stringify(hover.marks));
+    // The neighbouring period stays selectable at its own centre, even
+    // though the stepped label's tail covers that point and its own label
+    // is currently yielded: the neighbour's centre is nearer that point
+    // than the stepped label's visible centre.
+    const neighbourCentre = await labelCentre(page, NEIGHBOUR);
+    await page.mouse.click(neighbourCentre.x, neighbourCentre.y);
+    await settledAt(page, NEIGHBOUR);
+    assert.equal(await page.evaluate(() => window.__hitRiver.index), NEIGHBOUR, label + ': clicking the neighbouring period centre must select it');
+    // Keyboard: arrows still step one period each way from the selection.
+    await page.locator('.river').focus();
+    await page.keyboard.press('ArrowLeft'); await settledAt(page, MIN);
+    assert.equal(await page.evaluate(() => window.__hitRiver.index), MIN, label + ': ArrowLeft must step back to the minimum');
+    await page.keyboard.press('ArrowRight'); await settledAt(page, NEIGHBOUR);
+    assert.equal(await page.evaluate(() => window.__hitRiver.index), NEIGHBOUR, label + ': ArrowRight must step to the neighbour');
+    cases.push({ width, theme, input: 'mouse', displacementPx: tap.displacementPx, spacingPx: tap.spacingPx, tapKeptSelection: true, hoverResolvedToOwnPeriod: true, neighbourSelectableAtOwnCentre: true, keyboard: { left: MIN, right: NEIGHBOUR } });
+    await page.close();
+  }
+  // Touch: a tap is pointerdown/pointerup with no move; the same end()
+  // resolution must honour the displaced label's visible box.
+  for (const [width, theme] of [[390, 'dark'], [320, 'light']]) {
+    const page = await setup(width, theme, { hasTouch: true });
+    const label = 'hit/touch/' + width + '/' + theme;
+    const natural = await labelCentre(page, MIN);
+    await page.touchscreen.tap(natural.x, natural.y);
+    await settledAt(page, MIN);
+    assert.equal(await page.evaluate(() => window.__hitRiver.index), MIN, label + ': tapping the minimum label must select it');
+    const tap = await tapKeepsMin(page, s => page.touchscreen.tap(s.cx, s.cy), label);
+    cases.push({ width, theme, input: 'touch', displacementPx: tap.displacementPx, spacingPx: tap.spacingPx, tapKeptSelection: true });
+    await page.close();
+  }
+  // Reduced motion: instant head, same tap resolution.
+  {
+    const page = await setup(390, 'dark', { reducedMotion: 'reduce' });
+    assert.equal(await page.evaluate(() => window.__hitRiver.reduce), true, 'hit/reduced-motion: controller must be in reduced-motion mode');
+    const label = 'hit/reduced-motion/390/dark';
+    const natural = await labelCentre(page, MIN);
+    await page.mouse.click(natural.x, natural.y);
+    await settledAt(page, MIN);
+    const tap = await tapKeepsMin(page, s => page.mouse.click(s.cx, s.cy), label);
+    cases.push({ width: 390, theme: 'dark', reducedMotion: { displacementPx: tap.displacementPx, tapKeptSelection: true } });
     await page.close();
   }
   return cases;
@@ -406,7 +557,7 @@ if (require.main === module) {
     try {
       const errors = [];
       const open = async (width, theme, options = {}) => {
-        const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme, reducedMotion: options.reducedMotion || 'no-preference' });
+        const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme, reducedMotion: options.reducedMotion || 'no-preference', hasTouch: !!options.hasTouch });
         page.on('pageerror', error => errors.push(error.message));
         await page.addInitScript(chosen => localStorage.setItem('hfd-theme', chosen), theme);
         await page.route('**/*', route => {
