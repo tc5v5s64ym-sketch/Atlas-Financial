@@ -34,7 +34,7 @@ function shift(iso, minutes) { return new Date(Date.parse(iso) + minutes * 60000
 
 // Byte-for-byte the invented shape of test-private-period-history.js by default, parameterized by
 // cycle start and source/capture clocks (needed for DST and 23:59 gates).
-function input(day, kind, { start = ANCHOR, fetchedAt = day + 'T18:00:00Z', capturedAt, settleIncome = false } = {}) {
+function input(day, kind, { start = ANCHOR, incomeAnchor = ANCHOR, fetchedAt = day + 'T18:00:00Z', capturedAt, settleIncome = false } = {}) {
   const ids = ['chequing-a', 'chequing-b', 'savings'];
   const stamp = shift(fetchedAt, -1);
   const cash = ids.map((id, i) => ({ id, label: 'Invented cash ' + i, value: [1000, 500, 100][i], evidenceDate: day, confidence: 'confirmed' }));
@@ -64,7 +64,7 @@ function input(day, kind, { start = ANCHOR, fetchedAt = day + 'T18:00:00Z', capt
     data: { meta: { asOf: day }, accounts: [], debts: [], revolvingExtra: [], plan: {
       opening, startingCash: { breakdown: cash },
       defaults: { targetBuffer: 0, extraDebtMonthly: 0 },
-      income: [{ id: 'payroll', label: 'Invented income', frequency: 'biweekly', anchor: ANCHOR, amount: 200, confidence: 'confirmed' }],
+      income: [{ id: 'payroll', label: 'Invented income', frequency: 'biweekly', anchor: incomeAnchor, amount: 200, confidence: 'confirmed' }],
       bills: [], commitments: [], obligations: [], groups: [], funding: { options: [] },
       budget: { categories: [['groceries', 40], ['fuel', 15], ['restaurants', 10], ['dale-guilt-free', 5],
         ['amanda-guilt-free', 5], ['pets', 5], ['other-spend', 20]].map(([id, plannedPayday]) =>
@@ -180,13 +180,15 @@ try {
     // closingStateFor keeps the date half even when scope is handed in complete
     // (capture cannot be complete before cutoff because sourceCompleteness itself
     // retains transport:source-fetched-before-cutoff).
-    const period = candidate.content.period;
+    // Historical PST is stable across old/new timezone data; future Vancouver
+    // winters no longer imply UTC-8 after B.C.'s 2026 permanent-time change.
+    const period = { ...candidate.content.period, start: '2025-02-01', end: '2025-02-14' };
     const complete = { status: 'complete', reasons: [] };
     const incomplete = { status: 'incomplete', reasons: ['publication:income-actual-unavailable'] };
-    assert.equal(History.closingStateFor(period, '2030-02-15T08:00:00Z', '2030-02-15T08:01:00Z', complete), 'complete-at-capture');
-    assert.equal(History.closingStateFor(period, '2030-02-15T07:59:00Z', '2030-02-15T08:00:00Z', complete), 'provisional');
-    assert.equal(History.closingStateFor(period, '2030-02-15T08:00:00Z', '2030-02-15T08:01:00Z', incomplete), 'provisional');
-    assert.equal(History.closingStateFor(period, '2030-02-15T08:00:00Z', '2030-02-15T08:01:00Z', null), 'provisional');
+    assert.equal(History.closingStateFor(period, '2025-02-15T08:00:00Z', '2025-02-15T08:01:00Z', complete), 'complete-at-capture');
+    assert.equal(History.closingStateFor(period, '2025-02-15T07:59:00Z', '2025-02-15T08:00:00Z', complete), 'provisional');
+    assert.equal(History.closingStateFor(period, '2025-02-15T08:00:00Z', '2025-02-15T08:01:00Z', incomplete), 'provisional');
+    assert.equal(History.closingStateFor(period, '2025-02-15T08:00:00Z', '2025-02-15T08:01:00Z', null), 'provisional');
     // Dishonest complete-at-capture with incomplete reasons is refused.
     const forged = capture(CLOSE);
     forged.content.closingState = 'complete-at-capture';
@@ -340,50 +342,53 @@ try {
     assert.ok(classify(f).reasons.includes('publication:household-actual-unavailable'));
   });
 
-  check('Vancouver 23:59 and next-midnight gate (PST)', () => {
-    // Feb 14 23:59 PST is 2030-02-15T07:59Z. Existing closing gate is kept.
-    rejects(() => capture(input('2030-02-14', 'closing', { fetchedAt: '2030-02-15T07:58:00Z', capturedAt: '2030-02-15T07:59:00Z' })), 'history-closing-date-invalid');
-    const lateDay = capture(input('2030-02-14', 'first-observed', { fetchedAt: '2030-02-15T07:58:00Z', capturedAt: '2030-02-15T07:59:00Z' }));
+  check('Vancouver historical 2025 PST 23:59 and next-midnight gate', () => {
+    const pstInput = (day, kind, options = {}) => input(day, kind, {
+      ...options, start: '2025-02-01', incomeAnchor: '2025-02-01',
+    });
+    // Feb 14 23:59 PST is 2025-02-15T07:59Z. Existing closing gate is kept.
+    rejects(() => capture(pstInput('2025-02-14', 'closing', { fetchedAt: '2025-02-15T07:58:00Z', capturedAt: '2025-02-15T07:59:00Z' })), 'history-closing-date-invalid');
+    const lateDay = capture(pstInput('2025-02-14', 'first-observed', { fetchedAt: '2025-02-15T07:58:00Z', capturedAt: '2025-02-15T07:59:00Z' }));
     assert.equal(lateDay.content.closingState, 'provisional');
     assert.ok(reasonsOf(lateDay).includes('transport:source-fetched-before-cutoff'));
     // Fetched 23:59, captured 00:00: the capture clock is not the cutoff.
-    const straddle = capture(input('2030-02-14', 'closing', { fetchedAt: '2030-02-15T07:59:00Z', capturedAt: '2030-02-15T08:00:00Z' }));
+    const straddle = capture(pstInput('2025-02-14', 'closing', { fetchedAt: '2025-02-15T07:59:00Z', capturedAt: '2025-02-15T08:00:00Z' }));
     assert.equal(straddle.content.closingState, 'provisional');
     assert.deepEqual(transport(straddle), ['transport:source-fetched-before-cutoff']);
-    assert.deepEqual(straddle.content.cutoff, { rule: 'household-day', end: '2030-02-14', tz: 'America/Vancouver' });
+    assert.deepEqual(straddle.content.cutoff, { rule: 'household-day', end: '2025-02-14', tz: 'America/Vancouver' });
     // Date gate open but missing income: still provisional.
-    const midnightGap = capture(input('2030-02-15', 'closing', { fetchedAt: '2030-02-15T08:00:00Z', capturedAt: '2030-02-15T08:01:00Z' }));
+    const midnightGap = capture(pstInput('2025-02-15', 'closing', { fetchedAt: '2025-02-15T08:00:00Z', capturedAt: '2025-02-15T08:01:00Z' }));
     assert.equal(midnightGap.content.sourceCompleteness.status, 'incomplete');
     assert.equal(midnightGap.content.closingState, 'provisional');
     assert.deepEqual(transport(midnightGap), []);
     // Same midnight clocks with complete declared scope: complete-at-capture.
-    const midnightComplete = capture(input('2030-02-15', 'closing', {
-      settleIncome: true, fetchedAt: '2030-02-15T08:00:00Z', capturedAt: '2030-02-15T08:01:00Z',
+    const midnightComplete = capture(pstInput('2025-02-15', 'closing', {
+      settleIncome: true, fetchedAt: '2025-02-15T08:00:00Z', capturedAt: '2025-02-15T08:01:00Z',
     }));
     assert.deepEqual(midnightComplete.content.sourceCompleteness, { status: 'complete', reasons: [] });
     assert.equal(midnightComplete.content.closingState, 'complete-at-capture');
     assert.deepEqual(transport(midnightComplete), []);
     // 07:30Z is still Feb 14 in PST, although a fixed UTC-7 rule would say Feb 15.
-    assert.equal(capture(input('2030-02-14', 'first-observed', { fetchedAt: '2030-02-15T07:30:00Z' })).content.closingState, 'provisional');
+    assert.equal(capture(pstInput('2025-02-14', 'first-observed', { fetchedAt: '2025-02-15T07:30:00Z' })).content.closingState, 'provisional');
   });
 
-  check('Vancouver DST (PDT after Mar 10) next-midnight gate', () => {
-    const START = '2030-03-01';
-    assert.equal(Forecast.spendingCycle(input('2030-03-14', 'first-observed', { start: START }).data.plan, START).end, '2030-03-14');
-    const before = capture(input('2030-03-14', 'first-observed', { start: START, fetchedAt: '2030-03-15T06:59:00Z' }));
-    assert.deepEqual([before.content.period.end, before.content.closingState], ['2030-03-14', 'provisional']);
+  check('Vancouver historical 2025 PDT after Mar 9 next-midnight gate', () => {
+    const START = '2025-03-01';
+    assert.equal(Forecast.spendingCycle(input('2025-03-14', 'first-observed', { start: START, incomeAnchor: START }).data.plan, START).end, '2025-03-14');
+    const before = capture(input('2025-03-14', 'first-observed', { start: START, incomeAnchor: START, fetchedAt: '2025-03-15T06:59:00Z' }));
+    assert.deepEqual([before.content.period.end, before.content.closingState], ['2025-03-14', 'provisional']);
     // Date gate open, income unsettled: provisional.
-    const afterGap = capture(input('2030-03-15', 'closing', { start: START, fetchedAt: '2030-03-15T07:00:00Z' }));
+    const afterGap = capture(input('2025-03-15', 'closing', { start: START, incomeAnchor: START, fetchedAt: '2025-03-15T07:00:00Z' }));
     assert.equal(afterGap.content.sourceCompleteness.status, 'incomplete');
-    assert.deepEqual([afterGap.content.closingState, afterGap.content.cutoff.end], ['provisional', '2030-03-14']);
+    assert.deepEqual([afterGap.content.closingState, afterGap.content.cutoff.end], ['provisional', '2025-03-14']);
     assert.deepEqual(transport(afterGap), []);
     // Same PDT midnight with complete declared scope: complete-at-capture.
-    const afterComplete = capture(input('2030-03-15', 'closing', {
-      start: START, settleIncome: true, fetchedAt: '2030-03-15T07:00:00Z',
+    const afterComplete = capture(input('2025-03-15', 'closing', {
+      start: START, incomeAnchor: START, settleIncome: true, fetchedAt: '2025-03-15T07:00:00Z',
     }));
     assert.deepEqual(afterComplete.content.sourceCompleteness, { status: 'complete', reasons: [] });
     assert.deepEqual([afterComplete.content.closingState, afterComplete.content.cutoff.end],
-      ['complete-at-capture', '2030-03-14']);
+      ['complete-at-capture', '2025-03-14']);
     assert.deepEqual(transport(afterComplete), []);
   });
 

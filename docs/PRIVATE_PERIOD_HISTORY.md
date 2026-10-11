@@ -119,7 +119,9 @@ are not a planner input.
   the source fetch and the capture fall on a Vancouver household day after
   `end` (the next-household-day gate; DST-aware via `Forecast.financialDate`).
   So 23:59 on the end day is still provisional, and the next local midnight
-  opens the date half of the gate (08:00Z in PST, 07:00Z in PDT). A fetch at
+  opens the date half of the gate. Historical 2025 PST/PDT proof uses 08:00Z /
+  07:00Z respectively; future offsets follow the installed America/Vancouver
+  timezone data, not a fixed winter/summer assumption. A fetch at
   23:59 that is captured at 00:00 stays provisional. Every evidence, coverage
   or publication gap stays `provisional` even after the date passes.
   **Complete-at-capture means complete against the declared scope at the time
