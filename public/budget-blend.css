@@ -700,6 +700,14 @@ body:has([data-budget-bento]) .sitenav {
   word-break: normal;
   overflow-wrap: normal;
 }
+/* A published negative Balance After Deductions term (typed data-sign
+   carrier, never the printed text) renders in the established critical
+   red in both themes — the same token budget-surface.css applies to
+   [data-sign="negative"]. Declared before is-unavailable so the muted
+   unavailable treatment would win if the two ever co-occurred. */
+.blend-bad.is-negative {
+  color: var(--critical);
+}
 .blend-term.is-unavailable,
 .blend-bad.is-unavailable {
   color: color-mix(in srgb, var(--blend-ink) 60%, transparent);
