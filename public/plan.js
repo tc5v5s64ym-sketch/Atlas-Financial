@@ -5066,6 +5066,7 @@ function budgetDailyNeededHtml(row) {
 // the published row key, which Forecast derives from the backing item's
 // source + id; the label, amount and date are never matched.
 const BUDGET_SAVINGS_ANNUAL_BILL_ROW = 'yearly-bill:travelvisa-annual-fee-2027';
+const BUDGET_SAVINGS_ANNUAL_BILL_ID = 'travelvisa-annual-fee-2027';
 const BUDGET_SAVINGS_ANNUAL_BILL_NOTE = 'The Travel Visa annual fee is shown under Bills as an upcoming annual bill, not as a savings goal. Its published savings funding is unchanged.';
 
 function budgetDailySavingsRows(packet, inventory, roster = []) {
@@ -5081,7 +5082,11 @@ function budgetDailySavingsRows(packet, inventory, roster = []) {
       .filter(row => row?.key && !seen.has(row.key) && seen.add(row.key))
       .map(row => ({ key: row.key, label: row.label, saved: null, needed: null, thisPeriod: null }));
   }
-  const visible = rows.filter(row => row?.key !== BUDGET_SAVINGS_ANNUAL_BILL_ROW);
+  // The unavailable-publication fallback above names roster items by their
+  // bare item id, not the published row key, so the exclusion must match
+  // both canonical identity forms of this one fee — never its label.
+  const visible = rows.filter(row => row?.key !== BUDGET_SAVINGS_ANNUAL_BILL_ROW
+    && row?.key !== BUDGET_SAVINGS_ANNUAL_BILL_ID);
   if (visible.length !== rows.length) visible.annualBillExcluded = true;
   return visible;
 }

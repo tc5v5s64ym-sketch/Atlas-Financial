@@ -239,6 +239,41 @@ const count = (html, needle) => html.split(needle).length - 1;
     'duplicate: neither occurrence figure or date is printed');
 }
 
+// ---- Unavailable publication: the roster fallback must not resurrect the fee ----
+// Systems Review BLOCK 5485506265 (advisory 4243676567): when the shared
+// savings publication is unavailable, budgetDailySavingsFor returns empty
+// rows and the Saving-for card falls back to the period's plannedCostFunding
+// roster, which names the fee by its bare item id — not the published
+// yearly-bill row key. The exclusion must catch that canonical bare form
+// too, print the relocation note, and leave every other roster goal —
+// including an unrelated goal carrying the same label — untouched.
+{
+  const rosterPeriod = { ...periodView, plannedCostFunding: { status: 'ready',
+    items: [
+      { id: FEE_ID, label: feeItem.label },
+      { id: 'home-cost', label: homeItem.label },
+      { id: 'other-annual-fee', label: feeItem.label },
+    ], unscheduled: [] } };
+  ctx.src = { plan: {}, debts: [], asOf: AS_OF,
+    advice: { savingsFunding: null, payPeriodViews: [rosterPeriod], savingsInventory: null } };
+  ctx.period = rosterPeriod;
+  const before = JSON.stringify(rosterPeriod.plannedCostFunding);
+  const html = vm.runInContext('budgetSavingsGoalsHtml(src, period, null)', ctx);
+  assert.equal(JSON.stringify(rosterPeriod.plannedCostFunding), before,
+    'unavailable: rendering does not alter the funding roster (funding preserved)');
+  assert.equal(count(html, `data-budget-savings-goal="${FEE_ID}"`), 0,
+    'unavailable: the fee bare fallback identity is not printed as a Savings goal');
+  assert.equal(count(html, `data-budget-savings-goal="${FEE_KEY}"`), 0,
+    'unavailable: the fee published row key is not printed as a Savings goal');
+  assert.equal(count(html, 'data-budget-savings-goal="home-cost"'), 1,
+    'unavailable: the unrelated annual goal still prints');
+  assert.equal(count(html, 'data-budget-savings-goal="other-annual-fee"'), 1,
+    'unavailable: an unrelated goal with the same label still prints (identity, never label, is matched)');
+  const cardPart = html.slice(0, html.indexOf('<div data-budget-funding-savings'));
+  assert.equal(count(cardPart, 'data-budget-savings-annual-bill-note'), 1,
+    'unavailable: exactly one relocation note on the Saving-for card');
+}
+
 console.log('PASS travel-visa-annual-fee: Savings exclusion + note on all three surfaces, publication untouched, '
   + 'Upcoming annual bills under All with label/amount/date/trust, historical omit, contained-period native single print, '
   + 'unresolved and duplicate identities fail closed');
