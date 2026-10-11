@@ -405,7 +405,7 @@ async function waitContent(page, timeoutMs = 30000) {
     }
     const receipt = {
       proof: 'browser-boot-treatment',
-      baseMainSha: 'd1d85a0b96dba3d077eeadecca0df2390eb3ae1e',
+      baseMainSha: '2921aa62dddd452ddc7d56b6fd0c09f92f5cef9a',
       claim: CLAIM,
       scenarios: results,
       baseComparison: comparison,
