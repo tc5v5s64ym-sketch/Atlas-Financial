@@ -1,0 +1,609 @@
+{
+  "synthetic": true,
+  "generatedBy": "test/browser-card-period-movements.js",
+  "runtime": {
+    "node": "v24.20.0",
+    "chromium": "152.0.7977.82",
+    "platform": "linux"
+  },
+  "sourceBlobs": {
+    "public/index.html": "ca13c1404c18780d26d8a8992394600f32b8ca15",
+    "public/app.js": "74909f85f9857f9f2543e92fdc9afec6c936c515",
+    "public/plan.js": "8ca17db6229425681ad20628a83e3a36d05c051f",
+    "public/forecast.js": "3f7a9086313c012369dbbf7c8d89e3d426d97759",
+    "public/budget-surface.js": "da8a27f58eb83575ba2a275aae4829d9527ea0bf",
+    "public/budget-card-movements.js": "d842048302535a4ca672b4e5b3de16bd7c307985",
+    "public/budget-blend.js": "e03b04d8784f84c332be37f3e21da8dc4c5c433c",
+    "public/budget-river.js": "38f64e0f9c1f4fd8162e5fe05dfc2d3d7dc26e90",
+    "public/budget-blend.css": "8563bae3bb8c9d5732d8203282cae8325b8cc92a",
+    "public/budget-surface.css": "d221e8e9b93ff52ce149035c61d687b460d9aa7b",
+    "public/budget-gface.css": "0de1e3dcc27be6ce01558f60870e16954835f373",
+    "public/budget-sheet-motion.css": "0505a8438fdb4a1dac1ef9254c49289fe7a734fa",
+    "test/browser-card-period-movements.js": "de22c605a8a94031c9c5d8f6cc10a4bc1c181de1",
+    "test/fixtures/card-period-movements-data.js": "bee1a5dd4f71816b76872d741cdd385b72c7b210",
+    "test/fixtures/budget-surface-data.js": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc"
+  },
+  "basedOn": "2921aa62dddd452ddc7d56b6fd0c09f92f5cef9a",
+  "screenshots": [
+    {
+      "file": "complete-strip-1440-light.png",
+      "state": "complete",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "dc236e746a38cc49b68d350556632b37faa3dcf7d1fda5afdeef8e1cae5dab76"
+    },
+    {
+      "file": "complete-open-1440-dark.png",
+      "state": "complete",
+      "width": 1440,
+      "theme": "dark",
+      "subject": "card sheet open",
+      "sha256": "2d6eac64e13601759e7cecfa7e84ab1118f0934bf3e856096ff4471d09b2d9ef"
+    },
+    {
+      "file": "complete-open-1440-light.png",
+      "state": "complete",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "a4037f2ce7912372c542599333becea57a3f1d178730cc35618eafb8f0de0c74"
+    },
+    {
+      "file": "opening-missing-strip-1440-light.png",
+      "state": "opening-missing",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "692cf093aae72421d17011db177d47865f0a23f62c1f13a8df63b11d63dacd41"
+    },
+    {
+      "file": "opening-missing-open-1440-light.png",
+      "state": "opening-missing",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "a043240f0a588149b607230d52721be2422150906530e77e7dc65a77ba442ca4"
+    },
+    {
+      "file": "truncated-strip-1440-light.png",
+      "state": "truncated",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "68982ae8d54d8fd9dae797e61620867246a740c11504bb11e995876eb24bfe33"
+    },
+    {
+      "file": "truncated-open-1440-light.png",
+      "state": "truncated",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "84e675811641f561330432e7412d2a0ee44c31730a6a65228171796b6f8a61b8"
+    },
+    {
+      "file": "pending-unknown-strip-1440-light.png",
+      "state": "pending-unknown",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "dc236e746a38cc49b68d350556632b37faa3dcf7d1fda5afdeef8e1cae5dab76"
+    },
+    {
+      "file": "pending-unknown-open-1440-light.png",
+      "state": "pending-unknown",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "31e1b11e2bfd65ec33dea43a97551cb315dee05b7fc2a682b7d284d7159f84c0"
+    },
+    {
+      "file": "credit-ambiguous-strip-1440-light.png",
+      "state": "credit-ambiguous",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "dc236e746a38cc49b68d350556632b37faa3dcf7d1fda5afdeef8e1cae5dab76"
+    },
+    {
+      "file": "credit-ambiguous-open-1440-light.png",
+      "state": "credit-ambiguous",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "20997013b8cbd7da12833bdcc7ae5e95b6b8160e91d6b349fcc84095ec1eba06"
+    },
+    {
+      "file": "complete-strip-390-light.png",
+      "state": "complete",
+      "width": 390,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "27ea3ae2ed930f13fa551562dd8dc22b23446ee6588e9aa199ed7d7d46e39a5a"
+    },
+    {
+      "file": "complete-open-390-dark.png",
+      "state": "complete",
+      "width": 390,
+      "theme": "dark",
+      "subject": "card sheet open",
+      "sha256": "2d8a441c9739e02ef686c04936ffcc64cd22e825e1af2e5ca0589316f661dde7"
+    },
+    {
+      "file": "complete-open-390-light.png",
+      "state": "complete",
+      "width": 390,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "21249a7647cd3a9201e493347b4598c9faa67c5f2299a2dc52f1ec1db81e1874"
+    },
+    {
+      "file": "opening-missing-strip-390-light.png",
+      "state": "opening-missing",
+      "width": 390,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "ae1c64801ce4abc6894b651edbe1e1e43b83f750a2bb0f2689acace3a504093a"
+    },
+    {
+      "file": "opening-missing-open-390-light.png",
+      "state": "opening-missing",
+      "width": 390,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "41eaeb31e519b8db3a4a19929064ff369ac35d549a049b96480aa9ecc8bbf741"
+    },
+    {
+      "file": "truncated-strip-390-light.png",
+      "state": "truncated",
+      "width": 390,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "99b2cc91a8b85d1eb43fe4cb57403865b3f21ec72846362dfdc09600882a9661"
+    },
+    {
+      "file": "truncated-open-390-light.png",
+      "state": "truncated",
+      "width": 390,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "cbb9e0293430ee85de94dc0d6f03802b4d91d22f0cdf433ccd7cf84b7e6d1303"
+    },
+    {
+      "file": "pending-unknown-strip-390-light.png",
+      "state": "pending-unknown",
+      "width": 390,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "22f00b93b6540ee2efffcc975798633286919f88751bc4bfb39722c44cc93d20"
+    },
+    {
+      "file": "pending-unknown-open-390-light.png",
+      "state": "pending-unknown",
+      "width": 390,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "d273c813b4514ef203c47f69594eb56bfed6f80873bb9c87e2536fd48fb4967d"
+    },
+    {
+      "file": "credit-ambiguous-strip-390-light.png",
+      "state": "credit-ambiguous",
+      "width": 390,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "27ea3ae2ed930f13fa551562dd8dc22b23446ee6588e9aa199ed7d7d46e39a5a"
+    },
+    {
+      "file": "credit-ambiguous-open-390-light.png",
+      "state": "credit-ambiguous",
+      "width": 390,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "a7405b99ffed5d734d8e865ce4216afef424d714ff74c0b0fc093bb179e9615a"
+    },
+    {
+      "file": "complete-strip-320-light.png",
+      "state": "complete",
+      "width": 320,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "f14a2842d9079f8802fc981da84bd2d5bc9dfa4e83db5144d3389c1a8ef40303"
+    },
+    {
+      "file": "complete-open-320-dark.png",
+      "state": "complete",
+      "width": 320,
+      "theme": "dark",
+      "subject": "card sheet open",
+      "sha256": "a28890f7b9380f10d920a16bb5d7ef18efe9e94bf149d887e7d038d93288525a"
+    },
+    {
+      "file": "complete-open-320-light.png",
+      "state": "complete",
+      "width": 320,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "33ab5b9a63dfc0e65f0822fb143e24a9ad0080b7f851c4ed11b61a73cf8c5ef8"
+    },
+    {
+      "file": "opening-missing-strip-320-light.png",
+      "state": "opening-missing",
+      "width": 320,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "a1a18fd833558268c2584b5179fb9994f1720a2f0a62422d953fad5ee950aa07"
+    },
+    {
+      "file": "opening-missing-open-320-light.png",
+      "state": "opening-missing",
+      "width": 320,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "0265c96f69f5631d1b251fc87d4c5074f1886ad719b2a10ba44a7b5e5d9f10f7"
+    },
+    {
+      "file": "truncated-strip-320-light.png",
+      "state": "truncated",
+      "width": 320,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "6dfd8bef6abdac98ad3130b4e68e0422f5f921fc440475b96d9dea0765199461"
+    },
+    {
+      "file": "truncated-open-320-light.png",
+      "state": "truncated",
+      "width": 320,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "02cb56b6a24e8e95b53968c0502f610b9974c3408f4b40258d1e03aa3589dfe2"
+    },
+    {
+      "file": "pending-unknown-strip-320-light.png",
+      "state": "pending-unknown",
+      "width": 320,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "78d1e2499fd0e9a0bac1e253754c97b6ad374afd80addbf11bc07ad41374dccb"
+    },
+    {
+      "file": "pending-unknown-open-320-light.png",
+      "state": "pending-unknown",
+      "width": 320,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "aefb11cadfe71c294803bbb012281864ffc287d97005df8792abe8958a24d814"
+    },
+    {
+      "file": "credit-ambiguous-strip-320-light.png",
+      "state": "credit-ambiguous",
+      "width": 320,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "f14a2842d9079f8802fc981da84bd2d5bc9dfa4e83db5144d3389c1a8ef40303"
+    },
+    {
+      "file": "credit-ambiguous-open-320-light.png",
+      "state": "credit-ambiguous",
+      "width": 320,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "80b16196b1606f06d27e8e40a78123355cbb25c2b897b90aec53a553e36a50ba"
+    },
+    {
+      "file": "plan-unavailable-strip-1440-light.png",
+      "state": "plan-unavailable",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card strip on the plan-unavailable branch",
+      "sha256": "0d659c18cf5038fb101cf34b61f33532450047bce2342c499de483eab120a78a"
+    },
+    {
+      "file": "plan-unavailable-card-open-1440-light.png",
+      "state": "plan-unavailable",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card sheet open on the plan-unavailable branch",
+      "sha256": "66923e4ba57eba595480d3f475e5a82f3eb4a6941e4025f8f3b793e199e9ae28"
+    },
+    {
+      "file": "plan-unavailable-strip-390-light.png",
+      "state": "plan-unavailable",
+      "width": 390,
+      "theme": "light",
+      "subject": "card strip on the plan-unavailable branch",
+      "sha256": "e24b7550b31de4f7bba3b3a9b89ebb9f538508dd786074ff6ddde828342170c4"
+    },
+    {
+      "file": "plan-unavailable-card-open-390-light.png",
+      "state": "plan-unavailable",
+      "width": 390,
+      "theme": "light",
+      "subject": "card sheet open on the plan-unavailable branch",
+      "sha256": "1abc02726666d27f29456f2115ca56cfe835942d908be97de426e15f6e59c8c3"
+    },
+    {
+      "file": "plan-unavailable-strip-320-light.png",
+      "state": "plan-unavailable",
+      "width": 320,
+      "theme": "light",
+      "subject": "card strip on the plan-unavailable branch",
+      "sha256": "d9438cb49e71866131c88fda8c8b0d3ff4d1cd7f4dec15309169dab28f0806d7"
+    },
+    {
+      "file": "plan-unavailable-card-open-320-light.png",
+      "state": "plan-unavailable",
+      "width": 320,
+      "theme": "light",
+      "subject": "card sheet open on the plan-unavailable branch",
+      "sha256": "9df64705546fcd68d86868859b44f8f9ad0179f2719256ef1bc7d22eb29263e1"
+    },
+    {
+      "file": "plan-unavailable-heloc-open-320-dark.png",
+      "state": "plan-unavailable",
+      "width": 320,
+      "theme": "dark",
+      "subject": "HELOC sheet open on the plan-unavailable branch",
+      "sha256": "e7f70c29f22287b56141b65a593c6424f62705eef772f4986d0206a835ffb9a7"
+    }
+  ],
+  "states": [
+    {
+      "width": 1440,
+      "state": "complete",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [
+        {
+          "theme": "light",
+          "ratios": [
+            6.757038955876727,
+            6.105866734391325
+          ]
+        },
+        {
+          "theme": "dark",
+          "ratios": [
+            8.030282516645022,
+            9.314950716485438
+          ]
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "width": 1440,
+      "state": "opening-missing",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [],
+      "synthetic": true
+    },
+    {
+      "width": 1440,
+      "state": "truncated",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [],
+      "synthetic": true
+    },
+    {
+      "width": 1440,
+      "state": "pending-unknown",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [],
+      "synthetic": true
+    },
+    {
+      "width": 1440,
+      "state": "credit-ambiguous",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [],
+      "synthetic": true
+    },
+    {
+      "width": 390,
+      "state": "complete",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [
+        {
+          "theme": "light",
+          "ratios": [
+            6.757038955876727,
+            6.105866734391325
+          ]
+        },
+        {
+          "theme": "dark",
+          "ratios": [
+            8.030282516645022,
+            9.314950716485438
+          ]
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "width": 390,
+      "state": "opening-missing",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [],
+      "synthetic": true
+    },
+    {
+      "width": 390,
+      "state": "truncated",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [],
+      "synthetic": true
+    },
+    {
+      "width": 390,
+      "state": "pending-unknown",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [],
+      "synthetic": true
+    },
+    {
+      "width": 390,
+      "state": "credit-ambiguous",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [],
+      "synthetic": true
+    },
+    {
+      "width": 320,
+      "state": "complete",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [
+        {
+          "theme": "light",
+          "ratios": [
+            6.757038955876727,
+            6.105866734391325
+          ]
+        },
+        {
+          "theme": "dark",
+          "ratios": [
+            8.030282516645022,
+            9.314950716485438
+          ]
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "width": 320,
+      "state": "opening-missing",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [],
+      "synthetic": true
+    },
+    {
+      "width": 320,
+      "state": "truncated",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [],
+      "synthetic": true
+    },
+    {
+      "width": 320,
+      "state": "pending-unknown",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [],
+      "synthetic": true
+    },
+    {
+      "width": 320,
+      "state": "credit-ambiguous",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [],
+      "synthetic": true
+    },
+    {
+      "width": 1440,
+      "state": "plan-unavailable",
+      "synthetic": true
+    },
+    {
+      "width": 390,
+      "state": "plan-unavailable",
+      "synthetic": true
+    },
+    {
+      "width": 320,
+      "state": "plan-unavailable",
+      "synthetic": true
+    }
+  ],
+  "errors": [],
+  "writes": [],
+  "external": []
+}
