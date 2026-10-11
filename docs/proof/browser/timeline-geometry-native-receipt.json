@@ -7,7 +7,7 @@
     "chromium": "152.0.7977.82"
   },
   "sourceBinding": {
-    "sourceCommit": "dd0dedd911222203cfc1dcf1057d2fb81bd3d47e",
+    "sourceCommit": "f6614bbbd899602820b0baba735d253b9c66ed67",
     "sourceTree": "3db73cdb70aec943d8c922a2a6a36d355ae2442a",
     "baseCommit": null,
     "cleanAtStart": true,
@@ -715,5 +715,13 @@
     ]
   },
   "pageErrors": [],
-  "failures": []
+  "failures": [],
+  "remoteVerification": {
+    "method": "GitHub API GET /git/trees/3db73cdb70aec943d8c922a2a6a36d355ae2442a?recursive=1; each bound file's gitBlob compared to the pushed head tree",
+    "pushedHead": "f6614bbbd899602820b0baba735d253b9c66ed67",
+    "headTree": "3db73cdb70aec943d8c922a2a6a36d355ae2442a",
+    "filesChecked": 12,
+    "allBlobsMatch": true,
+    "verifiedAt": "2026-10-11T04:45:40Z"
+  }
 }
