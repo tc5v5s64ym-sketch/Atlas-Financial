@@ -2930,6 +2930,20 @@
     const bill = ((plan && plan.bills) || []).find(b => b && b.id === event.id);
     return isYearlyCardPaidBill(bill, plan);
   }
+  // Savings funding is explicit purpose-reserve intent, not an inference from
+  // annual cadence or card payment. Square One has this existing goal ref;
+  // unrelated annual card fees retain their owner-directed paycheck Bills.
+  function isSavingsFundedPaydayBill(bill, plan) {
+    return isYearlyCardPaidBill(bill, plan) && plan?.savingsEarmarks?.version === 1
+      && plan.savingsEarmarks.currency === 'CAD' && Array.isArray(plan.savingsEarmarks.pools)
+      && plan.savingsEarmarks.pools.some(pool => pool?.role === 'purpose-reserve'
+        && Array.isArray(pool.goalRefs)
+        && pool.goalRefs.some(ref => ref?.kind === 'yearly-bill' && ref.id === bill.id));
+  }
+  function isSavingsFundedPaydayBillEvent(event, plan) {
+    return isYearlyCardPaidBillEvent(event, plan)
+      && isSavingsFundedPaydayBill((plan.bills || []).find(b => b?.id === event.id), plan);
+  }
   // One dated cash lump on a reserve category. plannedAmount is the exact
   // future planning figure; planningDate is the household planning/funding
   // date, not a municipal statutory due date and not a yearly recurrence.
@@ -7523,10 +7537,10 @@
       if (event.kind !== 'obligation' && event.kind !== 'bill') continue;
       if (event.kind === 'obligation' && event.effect === 'capitalise') continue;
       if (event.jointCash === false && !event.cardPaid) continue;
-      // Annual card-paid costs already belong to fundingSequence / Savings
+      // Explicit savings-funded costs already belong to fundingSequence / Savings
       // and Stage 2 planned spending. Keep their native expense and reserve
       // draw, without also charging the paycheck Bills waterfall.
-      if (isYearlyCardPaidBillEvent(event, plan)) continue;
+      if (isSavingsFundedPaydayBillEvent(event, plan)) continue;
       // expandEvents may carry an unpaid once row into a later window.
       // Printed payday windows use the scheduled due, not the posting-window
       // date, so a 15 August bill reserved on the 16th stays on 15 August.
@@ -7694,7 +7708,7 @@
     for (const bill of (plan && plan.bills) || []) {
       if (!bill || !bill.needsDate) continue;
       if (!billIsHouseholdObligation(bill)) continue;
-      if (isYearlyCardPaidBill(bill, plan)) continue;
+      if (isSavingsFundedPaydayBill(bill, plan)) continue;
       const fundingAccount = billFundingAccount(bill, plan);
       const payingAccount = billCashPayingAccount(bill, plan);
       undatedBills.push({
@@ -9964,11 +9978,20 @@
     // unfunded cash into internal carry, extra debt or major purchases.
     // Read the same native expenses from today's opening so only earned
     // reserve backing offsets them; keepRepresented is deliberately absent.
-    const annualSavingsBills = (plan.bills || []).filter(b => isYearlyCardPaidBill(b, plan));
+    const annualSavingsBills = (plan.bills || []).filter(b => isSavingsFundedPaydayBill(b, plan));
     const annualSavingsUnknown = annualSavingsBills.some(b => b.needsDate || savingsCents(b.amount) == null);
     const annualSavingsEvents = annualSavingsBills.length
       ? expandEvents(plan, asOf, coveringSpan(windows).end, { ...opts, keepRepresented: false })
-        .filter(e => isYearlyCardPaidBillEvent(e, plan)) : [];
+        .filter(e => isSavingsFundedPaydayBillEvent(e, plan)) : [];
+    // A payday snapshot predates represented payments inside its interval.
+    // Today's reserve stock cannot reconstruct their historical cash split.
+    // Keep those occurrences to qualify carry; their expense is already in
+    // the native observed opening and must not be replayed from that opening.
+    const annualSavingsHistory = annualSavingsBills.length
+      ? expandEvents(plan, coveringSpan(windows).start, asOf, { ...opts, keepRepresented: true })
+        .filter(e => isSavingsFundedPaydayBillEvent(e, plan)) : [];
+    const representedSavings = representedKeySet(plan, opts, asOf);
+    const observedSavings = representedActualMap(opts);
     const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
     const liveCurrentBalance = publishedCurrentBalanceAmount(plan, alloc);
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
@@ -10164,7 +10187,10 @@
         && incomeAdded != null && periodBillLoad != null
         ? roundCent((Number(opening) || 0) + incomeAdded - periodBillLoad)
         : null;
-      const cashAfterHouseholdBudget = cashAfterBills != null && !annualSavingsUnknown
+      const annualSnapshotCarryUnknown = paydayBoundaryOpening && annualSavingsHistory.some(e =>
+        e.date >= openingAsOf && e.date >= window.start && e.date <= window.end
+        && calendarOccurrenceRepresented(representedSavings, observedSavings, e.id, e.date));
+      const cashAfterHouseholdBudget = cashAfterBills != null && !annualSavingsUnknown && !annualSnapshotCarryUnknown
         ? roundCent(cashAfterBills - budget.hold - annualSavingsNeed) : null;
       let extraAllocated = 0;
       let extraDebt;

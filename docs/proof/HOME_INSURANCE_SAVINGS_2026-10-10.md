@@ -6,8 +6,10 @@ for. The referenced period is **future January 29-February 11, 2027**, not
 October. Existing date, estimate, merchant route and unknown paying card
 remain the standing facts in `ACCOUNT_FACTS.md` and `data.json`.
 
-Base: `08d9b8c89425279054cf9770646c71c403856f14`, refreshed from main before
-editing. Current-state verdict: **STILL BROKEN**. `calendarBillSections`
+Base: `db2a80033d321eefd894457c499e80063b16d6e0`, refreshed main for the
+R1/R2 repair. Original inspection began at `08d9b8c`; #571 and #572 merged
+without changing Forecast or household inputs. Current-state verdict on base:
+**STILL BROKEN**. `calendarBillSections`
 printed Square One in paycheck Bills although `fundingSequence` already
 classifies that native annual card-paid event as required planned spending.
 
@@ -31,7 +33,10 @@ balance 4,627.43. The independent synthetic October 9-22 current-period
 test also remains unchanged.
 
 This is reclassification of the paycheck deduction, not cancellation or new
-funding. One estimated 3,131.76 expense stays on February 10, 2027 in
+funding. The existing home purpose-reserve `yearly-bill` goal reference
+explicitly assigns Square One to Savings. Annual cadence or card payment
+alone does not: Travel Visa's separately owner-directed annual fee retains
+its paycheck Bills deduction. One estimated 3,131.76 expense stays on February 10, 2027 in
 `expandEvents`, `fundingSequence`, Plan Spend and Road Ahead Stage 2. Native
 simulation and Road Ahead outputs remain unchanged. Canonical savings
 observations are absent; backing, precise proposals and location projection
@@ -62,16 +67,63 @@ Balance After Deductions are composed. Input and settlement are immutable.
 A 200 premium has only 59 backed after the earlier club cost. The remaining
 141 still leaves an operating shortfall of 61 on October 25; November's
 receipt cannot fund it backward. Unknown stock/price/date retains the named
-requirement and withholds precise funding. Monthly card bills and annual
-joint-cash bills retain their existing deductions. The six-test regression
-was red on base and passes with this repair; a seventh test protects the
-unfunded/unknown annual cost from new debt or purchase allocation. Both released-protection mutations fail this regression. An eighth case explicitly observes zero savings: 80 operating - 60 club - 200 premium = -180 at the deadline; the later 77 leaves -103 without backdating funding.
+requirement and withholds precise funding. Monthly card bills, unrelated
+annual card fees and annual joint-cash bills retain their existing deductions.
+The twelve-test regression passes; seven fail on unchanged base. Removing
+either native unfunded debt or purchase protection fails independently.
+Known zero savings preserves 80 operating - 60 club - 200 premium = -180 at
+the deadline; the later 77 leaves -103 without backdating funding.
 
 `test/test-budget-period-funding.js` independently proves 250 earlier top-up
 + 350 later top-up = one 600 payment, with zero duplicate Bills offset.
 `test/test-square-one-annual-bill.js` proves the real future window, date,
 estimate, one native event, one Plan Spend row and one Road Ahead Stage 2
-expense. The older payday-reset oracle now independently expects 200 - 40 - 80 = 80 of routine entitlement and 55 of remaining goal need. The absent/empty-earmark historical comparison excludes annual card-paid rows, whose intentionally changed classification has the independent regression above; every remaining incumbent field and negative control stays checked. Ordinary Forecast and authority checks run with the full suite.
+expense. The older payday-reset oracle independently expects 200 - 40 - 80 =
+80 of routine entitlement and 55 of remaining goal need. The immutable
+absent/empty-earmark historical comparison retains all annual card-paid rows
+and compares every incumbent field; no annual row is removed from that oracle.
+Ordinary Forecast and authority checks run with the full suite.
+
+## R1/R2 repair proof
+
+Parent findings reproduced on exact prior candidate
+`229a2e37404fb13d3f776e592b4fc32694e54688`. The attempted GitHub review
+submission returned "user cancelled MCP tool call". No published BLOCK review
+ID is confirmed; it was not retried. These findings are authorized repair
+guidance, not a claimed published review or candidate PASS.
+
+R1: an original October 9 snapshot of 200 predates an October 10 annual
+payment of 100 and an October 11 observed operating opening of 100. A later
+November 2 receipt is 77. The prior candidate incorrectly carried 200 into
+October 23 and 277 into November 6. Both the unmodified review fixture and
+its explicitly marked Savings variant now publish 100 and 177, matching the
+independent 200 - 100 and 200 - 100 + 77 arithmetic and native cash walk.
+Funding and extra-debt are unavailable in this input; no allocation release
+is claimed. The marked variant keeps Bills at zero so narrowing cannot mask
+the carry defect by restoring the duplicate deduction.
+
+Represented Savings occurrences between the original snapshot and as-of
+qualify that snapshot's carry as unknown: today's reserve balances cannot
+prove a historical cash split. The existing native observed-opening walk
+supplies the subsequent opening when available. No historical expense is
+replayed from that observed opening and no historical backing is invented.
+Same-day represented payment, an opening already including payment, and an
+unavailable operating plan are tested. Removing this qualification fails two
+tests. The existing as-of `annualSavingsNeed` / `annualSavingsUnknown`
+protection remains; no second withheld-cost field or subtraction is added.
+
+R2: Travel Visa's estimated 149 fee on October 6, 2027, without an explicit
+Savings goal, retains Bills 149 and BAD -149 in the zero-income/zero-budget
+review scenario. The prior candidate incorrectly published Bills 0/BAD 0.
+Its native expense/date/estimate remain unchanged. All three named R1/R2
+regressions fail on the prior candidate and pass on the repaired source.
+
+The independent partial-backing case has 80 operating, 40 evidenced Savings,
+60 income/top-up on October 23, and one 100 premium on October 25. Payment
+consumes 40 current backing + 60 projected top-up once, leaving operating 80,
+Savings 0, combined cash 80: 80 + 40 + 60 - 100 = 80. Bill-payment offset
+and duplicate funding-credit terms remain zero. This is a hypothetical
+projection, not a permission to transfer money.
 
 ## Separate future projected-Savings follow-up
 
@@ -145,12 +197,19 @@ clipping, whole-cent conservation and UI Projected wording in that separate PR.
 ## Scope and residual gates
 
 One runtime owner changed: Forecast's payday Bills classification for its
-existing annual card-paid planned-expense class, including the undated case.
+explicitly Savings-assigned annual card-paid expense, including the undated
+case and its internal carry protection.
 No canonical amount/date/account edit, UI refactor, merge or deployment.
-PRs #571, #572, #570 and #575 were checked open before work; #571 is now in the final base. #570 shares the
+PRs #571, #572, #570 and #575 were checked open before work; #571 and #572 are
+now in the base. #570 shares the
 Forecast file for a separate streaming funding outcome; this patch touches
 `calendarBillSections` and its `calendarPeriodWaterfalls` consumer and requires integration revalidation after
 concurrent merges. Systems Review remains **PENDING**, required before merge.
+The separate #578 remaining-gap repair and the proposed Budget-matched future
+Savings design are outside this outcome. The planning addendum is preserved
+outside this branch. No household input changes or competing builder were
+introduced here. Full exact-head check results are recorded on the Draft PR;
+the prior candidate's 359-suite PASS does not satisfy the repaired-head gate.
 
 The ordinary figures snapshot reports its 600 current/default figures
 unchanged against this exact base. It does not snapshot every future Budget

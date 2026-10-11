@@ -42,12 +42,24 @@ assert.equal(richFirst.incomeTotal, 1000);
 assert.equal(richFirst.plannedCostFunding.capacity, 500);
 assert.equal(richFirst.plannedCostFunding.contribution, 250);
 
-// Annual card-paid costs are planned savings expenses, not payday Bills.
+// Explicit annual Savings goals are planned savings expenses, not payday Bills.
 // The independent period residual is $350; its $350 top-up follows the earlier
 // $250 top-up and the single $600 draw consumes that proposed reserve once.
 const annual = fixture(); annual.plan.commitments = [];
 annual.plan.bills.push({ id: 'annual-cost', label: 'Annual protected cost', amount: 600,
   frequency: 'yearly', month: 9, day: 10, firstDue: '2026-09-10', jointCash: false, confidence: 'confirmed' });
+annual.plan.savingsEarmarks = { version: 1, currency: 'CAD', history: [], pools: [
+  { id: 'home', accountId: 'savings', role: 'purpose-reserve', purpose: 'Invented annual cost',
+    goalRefs: [{ kind: 'yearly-bill', id: 'annual-cost' }] },
+  { id: 'spare', accountId: 'savings-dont-touch', role: 'purpose-reserve',
+    purpose: 'Invented spare reserve', reconciledOn: annual.meta.asOf, goalRefs: [] },
+] };
+annual.plan.savingsEarmarks.allocationPolicy = { order: 'due-date-first-combined-pool',
+  effectiveFrom: annual.meta.asOf, source: 'Independent invented annual savings instruction' };
+annual.plan.startingCash.heldElsewhere = [{ id: 'savings-dont-touch', value: 0, class: 'purpose-reserve' }];
+annual.plan.savingsPoolObservation = { asOf: annual.meta.asOf, accounts: ['savings', 'savings-dont-touch']
+  .map(accountId => ({ accountId, value: 0, currency: 'CAD', source: 'provider-observe:lunchmoney',
+    evidenceDate: annual.meta.asOf, pendingState: 'clear' })) };
 const annualAdvice = run(annual);
 const annualFirst = selected(annualAdvice, '2026-08-14').plannedCostFunding;
 const annualNextPeriod = selected(annualAdvice, '2026-08-28');

@@ -24,12 +24,6 @@ assert.notEqual(old.planSpendPaydayFunding.status, 'unavailable', 'old zero-base
 assert.equal(current.planSpendPaydayFunding.status, 'unavailable');
 assert.deepEqual(current.savingsInventory.pools.map(p => [p.intent, p.unallocated]), [[247.80, 53.37], [99.99, 44.09]]);
 const empty = clone(data.plan); delete empty.savingsEarmarks; delete empty.savingsPoolObservation;
-// This historical oracle isolates absent/empty earmark configuration. Annual
-// card-paid classification now intentionally differs from this older engine;
-// its independent cents/draw/no-double-count proof lives in
-// test-annual-savings-payperiod.js. Keep every remaining incumbent field
-// compared, including the negative controls below.
-empty.bills = empty.bills.filter(b => !(b.frequency === 'yearly' && b.jointCash === false));
 const legacyBefore = before.recommend(empty, AS_OF, opts), legacyAfter = F.recommend(empty, AS_OF, opts);
 // Budget progress deliberately adds a read-only namespace to period records.
 // Validate that namespace on each concrete publication path, then compare

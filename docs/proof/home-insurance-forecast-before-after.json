@@ -1,6 +1,6 @@
 {
-  "base": "db12bc9cb2c145f329d20f015fd8db9ea75d8706",
-  "candidateForecastSha256": "d272ca5eaccca3398b6cf59521d28faa212e033fecbc27b1d2444d7bfa95917e",
+  "base": "db2a80033d321eefd894457c499e80063b16d6e0",
+  "candidateForecastSha256": "6ba96df4e84876bfb9ad36a5e15d0eb920e40cbead49cfac1d840af447bd8cde",
   "financialAsOf": "2026-08-19",
   "nature": "canonical-Forecast-not-live-October",
   "currency": "CAD",
@@ -93,5 +93,138 @@
     "reason": "Savings observations are unavailable.",
     "timelineStatus": "unavailable",
     "timelineReason": "Savings observations are unavailable."
+  },
+  "repairComparison": {
+    "priorHead": "229a2e37404fb13d3f776e592b4fc32694e54688",
+    "R1": {
+      "method": "200 original snapshot minus 100 paid annual expense, then 77 later receipt",
+      "originalInput": {
+        "before": [
+          {
+            "start": "2026-10-09",
+            "opening": 200,
+            "source": "snapshot",
+            "bills": 0,
+            "funding": "unavailable",
+            "extraDebt": "unavailable"
+          },
+          {
+            "start": "2026-10-23",
+            "opening": 200,
+            "source": "carry-forward",
+            "bills": 0,
+            "funding": "unavailable",
+            "extraDebt": "unavailable"
+          },
+          {
+            "start": "2026-11-06",
+            "opening": 277,
+            "source": "carry-forward",
+            "bills": 0,
+            "funding": "unavailable",
+            "extraDebt": "unavailable"
+          }
+        ],
+        "after": [
+          {
+            "start": "2026-10-09",
+            "opening": 200,
+            "source": "snapshot",
+            "bills": 100,
+            "funding": "unavailable",
+            "extraDebt": "unavailable"
+          },
+          {
+            "start": "2026-10-23",
+            "opening": 100,
+            "source": "carry-forward",
+            "bills": 0,
+            "funding": "unavailable",
+            "extraDebt": "unavailable"
+          },
+          {
+            "start": "2026-11-06",
+            "opening": 177,
+            "source": "carry-forward",
+            "bills": 0,
+            "funding": "unavailable",
+            "extraDebt": "unavailable"
+          }
+        ]
+      },
+      "explicitSavingsGoal": {
+        "before": [
+          {
+            "start": "2026-10-09",
+            "opening": 200,
+            "source": "snapshot",
+            "bills": 0,
+            "funding": "unavailable",
+            "extraDebt": "unavailable"
+          },
+          {
+            "start": "2026-10-23",
+            "opening": 200,
+            "source": "carry-forward",
+            "bills": 0,
+            "funding": "unavailable",
+            "extraDebt": "unavailable"
+          },
+          {
+            "start": "2026-11-06",
+            "opening": 277,
+            "source": "carry-forward",
+            "bills": 0,
+            "funding": "unavailable",
+            "extraDebt": "unavailable"
+          }
+        ],
+        "after": [
+          {
+            "start": "2026-10-09",
+            "opening": 200,
+            "source": "snapshot",
+            "bills": 0,
+            "funding": "unavailable",
+            "extraDebt": "unavailable"
+          },
+          {
+            "start": "2026-10-23",
+            "opening": 100,
+            "source": "cutover-walk",
+            "bills": 0,
+            "funding": "unavailable",
+            "extraDebt": "unavailable"
+          },
+          {
+            "start": "2026-11-06",
+            "opening": 177,
+            "source": "carry-forward",
+            "bills": 0,
+            "funding": "unavailable",
+            "extraDebt": "unavailable"
+          }
+        ]
+      }
+    },
+    "R2": {
+      "before": {
+        "income": 0,
+        "bills": 0,
+        "householdBudget": 0,
+        "BAD": 0,
+        "ids": []
+      },
+      "after": {
+        "income": 0,
+        "bills": 149,
+        "householdBudget": 0,
+        "BAD": -149,
+        "ids": [
+          "travelvisa-annual-fee-2027"
+        ]
+      }
+    },
+    "reviewStatus": "No published review ID confirmed; exact repaired-head Systems Review PENDING"
   }
 }

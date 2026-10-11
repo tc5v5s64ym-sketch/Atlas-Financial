@@ -709,7 +709,7 @@ it is a phone call worth making [ASK].
 | Renews | **10 February, automatically** |
 | Last paid | **$3,131.76** on **2026-02-10** — **the whole year in one payment** (Square One emails: renewal + payment processed on a credit card) |
 | Next due | **2027-02-10** |
-| Forecast home | `plan.bills` id `square-one`: yearly, month 2, day 10, `firstDue` 2027-02-10, **card-paid** (`jointCash: false`). Owner 2026-10-10: retain as a chronological planned savings expense, excluded from the paycheck Bills deduction. Its native dated expense and savings draw remain once. Not an undated `plan.commitments` row. Not a Household Budget `plannedMonthly`. |
+| Forecast home | `plan.bills` id `square-one`: yearly, month 2, day 10, `firstDue` 2027-02-10, **card-paid** (`jointCash: false`). Owner 2026-10-10: retain as a chronological planned savings expense, excluded from the paycheck Bills deduction. Its existing home purpose-reserve yearly-bill goal reference establishes this Savings assignment; annual cadence or card payment alone does not. Its native dated expense and savings draw remain once. Not an undated `plan.commitments` row. Not a Household Budget `plannedMonthly`. |
 | Planning amount | Last verified **$3,131.76**. Next cash event is **estimated** — the premium rose about **+17%** the prior year. Owner-confirmed 2026-08-27: planning amount is approximately **$3,000/year, not $6,000/year**. $6,000/year is property tax, not Square One. |
 | History | $2,730.36 (Jan 2024) → $2,675.88 (Jan 2025) → $3,131.76 (Feb 2026), **about +17% in a year** |
 | Paying card | Still **unknown** (B69). Owner 2026-09-18: the 2026-02-10 payment processed on **a credit card**. Do not invent Travel Visa or another named `payingAccount`. |
