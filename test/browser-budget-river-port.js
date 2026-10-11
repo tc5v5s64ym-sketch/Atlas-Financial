@@ -335,7 +335,7 @@ async function proveDisplacedLabelHitTargeting({ open }) {
     return page;
   };
   const settledAt = (page, k) => page.waitForFunction(k => {
-    const r = window.__hitRiver; return r.index === k && r.head.settled;
+    const r = window.__hitRiver; return r.index === k && r.head.settled && r._lastF === k;
   }, k, { timeout: 5000 }).catch(() => {});
   const labelCentre = (page, k) => page.evaluate(k => {
     const b = window.__hitRiver.valEls[k].getBoundingClientRect();
