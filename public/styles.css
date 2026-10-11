@@ -386,6 +386,45 @@ svg { display:block; width:100%; height:auto; overflow:visible; }
             font-size:.87rem; color:var(--text-secondary); }
 .note-box.crit { border-left-color:var(--critical); }
 
+/* ------------------------------------------------------- boot treatment
+   Shown only while data is genuinely loading; indeterminate by design —
+   a pulse, never a percentage or a progress claim. Two layers, one visual
+   language. .boot-static is index.html markup for the pre-script interval
+   and is removed by App.boot the moment scripts run. .boot-treatment is
+   built by app.js inside the boot notice on every load attempt and leaves
+   with it: removed on success, wiped when the crit text replaces the
+   loading text. Both layers are purely decorative — aria-hidden in the
+   markup, no focusable content, pointer-events none — and the boot notice
+   remains the single role="status" announcer. The pulse bars reuse the
+   brand mark's three colours; surfaces and text use the theme tokens. */
+.boot-static { display:flex; align-items:center; gap:12px; margin:16px 0 0;
+  padding:12px 14px; background:var(--surface-1); border:1px solid var(--border);
+  border-radius:var(--radius-md); box-shadow:var(--shadow-1);
+  color:var(--text-secondary); font-size:.9rem; pointer-events:none; }
+.boot-static-mark { width:30px; height:30px; flex:none; }
+.boot-mark-bg { fill:#0b0c10; }
+.boot-mark-a { fill:#0c9a6a; }
+.boot-mark-b { fill:#5650e0; }
+.boot-mark-c { fill:#d23f8a; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .boot-mark-bg { fill:#f4f5f7; }
+}
+:root[data-theme="dark"] .boot-mark-bg { fill:#f4f5f7; }
+.boot-static-text { font-weight:600; color:var(--text-primary); letter-spacing:-.01em; }
+.note-box.is-loading { display:flex; flex-wrap:wrap; align-items:center; column-gap:10px; }
+.boot-treatment { order:-1; pointer-events:none; }
+.boot-pulse { display:inline-flex; align-items:flex-end; gap:3px; height:14px; flex:none; }
+.boot-pulse > span { width:5px; height:14px; border-radius:2px; background:#0c9a6a;
+  transform-origin:bottom; animation:boot-pulse 1.4s ease-in-out infinite; }
+.boot-pulse > span:nth-child(2) { background:#5650e0; animation-delay:.18s; }
+.boot-pulse > span:nth-child(3) { background:#d23f8a; animation-delay:.36s; }
+@keyframes boot-pulse { 0%,100% { transform:scaleY(.4); opacity:.45; }
+                        50% { transform:scaleY(1); opacity:1; } }
+@media (prefers-reduced-motion: reduce) {
+  .boot-pulse > span { animation:none; transform:none; opacity:1; }
+}
+@media (max-width:480px) { .boot-static { padding:10px 12px; gap:10px; } }
+
 /* ---------------------------------------------------------------- modeller */
 .model { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
 @media (max-width:760px) { .model { grid-template-columns:1fr; } }

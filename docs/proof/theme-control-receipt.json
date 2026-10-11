@@ -2,15 +2,15 @@
   "proof": "browser-theme-control",
   "claim": "the Budget header theme button renders exactly one visible glyph in every theme state at 390px, 320px and desktop widths — moon in Auto on a light-scheme OS (previously both glyphs were display:none there), sun in Auto on a dark scheme, sun for explicit dark, moon for explicit light — and tapping it cycles and persists the theme via the existing hfd-theme storage; the labelled #theme-btn on the other pages is unchanged",
   "runtime": {
-    "node": "v24.20.0",
-    "chromium": "152.0.7977.82",
-    "platform": "linux"
+    "node": "v24.18.0",
+    "chromium": "154.0.4258.62",
+    "platform": "win32"
   },
   "servedSources": {
     "public/budget-blend.css": "36c05416820155d2837a16b4b048a9c8584604f1",
-    "public/index.html": "ca13c1404c18780d26d8a8992394600f32b8ca15",
+    "public/index.html": "519c380684f69a87206458945295374edde25f2e",
     "public/budget-blend.js": "e03b04d8784f84c332be37f3e21da8dc4c5c433c",
-    "public/app.js": "74909f85f9857f9f2543e92fdc9afec6c936c515",
+    "public/app.js": "b2046e58e7b3917c8918ae6314009c88be363a63",
     "public/bills.html": "26c4b2aed77e4031b9a21f06590e4e3e6e269c85",
     "test/browser-theme-control.js": "7f92bb0c8c664e60fb7a167a5b59f5569e4ed94c"
   },
@@ -395,14 +395,14 @@
   "billsControl": {
     "before": {
       "text": "Theme: Auto",
-      "width": 104.640625,
+      "width": 99.984375,
       "height": 34,
       "visible": true,
       "dataTheme": null
     },
     "after": {
       "text": "Theme: Dark",
-      "width": 104.828125,
+      "width": 98.953125,
       "height": 34,
       "visible": true,
       "dataTheme": "dark"
@@ -435,12 +435,12 @@
   "screenshots": [
     {
       "file": "docs/proof/theme-control-header-auto-light-390.png",
-      "sha256": "640ca294b8fd0bdf393e8a57a81aa420f9fa432c3b7d4e38a0a757bfc89896c8",
+      "sha256": "bab4c49a989b4a039f57d1f0ff1220f2eea7acfc2958c2cb5133b83a7903372a",
       "state": "after (this tree), auto + OS light, 390px header"
     },
     {
       "file": "docs/proof/theme-control-header-auto-light-390-before.png",
-      "sha256": "a12e7bcc14128ab8e074edf6f17a80e3adbc0ff40e2bedc66d800e270262fe32",
+      "sha256": "e1a2d48cae9cbc96edf97e204d217ea8604f9b2aff10210998babf944a816c7f",
       "state": "before (pristine base), auto + OS light, 390px header"
     }
   ]

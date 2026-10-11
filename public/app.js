@@ -365,6 +365,11 @@ const App = (() => {
     setupTheme();
     setupSpy();
     watchStackableTables();
+    // The static boot treatment (index.html only) covers the pre-script
+    // interval; from here the boot notice below owns the loading interval,
+    // so the static layer never doubles or outlives it.
+    const staticBoot = document.querySelector('.boot-static');
+    if (staticBoot) staticBoot.remove();
     const wrap = document.querySelector('.wrap');
     const notice = document.createElement('div');
     notice.className = 'note-box';
@@ -377,13 +382,27 @@ const App = (() => {
       const controller = new AbortController();
       let cancelled = false;
       const timer = setTimeout(() => controller.abort(), 180000);
-      notice.className = 'note-box';
+      notice.className = 'note-box is-loading';
       notice.textContent = 'Loading current data... This can take a couple of minutes. ';
       const cancel = document.createElement('button');
       cancel.type = 'button';
       cancel.textContent = 'Cancel';
       cancel.addEventListener('click', () => { cancelled = true; controller.abort(); });
       notice.append(cancel);
+      // Branded boot treatment: a text-free CSS pulse (styles.css
+      // .boot-treatment), purely decorative — aria-hidden, no text of its
+      // own, pointer-events disabled — so this notice stays the single
+      // role="status" announcer and the text contract above is untouched.
+      // It is rebuilt here on every attempt because the textContent reset
+      // above wipes the notice's children; the failure path wipes it again
+      // when it prints the crit text, and success removes it with the
+      // notice. It therefore shows only while a load is genuinely pending.
+      const treatment = document.createElement('span');
+      treatment.className = 'boot-treatment boot-pulse';
+      treatment.setAttribute('aria-hidden', 'true');
+      treatment.setAttribute('data-boot-treatment', '');
+      for (let i = 0; i < 3; i++) treatment.append(document.createElement('span'));
+      notice.append(treatment);
       const wants = [fetch('/data.json', { credentials: 'same-origin', signal: controller.signal })
         .then(r => {
           if (r.status === 401) { location.href = '/login'; throw new Error('auth'); }
