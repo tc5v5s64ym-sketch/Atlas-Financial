@@ -9,9 +9,15 @@
 // events, or announces.
 //
 // Timing claim, deliberately limited: with /data.json held for a fixed,
-// identical delay on base and branch, the treatment is visible for the
-// whole genuine-load interval, is removed on arrival, and adds no
-// measurable delay to rendered content. No real-world boot-speed claim.
+// identical delay on base and branch, the treatment is visible during
+// the genuine-load interval with no gaps observed at ~100ms sampling
+// after first visibility, and is removed on arrival. The repeated
+// nav-to-content timing comparison is INCONCLUSIVE: the per-round
+// paired deltas vary more than any effect, so the median paired delta
+// and the difference of medians are recorded as measurements only —
+// they do not establish that the treatment adds no delay. What is
+// supported: the treatment adds no new blocking assets. No real-world
+// boot-speed claim.
 //
 //   CHROME_PATH=<Chromium> node test/browser-boot-treatment.js
 //   BOOT_BASE_ROOT=<pristine base checkout> — also measure the base tree
@@ -30,7 +36,7 @@ fs.mkdirSync(outDir, { recursive: true });
 const fx = require('./fixtures/budget-surface-data');
 const data = fx.served();
 
-const CLAIM = 'visible for the whole genuine-load interval, removed on arrival, no measurable added delay under identical controlled delay';
+const CLAIM = 'visible during the genuine-load interval with no gaps observed at ~100ms sampling after first visibility, removed on arrival, no new blocking assets; timing comparison inconclusive — median paired delta and difference of medians recorded as measurements, not a no-delay conclusion';
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -144,14 +150,14 @@ async function waitContent(page, timeoutMs = 30000) {
         () => ({ delayMs: 5000, status: 200 }));
       const run = await sampleLoad(page, '/');
       assert.ok(run.firstVisibleMs !== null, 'treatment became visible during the load');
-      assert.equal(run.gapCount, 0, 'treatment visible for the whole genuine-load interval');
+      assert.equal(run.gapCount, 0, 'no treatment visibility gaps observed after first visibility (~100ms sampling)');
       const anim = await page.evaluate(() => {
         const bar = document.querySelector('.boot-pulse > span');
         return bar ? getComputedStyle(bar).animationName : null;
       }).catch(() => null);
       const end = await page.evaluate(visFn);
       assert.ok(!end.staticLayer.present && !end.liveLayer.present, 'both layers gone after arrival');
-      results.lightLong = { delayMs: 5000, treatmentFirstVisibleMs: run.firstVisibleMs, contentRenderedMs: run.contentMs, samples: run.samples.length, servedSha };
+      results.lightLong = { delayMs: 5000, treatmentFirstVisibleMs: run.firstVisibleMs, contentRenderedMs: run.contentMs, samples: run.samples.length, visibilityGapsObserved: run.gapCount, servedSha };
       await context.close();
       // Screenshot needs its own delayed run (content already arrived above).
       const again = await openPage(browser, serveRoot,
@@ -350,6 +356,53 @@ async function waitContent(page, timeoutMs = 30000) {
       comparison['delay5000'].branchContentRenderedMs = results.lightLong.contentRenderedMs;
       comparison['delay5000'].addedDelayMs = results.lightLong.contentRenderedMs - comparison['delay5000'].baseContentRenderedMs;
     }
+    // Repeated nav->content measures under an identical fixed delay,
+    // alternating branch/base per round so slow drift hits both trees.
+    // Timing evidence only: the per-round paired deltas vary more than
+    // either aggregate (the fixture's post-arrival render dominates and
+    // fluctuates by ~1s between identical runs), so both aggregates are
+    // recorded as labelled measurements and the comparison is reported
+    // as inconclusive — no no-delay conclusion is drawn from them.
+    let repeatedTimingMeasures = null;
+    if (baseRoot) {
+      const measureContentMs = async serveDir => {
+        const s = await openPage(browser, serveDir,
+          { viewport: { width: 1280, height: 900 }, colorScheme: 'light' },
+          () => ({ delayMs: 5000, status: 200 }));
+        const t0 = Date.now();
+        const nav = s.page.goto('http://boot.test/', { waitUntil: 'commit' });
+        await s.page.waitForFunction(() => {
+          const c = document.querySelector('#operating-surface');
+          return c && (c.innerText || '').trim().length > 20;
+        }, { timeout: 30000 });
+        const ms = Date.now() - t0;
+        await nav;
+        await s.context.close();
+        return ms;
+      };
+      const branchMs = [];
+      const baseMs = [];
+      for (let round = 0; round < 3; round++) {
+        branchMs.push(await measureContentMs(serveRoot));
+        baseMs.push(await measureContentMs(baseRoot));
+      }
+      const median = xs => xs.slice().sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+      const pairedDeltasMs = branchMs.map((ms, i) => ms - baseMs[i]);
+      const branchMedianMs = median(branchMs);
+      const baseMedianMs = median(baseMs);
+      repeatedTimingMeasures = {
+        method: 'same nav->content measurement as the base comparison, fixed 5000ms /data.json delay, 3 alternating rounds per tree, headless Chromium on this machine',
+        branchMs,
+        baseMs,
+        pairedDeltasMs,
+        branchMedianMs,
+        baseMedianMs,
+        medianPairedDeltaMs: median(pairedDeltasMs),
+        differenceOfMediansMs: branchMedianMs - baseMedianMs,
+        conclusion: 'inconclusive',
+        note: 'Per-round paired deltas vary more than either aggregate; the fixture post-arrival render dominates and fluctuates by ~1s between identical runs. These aggregates are measurements only and do not establish that the treatment adds no delay. The supported claim is narrower: the treatment adds no new blocking assets.',
+      };
+    }
     const receipt = {
       proof: 'browser-boot-treatment',
       baseMainSha: 'd1d85a0b96dba3d077eeadecca0df2390eb3ae1e',
@@ -357,10 +410,11 @@ async function waitContent(page, timeoutMs = 30000) {
       scenarios: results,
       baseComparison: comparison,
       screenshots: shots,
+      repeatedTimingMeasures,
     };
     fs.writeFileSync(path.join(outDir, 'boot-treatment-receipt.json'), JSON.stringify(receipt, null, 2));
     console.log('PASS boot treatment proof: ' + Object.keys(results).length + ' scenarios; timings '
-      + JSON.stringify({ lightLong: { firstVisibleMs: results.lightLong.treatmentFirstVisibleMs, contentMs: results.lightLong.contentRenderedMs }, baseComparison: comparison }));
+      + JSON.stringify({ lightLong: { firstVisibleMs: results.lightLong.treatmentFirstVisibleMs, contentMs: results.lightLong.contentRenderedMs }, baseComparison: comparison, repeatedTimingMeasures }));
   } finally {
     await browser.close();
   }
