@@ -13,13 +13,13 @@
     "public/forecast.js": "39d74519c54508f4927a8d60b03f6edb31467abe",
     "public/budget-surface.js": "da8a27f58eb83575ba2a275aae4829d9527ea0bf",
     "public/budget-card-movements.js": "d19ab8847f3615aed1d09bc768d7bc8b18fc23d3",
-    "public/budget-blend.js": "12df3e98ebfee9dab3495ebc824b779b58755762",
+    "public/budget-blend.js": "50d7eb97c0fc7756c5647f6b945ac58dda408acc",
     "public/budget-river.js": "38f64e0f9c1f4fd8162e5fe05dfc2d3d7dc26e90",
     "public/budget-blend.css": "33198266e5fd7044371c4f9395f4d83c15f0c7c6",
     "public/budget-surface.css": "b23f895cea5f96f848ac5577f5e53a00a42f4479",
     "public/budget-gface.css": "fc9bdd8dce255d740c78cb86805acb7e7d10f554",
     "public/budget-sheet-motion.css": "85bcf401b7a24762d8de42eaa3cdd6c4efd7c58c",
-    "test/browser-card-panel-lead.js": "4c1b7a9e2e829f47a463e4a2a84c5bab34134cfc",
+    "test/browser-card-panel-lead.js": "7d63092cbcff15e79908a4687305c8e5a9825844",
     "test/fixtures/card-period-movements-data.js": "bee1a5dd4f71816b76872d741cdd385b72c7b210",
     "test/fixtures/budget-surface-data.js": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc"
   },
@@ -144,6 +144,11 @@
       "keyboard": true,
       "touch": true,
       "reopen": true
+    },
+    {
+      "proof": "travel-order-remount",
+      "width": 390,
+      "theme": "light"
     }
   ],
   "errors": [],

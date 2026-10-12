@@ -19,7 +19,12 @@
 //      never precedes it, in the current "Posted through …" state and
 //      the future "Posted activity not observed" state, across
 //      rerenders (window steps) and close/reopen, present exactly
-//      once (advisory P2 4252570044).
+//      once (advisory P2 4252570044);
+//  (f) Travel-panel ordering across a rerender while the sheet is
+//      open (advisory P2 4252814318) — the remount restores the
+//      Travel panel into the new dialog before the blend paint runs;
+//      the status must still be placed in the Travel panel, after
+//      its lead, and in no other panel.
 // Invented data; all network intercepted. No credentials, live accounts,
 // writes or DOM financial stubs.
 const assert = require('node:assert/strict');
@@ -246,6 +251,42 @@ const states = [], errors = [], writes = [], external = [];
         'panel-strip-320-light.png', { state: 'complete', width, theme, subject: 'card strip closed, touch context' });
       await touchPage.close();
       states.push({ proof: 'operation', width, theme, keyboard: true, touch: true, reopen: true });
+    }
+    // (f) Travel ordering across a rerender while the sheet is open:
+    // an OS colour-scheme flip re-renders the surface (App.rerender),
+    // the remount restores the Travel panel into the new dialog, and
+    // the blend paint runs with Travel absent from the bento. The
+    // re-homed status must still land in the Travel panel, after its
+    // lead, exactly once in the document — never in another panel.
+    {
+      const page = await boot(fx.served(), 390, 'light');
+      const strip = page.locator('[data-budget-card-movements]');
+      await strip.waitFor();
+      const panel = page.locator('[data-budget-card-panel="travelvisa"]');
+      const cashback = page.locator('[data-budget-card-panel="cashback"]');
+      await page.locator('[data-budget-card-toggle="travelvisa"]').click();
+      await assertTravelOrder(panel, /^Posted through /, 'remount before');
+      await page.evaluate(() => { document.querySelector('[data-budget-card-movements]').dataset.probeOld = '1'; });
+      await page.emulateMedia({ colorScheme: 'dark' });
+      const remounted = await page.waitForFunction(() => {
+        const s = document.querySelector('[data-budget-card-movements]');
+        const d = document.querySelector('[data-budget-detail-sheet]');
+        const t = document.querySelector('[data-budget-card-panel="travelvisa"]');
+        return !!s && !s.dataset.probeOld && !!d && d.open && !!t && d.contains(t);
+      }, null, { timeout: 8000 }).then(() => true).catch(() => false);
+      assert.equal(remounted, true,
+        'remount: the colour-scheme flip re-rendered the surface and restored the open Travel sheet');
+      await assertTravelOrder(panel, /^Posted through /, 'remount after');
+      assert.equal(await cashback.evaluate(el => el.querySelectorAll('.blend-card-posted').length), 0,
+        'remount after: the posted status never lands in the Cash Back panel');
+      assert.equal(await page.evaluate(() => document.querySelectorAll('.blend-card-posted').length), 1,
+        'remount after: the posted status exists exactly once in the document');
+      await page.keyboard.press('Escape');
+      await page.locator('[data-budget-card-toggle="travelvisa"]').click();
+      await assertTravelOrder(panel, /^Posted through /, 'remount reopen');
+      await page.keyboard.press('Escape');
+      await page.close();
+      states.push({ proof: 'travel-order-remount', width: 390, theme: 'light' });
     }
     assert.deepEqual(errors, []); assert.deepEqual(writes, []); assert.deepEqual(external, []);
     for (const shot of screenshots) shot.sha256 = sha256File(path.join(out, shot.file));
