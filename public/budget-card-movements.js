@@ -37,12 +37,20 @@
   // (non-finite or non-numeric) amount is rejected the same way, never
   // rendered as a figure. Provenance — the dated observation and its
   // manual-statement source — lives in the detail panel, which keeps the
-  // complete evidence for every card; the period net change likewise
-  // prints only in the panel, never on the face.
+  // complete evidence for every card. The face prints no net-change
+  // figure at all; the panel is unchanged by this rule — it prints no
+  // net figure either, only its pre-existing evidence wording (for
+  // example 'Net change remains unavailable.' when a card carries
+  // reasons).
   // Face display name: the Amazon card — canonical id 'mbna' in
   // Forecast's identity table — prints exactly 'Amazon' on the trigger;
   // every other card keeps its publication label, and the panel heading
   // and screen-reader action keep the full publication label.
+  // Heading rule (Systems Review 5485851551 R1): the strip's semantic
+  // heading and the region's accessible name are exactly 'Credit cards'
+  // in every state — no 'Card movement' name and no period dates in the
+  // heading. The blend skin's painted tile title repeats the same words;
+  // the contract lives here, in the semantics every skin shares.
   const balance = (card, money) => {
     const reported = card.reportedBalance;
     if (!reported || typeof reported.amount !== 'number' || !Number.isFinite(reported.amount))
@@ -57,8 +65,8 @@
     const transaction = tx => `<div class="card-movement-row" data-card-movement-transaction="${escape(tx.id)}" data-card-movement-kind="${escape(tx.kind)}">
       <time datetime="${escape(tx.date)}">${day(tx.date)}</time><span><b>${escape(tx.payee)}</b><small>${tx.pending ? 'Pending authorization' : escape(kinds[tx.kind] || 'Movement · type unconfirmed')}</small></span>
       <span class="card-movement-amount ${tx.pending ? '' : 'is-' + escape(tx.direction)}">${tx.direction === 'up' ? '+' : tx.direction === 'down' ? '−' : ''}${money(tx.magnitude)}</span></div>`;
-    return `<section class="card-movement-strip" data-budget-card-movements data-card-period-start="${escape(pub.start)}" data-card-period-end="${escape(pub.end)}" aria-label="Card movement in selected pay period">
-      <div class="card-movement-heading"><h2>Card movement <span class="card-movement-scope">${day(pub.start)} – ${day(pub.end)}</span></h2><p>Posted${pub.through ? ' through ' + day(pub.through) : ' activity not observed'}</p></div>
+    return `<section class="card-movement-strip" data-budget-card-movements data-card-period-start="${escape(pub.start)}" data-card-period-end="${escape(pub.end)}" aria-label="Credit cards">
+      <div class="card-movement-heading"><h2>Credit cards</h2><p>Posted${pub.through ? ' through ' + day(pub.through) : ' activity not observed'}</p></div>
       <div class="card-movement-track">${pub.cards.map(card => `<button type="button" class="card-movement-trigger" data-budget-card-toggle="${escape(card.id)}" aria-haspopup="dialog"><span class="card-movement-title">${escape(card.id === 'mbna' ? 'Amazon' : card.label)}<span class="card-movement-chevron" aria-hidden="true">⌄</span></span>${balance(card, money)}<span class="card-movement-sr">Show ${escape(card.label)} activity</span></button>`).join('')}</div>
       ${pub.cards.map(card => `<section class="card-movement-panel" id="budget-card-panel-${escape(card.id)}" data-budget-card-panel="${escape(card.id)}" aria-label="${escape(card.label)} activity" hidden>
         <div class="card-movement-balances"><span><small>Opening · ${day(card.opening?.date)}</small><strong>${money(card.opening?.amount)}</strong></span><span><small>Closing · ${day(card.closing?.date)}</small><strong>${money(card.closing?.amount)}</strong></span></div>

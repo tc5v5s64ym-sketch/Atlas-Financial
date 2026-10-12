@@ -150,6 +150,20 @@ const states = [], errors = [], writes = [], external = [];
         `${label}: ${r.id} face text carries no prefix, net, date or provenance`);
     }
   };
+  // The heading contract is semantic (Systems Review 5485851551 R1):
+  // the region's accessible name and the actual h2 read exactly
+  // 'Credit cards'. The painted .blend-tile-title alone does not prove
+  // it, and no heading may keep the old 'Card movement' name.
+  const checkHeadingNames = async (strip, label) => {
+    const heading = strip.getByRole('heading', { name: 'Credit cards' });
+    assert.equal(await heading.count(), 1, `${label}: one heading carries the accessible name Credit cards`);
+    assert.equal((await heading.first().textContent()).trim(), 'Credit cards',
+      `${label}: the semantic heading text is exactly Credit cards`);
+    assert.equal(await strip.getByRole('heading', { name: /card movement/i }).count(), 0,
+      `${label}: no heading retains the Card movement name`);
+    assert.equal(await strip.getAttribute('aria-label'), 'Credit cards',
+      `${label}: the region accessible name is Credit cards`);
+  };
   const only = (process.env.ATLAS_PROOF_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
   const wanted = state => !only.length || only.includes(state);
   try {
@@ -182,6 +196,7 @@ const states = [], errors = [], writes = [], external = [];
       assert.equal(await strip.locator('.blend-tile-title').innerText(), 'Credit cards',
         'the tile heading is exactly Credit cards');
       assert.equal(await strip.locator('.blend-cc-net').count(), 0, 'no heading net meta prints');
+      await checkHeadingNames(strip, `${state} ${width}px light`);
       checkFace(await measureFace(page), width, `${state} ${width}px light`);
       if (state === 'complete') {
         await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
@@ -470,6 +485,14 @@ const states = [], errors = [], writes = [], external = [];
       assert.equal(puById.heloc.chipNet, null, 'no blend chip is painted on the unavailable branch');
       assert.equal(puById.heloc.deltaPresent, false, 'no net delta prints on the unavailable branch');
       assert.equal(puById.mbna.balText, '$760.00', 'Amazon face is its bare reported balance on the unavailable branch');
+      // R1: on this branch the renderer's own heading is the visible
+      // one (no blend furniture), so it must be the Credit cards
+      // heading — semantically and visibly.
+      await checkHeadingNames(strip, `${width}px plan-unavailable`);
+      const puHeading = strip.locator('.card-movement-heading h2');
+      assert.equal(await puHeading.isVisible(), true, 'the heading is visible on the unavailable branch');
+      assert.equal((await puHeading.innerText()).trim(), 'Credit cards',
+        'the visible heading on the unavailable branch is exactly Credit cards');
       const sheet = page.locator('[data-budget-detail-sheet]');
       assert.equal(await sheet.count(), 1, 'the unavailable branch renders the native sheet host');
       const travel = page.locator('[data-budget-card-toggle="travelvisa"]');
@@ -543,6 +566,7 @@ const states = [], errors = [], writes = [], external = [];
       const page = await boot(data, width);
       const strip = page.locator('[data-budget-card-movements]');
       await strip.waitFor();
+      await checkHeadingNames(strip, `${width}px balance-missing`);
       const face = await measureFace(page);
       const byId = Object.fromEntries(face.map(r => [r.id, r]));
       assert.equal(byId.mbna.balText, 'Unavailable', `${width}px balance-missing: Amazon prints the state word`);

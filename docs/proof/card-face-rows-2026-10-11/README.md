@@ -17,6 +17,16 @@ bounding boxes, not DOM presence):
   The tile heading is exactly "Credit cards" and no heading net meta
   prints. Face names are the short publication labels; the Amazon card
   is exactly "Amazon".
+- **the heading is semantic, not just painted** (Systems Review
+  5485851551 R1 repair): the strip's actual `<h2>` and the region's
+  `aria-label` read exactly "Credit cards" in every state — asserted by
+  accessible name (`getByRole('heading', { name: 'Credit cards' })`),
+  by exact heading text, and by the absence of any heading carrying the
+  old "Card movement" name. On the plan-unavailable branch, where the
+  renderer's own heading is the visible one (no blend furniture), the
+  visible heading is asserted to be "Credit cards" as well; the first
+  version of this follow-on changed only the blend skin's painted tile
+  title and left the semantics behind, which is what the review caught.
 - **the right-slot geometry** (the defect this follow-on kills): at every
   width the balance's grid area is the right slot (`chg`), its right edge
   equals the trigger's content right edge within 2px for every row, its
@@ -74,3 +84,11 @@ against (current main at build time).
 - The net-change delta span restored alone (new balance kept) → the
   unit suite fails at "no trigger prints a net-change delta on the
   face".
+- Heading repair (R1): with the new heading assertions in place and the
+  renderer still at the reviewed head, the unit suite fails at "the
+  strip region accessible name is Credit cards" and the browser suite
+  fails at "complete 1440px light: one heading carries the accessible
+  name Credit cards" (0 headings found); after the renderer fix both
+  suites pass in full (unit 569 assertions; browser 21/21 passes), and
+  the panel blocks re-compared byte-identical (53 panels, ten
+  publications) between the base and repaired renderers.

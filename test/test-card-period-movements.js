@@ -302,12 +302,22 @@ const badBalance = copy(pub); badBalance.cards[0].reportedBalance = { amount: '9
 eq(/data-budget-card-toggle="travelvisa"[\s\S]*?card-movement-balance is-unavailable">Unavailable/.test(View.html(badBalance, fmt)), true,
   'non-numeric reported balance amount is rejected to the state word, not rendered');
 // The face carries no net furniture at all: no delta span, no qualifier
-// span and no net-unavailable text anywhere in the rendered strip; the
-// net evidence lives in the panels (asserted there below and in the
-// publication pins above).
+// span and no net-unavailable text anywhere in the rendered strip; no
+// net figure prints on the face. The panels keep their own pre-existing
+// evidence wording (asserted there below and in the publication pins
+// above) — unchanged, and no net figure is printed there either.
 eq(sheetHtml.includes('card-movement-delta'), false, 'no trigger prints a net-change delta on the face');
 eq(sheetHtml.includes('card-movement-qualifier'), false, 'no trigger prints a net qualifier on the face');
 eq(sheetHtml.includes('Net unavailable'), false, 'no net-unavailable text prints anywhere in the strip');
+// The heading contract is semantic, not just the painted tile title
+// (Systems Review 5485851551 R1): the region's accessible name and the
+// actual h2 both read exactly 'Credit cards' — no 'Card movement' name
+// and no period dates survive in the heading, in any state.
+eq(/data-budget-card-movements[^>]*aria-label="Credit cards"/.test(sheetHtml), true,
+  'the strip region accessible name is Credit cards');
+eq(sheetHtml.includes('<h2>Credit cards</h2>'), true, 'the semantic heading is exactly Credit cards');
+eq(sheetHtml.includes('Card movement'), false, 'no Card movement heading or label remains in the strip');
+eq(historicalHtml.includes('<h2>Credit cards</h2>'), true, 'the historical strip heading is exactly Credit cards');
 // Condensed panel copy: the payments qualifier keeps its meaning, the
 // generic provider-observation boilerplate sentence is gone.
 eq(sheetHtml.includes('Purpose unconfirmed: payments do not automatically settle scheduled minimums; lender confirmation remains separate.'), true,
