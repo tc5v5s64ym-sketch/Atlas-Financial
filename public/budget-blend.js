@@ -1895,11 +1895,27 @@
       h2.classList.add('blend-clip');
       h2.after(title);
     }
-    const panels = [...bento.querySelectorAll('.card-movement-panel')];
     const note = heading.querySelector('p');
     if (note && /Opening balance unavailable|Future period not observed|activity not observed|Posted through/i.test(text(note))) {
       note.classList.add('blend-card-posted', 'blend-card-aside');
-      if (panels[0]) panels[0].prepend(note);
+      // The status belongs to the strip's first panel, and that panel
+      // leads with its reported balance (the card-detail lead): the
+      // status follows the lead when the panel carries one and keeps
+      // the incumbent prepend when it does not. A remount can restore
+      // the first panel into the open detail sheet before this paint
+      // runs, leaving it absent from the bento, so the panel is
+      // selected by the track's first card identity across the whole
+      // document — falling back to the bento's first panel when no
+      // such panel exists. Status text and classes are unchanged.
+      const firstId = bento.querySelector('.card-movement-trigger')
+        ?.getAttribute('data-budget-card-toggle');
+      const home = (firstId && bento.ownerDocument
+        .querySelector(`[data-budget-card-panel="${firstId}"]`))
+        || bento.querySelector('.card-movement-panel');
+      if (home) {
+        const lead = home.querySelector('.card-movement-lead');
+        if (lead) lead.after(note); else home.prepend(note);
+      }
     }
     bento.querySelectorAll('.card-movement-trigger').forEach(button => {
       if (!button.querySelector('.blend-cc-chip')) {
