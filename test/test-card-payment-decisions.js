@@ -123,10 +123,12 @@ async function retainedLifecycle() {
   eq((await separate.controller.input()).plan.cardPurchaseCoverage.payments.map(p => p.confirmed), [true, true], 'entirely independent choices remain qualified');
 
   // Load real old-controller records, including the exact disappearance bug.
-  // Git history is already required by the suite; no frozen second calculator.
+  // The pre-repair controller is preserved verbatim as a checked-in fixture
+  // (scripts/card-payment-decisions.js at head 8aa3018e, blob 827ff197) so
+  // this regression never depends on a Git object outside the target history.
   const path = require('node:path'), Module = require('node:module');
-  const source = require('node:child_process').execFileSync('git', ['show',
-    '8aa3018e8a3e0e7c11326d0707093316fc7a80e8:scripts/card-payment-decisions.js'], { encoding: 'utf8' });
+  const source = require('node:fs').readFileSync(
+    path.join(__dirname, 'fixtures/card-payment-decisions-before-repair.js'), 'utf8');
   const old = new Module(path.join(__dirname, '../scripts/card-payment-decisions-before-repair.js'));
   old.filename = old.id; old.paths = Module._nodeModulePaths(path.dirname(old.filename)); old._compile(source, old.filename);
   for (const connected of [false, true]) {
