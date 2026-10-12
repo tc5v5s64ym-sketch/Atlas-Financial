@@ -1891,8 +1891,7 @@
     if (h2 && !heading.querySelector('.blend-tile-title')) {
       const title = document.createElement('span');
       title.className = 'blend-tile-title';
-      title.textContent = bento.querySelector('[data-budget-card-toggle="heloc"]')
-        ? 'Cards & HELOC this pay period' : 'Cards this pay period';
+      title.textContent = 'Credit cards';
       h2.classList.add('blend-clip');
       h2.after(title);
     }
@@ -1903,46 +1902,22 @@
       if (panels[0]) panels[0].prepend(note);
     }
     bento.querySelectorAll('.card-movement-trigger').forEach(button => {
-      const name = text(button.querySelector('.card-movement-title')) || text(button);
       if (!button.querySelector('.blend-cc-chip')) {
         const chip = document.createElement('span');
         chip.className = 'blend-cc-chip cc-chip';
-        const net = /visa/i.test(name) ? 'visa' : /mastercard|\bmc\b/i.test(name) ? 'mc' : /\bflex\b/i.test(name) ? 'flex' : '';
-        if (net) chip.setAttribute('data-net', net);
-        const hue = /emerald/i.test(name) ? '150'
-          : /travel/i.test(name) ? '220'
-          : /cash/i.test(name) ? '160'
-          : /triangle/i.test(name) ? '0'
-          : /amazon|mbna/i.test(name) ? '30'
-          : '220';
-        chip.style.setProperty('--h', hue);
+        // Chip network and hue key on the row's canonical card id (the
+        // trigger's own data-budget-card-toggle), never on the display
+        // name: issuer facts per docs/ACCOUNT_FACTS.md — the Travel and
+        // Cash Back cards are TD Visa, Triangle and the Amazon card are
+        // Mastercards; Emerald (TD) and the HELOC carry no network mark.
+        const networks = { travelvisa: 'visa', cashback: 'visa', triangle: 'mc', mbna: 'mc' };
+        const hues = { travelvisa: '220', cashback: '160', tdcc: '150', triangle: '0', mbna: '30' };
+        const id = button.getAttribute('data-budget-card-toggle');
+        if (networks[id]) chip.setAttribute('data-net', networks[id]);
+        chip.style.setProperty('--h', hues[id] || '220');
         button.prepend(chip);
       }
-      const qualifier = button.querySelector('.card-movement-qualifier');
-      if (qualifier && /Opening balance unavailable|Future period not observed|not observed|unavailable/i.test(text(qualifier))) {
-        qualifier.classList.add('blend-card-aside');
-      }
-      const delta = button.querySelector('.card-movement-delta');
-      const money = moneyToken(text(delta));
-      if (!money && delta && !button.querySelector('.blend-cc-dash')) {
-        const dash = document.createElement('span');
-        dash.className = 'blend-cc-dash cc-chg is-unavailable';
-        dash.textContent = 'Unavailable';
-        delta.classList.add('blend-clip');
-        delta.after(dash);
-        const line = document.createElement('i');
-        line.className = 'blend-cc-untracked cc-spark';
-        line.setAttribute('aria-hidden', 'true');
-        button.appendChild(line);
-      }
     });
-    if (!heading.querySelector('.blend-cc-net')) {
-      const meta = document.createElement('span');
-      meta.className = 'blend-cc-net';
-      // Individual card movements do not publish an aggregate strip total.
-      meta.textContent = 'Net Unavailable';
-      heading.appendChild(meta);
-    }
   }
 
   function paintGoals(bento) {

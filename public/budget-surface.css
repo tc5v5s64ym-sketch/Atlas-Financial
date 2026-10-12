@@ -636,7 +636,6 @@ body.budget-detail-open { overflow:hidden; }
 .card-movement-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px 16px;margin:2px 1px 10px;flex-wrap:wrap}
 .card-movement-heading h2{font-size:15px;font-weight:620;letter-spacing:-.015em;margin:0;display:inline}
 .card-movement-heading p{font-size:11px;color:var(--text-secondary);margin:0}
-.card-movement-heading .card-movement-scope{margin-left:12px;color:var(--muted);font-size:11px}
 .card-movement-track{display:flex;gap:9px;overflow-x:auto;scroll-snap-type:x proximity;padding:3px 2px 9px;scrollbar-width:thin;scrollbar-color:var(--axis) transparent}
 .card-movement-trigger{position:relative;font-family:inherit;text-align:left;flex:1 0 164px;min-width:0;min-height:84px;padding:13px 14px;border:1px solid var(--border);border-radius:12px;background:var(--surface-1);color:var(--text-primary);cursor:pointer;scroll-snap-align:start;transition:border-color .15s,background .15s}
 .card-movement-trigger[aria-expanded=true]{border-color:var(--text-secondary);background:color-mix(in srgb,var(--surface-1) 88%,var(--text-primary))}
@@ -667,4 +666,4 @@ body.budget-detail-open { overflow:hidden; }
 .card-movement-pending{margin-top:18px;border-top:1px dashed var(--axis);padding-top:2px}
 .card-movement-pending .card-movement-amount{color:var(--text-secondary)}
 .card-movement-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-@media(max-width:600px){.card-movement-trigger{flex:0 0 165px;padding:12px}.card-movement-heading{gap:6px}.card-movement-heading .card-movement-scope{display:block;margin:5px 0 0}.card-movement-heading p{font-size:10px}.card-movement-balances{gap:24px}.card-movement-row{grid-template-columns:43px minmax(0,1fr) auto;gap:8px}.card-movement-track{margin-right:-4px}.card-movement-panel{padding-top:13px}}
+@media(max-width:600px){.card-movement-trigger{flex:0 0 165px;padding:12px}.card-movement-heading{gap:6px}.card-movement-heading p{font-size:10px}.card-movement-balances{gap:24px}.card-movement-row{grid-template-columns:43px minmax(0,1fr) auto;gap:8px}.card-movement-track{margin-right:-4px}.card-movement-panel{padding-top:13px}}

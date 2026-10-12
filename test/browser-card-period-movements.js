@@ -11,12 +11,10 @@
 //    (the same handler the arrows and the river invoke) and every
 //    assertion is on the rendered result — sheet identity, content,
 //    focus — never on the dispatch itself.
-//  - The manual-statement qualifier's "· Dated …" suffix is not visible
-//    text on the blend face, so it is not asserted. The visible dated
-//    evidence is the trigger's Balance line ("as of <date> · Manual
-//    statement") — which prints its as-of date only on the Triangle and
-//    Amazon faces — and the open panel's dated observation line, which
-//    every card keeps; both are asserted from rendered text.
+//  - The face prints no dated evidence at all: the trigger's right-hand
+//    slot is the bare reported balance (or the Unavailable state word),
+//    and the dated observation line lives only in the open panel, which
+//    every card keeps; panel evidence is asserted from rendered text.
 // The plan-unavailable pass is the actual-render regression for the
 // plan-unavailable sheet host: on that branch the card/HELOC triggers used
 // to render without any detail-sheet host, so clicks silently returned.
@@ -77,61 +75,94 @@ const states = [], errors = [], writes = [], external = [];
   const waitStart = (page, start) => page.waitForFunction(
     s => document.querySelector('[data-budget-card-movements]')?.getAttribute('data-card-period-start') === s,
     start, { timeout: 8000 });
-  // Face measurement for the reported-balance emphasis swap: computed
-  // style and geometry only — grid area, size, weight, DOM order — never
-  // DOM presence alone.
+  // Face measurement for the face-rows rule: computed style and geometry
+  // only — grid area, size, weight, right edges, row alignment — never
+  // DOM presence alone. The right slot's geometry is the point of the
+  // rule, so each row's balance right edge is compared against the
+  // trigger's content right edge.
   const measureFace = page => page.locator('[data-budget-card-movements] .card-movement-trigger').evaluateAll(rows => rows.map(btn => {
     const q = sel => btn.querySelector(sel);
-    const bal = q('.card-movement-balance'), delta = q('.card-movement-delta'), dash = q('.blend-cc-dash');
-    const kids = [...btn.children];
+    const bal = q('.card-movement-balance'), name = q('.card-movement-title'), chip = q('.blend-cc-chip');
     const rect = el => el.getBoundingClientRect();
+    const balRect = bal ? rect(bal) : null, nameRect = name ? rect(name) : null;
     return { id: btn.getAttribute('data-budget-card-toggle'),
-      title: (q('.card-movement-title')?.textContent || '').replace('⌄', '').trim(),
+      title: (name?.textContent || '').replace('⌄', '').trim(),
+      text: btn.innerText,
       balText: bal ? bal.textContent : null,
+      balUnavailable: bal ? bal.classList.contains('is-unavailable') : null,
       balArea: bal ? getComputedStyle(bal).gridArea : null,
       balSize: bal ? getComputedStyle(bal).fontSize : null,
       balWeight: bal ? getComputedStyle(bal).fontWeight : null,
-      balW: bal ? rect(bal).width : null, trigW: rect(btn).width,
-      deltaArea: delta ? getComputedStyle(delta).gridArea : null,
-      deltaWeight: delta ? getComputedStyle(delta).fontWeight : null,
-      dashArea: dash ? getComputedStyle(dash).gridArea : null,
-      order: bal && delta ? kids.indexOf(bal) < kids.indexOf(delta) : null };
+      balRight: balRect ? balRect.right : null,
+      balLeft: balRect ? balRect.left : null,
+      balTop: balRect ? balRect.top : null,
+      nameRight: nameRect ? nameRect.right : null,
+      nameTop: nameRect ? nameRect.top : null,
+      contentRight: rect(btn).right - parseFloat(getComputedStyle(btn).paddingRight),
+      deltaPresent: !!q('.card-movement-delta'),
+      dashPresent: !!q('.blend-cc-dash'),
+      qualifierPresent: !!q('.card-movement-qualifier'),
+      chipNet: chip ? chip.getAttribute('data-net') : null,
+      chipHue: chip ? chip.style.getPropertyValue('--h').trim() : null };
   }));
   const checkFace = (face, width, label) => {
     const byId = Object.fromEntries(face.map(r => [r.id, r]));
-    // Exact face strings per card case: dates print on the face only for
-    // Triangle and the Amazon card; the Amazon face name is exactly
-    // 'Amazon'; every other name is the publication label, unchanged.
-    assert.equal(byId.travelvisa.balText, 'Balance $927.40', `${label}: Travel face omits the as-of date`);
-    assert.equal(byId.cashback.balText, 'Balance $2,264.20', `${label}: Cash Back face omits the as-of date`);
-    assert.equal(byId.tdcc.balText, 'Balance $1,100.00', `${label}: Emerald face omits the as-of date`);
-    assert.equal(byId.triangle.balText, 'Balance $1,980.00 · as of Aug 17 · Manual statement', `${label}: Triangle face keeps its as-of date`);
-    assert.equal(byId.mbna.balText, 'Balance $760.00 · as of Aug 8 · Manual statement', `${label}: Amazon face keeps its as-of date`);
+    // Exact face strings per card case: the balance slot prints the bare
+    // published amount for every card — no 'Balance' prefix, no as-of
+    // date, no source suffix — and every face name is the short
+    // publication label, with the Amazon card exactly 'Amazon'.
+    assert.equal(byId.travelvisa.balText, '$927.40', `${label}: Travel face is the bare amount`);
+    assert.equal(byId.cashback.balText, '$2,264.20', `${label}: Cash Back face is the bare amount`);
+    assert.equal(byId.tdcc.balText, '$1,100.00', `${label}: Emerald face is the bare amount`);
+    assert.equal(byId.triangle.balText, '$1,980.00', `${label}: Triangle face is the bare amount`);
+    assert.equal(byId.mbna.balText, '$760.00', `${label}: Amazon face is the bare amount`);
     assert.equal(byId.mbna.title, 'Amazon', `${label}: Amazon face name is exactly Amazon`);
     assert.equal(byId.travelvisa.title, 'Travel', `${label}: Travel name unchanged`);
     assert.equal(byId.cashback.title, 'Cash Back', `${label}: Cash Back name unchanged`);
     assert.equal(byId.tdcc.title, 'Emerald', `${label}: Emerald name unchanged`);
     assert.equal(byId.triangle.title, 'Triangle', `${label}: Triangle name unchanged`);
+    // Chip network and hue key on the canonical card id, per the issuer
+    // facts: Travel and Cash Back are Visa, Triangle and Amazon are
+    // Mastercard, Emerald carries no network mark.
+    assert.equal(byId.travelvisa.chipNet, 'visa', `${label}: Travel chip is keyed Visa by id`);
+    assert.equal(byId.cashback.chipNet, 'visa', `${label}: Cash Back chip is keyed Visa by id`);
+    assert.equal(byId.tdcc.chipNet, null, `${label}: Emerald chip carries no network mark`);
+    assert.equal(byId.triangle.chipNet, 'mc', `${label}: Triangle chip is keyed Mastercard by id`);
+    assert.equal(byId.mbna.chipNet, 'mc', `${label}: Amazon chip keeps its Mastercard mark`);
+    assert.equal(byId.travelvisa.chipHue, '220', `${label}: Travel chip hue by id`);
+    assert.equal(byId.cashback.chipHue, '160', `${label}: Cash Back chip hue by id`);
+    assert.equal(byId.tdcc.chipHue, '150', `${label}: Emerald chip hue by id`);
+    assert.equal(byId.triangle.chipHue, '0', `${label}: Triangle chip hue by id`);
+    assert.equal(byId.mbna.chipHue, '30', `${label}: Amazon chip hue by id`);
     for (const r of face) {
-      assert.equal(r.order, true, `${label}: ${r.id} balance precedes the delta in reading order`);
       assert.equal(r.balSize, '16px', `${label}: ${r.id} balance takes the primary size`);
       assert.equal(r.balWeight, '650', `${label}: ${r.id} balance takes the primary weight`);
-      assert.equal(r.deltaWeight, '520', `${label}: ${r.id} net change is demoted in weight`);
-      if (width > 1100) {
-        assert.equal(r.balArea, 'chg', `${label}: ${r.id} balance occupies the primary slot`);
-        assert.equal(r.deltaArea, 'bal', `${label}: ${r.id} delta demotes to the secondary slot`);
-        if (r.dashArea !== null) assert.equal(r.dashArea, 'bal', `${label}: ${r.id} dash follows the delta to the secondary slot`);
-      } else {
-        assert.equal(r.balArea, 'bal', `${label}: ${r.id} balance takes the full-width primary row`);
-        assert.ok(r.balW >= r.trigW - 40, `${label}: ${r.id} balance row spans the trigger width`);
-        assert.equal(r.deltaArea, 'chg', `${label}: ${r.id} delta stays top-right, demoted`);
-        if (r.dashArea !== null) assert.equal(r.dashArea, 'chg', `${label}: ${r.id} dash follows the delta, demoted`);
-      }
+      assert.equal(r.balArea, 'chg', `${label}: ${r.id} balance occupies the right slot at every width`);
+      assert.ok(Math.abs(r.balRight - r.contentRight) <= 2,
+        `${label}: ${r.id} balance right edge shares the trigger's content right edge (${r.balRight} vs ${r.contentRight})`);
+      assert.ok(Math.abs(r.balTop - r.nameTop) <= 2,
+        `${label}: ${r.id} balance shares the name's row — no second line`);
+      assert.ok(r.nameRight <= r.balLeft + 1, `${label}: ${r.id} name and balance do not overlap`);
+      assert.equal(r.deltaPresent, false, `${label}: ${r.id} prints no net-change delta on the face`);
+      assert.equal(r.dashPresent, false, `${label}: ${r.id} prints no unavailable dash on the face`);
+      assert.equal(r.qualifierPresent, false, `${label}: ${r.id} prints no net qualifier on the face`);
+      assert.doesNotMatch(r.text, /Balance|Net|as of|Manual statement|Unavailable/,
+        `${label}: ${r.id} face text carries no prefix, net, date or provenance`);
     }
-    // The standing dash cases: mbna and triangle have an unavailable net
-    // alongside a published balance in every served state.
-    assert.notEqual(byId.mbna.dashArea, null, `${label}: Amazon dash present beside its balance`);
-    assert.notEqual(byId.triangle.dashArea, null, `${label}: Triangle dash present beside its balance`);
+  };
+  // The heading contract is semantic (Systems Review 5485851551 R1):
+  // the region's accessible name and the actual h2 read exactly
+  // 'Credit cards'. The painted .blend-tile-title alone does not prove
+  // it, and no heading may keep the old 'Card movement' name.
+  const checkHeadingNames = async (strip, label) => {
+    const heading = strip.getByRole('heading', { name: 'Credit cards' });
+    assert.equal(await heading.count(), 1, `${label}: one heading carries the accessible name Credit cards`);
+    assert.equal((await heading.first().textContent()).trim(), 'Credit cards',
+      `${label}: the semantic heading text is exactly Credit cards`);
+    assert.equal(await strip.getByRole('heading', { name: /card movement/i }).count(), 0,
+      `${label}: no heading retains the Card movement name`);
+    assert.equal(await strip.getAttribute('aria-label'), 'Credit cards',
+      `${label}: the region accessible name is Credit cards`);
   };
   const only = (process.env.ATLAS_PROOF_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
   const wanted = state => !only.length || only.includes(state);
@@ -150,27 +181,33 @@ const states = [], errors = [], writes = [], external = [];
       assert.equal(await strip.getAttribute('data-card-period-start'), fx.START);
       assert.equal(await strip.getAttribute('data-card-period-end'), fx.END);
       assert.deepEqual(await strip.locator('[data-budget-card-toggle]').evaluateAll(rows => rows.map(row => row.getAttribute('data-budget-card-toggle'))), ['travelvisa', 'cashback', 'tdcc', 'triangle', 'mbna']);
-      const netUnavailable = ['opening-missing', 'truncated'].includes(state);
       const contrastChecks = [];
-      assert.match(await travel.innerText(), netUnavailable ? /Net unavailable/ : /↑ \$107\.40/);
-      if (state !== 'truncated') {
-        assert.match(await page.locator('[data-budget-card-toggle="cashback"]').innerText(), /↓ \$135\.80/);
-        assert.match(await page.locator('[data-budget-card-toggle="tdcc"]').innerText(), /\$0\.00/);
-      }
+      assert.match(await travel.innerText(), /\$927\.40/);
+      assert.doesNotMatch(await travel.innerText(), /Net|↑|↓/, 'the Travel face prints no net change');
+      assert.match(await page.locator('[data-budget-card-toggle="cashback"]').innerText(), /\$2,264\.20/);
+      assert.match(await page.locator('[data-budget-card-toggle="tdcc"]').innerText(), /\$1,100\.00/);
       assert.equal(await amazon.locator('.card-movement-title').innerText(), 'Amazon',
         'the Amazon face name is exactly Amazon');
-      assert.match(await amazon.innerText(), /Net unavailable/);
-      assert.match(await amazon.innerText(), /Balance \$760\.00 · as of Aug 8 · Manual statement/,
-        'the manual-statement dated evidence is visible on the trigger Balance line');
+      assert.match(await amazon.innerText(), /\$760\.00/);
+      assert.doesNotMatch(await amazon.innerText(), /as of|Manual statement/,
+        'the Amazon face carries no provenance — the dated evidence is the panel\u2019s');
+      // The tile heading is exactly 'Credit cards' and no heading net
+      // meta prints anywhere in the strip.
+      assert.equal(await strip.locator('.blend-tile-title').innerText(), 'Credit cards',
+        'the tile heading is exactly Credit cards');
+      assert.equal(await strip.locator('.blend-cc-net').count(), 0, 'no heading net meta prints');
+      await checkHeadingNames(strip, `${state} ${width}px light`);
       checkFace(await measureFace(page), width, `${state} ${width}px light`);
       if (state === 'complete') {
         await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
         checkFace(await measureFace(page), width, `${state} ${width}px dark`);
+        await capture(strip, `${state}-strip-${width}-dark.png`, { state, width, theme: 'dark', subject: 'card strip, closed' });
         await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
-        // The blend (non-gface) face restates the same swap in its own
-        // columns: balance in the delta's column at primary size, delta
-        // and dash in the balance's former row. Measured on clones of the
-        // real triggers in a plain blend container at desktop width.
+        // The blend (non-gface) face restates the same rule in its own
+        // columns: the balance sits in the right-hand column at primary
+        // size, and no delta or dash exists on the face. Measured on
+        // clones of the real triggers in a plain blend container at
+        // desktop width.
         const blendFace = await page.evaluate(() => {
           const strip = document.querySelector('[data-budget-card-movements]');
           const host = document.createElement('div');
@@ -179,27 +216,25 @@ const states = [], errors = [], writes = [], external = [];
           for (const id of ['travelvisa', 'mbna']) host.appendChild(strip.querySelector(`[data-budget-card-toggle="${id}"]`).cloneNode(true));
           document.body.appendChild(host);
           const out = [...host.querySelectorAll('.card-movement-trigger')].map(btn => {
-            const bal = btn.querySelector('.card-movement-balance'), delta = btn.querySelector('.card-movement-delta'), dash = btn.querySelector('.blend-cc-dash');
+            const bal = btn.querySelector('.card-movement-balance');
             return { id: btn.getAttribute('data-budget-card-toggle'),
-              balCol: getComputedStyle(bal).gridColumnStart, balRow: getComputedStyle(bal).gridRowStart,
-              balSize: getComputedStyle(bal).fontSize, balWeight: getComputedStyle(bal).fontWeight,
-              deltaCol: getComputedStyle(delta).gridColumnStart, deltaRow: getComputedStyle(delta).gridRowStart,
-              dashCol: dash ? getComputedStyle(dash).gridColumnStart : null, dashRow: dash ? getComputedStyle(dash).gridRowStart : null };
+              balText: bal ? bal.textContent : null,
+              balCol: bal ? getComputedStyle(bal).gridColumnStart : null, balRow: bal ? getComputedStyle(bal).gridRowStart : null,
+              balSize: bal ? getComputedStyle(bal).fontSize : null, balWeight: bal ? getComputedStyle(bal).fontWeight : null,
+              deltaPresent: !!btn.querySelector('.card-movement-delta'),
+              dashPresent: !!btn.querySelector('.blend-cc-dash') };
           });
           host.remove();
           return out;
         });
         for (const r of blendFace) {
-          assert.equal(r.balCol, '2', `blend face: ${r.id} balance takes the primary column`);
+          assert.equal(r.balText, r.id === 'mbna' ? '$760.00' : '$927.40', `blend face: ${r.id} balance is the bare amount`);
+          assert.equal(r.balCol, '2', `blend face: ${r.id} balance takes the right-hand column`);
           assert.equal(r.balRow, '1', `blend face: ${r.id} balance takes the primary rows`);
           assert.equal(r.balSize, '16px', `blend face: ${r.id} balance takes the primary size`);
           assert.equal(r.balWeight, '650', `blend face: ${r.id} balance takes the primary weight`);
-          assert.equal(r.deltaCol, '1', `blend face: ${r.id} delta demotes to the balance's former column`);
-          assert.equal(r.deltaRow, '3', `blend face: ${r.id} delta demotes to the balance's former row`);
-          if (r.dashCol !== null) {
-            assert.equal(r.dashCol, '1', `blend face: ${r.id} dash follows the delta`);
-            assert.equal(r.dashRow, '3', `blend face: ${r.id} dash follows the delta's row`);
-          }
+          assert.equal(r.deltaPresent, false, `blend face: ${r.id} prints no net-change delta`);
+          assert.equal(r.dashPresent, false, `blend face: ${r.id} prints no unavailable dash`);
         }
       }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no viewport overflow');
@@ -252,7 +287,7 @@ const states = [], errors = [], writes = [], external = [];
         for (const theme of ['light', 'dark']) {
           await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
           await strip.locator('.card-movement-trigger').evaluateAll(rows => Promise.all(rows.flatMap(row => row.getAnimations()).map(animation => animation.finished.catch(() => {}))));
-          const contrast = await strip.locator('.card-movement-trigger .card-movement-delta:is(.is-up,.is-down)').evaluateAll(rows => {
+          const contrast = await strip.locator('.card-movement-trigger .card-movement-balance:not(.is-unavailable)').evaluateAll(rows => {
             const parse = color => {
               const values = (color || '').match(/[\d.]+/g);
               if (!values) return null;
@@ -287,7 +322,7 @@ const states = [], errors = [], writes = [], external = [];
               return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
             });
           });
-          assert.ok(contrast.every(ratio => ratio >= 4.5), `${theme} red/green text contrast: ${contrast}`);
+          assert.ok(contrast.every(ratio => ratio >= 4.5), `${theme} balance text contrast: ${contrast}`);
           contrastChecks.push({ theme, ratios: contrast });
         }
         await capture(sheet, `complete-open-${width}-dark.png`, { state, width, theme: 'dark', subject: 'card sheet open' });
@@ -299,7 +334,7 @@ const states = [], errors = [], writes = [], external = [];
         assert.equal(await page.evaluate(() => document.querySelector('[data-budget-detail-sheet]')?.contains(document.activeElement)), true,
           'native sheet lifecycle owns focus after rerender restore');
         await page.setViewportSize({ width: width === 1440 ? 390 : 1440, height: 1000 });
-        assert.equal(await panel.isVisible(), true); assert.match(await travel.innerText(), /107\.40/);
+        assert.equal(await panel.isVisible(), true); assert.match(await travel.innerText(), /\$927\.40/);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         await page.setViewportSize({ width, height: 1000 });
       }
@@ -309,12 +344,13 @@ const states = [], errors = [], writes = [], external = [];
       await amazon.click();
       const amazonPanel = page.locator('[data-budget-card-panel="mbna"]');
       assert.match(await amazonPanel.innerText(), /Aug 8[\s\S]*Manual statement observation/);
-      assert.match(await amazon.innerText(), /Balance \$760\.00 · as of Aug 8 · Manual statement/,
-        'trigger shows the qualified reported balance with its as-of date and manual source');
+      assert.match(await amazon.innerText(), /\$760\.00/,
+        'trigger shows the bare reported balance; its provenance stays in the panel');
+      assert.doesNotMatch(await amazon.innerText(), /as of|Manual statement/);
       await page.keyboard.press('Escape');
       assert.equal(await amazonPanel.isVisible(), false);
       if (state === 'complete') {
-        // The panels keep the dated evidence the non-named faces omit.
+        // The panels keep the dated evidence every face omits.
         await travel.click();
         assert.match(await panel.innerText(), /Reported balance \$927\.40 · Aug 20/,
           'Travel panel keeps the dated evidence its face omits');
@@ -351,10 +387,12 @@ const states = [], errors = [], writes = [], external = [];
         assert.equal(await panel.locator('[data-card-movement-transaction]').count(), 0,
           'the future period never borrows the current ledger');
         const futureFace = await measureFace(page);
-        assert.ok(futureFace.every(r => r.balText === null),
-          'the future period prints no reported balance on any face — nothing is promoted or invented');
-        assert.ok(futureFace.every(r => r.dashArea === 'chg' && r.deltaWeight === '620'),
-          'with no balance the dash keeps the primary slot and the delta its original weight, exactly as before the swap');
+        assert.ok(futureFace.every(r => r.balText === 'Unavailable' && r.balUnavailable === true),
+          'the future period prints the unavailable state in the balance slot — no balance is borrowed or invented');
+        assert.ok(futureFace.every(r => r.balArea === 'chg' && r.balSize === '12px' && r.balWeight === '500'),
+          'the state word sits in the same right slot with the state typography');
+        assert.ok(futureFace.every(r => Math.abs(r.balRight - r.contentRight) <= 2),
+          'the state word shares the amounts’ right edge');
         assert.equal(await page.evaluate(() => document.querySelector('[data-budget-detail-sheet]')?.contains(document.activeElement)), true,
           'focus stays inside the sheet across the switch');
         await page.evaluate(() => document.querySelector('[data-budget-window-step="-1"]').click());
@@ -372,7 +410,8 @@ const states = [], errors = [], writes = [], external = [];
         assert.equal(await river.evaluate(el => el === document.activeElement), true, 'the river slider takes focus');
         await page.keyboard.press('ArrowRight');
         await waitStart(page, '2026-08-28');
-        assert.match(await travel.innerText(), /Net unavailable/);
+        assert.match(await travel.innerText(), /Unavailable/);
+        assert.doesNotMatch(await travel.innerText(), /Net/);
         await travel.click();
         assert.match(await panel.innerText(), /Future period not observed/);
         assert.equal(await panel.locator('[data-card-movement-transaction]').count(), 0, 'future never borrows current ledger');
@@ -383,20 +422,21 @@ const states = [], errors = [], writes = [], external = [];
         await today.click();
         await waitStart(page, fx.START);
         assert.equal(await page.locator('[data-budget-card-panel]:not([hidden])').count(), 0, 'range change leaves no previous detail open');
-        assert.match(await travel.innerText(), /107\.40/);
-        // A past period publishes no reported balance: the swap stays off
+        assert.match(await travel.innerText(), /\$927\.40/);
+        // A past period publishes no reported balance: every row shows
+        // the unavailable state in the balance slot instead.
         // and every trigger keeps today's layout exactly.
         await page.evaluate(() => document.querySelector('[data-budget-window-step="-1"]').click());
         await page.waitForFunction(s => document.querySelector('[data-budget-card-movements]')?.getAttribute('data-card-period-start') !== s,
           fx.START, { timeout: 8000 });
         const pastFace = await measureFace(page);
-        assert.ok(pastFace.every(r => r.balText === null),
+        assert.ok(pastFace.every(r => r.balText === 'Unavailable' && r.balUnavailable === true),
           'the past period never borrows the current reported balance');
-        assert.ok(pastFace.every(r => r.dashArea === 'chg' && r.deltaWeight === '620'),
-          'past-period triggers keep the pre-swap layout exactly');
+        assert.ok(pastFace.every(r => r.balArea === 'chg' && r.balSize === '12px' && r.balWeight === '500'),
+          'past-period rows show the state word in the same right slot');
         await page.evaluate(() => document.querySelector('[data-budget-window-step="1"]').click());
         await waitStart(page, fx.START);
-        assert.match(await travel.innerText(), /107\.40/);
+        assert.match(await travel.innerText(), /\$927\.40/);
         // Granularity through visible controls: the period-figures sheet
         // re-homes the granularity toggle; month view is left through its
         // own visible "See the pay periods" drill button and drilldown exit.
@@ -415,7 +455,7 @@ const states = [], errors = [], writes = [], external = [];
         await exit.waitFor();
         await exit.click();
         await strip.waitFor();
-        assert.match(await travel.innerText(), /107\.40/);
+        assert.match(await travel.innerText(), /\$927\.40/);
       }
       await page.evaluate(async () => { await document.fonts.ready; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); });
       states.push({ width, state, layout, contrastChecks, synthetic: true });
@@ -437,6 +477,22 @@ const states = [], errors = [], writes = [], external = [];
         'the unavailable presentation itself is unchanged');
       assert.deepEqual(await strip.locator('[data-budget-card-toggle]').evaluateAll(rows => rows.map(row => row.getAttribute('data-budget-card-toggle'))),
         ['travelvisa', 'cashback', 'tdcc', 'triangle', 'mbna', 'heloc']);
+      const puById = Object.fromEntries((await measureFace(page)).map(r => [r.id, r]));
+      assert.equal(puById.heloc.balText, '$42,025.35', 'HELOC face is its bare reported balance');
+      // The unavailable branch renders the strip outside the bento face,
+      // so the blend furniture (chips, tile title) does not exist here —
+      // the renderer's own face is what this branch proves.
+      assert.equal(puById.heloc.chipNet, null, 'no blend chip is painted on the unavailable branch');
+      assert.equal(puById.heloc.deltaPresent, false, 'no net delta prints on the unavailable branch');
+      assert.equal(puById.mbna.balText, '$760.00', 'Amazon face is its bare reported balance on the unavailable branch');
+      // R1: on this branch the renderer's own heading is the visible
+      // one (no blend furniture), so it must be the Credit cards
+      // heading — semantically and visibly.
+      await checkHeadingNames(strip, `${width}px plan-unavailable`);
+      const puHeading = strip.locator('.card-movement-heading h2');
+      assert.equal(await puHeading.isVisible(), true, 'the heading is visible on the unavailable branch');
+      assert.equal((await puHeading.innerText()).trim(), 'Credit cards',
+        'the visible heading on the unavailable branch is exactly Credit cards');
       const sheet = page.locator('[data-budget-detail-sheet]');
       assert.equal(await sheet.count(), 1, 'the unavailable branch renders the native sheet host');
       const travel = page.locator('[data-budget-card-toggle="travelvisa"]');
@@ -468,8 +524,9 @@ const states = [], errors = [], writes = [], external = [];
       assert.equal(await amazonPanel.isVisible(), true, 'the MBNA card also opens on the unavailable branch');
       assert.match(await amazonPanel.innerText(), /Manual statement observation/,
         'the MBNA panel keeps its manual-statement qualification on the unavailable branch');
-      assert.match(await amazon.innerText(), /Balance \$760\.00 · as of Aug 8 · Manual statement/,
+      assert.match(await amazon.innerText(), /\$760\.00/,
         'the MBNA trigger balance stays as published on the unavailable branch');
+      assert.doesNotMatch(await amazon.innerText(), /as of|Manual statement/);
       await page.keyboard.press('Escape');
       assert.equal(await amazonPanel.isVisible(), false);
       assert.equal(await amazon.evaluate(el => el === document.activeElement), true,
@@ -496,6 +553,70 @@ const states = [], errors = [], writes = [], external = [];
         'Escape returns focus to the HELOC trigger on the unavailable branch');
       states.push({ width, state: 'plan-unavailable', synthetic: true });
       await page.close(); console.log(`PASS ${width}px plan-unavailable: sheet host present, card + HELOC open/close/Escape/focus and remount restore`);
+    }
+    // Missing-balance branch: one card's balance is genuinely absent (no
+    // canonical balance and no overlay proposal), so its face row prints
+    // the Unavailable state word in the same right slot the amounts use —
+    // same area, same right edge, state typography — while the other
+    // rows keep their bare amounts. Nothing is invented in its place.
+    for (const width of wanted('balance-missing') ? [1440, 390, 320] : []) {
+      const data = fx.served();
+      delete data.debts.find(row => row.id === 'mbna').balance;
+      data.liveOverlay.overlays = data.liveOverlay.overlays.filter(o => o.locator !== 'debts:mbna');
+      const page = await boot(data, width);
+      const strip = page.locator('[data-budget-card-movements]');
+      await strip.waitFor();
+      await checkHeadingNames(strip, `${width}px balance-missing`);
+      const face = await measureFace(page);
+      const byId = Object.fromEntries(face.map(r => [r.id, r]));
+      assert.equal(byId.mbna.balText, 'Unavailable', `${width}px balance-missing: Amazon prints the state word`);
+      assert.equal(byId.mbna.balUnavailable, true, `${width}px balance-missing: Amazon state word carries the state class`);
+      assert.equal(byId.mbna.balArea, 'chg', `${width}px balance-missing: the state word occupies the right slot`);
+      assert.equal(byId.mbna.balSize, '12px', `${width}px balance-missing: the state word takes the state size`);
+      assert.equal(byId.mbna.balWeight, '500', `${width}px balance-missing: the state word takes the state weight`);
+      assert.ok(Math.abs(byId.mbna.balRight - byId.mbna.contentRight) <= 2,
+        `${width}px balance-missing: the state word shares the amounts' right edge`);
+      assert.equal(byId.travelvisa.balText, '$927.40', `${width}px balance-missing: Travel keeps its amount`);
+      assert.equal(byId.triangle.balText, '$1,980.00', `${width}px balance-missing: Triangle keeps its amount`);
+      await capture(strip, `balance-missing-strip-${width}-light.png`, { state: 'balance-missing', width, theme: 'light', subject: 'card strip, one balance missing' });
+      states.push({ width, state: 'balance-missing', synthetic: true });
+      await page.close(); console.log(`PASS ${width}px balance-missing: state word in the right slot, other rows unchanged`);
+    }
+    // Ready-review P2 4251469063: prove the browser's computed button name,
+    // including balance meaning and the unchanged full-label action. DOM
+    // presence alone does not prove this accessible-name contract.
+    for (const width of wanted('accessible-balance') ? [1440, 320] : []) {
+      for (const theme of ['light', 'dark']) for (const [mode, amount, expected] of [
+        ['numeric', 760, '$760.00'], ['unavailable', null, 'Unavailable'],
+        ['zero', 0, '$0.00'], ['negative', -25.50, '\u2212$25.50'],
+      ]) {
+        const data = fx.served();
+        const debt = data.debts.find(row => row.id === 'mbna');
+        if (amount === null) {
+          delete debt.balance;
+          data.liveOverlay.overlays = data.liveOverlay.overlays.filter(o => o.locator !== 'debts:mbna');
+        } else {
+          debt.balance = amount;
+          data.liveOverlay.overlays.find(o => o.locator === 'debts:mbna' && o.field === 'balance').proposedValue = amount;
+        }
+        const page = await boot(data, width, theme);
+        const strip = page.locator('[data-budget-card-movements]');
+        await strip.waitFor();
+        const button = strip.getByRole('button', {
+          name: `Amazon Reported balance ${expected} Show Amazon Mastercard activity`, exact: true,
+        });
+        await button.waitFor();
+        assert.equal(await button.count(), 1, `${width}px ${theme} ${mode}: computed accessible balance name`);
+        assert.equal(await button.getAttribute('data-budget-card-toggle'), 'mbna', 'named button retains canonical identity');
+        assert.equal(await button.locator('.card-movement-balance').textContent(), expected, 'visible balance span stays bare');
+        assert.equal(await strip.getByRole('button', {
+          name: 'Travel Reported balance $927.40 Show Travel activity', exact: true,
+        }).count(), 1, 'other numeric card retains its full-label action and balance meaning');
+        await capture(strip, `accessible-balance-${mode}-strip-${width}-${theme}.png`,
+          { state: 'accessible-balance', mode, width, theme, subject: 'card strip, accessible balance meaning' });
+        states.push({ width, theme, state: 'accessible-balance', mode, synthetic: true });
+        await page.close(); console.log(`PASS ${width}px ${theme} ${mode}: computed accessible balance name`);
+      }
     }
     assert.deepEqual(errors, []); assert.deepEqual(writes, []); assert.deepEqual(external, []);
     for (const shot of screenshots) shot.sha256 = sha256File(path.join(out, shot.file));

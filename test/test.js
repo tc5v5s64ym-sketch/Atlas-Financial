@@ -57,6 +57,7 @@ const suites = [
   ['real financial calendar identity and hypothetical conservation', 'test-financial-calendar-identity.js'],
   ['posted income and unresolved future occurrence cash gate', 'test-early-income-uncertainty.js'],
   ['bounded live refresh and client cancellation', 'test-live-refresh-deadline.js'],
+  ['equivalent in-flight refresh sharing, caller isolation and sanitized timings', 'test-live-refresh-coalescing.js'],
   ['bounded shared browser data load and truthful retry', 'test-browser-data-deadline.js'],
   ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],

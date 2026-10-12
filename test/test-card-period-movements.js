@@ -243,7 +243,7 @@ for (const [name, change, reason] of [
 const helocHtml = View.html(helocPub, { money: value => '$' + value.toFixed(2), date: value => value });
 eq(helocHtml.includes('data-budget-card-toggle="heloc"'), true, 'native renderer supplies the HELOC trigger');
 eq(helocHtml.includes('data-budget-card-panel="heloc"'), true, 'native renderer supplies the HELOC panel');
-// Sheet routing contract + Grok Scope A trigger balance (renderer level):
+// Sheet routing contract + the face trigger balance (renderer level):
 // triggers name the native dialog, panels render hidden as sheet sources,
 // and no inline expansion state or private close control remains.
 const fmt = { money: value => '$' + value.toFixed(2), date: value => value };
@@ -252,27 +252,29 @@ eq(sheetHtml.includes('aria-haspopup="dialog"'), true, 'card triggers name the n
 eq(sheetHtml.includes('aria-expanded'), false, 'no competing inline expansion state remains');
 eq(sheetHtml.includes('data-budget-card-close'), false, 'panel carries no private close control; the sheet owns dismissal');
 eq(/data-budget-card-panel="travelvisa"[^>]* hidden>/.test(sheetHtml), true, 'panels render hidden as native sheet sources');
-// mbna is the publication's manual-statement card: its trigger balance is
-// labelled Balance with the preserved as-of date and the explicit source.
-eq(/data-budget-card-toggle="mbna"[\s\S]*?card-movement-balance">Balance \$760\.00 · as of 2026-08-08 · Manual statement/.test(sheetHtml), true,
-  'manual trigger balance shows Balance, as-of date and manual source');
-// travelvisa has no evidence date and no manual flag: its face balance
-// omits the date segment entirely (face dates print only for Triangle and
-// the Amazon card), so no date and no synced source is invented; the
-// panel keeps the full evidence, stated as date unavailable.
-eq(/data-budget-card-toggle="travelvisa"[\s\S]*?card-movement-balance">Balance \$927\.40<\/span>/.test(sheetHtml), true,
+// mbna is the publication's manual-statement card: its face prints the
+// bare amount only — the as-of date and the manual source are panel
+// evidence, asserted below on the panel itself.
+eq(/data-budget-card-toggle="mbna"[\s\S]*?card-movement-balance">\$760\.00<\/span>/.test(sheetHtml), true,
+  'manual trigger balance shows the bare amount; provenance is panel-only');
+// travelvisa has no evidence date and no manual flag: its face balance is
+// likewise the bare amount, so no date and no synced source is invented;
+// the panel keeps the full evidence, stated as date unavailable.
+eq(/data-budget-card-toggle="travelvisa"[\s\S]*?card-movement-balance">\$927\.40<\/span>/.test(sheetHtml), true,
   'undated non-manual trigger balance invents neither date nor source');
 eq(/data-budget-card-panel="travelvisa"[\s\S]*?Reported balance \$927\.40 · Date unavailable/.test(sheetHtml), true,
   'panel keeps the undated reported-balance evidence');
-// Face as-of dates print only for Triangle and the Amazon card, keyed on
-// the canonical card id: Cash Back's face omits its date while its panel
-// keeps the dated evidence; Triangle keeps its face date and suffix.
-eq(/data-budget-card-toggle="cashback"[\s\S]*?card-movement-balance">Balance \$2264\.20<\/span>/.test(sheetHtml), true,
-  'Cash Back face omits the as-of date');
+// Face balances print the bare amount for every card — no prefix, no
+// as-of date, no source suffix, no canonical-id exception: Cash Back's
+// face is the amount alone while its panel keeps the dated evidence,
+// and Triangle, previously a face-date exception, prints the bare
+// amount too.
+eq(/data-budget-card-toggle="cashback"[\s\S]*?card-movement-balance">\$2264\.20<\/span>/.test(sheetHtml), true,
+  'Cash Back face is the bare amount');
 eq(/data-budget-card-panel="cashback"[\s\S]*?Reported balance \$2264\.20/.test(sheetHtml), true,
   'Cash Back panel keeps the reported-balance evidence line');
-eq(/data-budget-card-toggle="triangle"[\s\S]*?card-movement-balance">Balance \$1980\.00 · as of 2026-08-17 · Manual statement/.test(sheetHtml), true,
-  'Triangle face keeps the as-of date');
+eq(/data-budget-card-toggle="triangle"[\s\S]*?card-movement-balance">\$1980\.00<\/span>/.test(sheetHtml), true,
+  'Triangle face prints the bare amount like every card');
 // The Amazon face name is exactly 'Amazon', keyed on the canonical id;
 // the publication label itself is unchanged and still names the panel.
 eq(/data-budget-card-toggle="mbna"[\s\S]*?card-movement-title">Amazon<span/.test(sheetHtml), true,
@@ -285,16 +287,37 @@ const decoy = copy(pub); decoy.cards[0].label = 'Amazon Unlimited';
 const decoyHtml = View.html(decoy, fmt);
 eq(/data-budget-card-toggle="travelvisa"[\s\S]*?card-movement-title">Amazon Unlimited<span/.test(decoyHtml), true,
   'a label containing Amazon is not relabelled');
-eq(/data-budget-card-toggle="travelvisa"[\s\S]*?card-movement-balance">Balance \$927\.40<\/span>/.test(decoyHtml), true,
-  'a label containing Amazon does not gain a face date');
+eq(/data-budget-card-toggle="travelvisa"[\s\S]*?card-movement-balance">\$927\.40<\/span>/.test(decoyHtml), true,
+  'a label containing Amazon does not change the bare face amount');
 eq(sheetHtml.toLowerCase().includes('payday balance'), false, 'reported balance is never called a payday balance');
 const zeroDebt = copy(x); zeroDebt.debts[2].balance = 0;
-eq(/data-budget-card-toggle="tdcc"[\s\S]*?card-movement-balance">Balance \$0\.00/.test(View.html(publish(zeroDebt), fmt)), true,
+eq(/data-budget-card-toggle="tdcc"[\s\S]*?card-movement-balance">\$0\.00/.test(View.html(publish(zeroDebt), fmt)), true,
   'genuine zero reported balance renders as zero');
-eq(View.html(publish(historical), fmt).includes('class="card-movement-balance"'), false,
+const historicalHtml = View.html(publish(historical), fmt);
+eq(historicalHtml.includes('card-movement-balance is-unavailable">Unavailable'), true,
+  'historical period trigger shows the unavailable state in the balance slot');
+eq(/card-movement-balance">\$/.test(historicalHtml), false,
   'historical period trigger never borrows the current reported balance');
 const badBalance = copy(pub); badBalance.cards[0].reportedBalance = { amount: '927.40', date: '2026-08-20', status: 'dated' };
-eq(View.html(badBalance, fmt).includes('Balance $927.40'), false, 'non-numeric reported balance amount is rejected, not rendered');
+eq(/data-budget-card-toggle="travelvisa"[\s\S]*?card-movement-balance is-unavailable">Unavailable/.test(View.html(badBalance, fmt)), true,
+  'non-numeric reported balance amount is rejected to the state word, not rendered');
+// The face carries no net furniture at all: no delta span, no qualifier
+// span and no net-unavailable text anywhere in the rendered strip; no
+// net figure prints on the face. The panels keep their own pre-existing
+// evidence wording (asserted there below and in the publication pins
+// above) — unchanged, and no net figure is printed there either.
+eq(sheetHtml.includes('card-movement-delta'), false, 'no trigger prints a net-change delta on the face');
+eq(sheetHtml.includes('card-movement-qualifier'), false, 'no trigger prints a net qualifier on the face');
+eq(sheetHtml.includes('Net unavailable'), false, 'no net-unavailable text prints anywhere in the strip');
+// The heading contract is semantic, not just the painted tile title
+// (Systems Review 5485851551 R1): the region's accessible name and the
+// actual h2 both read exactly 'Credit cards' — no 'Card movement' name
+// and no period dates survive in the heading, in any state.
+eq(/data-budget-card-movements[^>]*aria-label="Credit cards"/.test(sheetHtml), true,
+  'the strip region accessible name is Credit cards');
+eq(sheetHtml.includes('<h2>Credit cards</h2>'), true, 'the semantic heading is exactly Credit cards');
+eq(sheetHtml.includes('Card movement'), false, 'no Card movement heading or label remains in the strip');
+eq(historicalHtml.includes('<h2>Credit cards</h2>'), true, 'the historical strip heading is exactly Credit cards');
 // Condensed panel copy: the payments qualifier keeps its meaning, the
 // generic provider-observation boilerplate sentence is gone.
 eq(sheetHtml.includes('Purpose unconfirmed: payments do not automatically settle scheduled minimums; lender confirmation remains separate.'), true,
@@ -339,8 +362,11 @@ for (const mode of ['complete', 'empty', 'undated', 'amount-missing', 'foreign-c
   eq(observedHeloc.reasons.includes('transaction-evidence-unconfirmed'), !qualified, 'native HELOC ' + mode + ' preserves lost-record marker');
   const rendered = View.html(observedPub, { money: value => '$' + value.toFixed(2), date: value => value });
   eq(rendered.includes('data-budget-card-toggle="heloc"'), true, 'native HELOC ' + mode + ' renderer identity');
-  if (!qualified) eq(/data-budget-card-toggle="heloc"[\s\S]*?card-movement-delta[^>]*>Net unavailable/.test(rendered), true,
-    'native HELOC ' + mode + ' renderer never claims zero');
+  if (!qualified) {
+    const helocTrigger = rendered.slice(rendered.indexOf('data-budget-card-toggle="heloc"'));
+    eq(helocTrigger.slice(0, helocTrigger.indexOf('</button>')).includes('Net'), false,
+      'native HELOC ' + mode + ' trigger prints no net claim — it never claims zero');
+  }
 }
 // Provider amount types must earn qualification before numeric conversion.
 // Equal independently specified endpoints do not prove a missing amount.
@@ -405,8 +431,11 @@ for (const [name, rawAmount, expectedCents, qualified] of [
   eq(row.posted.length, qualified ? 1 : 0, name + ' posted identity retained only for qualified evidence');
   const rendered = View.html(publication, { money: value => '$' + value.toFixed(2), date: value => value });
   eq(rendered.includes('data-budget-card-toggle="heloc"'), true, name + ' native renderer identity');
-  if (!qualified) eq(/data-budget-card-toggle="heloc"[\s\S]*?card-movement-delta[^>]*>Net unavailable/.test(rendered),
-    true, name + ' renderer withholds false zero or one');
+  if (!qualified) {
+    const helocTrigger = rendered.slice(rendered.indexOf('data-budget-card-toggle="heloc"'));
+    eq(helocTrigger.slice(0, helocTrigger.indexOf('</button>')).includes('Net'), false,
+      name + ' renderer withholds false zero or one — no net prints on the trigger');
+  }
   eq(JSON.stringify(data), canonicalBefore, name + ' no canonical mutation');
   eq(JSON.stringify(payload), payloadBefore, name + ' no provider input mutation');
   eq(JSON.stringify(accountMap), mapBefore, name + ' no map mutation');
