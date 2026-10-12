@@ -147,7 +147,7 @@ function input(mode) {
       const body = page.locator('[data-budget-detail-body]');
       await page.locator('[data-budget-detail-sheet]').waitFor({ state: 'visible' });
       if (topUpHeld) assert.match(await body.locator('[data-budget-daily-proposal]').innerText(), /Unavailable/);
-      if (mode.startsWith('cutoff-') && expected[0] == null) {
+      if ((mode.startsWith('cutoff-') || mode.startsWith('window-')) && expected[0] == null) {
         await body.locator('[data-budget-savings-info] > summary').click();
         assert.match(await body.innerText(), /Saved allocation is withheld/);
         assert.match(await body.locator('[data-budget-savings-total-needed]').first().innerText(), /230\.00/);
