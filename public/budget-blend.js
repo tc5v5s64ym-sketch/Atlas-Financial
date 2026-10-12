@@ -51,6 +51,66 @@
     return found ? found[0] : '';
   }
 
+  // Household tile face (whole-dollar amendment, follow-on to #577,
+  // Option B as approved after Systems BLOCK 5484530088): the face
+  // renders each published amount in whole dollars, rounded UP once
+  // from its own typed value. The values are the canonical amounts
+  // plan.js stamps as data attributes under the same finite-value and
+  // trust predicates that print the amounts (data-budget-pair-actual /
+  // data-budget-pair-planned on the category row;
+  // data-budget-actual-amount / data-budget-planned-amount on the
+  // totals ratio span) — no figure is ever parsed back out of a
+  // printed money token. A missing, empty, malformed or non-finite
+  // attribute is REJECTED (null), never coerced to zero: the side is
+  // unknown and its published word stands. The printed source keeps
+  // exact cents everywhere: the ring geometry fallbacks parse it, the
+  // accessible name quotes it, and the sheet evidence prints it.
+  function stampedAmount(raw) {
+    if (raw == null) return null;
+    const shown = String(raw).trim();
+    if (!/^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(shown)) return null;
+    const value = Number(shown);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  // Magnitude ceiling at dollar precision, cent-exact: any nonzero
+  // cents round up to the next dollar; exact dollars and zero are
+  // unchanged ($0.00 renders $0). Sign is retained, and a negative
+  // zero can never render — a rounded magnitude of zero carries no
+  // sign. Grouping and sign shape as money2 (U+2212 for negatives).
+  function wholeDollarAmount(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+    const cents = Math.round(Math.abs(value) * 100);
+    const dollars = Math.ceil(cents / 100);
+    return (value < 0 && dollars > 0 ? '−$' : '$') + new Intl.NumberFormat('en-CA', {
+      minimumFractionDigits: 0, maximumFractionDigits: 0,
+    }).format(dollars);
+  }
+
+  // One side of a face pair. A valid stamped value renders in whole
+  // dollars, keeping the estimated ≈ the print carries. Without one,
+  // the side is unknown: its printed word passes through verbatim,
+  // and a printed amount with no valid stamp fails closed to the
+  // unknown word — never cents on the face, never an invented zero.
+  function pairSideText(value, printed) {
+    if (Number.isFinite(value)) {
+      return (String(printed || '').includes('≈') ? '≈ ' : '') + wholeDollarAmount(value);
+    }
+    const word = String(printed || '');
+    return moneyToken(word) ? 'Unavailable' : word;
+  }
+
+  // The bottom totals only: locate the printed token inside a text
+  // node and replace it with the whole-dollar rendering of the side's
+  // STAMPED value. The pattern locates the token's span; the figure
+  // itself comes from the attribute, never from the text. With no
+  // valid value the text stands untouched (an unknown side prints
+  // its word, which carries no token anyway).
+  function replacePrintedAmount(shown, value) {
+    if (!Number.isFinite(value)) return String(shown);
+    return String(shown).replace(/[-−]?\$[\d,]+\.\d{2}/, wholeDollarAmount(value));
+  }
+
   function place(bento) {
     const hero = bento.querySelector('.budget-blend-hero-layout');
     if (!hero) return;
@@ -1487,13 +1547,14 @@
       }
       return moneyToken(status) || status;
     };
-    // The category's published Actual / Planned pair, read from the
-    // source row's own printed meta with the screen-reader lead-ins
-    // stripped — the same clone the geometry fallback reads. The two
-    // printed tokens either side of the meta's " / " separator are the
-    // pair, verbatim (an unknown side prints its published word, never
-    // a zero). Nothing is computed. A meta carrying no pair — Other
-    // Spending's unassigned note — yields null.
+    // The category's published Actual / Planned pair as PRINTED in
+    // the source row's meta, screen-reader lead-ins stripped — the
+    // same clone the geometry fallback reads. The printed sides are
+    // the source for the pair's words and qualifiers (Unavailable,
+    // the estimated ≈); the face's figures come from the row's
+    // stamped canonical amounts (pairSideText), never from parsing
+    // these tokens. A meta carrying no pair — Other Spending's
+    // unassigned note — yields null.
     const printedPair = row => {
       const metaNode = row.querySelector('.budget-category-meta');
       if (!metaNode) return null;
@@ -1534,12 +1595,23 @@
           srPlan, document.createTextNode(planned));
       };
       const pair = printedPair(row);
+      // The face's figures are the row's stamped canonical amounts,
+      // each side rounded up once from its own typed value
+      // (pairSideText). A side with no valid stamp is unknown and
+      // renders its published word.
+      const actualValue = stampedAmount(row.getAttribute('data-budget-pair-actual'));
+      const plannedValue = stampedAmount(row.getAttribute('data-budget-pair-planned'));
       if (pair) {
-        fillPair(pair.actual, pair.planned);
+        fillPair(pairSideText(actualValue, pair.actual),
+          pairSideText(plannedValue, pair.planned));
+      } else if (actualValue != null) {
+        // Synthesized pair: the spent side renders from its stamp
+        // (its ≈ qualifier, when the row is estimated, rides in the
+        // status print); the withheld plan side is Unavailable.
+        fillPair(pairSideText(actualValue, status), 'Unavailable');
       } else {
         const spent = spentAmountText(row, status);
-        if (moneyToken(spent)) fillPair(spent, 'Unavailable');
-        else holder.textContent = spent;
+        holder.textContent = pairSideText(null, spent);
       }
       label.appendChild(holder);
       return label;
@@ -1632,8 +1704,8 @@
     }
     if (facts) {
       // The published Actual / Planned pair leaves the tile header: it
-      // becomes the tile's bottom totals, printed verbatim (appended at
-      // the end of this painter). The Still planned / From today cell is
+      // becomes the tile's bottom totals (appended at the end of this
+      // painter, rendered there in whole dollars from its stamps). The Still planned / From today cell is
       // evidence, not a header sentence; it moves into the sheet evidence
       // body with the counts (see the remainBlock handling below).
       facts.classList.add('blend-house-totals');
@@ -1727,8 +1799,30 @@
       more.append(summary, body);
       (section.querySelector('.blend-other') || rings).after(more);
     }
-    // The Actual / Planned pair is the tile's bottom totals.
-    if (facts) section.appendChild(facts);
+    // The Actual / Planned pair is the tile's bottom totals. The face
+    // renders each side in whole dollars, rounded up once from the
+    // ratio span's stamped published amount — never a sum of the
+    // rounded category pairs, and never a value parsed back out of
+    // the printed cents (replacePrintedAmount only locates the
+    // printed token's span). A side with no valid stamp (unknown)
+    // keeps its printed word untouched. The Still planned cell has
+    // already been extracted above, so it is not walked; the sheet's
+    // separate evidence instance of the same publication is a
+    // different element and keeps exact cents.
+    if (facts) {
+      const ratio = facts.querySelector('[data-budget-ratio]');
+      const renderTotalSide = (selector, attribute) => {
+        const span = ratio && ratio.querySelector(selector);
+        const value = stampedAmount(ratio && ratio.getAttribute(attribute));
+        if (!span || value == null) return;
+        span.childNodes.forEach(child => {
+          if (child.nodeType === 3) child.nodeValue = replacePrintedAmount(child.nodeValue, value);
+        });
+      };
+      renderTotalSide('[data-budget-ratio-actual]', 'data-budget-actual-amount');
+      renderTotalSide('[data-budget-ratio-plan]', 'data-budget-planned-amount');
+      section.appendChild(facts);
+    }
     // Only a complete, connected bridge may replace its source row on the
     // face. Keep the full printed status and amounts in its accessible name.
     // Unrepresented rows (including extra Other rows) remain visible.
@@ -2497,6 +2591,10 @@
     module.exports.keepPastTimelineNode = keepPastTimelineNode;
     module.exports.readBadTimeline = readBadTimeline;
     module.exports.badTermNegative = badTermNegative;
+    module.exports.stampedAmount = stampedAmount;
+    module.exports.wholeDollarAmount = wholeDollarAmount;
+    module.exports.pairSideText = pairSideText;
+    module.exports.replacePrintedAmount = replacePrintedAmount;
     module.exports.knownTimelineRuns = knownTimelineRuns;
     module.exports.chooseBadTimeline = chooseBadTimeline;
     module.exports.RiverSpring = RiverSpring;
