@@ -16,6 +16,25 @@ function decision(char) {
 }
 async function child() {
   const [mode, root, char] = process.argv.slice(2), store = S.createStore(S.fileStorage(root));
+  if (mode.startsWith('controller-')) {
+    const fixture = require('./fixtures/card-purchase-coverage-data'), x = fixture('backfill');
+    delete x.data.plan.cardPurchaseCoverage.opening;
+    const source = () => {
+      const data = require('../scripts/live-plan').fromObservation(x).data;
+      return { plan: data.plan, debts: data.debts, asOf: x.asOf, packet: data.liveOverlay.currentPeriodActuals };
+    };
+    const controller = require('../scripts/card-payment-decisions').createController({ store,
+      evidence: { read: source, resolve: choice => choice }, sessions: { actor: () => actor } });
+    if (mode === 'controller-repeat') console.log(JSON.stringify(await controller.confirm({ session: 'invented', operationId: char })));
+    else {
+      const proposal = { ...decision('a').record, debitRef: fixture.ref(x, 80002), creditRef: fixture.ref(x, 80003),
+        allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: 80 }] };
+      const preview = await controller.prepare({ session: 'invented', selection: proposal });
+      assert.equal(preview.status, 'prepared');
+      console.log(JSON.stringify(await controller.confirm({ session: 'invented', operationId: preview.operationId })));
+    }
+    return;
+  }
   if (mode === 'crash') {
     const unlink = fs.unlinkSync;
     fs.unlinkSync = file => { if (path.basename(file) === 'decisions.lock') process.exit(73); return unlink(file); };
@@ -80,6 +99,11 @@ async function main() {
   const roots = [];
   const fresh = () => { const root = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-card-store-synthetic-')); roots.push(root); return root; };
   try {
+    const integrated = fresh(); S.initializeFileStorage(integrated);
+    const confirmed = JSON.parse(run('controller-confirm', integrated).stdout);
+    eq(confirmed.status, 'confirmed', 'real provider, Forecast, controller and file adapter commit together');
+    eq(JSON.parse(run('controller-repeat', integrated, confirmed.operationId).stdout), confirmed,
+      'fresh controller/process retrieves the exact committed receipt without reconstructing the preview');
     const root = fresh(); S.initializeFileStorage(root);
     eq(JSON.parse(run('commit', root).stdout).status, 'confirmed', 'real atomic file commit');
     eq(JSON.parse(run('read', root).stdout).revision, 1, 'separate process reads the durable receipt');
