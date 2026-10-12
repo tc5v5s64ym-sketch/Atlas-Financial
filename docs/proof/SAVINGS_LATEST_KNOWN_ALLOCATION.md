@@ -272,7 +272,20 @@ All retain original reported 200, have zero proven pairs, and withhold Saved
 across rows, lenses, Plan stamps/detail, grouped members and shared Inventory;
 Needed remains 230/24. The acceptance suite now has 80 cases. Five focused
 internal-movement/consumer/review-boundary/provider/authority suites cover this
-one-line admission change. Earlier receipts remain bound to their original
-sources; new targeted browser and full-output receipts will bind the repaired
-clean code head. Current-head hosted checks and exact-head Systems re-review
+one-line admission change; all pass. Earlier receipts remain bound to their
+original sources. The fresh [comparison](savings-latest-known/transfer-forms-comparison.json)
+passes 73 cases against exact pre-repair `45fa5394`: 1,165 equal subtrees,
+zero unexpected changes outside Saved and named allocation status/reasons.
+The [three-case browser receipt](savings-latest-known/browser-transfer-forms.json)
+passes hint-only, invalid reference and missing reference through real App.boot,
+Saved stamps/bars and Info. Needed remains known, top-up withheld and focus
+restored, with no overflow, page error, external request or write. The
+[hint-only capture](savings-latest-known/cutoff-hint-only-390-light.png) was
+visually inspected. No finished browser matrix is rerun or relabelled.
+
+Both receipts bind clean code `da6a3efa93851a5f5f4dcb384637832797fb8cc7`,
+using exact Git blob bytes with no normalization (12 numerical source/fixture/
+proof files, 65 browser-bound sources and 30 served hashes). The following
+evidence-only commit preserves all exercised production/test blobs.
+Current-head hosted checks and exact-head Systems re-review
 remain required, with no merge or deployment by this builder.
