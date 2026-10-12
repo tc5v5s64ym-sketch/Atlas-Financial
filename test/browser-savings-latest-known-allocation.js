@@ -13,11 +13,13 @@ const files = cp.execFileSync('git', ['ls-files', '-z', '--', 'public', 'scripts
   'test/fixtures/savings-v2-observation-data.js', 'test/fixtures/savings-daily-consumer-data.js',
   'test/fixtures/savings-daily-allocation-contract.js', 'test/fixtures/budget-funding-data.js',
   'test/fixtures/savings-transfer-cutoffs.js',
+  'scripts', 'test/fixtures/savings-observer-contract-data.js',
   'test/browser-savings-latest-known-allocation.js', 'test/proof-source-binding.js'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean);
 const binding = captureSourceBinding(root, files, process.env.PROOF_BASE_SHA || null);
 fs.mkdirSync(output, { recursive: true });
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function input(mode) {
+  if (mode.startsWith('pipeline-')) return require('./fixtures/savings-observer-contract-data')(mode.slice('pipeline-'.length)).data;
   if (mode.startsWith('cutoff-')) {
     const input = transferCutoffs(mode.slice('cutoff-'.length)), data = consumer('ready');
     data.meta.asOf = input.asOf; data.plan = input.plan;
@@ -44,6 +46,11 @@ function input(mode) {
   try {
     const selected = process.env.ATLAS_LATEST_SAVINGS_CASES?.split(',');
     for (const [mode, width, theme, expected, bands, topUpHeld = true] of [
+      ['pipeline-valid', 390, 'light', [95, 24], ['is-amber', 'is-full'], false],
+      ['pipeline-valid-transfer', 390, 'light', [105, 24], ['is-amber', 'is-full'], false],
+      ['pipeline-undated', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['pipeline-undated-pending', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['pipeline-sanitization-fallback', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
       ['stale-date', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['stale-both', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['prior-household-day', 320, 'dark', [95, 24], ['is-amber', 'is-full']],

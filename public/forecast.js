@@ -18949,12 +18949,24 @@
   // The incumbent owns pair identity; never reconstruct or adjust a report.
   function savingsReportedMovementCoherence(plan, day, opts, reported) {
     const packet = currentPeriodActualsPacket(opts), transactions = packet?.transactions;
-    if (!Array.isArray(transactions)) return null;
     const accounts = new Set(reported.accountIds), byId = new Map();
+    const unknown = 'A savings movement lacks unique, qualified posted evidence. Balance-cutoff inclusion is unproven; Saved allocation is withheld.';
+    // Legacy v1 packets did not retain account-scoped dropped-row provenance.
+    // They remain readable elsewhere, but cannot prove this Savings boundary.
+    if (!packet || !Object.hasOwn(packet, 'savingsMovementUnconfirmed')) {
+      return 'Savings movement provenance is unavailable in this legacy or missing observation packet. Saved allocation is withheld.';
+    }
+    const flags = packet.savingsMovementUnconfirmed;
+    const reasons = ['transaction-amount-or-date-unconfirmed', 'native-plan-currency-unconfirmed',
+      'transaction-evidence-sanitization-failed'];
+    if (!Array.isArray(transactions) || !Array.isArray(flags) || flags.some(row =>
+      !savingsKeys(row, ['accountId', 'reason'])
+      || !['savings', 'savings-dont-touch', ...HOUSEHOLD_CHEQUING_IDS].includes(row.accountId)
+      || !reasons.includes(row.reason)) || flags.some(row => accounts.has(row.accountId))
+      || Object.hasOwn(packet, 'currency') && (typeof packet.currency !== 'string' || packet.currency.toUpperCase() !== 'CAD')) return unknown;
     for (const tx of transactions) if (tx?.id != null) {
       const id = String(tx.id), rows = byId.get(id) || []; rows.push(tx); byId.set(id, rows);
     }
-    const unknown = 'A savings movement lacks unique, qualified posted evidence. Balance-cutoff inclusion is unproven; Saved allocation is withheld.';
     const uncertain = 'Reported balance cutoffs cannot establish inclusion of the savings movement. Saved allocation is withheld.';
     const complete = packet.transactionCoverage === 'complete' || packet.transactionCoverage?.complete === true;
     const validId = id => typeof id === 'string' && !!id.trim() && id === id.trim()
@@ -18962,7 +18974,7 @@
     const unconfirmed = row => packet.currencyUnconfirmed != null && (!Array.isArray(packet.currencyUnconfirmed)
       || packet.currencyUnconfirmed.some(flag => !flag || !validId(flag.id) || String(flag.id) === String(row.id)));
     const covered = row => complete && transactionCoverageStatus(packet) === 'complete'
-      && packet.currency === 'CAD' && savingsDate(packet.observationAsOf) && packet.observationAsOf <= day
+      && savingsDate(packet.observationAsOf) && packet.observationAsOf <= day
       && savingsDate(packet.coverageStart) && savingsDate(packet.coverageThrough)
       && row.date >= packet.coverageStart && row.date <= packet.coverageThrough && row.date <= packet.observationAsOf;
     const qualified = (row, accountId) => {

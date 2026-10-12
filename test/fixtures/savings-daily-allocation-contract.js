@@ -51,6 +51,7 @@ function fixture() {
       currentPeriodActuals: { schema: 'atlas-current-period-actuals/v1', currency: 'CAD',
         observationAsOf: AS_OF, coverageStart: '2026-10-02', coverageThrough: AS_OF,
         pendingCoverage: 'complete', transactionCoverage: { complete: true },
+        savingsMovementUnconfirmed: [],
         representedActuals: [{ id: 'payroll', date: '2026-10-02', actual: 200, transactionId: 'income-1' }], transactions: [
           { id: 'income-1', date: '2026-10-02', amount: -200, pending: false, isIncome: true,
             atlasAccountId: 'chequing-a', accountRole: 'household-cash', currency: 'CAD',

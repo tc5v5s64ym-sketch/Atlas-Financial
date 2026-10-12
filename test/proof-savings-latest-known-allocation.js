@@ -100,6 +100,13 @@ if (process.env.ATLAS_SAVINGS_COHERENCE_PROOF === '1') {
     const input = transferCutoffs(row.name);
     compare(row.name, { plan: input.plan, meta: { asOf: input.asOf }, liveOverlay: input.opts }, true, row);
   }
+  for (const mode of ['valid', 'valid-transfer', 'undated', 'null-amount', 'malformed-amount', 'undated-pending',
+    'foreign-currency', 'missing-currency', 'malformed-date', 'pending', 'incomplete', 'pending-incomplete',
+    'sanitization-fallback', 'collapsed-valid', 'collapsed-foreign', 'collapsed-missing-currency', 'unrelated-undated']) {
+    const { data } = require('./fixtures/savings-observer-contract-data')(mode);
+    const ready = ['valid', 'valid-transfer', 'collapsed-valid', 'unrelated-undated'].includes(mode);
+    compare('real-pipeline:' + mode, data, true, { saved: ready ? [60, 24, mode === 'valid-transfer' ? 45 : 35] : null });
+  }
 }
 const sourceFiles = ['public/forecast.js', 'public/savings-inventory.js', 'public/plan.js', 'public/budget-blend.js'];
 const fs = require('node:fs');
@@ -107,7 +114,10 @@ const binding = process.env.ATLAS_SAVINGS_COHERENCE_PROOF === '1' ? captureSourc
   [...sourceFiles, 'scripts/provider-observe.js', 'test/proof-savings-latest-known-allocation.js',
     'test/proof-source-binding.js', 'test/fixtures/savings-daily-consumer-data.js',
     'test/fixtures/savings-daily-allocation-contract.js', 'test/fixtures/savings-v2-observation-data.js',
-    'test/fixtures/savings-transfer-cutoffs.js', 'test/fixtures/budget-funding-data.js'], base) : null;
+    'test/fixtures/savings-transfer-cutoffs.js', 'test/fixtures/budget-funding-data.js',
+    'test/fixtures/savings-observer-contract-data.js', 'scripts/live-plan.js',
+    ...require('node:child_process').execFileSync('git', ['ls-files', '-z', '--', 'scripts'],
+      { cwd: root, encoding: 'utf8' }).split('\0').filter(file => file.endsWith('.js'))], base) : null;
 const sourceBinding = Object.fromEntries(sourceFiles.map(file => [file, crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex')]));
 if (binding) verifySourceBinding(root, binding);
 console.log(JSON.stringify({ outcome: 'PASS', base, head: cp.execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),

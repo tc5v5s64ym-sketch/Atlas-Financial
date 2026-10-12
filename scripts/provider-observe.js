@@ -4249,9 +4249,28 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   const txs = [];
   const currencyUnconfirmed = [];
   const cardCoverageUnconfirmed = [];
+  // Only canonical Savings account identity and fixed reasons may cross this
+  // boundary. A discarded provider row is not evidence of no movement.
+  const savingsMovementUnconfirmed = [];
+  const markSavingsUnconfirmed = (mapping, reason) => {
+    const accountId = mapping && mapping.canonical && mapping.canonical.id;
+    if (mapping?.canonical?.collection !== 'cash'
+      || !['savings', 'savings-dont-touch'].includes(accountId)) return;
+    if (!savingsMovementUnconfirmed.some(row => row.accountId === accountId && row.reason === reason)) {
+      savingsMovementUnconfirmed.push({ accountId, reason });
+    }
+  };
   const movementEvidenceRole = mapping => ['revolving-credit', 'heloc'].includes(atlasAccountRole(mapping));
   // Collapse omits undated rows; keep card and HELOC evidence unknown.
   for (const tx of report && report.transactions || []) {
+    if (tx && (!tx.date || lunchMoneyDebitAmount(tx.amount) == null)) {
+      markSavingsUnconfirmed(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null,
+        'transaction-amount-or-date-unconfirmed');
+    }
+    if (tx && tx.currency !== 'cad') {
+      markSavingsUnconfirmed(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null,
+        'native-plan-currency-unconfirmed');
+    }
     if (tx && !tx.date && movementEvidenceRole(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null)) {
       cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx), date: null,
         reason: 'transaction-amount-or-date-unconfirmed' });
@@ -4262,6 +4281,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
     const amount = lunchMoneyDebitAmount(tx.amount);
     if (!tx.date || amount == null) {
+      markSavingsUnconfirmed(mapping, 'transaction-amount-or-date-unconfirmed');
       if (movementEvidenceRole(mapping)
         || (atlasAccountRole(mapping) === 'household-cash'
           && (kindHintFromTransaction(tx) === 'card-payment' || isMbnaCardPayment(tx)))) {
@@ -4272,8 +4292,10 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     }
     const currencyRules = currencyRulesForTransaction(tx, mapDoc, opts.identityRules,
       opts.planForIdentity || opts.plan);
+    if (tx.coverageCurrencyConflict === true) markSavingsUnconfirmed(mapping, 'native-plan-currency-unconfirmed');
     if (tx.currencySettlementUnconfirmed === true
       || currencyRules.some(rule => !ruleCurrencyQualified(tx, rule))) {
+      markSavingsUnconfirmed(mapping, 'native-plan-currency-unconfirmed');
       currencyUnconfirmed.push({ id: localIdFor(tx.providerTransactionId), currency: tx.currency || null });
       continue;
     }
@@ -4474,6 +4496,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     cardCoverageUnconfirmed,
     cardCoverageRequired: ((mapDoc && mapDoc.mappings) || []).some(m => atlasAccountRole(m) === 'revolving-credit'),
     currencyUnconfirmed,
+    savingsMovementUnconfirmed,
     paydayGapComplete: paydayGapCompleteFromEvidence({
       plan: opts.plan,
       asOf,
@@ -4486,6 +4509,10 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     transactions: txs,
   };
   if (!currentPeriodActualsLooksSanitized(packet)) {
+    for (const tx of txs) {
+      markSavingsUnconfirmed({ canonical: { collection: 'cash', id: tx.atlasAccountId } },
+        'transaction-evidence-sanitization-failed');
+    }
     packet.transactions = [];
     packet.representedActuals = representedActuals.map(row => ({
       id: row.id,
