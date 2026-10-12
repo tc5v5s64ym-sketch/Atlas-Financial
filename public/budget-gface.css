@@ -661,6 +661,12 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
   font-weight: 520;
   color: var(--g-ink-3);
 }
+.budget-bento.atlas-g .blend-house-totals [data-budget-ratio-actual]::before,
+.budget-bento.atlas-g .blend-house-totals [data-budget-ratio-plan]::before {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+.budget-bento.atlas-g .blend-house-totals [data-budget-delta-direction="over"] { color: var(--critical); }
 
 /* Cards: compact rows, chip art, hug the content. */
 .budget-bento.atlas-g .budget-blend-card-movements {

@@ -12788,7 +12788,17 @@
         missing ? 'unavailable' : complete ? 'complete' : 'partial',
         missing ? 'A category observation or its trust is unavailable.' : actualReason), includesPending: pending, evidence };
     }
-    const household = { planned: householdPlan, actual: householdActual,
+    let householdDelta = { ...unknown('Complete original plan and incurred spending are needed for the combined difference.'),
+      magnitude: null, direction: null };
+    const plannedCents = savingsCents(householdPlan.amount), actualCents = savingsCents(householdActual.amount, true);
+    if ([householdPlan, householdActual].every(field => field.completeness === 'complete' && trusted(field.trust))
+        && plannedCents != null && actualCents != null && Number.isSafeInteger(plannedCents - actualCents)) {
+      const difference = plannedCents - actualCents;
+      householdDelta = { ...stamp(difference === 0 ? 0 : difference / 100,
+        householdPlan.trust === 'estimated' || householdActual.trust === 'estimated' ? 'estimated' : 'calculated', 'complete'),
+        magnitude: Math.abs(difference) / 100, direction: difference < 0 ? 'over' : 'left' };
+    }
+    const household = { planned: householdPlan, actual: householdActual, delta: householdDelta,
       semantics: 'incurred category and Other spending / original category plan; observed pending is included' };
     // No incumbent records attributable contributions made in a period.
     // Balances, assignment revisions, cost payments and proposals cannot fill
