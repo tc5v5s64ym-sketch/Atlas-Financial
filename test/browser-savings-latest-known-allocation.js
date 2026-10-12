@@ -16,6 +16,11 @@ const binding = captureSourceBinding(root, files, process.env.PROOF_BASE_SHA || 
 fs.mkdirSync(output, { recursive: true });
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function input(mode) {
+  if (mode === 'prior-check-day') {
+    const data = provider.served('prior-household-day', O).data;
+    data.meta.asOf = data.plan.opening.asOf = '2026-10-07';
+    return data;
+  }
   if (mode === 'full-dated') {
     const data = consumer('fully-backed');
     data.plan.savingsPoolObservation.accounts.forEach(row => { row.evidenceDate = '2026-10-04'; });
@@ -27,17 +32,19 @@ function input(mode) {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH });
   const errors = [], external = [], writes = [], cases = [], served = {};
   try {
+    const selected = process.env.ATLAS_LATEST_SAVINGS_CASES?.split(',');
     for (const [mode, width, theme, expected, bands] of [
       ['stale-date', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['stale-both', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['prior-household-day', 320, 'dark', [95, 24], ['is-amber', 'is-full']],
+      ['prior-check-day', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['blocked-prior-day', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['withdrawal-stale', 390, 'light', [39.02, 0], ['is-red', 'is-red']],
       ['zero-stale', 390, 'light', [0, 0], ['is-red', 'is-red']],
       ['full-dated', 390, 'light', [230, 24], ['is-full', 'is-full']],
       ['pending-movement', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
       ['future-date', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-    ]) {
+    ].filter(row => !selected || selected.includes(row[0]))) {
       const data = input(mode), inputHash = hash(JSON.stringify(data));
       const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
       page.setDefaultTimeout(20000);
@@ -88,6 +95,14 @@ function input(mode) {
       if (expected[0] != null) {
         await body.locator('[data-budget-savings-info] > summary').click();
         assert.match(await body.innerText(), /Latest reported balances checked/);
+        if (mode === 'prior-check-day') {
+          assert.match(await body.innerText(), /Latest reported balances checked 2026-10-06/);
+          const earlier = body.locator('[data-budget-savings-legacy-evidence]');
+          await earlier.locator(':scope > summary').click();
+          assert.match(await earlier.innerText(), /Observed 2026-10-05/);
+          assert.match(await earlier.innerText(), /Balance dates are separate from the observation check date/);
+          assert.doesNotMatch(await earlier.innerText(), /today's observation date/);
+        }
       }
       await page.keyboard.press('Escape');
       assert.equal(await summary.evaluate(el => el === document.activeElement), true);

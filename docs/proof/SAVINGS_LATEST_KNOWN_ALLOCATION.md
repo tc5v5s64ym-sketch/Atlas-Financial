@@ -23,7 +23,8 @@ before the native cash walk. No calculator, allocation cache, store or provider
 write is added.
 
 The existing Plan Saved print/stamp sites and bar painter consume the result
-unchanged. Inventory labels dated allocations honestly and reprints Forecast's
+unchanged. The compact Plan evidence reprints neutral check-date wording.
+Inventory labels dated allocations honestly and reprints Forecast's
 short evidence description. Historical and projected periods still withhold
 current Saved figures. Manual assignment history and actual-transfer evidence
 remain separate.
@@ -122,3 +123,26 @@ The original full local `npm test` run reached a terminal result: 349 passed,
 documentation/evidence changed while it ran. The failures are not a PASS and
 their local logs are not published. Exact final-head hosted tests and Systems
 Review remain gates; the full-suite result is recorded on the Draft.
+
+## Prior-check-day copy repair and current-main composition
+
+Systems [BLOCK 5493495671](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/595#pullrequestreview-5493495671)
+on `e425af75` identified one remaining false freshness sentence in the compact
+Plan evidence: a valid yesterday-checked packet could say "today's observation
+date." The repair changes only that sentence to "Balance dates are separate
+from the observation check date." The correct published check date remains
+in Info. No financial predicate, amount, status or style changes in this repair.
+
+The new rendered prior-check-day assertion fails before that one-line repair
+and passes after it: the Forecast day is October 7, the check day remains
+October 6, and the provider balance day remains October 5. The fresh browser
+case opens Info and its Earlier planning calculation & obligation evidence
+to verify both statements through the live consumer. Existing finished browser
+cases are not rerun or claimed as fresh-head evidence.
+
+Current main `007d904937d69862e080d9c4e3725ce41ed40c4a` (#593) is integrated
+once without conflicts. Its card validator/export and two test-registration
+lines are disjoint from the Savings edits; the foundation/store files retain
+main's bytes. The net PR remains the Savings outcome. The current-base
+28-case output comparison and new foundation checks are bounded composition
+proofs. Hosted final-head checks and root Systems re-review remain pending.

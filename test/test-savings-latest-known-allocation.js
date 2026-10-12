@@ -169,6 +169,19 @@ for (const name of ['app', 'bill-detail', 'savings-inventory', 'budget-surface',
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/' + name + '.js'), 'utf8'), page);
 }
 vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];', page);
+test('prior-check-day compact Savings evidence does not claim today was checked', () => {
+  const { data } = provider.served('prior-household-day', O);
+  data.meta.asOf = data.plan.opening.asOf = '2026-10-07';
+  const advice = F.recommend(data.plan, data.meta.asOf, { weeklyVariable: 40, ...data.liveOverlay });
+  page.src = { plan: data.plan, debts: [], asOf: data.meta.asOf, advice, liveOverlay: data.liveOverlay };
+  const html = vm.runInContext('budgetSurfaceHtml(src)', page);
+  assert.equal(advice.savingsInventory.reportedStock.checkedAsOf, '2026-10-06');
+  assert.equal(advice.savingsInventory.reportedStock.balanceFrom, '2026-10-05');
+  assert.match(html, /Latest reported balances checked 2026-10-06/);
+  assert.match(html, /data-budget-savings-stock-evidence/);
+  assert.doesNotMatch(html, /today(?:'|&#39;)s observation date/);
+  assert.match(html, /Balance dates are separate from the observation check date/);
+});
 test('actual v2 observer and Plan print known dated Saved stamps with truthful evidence', () => {
   for (const mode of ['stale-date', 'stale-both', 'prior-year', 'prior-household-day', 'blocked-prior-day', 'withdrawal-stale', 'zero-stale']) {
     const { data, report } = provider.served(mode, O), original = clone(data);
