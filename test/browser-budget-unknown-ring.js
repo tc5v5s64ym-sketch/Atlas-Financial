@@ -7,6 +7,13 @@
 // Face layout (owner amendment): the centre carries the published
 // category name and the printed Actual / Planned pair sits beneath
 // the circle; this suite asserts both alongside the geometry.
+// Whole-dollar face (follow-on amendment; Option B): the
+// beneath-circle pair renders each side in whole dollars, rounded
+// UP once from its own typed published value (the canonical amount
+// plan.js stamps on the row), while the source meta keeps exact
+// cents — the pair assertions below use the face forms, the
+// meta.includes assertions on the same fixture strings stay in
+// cents, and that split is the proof the meta is untouched.
 // NODE_PATH=<Playwright modules> CHROME_PATH=<Chromium> node test/browser-budget-unknown-ring.js
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -14,6 +21,13 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const ringEvidence = require('./fixtures/budget-blend-ring-evidence');
 const { expected } = ringEvidence;
+// The pair's whole-dollar face forms of the fixture pairs above
+// (groceries $110.37 / $220.00; fuel $0.00 / $85.00), each rounded
+// UP once from its own typed value ($110.37 -> $111).
+const facePair = {
+  groceries: { spent: '$111', planned: '$220' },
+  zero: { spent: '$0', planned: '$85' },
+};
 const root = path.join(__dirname, '..');
 
 (async () => {
@@ -93,8 +107,8 @@ const root = path.join(__dirname, '..');
     assert.ok(known.meta.includes(expected.groceries.planned));
     assert.equal(known.amount, known.rowName, 'centre is the published category name (owner amendment), not the spent amount');
     assert.ok(known.amount, 'centre name is non-empty');
-    assert.equal(known.pair, 'Spent ' + expected.groceries.spent + ' / of planned ' + expected.groceries.planned,
-      'beneath the circle: the published Actual / Planned pair');
+    assert.equal(known.pair, 'Spent ' + facePair.groceries.spent + ' / of planned ' + facePair.groceries.planned,
+      'beneath the circle: the published Actual / Planned pair in whole dollars');
     assert.equal(known.known, true);
     assert.equal(known.liquid, true);
     assert.equal(known.arc, true);
@@ -104,8 +118,8 @@ const root = path.join(__dirname, '..');
     const zero = await readRing(page, expected.zero.id);
     assert.equal(zero.status, expected.zero.status);
     assert.equal(zero.amount, zero.rowName, 'true zero: centre is the published category name');
-    assert.equal(zero.pair, 'Spent ' + expected.zero.spent + ' / of planned ' + expected.zero.planned,
-      'true zero: the pair prints the $0.00 actual as published');
+    assert.equal(zero.pair, 'Spent ' + facePair.zero.spent + ' / of planned ' + facePair.zero.planned,
+      'true zero: the pair prints the known-zero actual as $0');
     assert.equal(zero.scale, 'numeric');
     assert.equal(parseFloat(zero.spentWidth), 0, 'fixture publishes actual zero spending');
     assert.ok(zero.meta.includes(expected.zero.spent));
@@ -149,8 +163,8 @@ const root = path.join(__dirname, '..');
       assert.ok(partial.meta.includes(expected.groceries.spent));
       assert.ok(partial.meta.includes(expected.groceries.planned));
       assert.equal(partial.amount, partial.rowName, 'centre is the published category name (owner amendment)');
-      assert.equal(partial.pair, 'Spent ' + expected.groceries.spent + ' / of planned ' + expected.groceries.planned,
-        'beneath the circle: the printed Actual / Planned pair survives the missing remaining qualification');
+      assert.equal(partial.pair, 'Spent ' + facePair.groceries.spent + ' / of planned ' + facePair.groceries.planned,
+        'beneath the circle: the printed Actual / Planned pair (whole dollars) survives the missing remaining qualification');
       assert.match(partial.label, /Remaining unavailable/, 'remaining qualification stays in the accessible name');
       assert.equal(partial.known, true, `${pendingCoverage}: observed spent paints the ring`);
       assert.equal(partial.arc, true);
@@ -163,8 +177,8 @@ const root = path.join(__dirname, '..');
       assert.ok(zeroPartial.meta.includes(expected.zero.spent));
       assert.ok(zeroPartial.meta.includes(expected.zero.planned));
       assert.equal(zeroPartial.amount, zeroPartial.rowName, 'observed zero: centre is the published name; remaining uncertainty is not the centre');
-      assert.equal(zeroPartial.pair, 'Spent ' + expected.zero.spent + ' / of planned ' + expected.zero.planned,
-        'observed zero: the pair prints the $0.00 actual as published');
+      assert.equal(zeroPartial.pair, 'Spent ' + facePair.zero.spent + ' / of planned ' + facePair.zero.planned,
+        'observed zero: the pair prints the known-zero actual as $0');
       assert.match(zeroPartial.label, /Remaining unavailable/);
       assert.equal(zeroPartial.known, true);
       assert.equal(zeroPartial.arc, false, 'known zero draws no arc segment');
