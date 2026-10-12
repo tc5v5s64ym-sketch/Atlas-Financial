@@ -10074,13 +10074,16 @@
   function validateCardPaymentDecision(input) {
     const unavailable = { status: 'unavailable' };
     try {
-      const { plan, debts, asOf, packet, record } = input;
-      if (!record || record.confirmed !== true || !Array.isArray(packet?.transactions)) return unavailable;
+      const { plan, debts, asOf, packet, record, retainedRecords = [] } = input;
+      if (!record || record.confirmed !== true || !Array.isArray(packet?.transactions)
+        || !Array.isArray(retainedRecords)) return unavailable;
       const rows = packet.transactions.filter(tx => tx?.coverageRef === record.creditRef);
       if (rows.length !== 1) return unavailable;
       const credit = rows[0], selected = JSON.parse(JSON.stringify(plan));
       const policy = selected.cardPurchaseCoverage || { payments: [], refunds: [], reversals: [] };
-      policy.payments = [...(policy.payments || []), record]; selected.cardPurchaseCoverage = policy;
+      // Retained explicit intent participates in the incumbent's complete claim
+      // bounds even when a leg/purchase is absent or materially changed today.
+      policy.payments = [...(policy.payments || []), ...retainedRecords, record]; selected.cardPurchaseCoverage = policy;
       const window = spendingCycle(selected, credit.date);
       const publication = cardPeriodMovements(selected, debts, asOf, window, { currentPeriodActuals: packet });
       const card = publication?.cards.find(row => row.id === credit.atlasAccountId);

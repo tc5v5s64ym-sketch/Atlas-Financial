@@ -1497,7 +1497,11 @@ receipt against the preview revision. Lost replies require outcome verification;
 unknown outcomes are never automatically retried. Revision/evidence changes
 reject instead of rebasing. Stored intent survives absent or changed evidence,
 which withholds current qualification. Private references never appear in previews
-or receipts. Unknown historical opening stays unknown; another unresolved card
+or receipts. Evidence loss never retires payment-leg or purchase-cent claims.
+Preview, confirmation and current requalification validate the complete retained
+cohort through Forecast's incumbent aggregate bounds, including unavailable records;
+independent partial allocations remain permitted when their total fits.
+Unknown historical opening stays unknown; another unresolved card
 keeps global coverage unavailable; household payment purpose does not establish
 issuer minimum satisfaction. Canonical data and financial providers are untouched.
 

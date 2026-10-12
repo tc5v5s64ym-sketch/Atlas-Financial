@@ -23,18 +23,23 @@ function createController({ store, evidence, sessions, now = Date.now }) {
     if (!state.decisions.length) return { ...data, revision: state.revision };
     const policy = data.plan.cardPurchaseCoverage || { payments: [], refunds: [], reversals: [] };
     policy.payments = [...(policy.payments || []), ...state.decisions.map(decision => ({ ...clone(decision.record),
-      confirmed: Store.digest(selectedEvidence(data, decision.record)) === decision.evidenceDigest }))];
+      confirmed: Store.digest(selectedEvidence(data, decision.record)) === decision.evidenceDigest
+        && qualified(source, state, decision.record).status === 'ready' }))];
     data.plan.cardPurchaseCoverage = policy;
     return { ...data, revision: state.revision };
   }
   async function input() { return compose(await evidence.read(), await store.snapshot()); }
-  function qualified(source, record) { return Forecast.validateCardPaymentDecision({ ...source, record }); }
+  function qualified(source, state, record) {
+    // Evidence loss withholds publication, never retires the household's claim.
+    const retainedRecords = state.decisions.filter(d => d.record.id !== record.id).map(d => d.record);
+    return Forecast.validateCardPaymentDecision({ ...source, record, retainedRecords });
+  }
   return { input, async prepare({ session, selection }) {
     try {
       const actor = actorFor(session), state = await store.snapshot(), source = await evidence.read();
       const record = clone(await evidence.resolve(selection, source));
       record.id = Store.opaque('decision-'); record.confirmed = true; Store.recordValid(record);
-      const result = qualified(compose(source, state), record);
+      const result = qualified(source, state, record);
       if (result.status !== 'ready') return { status: 'unavailable' };
       for (const [key, value] of previews) if (value.expiresAt <= now()) previews.delete(key);
       if (previews.size >= 200) return { status: 'unavailable' };
@@ -59,7 +64,7 @@ function createController({ store, evidence, sessions, now = Date.now }) {
         const source = await evidence.read(), state = await store.snapshot();
         const reason = preview.expiresAt <= now() ? 'preview-expired'
           : Store.digest(source) !== preview.digest ? 'evidence-changed'
-          : qualified(compose(source, state), preview.record).status !== 'ready' ? 'validation-unavailable' : null;
+          : qualified(source, state, preview.record).status !== 'ready' ? 'validation-unavailable' : null;
         return await store.commit({ actor, operationId, expectedRevision: preview.revision, reason,
           decision: reason ? null : { record: preview.record, actor, recordedAt: new Date(now()).toISOString(),
             evidenceDigest: preview.evidenceDigest, referenceDates: preview.referenceDates } });
