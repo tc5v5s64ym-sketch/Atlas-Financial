@@ -74,8 +74,25 @@ allowing only Saved fields and named provenance additions; cash, card coverage,
 pending protection, cap, payday, debt, reserve-payment, top-up and schedule
 outputs must match. It has no historical-object dependency in the normal suite.
 
-At initial Draft publication: focused numerical/provider/render checks and the
-26-case comparison pass. The browser proof, full suite and exact-head hosted
-checks remain pending. No browser PASS or merge readiness is claimed here.
-Exact-head results will be recorded on the Draft after execution. All proof
-inputs are synthetic; no household figures or private evidence are uploaded.
+On code head `0f895387718ac53e61730de3c030ce5fb5fa9f38`, all 13 focused
+numerical/provider/render suites pass. The 26-case comparison reports 15,086
+equal subtrees and zero unexpected output changes. Its source-bound synthetic
+receipt is [comparison.json](savings-latest-known/comparison.json).
+
+The real App.boot/browser proof passes nine cases on installed Edge
+154.0.4258.62: older/mixed dates, prior Vancouver day, independent card gate,
+withdrawal, zero, full funding, pending movement and invalid future date.
+The unchanged stamp/bar painter produces amber/full, red/zero and neutral
+unknown treatments. Keyboard focus restores, no horizontal overflow appears,
+and no external request, write or page error occurs. All served bytes match
+the committed sources in [browser.json](savings-latest-known/browser.json);
+its nine captures are alongside that receipt. [Dated partial/full bars](savings-latest-known/stale-date-390-light.png)
+and [known zero bars](savings-latest-known/zero-stale-390-light.png) are compact
+examples. Source binding uses exact Git blob bytes, with no hash normalization.
+
+Draft [#595](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/595)
+records the continuing full-suite, exact-head hosted and independent review
+gates. A following evidence-only commit preserves every exercised production
+and test source blob; it does not claim a new runtime or Systems PASS. All
+new proof inputs are synthetic; no household figures, private evidence or
+local full-suite logs are uploaded.
