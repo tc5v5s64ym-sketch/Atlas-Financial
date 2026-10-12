@@ -409,10 +409,20 @@ const App = (() => {
       const covered = new Set();
       const cover = el => { if (el && !covered.has(el)) { covered.add(el); shell.push(el); } };
       cover(document.querySelector('.site-head'));
-      for (const el of document.body.children) {
-        if (!el.tagName || el.tagName === 'SCRIPT') continue;
+      // Index-based traversal rather than for..of over the children
+      // collections: a live HTMLCollection is iterable, but a host
+      // that exposes children as a merely array-like (or absent)
+      // collection must not break boot — the covered set is the
+      // same either way.
+      const bodyChildren = document.body ? document.body.children : null;
+      for (let i = 0; bodyChildren && i < bodyChildren.length; i++) {
+        const el = bodyChildren[i];
+        if (!el || !el.tagName || el.tagName === 'SCRIPT') continue;
         if (el === wrap) {
-          for (const child of el.children) if (child !== notice) cover(child);
+          const wrapChildren = el.children;
+          for (let j = 0; wrapChildren && j < wrapChildren.length; j++) {
+            if (wrapChildren[j] !== notice) cover(wrapChildren[j]);
+          }
         } else cover(el);
       }
       const priorFocus = document.activeElement;
@@ -431,6 +441,19 @@ const App = (() => {
           s.el.inert = s.inert;
           if (s.ariaHidden === null) s.el.removeAttribute('aria-hidden');
           else s.el.setAttribute('aria-hidden', s.ariaHidden);
+          // A baked-isolation wrapper (index.html's data-boot-wrap
+          // divs, which carry the pre-script isolation for elements
+          // whose own opening tags are pinned bare by static
+          // contracts elsewhere in the repo) is boot's scaffolding,
+          // not page structure: once restored like the others, it is
+          // replaced by its contents, so the wrapped element returns
+          // to its natural parentage exactly as if it had carried
+          // the baked state itself.
+          if (s.el.hasAttribute && s.el.hasAttribute('data-boot-wrap') && s.el.parentNode) {
+            const parent = s.el.parentNode;
+            while (s.el.firstChild) parent.insertBefore(s.el.firstChild, s.el);
+            parent.removeChild(s.el);
+          }
         }
         shellState.length = 0;
         if (priorFocus && priorFocus !== document.body && priorFocus.isConnected

@@ -5,13 +5,13 @@
   "scenarios": {
     "lightLong": {
       "delayMs": 5000,
-      "treatmentFirstVisibleMs": 655,
-      "contentRenderedMs": 7375,
-      "samples": 48,
+      "treatmentFirstVisibleMs": 1123,
+      "contentRenderedMs": 10323,
+      "samples": 42,
       "visibilityGapsObserved": 0,
       "noFlashAtRemoval": true,
       "servedSha": {
-        "public/index.html": "1250d138888ba5aa1ecdd37a34d8e0c74a49eb758604ecaccba4891b80351443",
+        "public/index.html": "c8f0ce712cd85ade390f223f32404a86fa5e241f961aa241db3ceb86e24c148d",
         "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
         "public/fonts.css": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
         "public/styles.css": "ca789bfd31ab1f4dc38980e6052cb479e26dfb545f2e626ad66204c7028c174e",
@@ -24,7 +24,7 @@
         "public/budget-blend.css": "43ab6315177f95042f16b8f3239d9f9d85d49117cf9bcc3dd81483a3b74b1133",
         "public/budget-gface.css": "88d1d1aba917bd267150862839a1e09e2b66598b058e686fbdd62a7834562a9a",
         "public/budget-sheet-motion.css": "94fc264a45ee8cbcdf3a56356e52a65cde695ba24bc0cb4f5e706c824bd90377",
-        "public/app.js": "3399fab7c70eafc2ac6f727f334cae4eb7cf5de499a4179f40d88075e022f6f1",
+        "public/app.js": "93244321102856d589ec5a0f2787a705e4c2f70cbe4351ee13b7b98bc143cb27",
         "public/forecast-card-period.js": "a0e1c461354da0a6e8c73ee55a2ba76510d6a9c8e840e4f729df3b627df9fb3b",
         "public/forecast.js": "5dcdf6106722b552b390a5f9be906a4ba43209000c37a256edbb7cd407e9b00c",
         "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
@@ -46,10 +46,10 @@
       "overlayCoversViewport1440": true,
       "headerCoveredByHitTest": true,
       "blockSeparationRangesPx": [
-        3.03,
-        4.13,
-        4.19,
-        2.91
+        3.13,
+        3.95,
+        3.94,
+        2.66
       ],
       "geometryRunDelayMs": 9000
     },
@@ -58,7 +58,7 @@
       "treatmentVisibleObserved": true,
       "overlayCoversViewport1440": true,
       "markAnimationName": "boot-blocks",
-      "screenshotAtMs": 1791770026154
+      "screenshotAtMs": 1791782126697
     },
     "reducedMotion": {
       "delayMs": 2500,
@@ -76,7 +76,7 @@
         "public/bills.html": "4553fb11243604a1c2075c8b1a00644cedbf968115c84c3b919d8090971f0784",
         "public/styles.css": "ca789bfd31ab1f4dc38980e6052cb479e26dfb545f2e626ad66204c7028c174e",
         "public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010",
-        "public/app.js": "3399fab7c70eafc2ac6f727f334cae4eb7cf5de499a4179f40d88075e022f6f1",
+        "public/app.js": "93244321102856d589ec5a0f2787a705e4c2f70cbe4351ee13b7b98bc143cb27",
         "public/forecast.js": "5dcdf6106722b552b390a5f9be906a4ba43209000c37a256edbb7cd407e9b00c",
         "public/bills.js": "e90da373b69868785a58b4d8d5d267f18b0e7a54d8cadcb9a2ca4139d259b764"
       }
@@ -116,10 +116,10 @@
         "pointerEvents": "auto",
         "markAnimationName": "boot-blocks",
         "blockSeparationRangesPx": [
-          2.92,
-          4.15,
-          3.41,
-          2.77
+          2.58,
+          3.95,
+          3.63,
+          2.83
         ]
       },
       "w1440-dark": {
@@ -151,8 +151,8 @@
         "notice",
         "body",
         "notice",
-        "notice",
         "body",
+        "notice",
         "notice",
         "body",
         "notice",
@@ -224,55 +224,21 @@
       "countedFrom": "public/ listing of the served tree at proof time"
     }
   },
-  "baseComparison": {
-    "delay5000": {
-      "baseContentRenderedMs": 6330,
-      "baseTreatmentsSeen": 0,
-      "branchContentRenderedMs": 7375,
-      "addedDelayMs": 1045
-    },
-    "delay1500": {
-      "baseContentRenderedMs": 2657,
-      "baseTreatmentsSeen": 0
-    }
-  },
+  "baseComparison": null,
   "screenshots": {
-    "boot-treatment-light.png": "95ee4dcc5953dfd21d270bb41a53bd07590511152593ddeeace573f1deafdc0a",
-    "boot-treatment-after.png": "6c44b07c0dcb3a875dc0c11364da2cf2bbcc8ae17e63a97f299d64cc57cba4ff",
-    "boot-treatment-dark.png": "38c55daec9cd495f8434d04d51ae95336961579f0cb9d2e2ae0b04400915d455",
+    "boot-treatment-light.png": "6a2b49b2cb174a46cb0330de45380f3779a7b241e5a2d2f2a1ab64cbd05fca5d",
+    "boot-treatment-after.png": "d748a6dfda0b0fdb62a789a9ab903b5b5fe35424c8990958e328f7d3c60d3cae",
+    "boot-treatment-dark.png": "25d0758f10334a0fc6e41eac735952fcba2b40bd7eb79fd29cb2a2cd29201b27",
     "boot-treatment-reduced-motion.png": "646d9449f7104b5be241a957b5fcad76b033a4e2e22bbadd53e64f87e2e3c8ea",
-    "boot-treatment-bills.png": "bd0aeb881193f43a170196a824d00889e635e5160a609f77d7fd3f77e38b4640",
+    "boot-treatment-bills.png": "11f20d961e85d553d9e18953c171f657d85a13589228453ec92a7072e3418900",
     "boot-treatment-crit.png": "17991763028e653baeb9ee0ada402ca93e5e3d72f0f9bc327d083fc269962f15",
-    "boot-treatment-retry.png": "6a2b49b2cb174a46cb0330de45380f3779a7b241e5a2d2f2a1ab64cbd05fca5d",
+    "boot-treatment-retry.png": "7490b4407fae284df83e24b7e02ce27f77f37d827fbb4409c9f1509fa255a58e",
     "boot-treatment-cancel.png": "3ff5579bb7821327ed0bd13eedbbc807ac3ec659e4ac0b0fcffa9015928493c1",
-    "boot-treatment-static.png": "bb888982725ff5aaef95c436860f16da3586dc94c6581c3cdfc3c86f8ad5be7d",
-    "boot-treatment-static-held.png": "147b558c6228974d8dc057dc40e3a81abeb388446e3c49ddad7087ece4c13b42",
+    "boot-treatment-static.png": "f081450a544ebb41a0f3d985bf50bc71f53ddb7ef46f42943a2cb10d18fcee67",
+    "boot-treatment-static-held.png": "511237796009c83acf46db9af5c0a0c8b336d0161c92ab39665691ee50e4bb40",
     "boot-treatment-talk-cancel.png": "bd9dbec6aab20e6f82e488ea6b702429a42b514919b1fde74cd7072bd5b8d5dd",
     "boot-treatment-talk-crit.png": "7a54682c33592fe7b1eb29189c1e2895b8b8a796a0114708f498c2e18e82647a",
-    "boot-treatment-ready.png": "030cb47660d0fe6ee9177bff65298353262c50dd0f9c036e1ee9b4b569dc4b98"
+    "boot-treatment-ready.png": "1aad908886b11d96c5372b0e1ead4487a546443eb2bceec0e06c3b07cf907a1a"
   },
-  "repeatedTimingMeasures": {
-    "method": "same nav->content measurement as the base comparison, fixed 5000ms /data.json delay, 3 alternating rounds per tree, headless Chromium on this machine",
-    "branchMs": [
-      6467,
-      6255,
-      6396
-    ],
-    "baseMs": [
-      6192,
-      6391,
-      6436
-    ],
-    "pairedDeltasMs": [
-      275,
-      -136,
-      -40
-    ],
-    "branchMedianMs": 6396,
-    "baseMedianMs": 6391,
-    "medianPairedDeltaMs": -40,
-    "differenceOfMediansMs": 5,
-    "conclusion": "inconclusive",
-    "note": "Per-round paired deltas vary more than either aggregate; the fixture post-arrival render dominates and fluctuates by ~1s between identical runs. These aggregates are measurements only and do not establish that the treatment adds no delay. The supported claim is narrower: the treatment adds no new blocking assets."
-  }
+  "repeatedTimingMeasures": null
 }
