@@ -21,6 +21,7 @@ function baseline(file, sha = base) {
 }
 const files = Object.keys(require.cache).filter(file => file.startsWith(root + path.sep))
   .map(file => path.relative(root, file).replace(/\\/g, '/'));
+files.push('test/fixtures/budget-funding-data.js'); // Lazy consumer fixture is part of the executed input.
 const binding = captureSourceBinding(root, files, base);
 const O = baseline('scripts/provider-observe.js'), L = baseline('scripts/live-plan.js'), F = baseline('public/forecast.js');
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
