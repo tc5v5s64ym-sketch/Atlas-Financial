@@ -510,6 +510,59 @@ for (const [name, rawAmount, expected] of [
     name + ' preserves native identity/date/currency/pending fields');
 }
 
+console.log('=== N. outgoing e-transfer identity boolean (SEND E-TFR, originalName only) ===');
+{
+  // Atlas decision 2026-10-12, as refined: the boolean is stamped in the
+  // sanitized packet from tx.originalName alone, anchored 'SEND E-TFR' with
+  // an end/non-alphanumeric boundary after the channel token; SEND E-TFR FEE
+  // is a fee, not a transfer. No raw descriptor ever enters the packet.
+  const mk = (id, extra) => O.normalizeLunchMoneyTransaction(Object.assign({
+    id, account_id: 1001, date: '2026-08-16', amount: 50 + id, currency: 'cad',
+    is_pending: false, status: 'cleared', payee: 'Household recipient',
+    category_name: 'Transfer',
+  }, extra));
+  const cases = [
+    ['SEND E-TFR', true, 'bare channel token'],
+    ['send e-tfr', true, 'lowercase variant'],
+    ['  SEND   E-TFR\tJ SMITH  ', true, 'whitespace runs collapse, suffix after a space boundary'],
+    ['SEND E-TFR/ABC123', true, 'non-alphanumeric boundary after the token'],
+    ['SEND E-TFRXYZ', false, 'arbitrary SEND E-TFR-prefixed word is not the channel token'],
+    ['SEND E-TFR2', false, 'alphanumeric continuation is not a boundary'],
+    ['SEND E-TFR FEE', false, 'SEND E-TFR FEE is a fee, not a transfer'],
+    ['send e-tfr fee charge', false, 'fee variant stays a fee after normalization'],
+    ['XSEND E-TFR', false, 'token must anchor at the start, not merely appear'],
+    ['Payment to a person', false, 'Payment descriptor is not identity evidence'],
+    ['Transfer to savings', false, 'Transfer descriptor is not identity evidence'],
+    ['ACME STORE', false, 'ordinary merchant descriptor'],
+  ];
+  const txs = cases.map(([original_name], i) => mk(94100 + i, { original_name }));
+  // Fallback traps: identity must not come from payee, nor from the
+  // originalMerchant fallback (originalName || payee).
+  txs.push(mk(94150, { payee: 'SEND E-TFR SOMEONE' }));
+  txs.push(mk(94151, { original_name: null, payee: 'SEND E-TFR SOMEONE' }));
+  const packet = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-08-16T18:00:00.000Z',
+    transactionWindow: { startDate: '2026-08-01', endDate: '2026-08-16', complete: true, hasMore: false, truncated: false },
+    pendingCoverage: { complete: true },
+    transactions: txs, collapsedTransactions: txs,
+    representedEventCandidates: [],
+  }, { asOf: '2026-08-16', accountMap, plan: data.plan });
+  // Rows keep input order in the packet; match by position.
+  cases.forEach(([descriptor, expected, label], i) => {
+    const row = packet.transactions[i];
+    ok(row && row.outgoingETransferIdentity === expected,
+      `${label}: ${JSON.stringify(descriptor)} -> outgoingETransferIdentity ${expected}`,
+      row && String(row.outgoingETransferIdentity));
+  });
+  ok(packet.transactions[txs.length - 2].outgoingETransferIdentity === false
+    && packet.transactions[txs.length - 1].outgoingETransferIdentity === false,
+    'payee-only / originalMerchant-fallback SEND E-TFR text never stamps the boolean');
+  ok(!JSON.stringify(packet).includes('SEND E-TFR'),
+    'the packet publishes the boolean only — no raw descriptor text anywhere');
+  ok(packet.transactions.every(row => typeof row.outgoingETransferIdentity === 'boolean'),
+    'every packet row carries the boolean (true or false), never the descriptor');
+}
+
 if (failures) {
   console.log(`\n${failures} check(s) failed`);
   process.exit(1);

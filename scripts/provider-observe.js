@@ -4309,6 +4309,19 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     };
     const explicitOwner = explicitPersonalOwnerFromTagsNotes(derivedInput);
     const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags(derivedInput);
+    // Outgoing e-transfer identity (Atlas decision, 2026-10-12): a boolean
+    // only, computed here from tx.originalName alone — never tx.payee, never
+    // the originalMerchant fallback (which falls back to payee), never a
+    // Payment/Transfer category inference. Normalized as trim + collapse
+    // whitespace + uppercase, anchored at the start: 'SEND E-TFR' followed
+    // by end-of-string or a non-alphanumeric boundary, so SEND E-TFRXYZ and
+    // SEND E-TFR2 do not qualify. SEND E-TFR FEE is a fee, not a transfer
+    // (the scripts/interac.js precedent), and is excluded. The raw
+    // descriptor is never retained: only this boolean enters the packet.
+    const outgoingETransferName = typeof tx.originalName === 'string'
+      ? tx.originalName.trim().replace(/\s+/g, ' ').toUpperCase() : '';
+    const outgoingETransferIdentity = /^SEND E-TFR(?=$|[^A-Z0-9])/.test(outgoingETransferName)
+      && !/^SEND E-TFR FEE(?=$|[^A-Z0-9])/.test(outgoingETransferName);
     const coverageRelevant = movementEvidenceRole(mapping)
       || (atlasAccountRole(mapping) === 'household-cash'
         && (kindHint === 'card-payment' || flags.cardPaymentIdentity === true));
@@ -4366,6 +4379,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       daleGuiltFreeMerchant: flags.daleGuiltFreeMerchant,
       amazonMerchant: flags.amazonMerchant,
       cardPaymentIdentity: flags.cardPaymentIdentity,
+      outgoingETransferIdentity,
       cardFinanceChargeIdentity: flags.cardFinanceChargeIdentity,
       internalTransferIdentity: flags.internalTransferIdentity,
       externalCashDeposit: flags.externalCashDeposit,

@@ -986,6 +986,78 @@ console.log('\n=== known zero income is not unknown ===');
     'unavailable savings stock has no deduction geometry and is never invented zero');
 }
 
+console.log('\n=== outgoing e-transfer review section (browse + unavailable paths) ===');
+{
+  const etSection = out => out.split('data-budget-browse="e-transfers"')[1]?.split('</section>')[0] || '';
+  // Real end to end: invented provider row -> provider-observe boolean ->
+  // Forecast publication -> the active Budget browse surface.
+  const etPage = page();
+  const etHtml = etPage.render(fx.served({ etransfer: true }));
+  const etSec = etSection(etHtml);
+  ok(/data-etransfer-state="available-complete"/.test(etHtml) && etSec.includes('Outgoing e-transfer')
+    && etSec.includes('$75.00') && etSec.includes('chequing-b') && etSec.includes('Aug 19'),
+    'current period: the flagged outgoing e-transfer renders with generic label, date, amount and canonical account only');
+  ok(!etHtml.includes('SEND E-TFR') && !etSec.includes('Synthetic recipient'),
+    'no raw descriptor or payee text reaches the rendered surface');
+  ok(etPage.context.__ctx.advice.currentPeriodAction.outgoingETransfers.count === 1,
+    'Forecast published exactly the one flagged row for the fixture packet');
+
+  // Navigation: the section belongs to the current pay period only.
+  const views = etPage.context.__ctx.advice.payPeriodViews;
+  const nextView = views.find(row => row.timelineRole === 'next');
+  const pastView = views.find(row => row.timelineRole === 'past');
+  ok(nextView && !etSection(etPage.rerender(`__ctx.planPayPeriodId = ${JSON.stringify(nextView.id)}`)),
+    'future period selection: no e-transfer section (the current list is not shown under a future period)');
+  if (pastView) {
+    ok(!etSection(etPage.rerender(`__ctx.planPayPeriodId = ${JSON.stringify(pastView.id)}`)),
+      'past period selection: no e-transfer section');
+  }
+  ok(etSection(etPage.rerender('__ctx.planPayPeriodId = null')).includes('Outgoing e-transfer'),
+    'returning to the current period restores the section');
+  ok(!etSection(etPage.rerender("budgetGranularity = 'month'")),
+    'month view: no e-transfer section (browse sections are pay-period only)');
+  etPage.rerender("budgetGranularity = 'pay-period'");
+
+  // State notices via the same render path, mutating only the publication.
+  const statePage = page(); statePage.render(fx.served({ etransfer: true }));
+  const setPub = pub => statePage.rerender(
+    `__ctx.advice.currentPeriodAction.outgoingETransfers = ${JSON.stringify(pub)}`);
+  const item = { id: 'tx-9', date: '2026-08-19', amount: 75, pending: true, account: 'chequing-b' };
+  const cov = { status: 'current', reason: null, observationAsOf: '2026-08-20', coverageStart: '2026-08-14', coverageThrough: '2026-08-20', pendingStatus: 'unknown' };
+  let sec = etSection(setPub({ status: 'available-posted-only', coverage: cov, count: 1, items: [item] }));
+  ok(sec.includes('Pending coverage is incomplete') && sec.includes('$75.00') && sec.includes('Pending'),
+    'posted-only: observed items shown with the incomplete-pending notice and pending flag');
+  sec = etSection(setPub({ status: 'available-incomplete', coverage: { ...cov, reason: 'Posted transaction coverage is truncated.' }, count: 1, items: [item] }));
+  ok(sec.includes('observed subset') && sec.includes('may be missing items') && sec.includes('$75.00'),
+    'incomplete with collected items: items are labelled an observed subset, never a complete queue');
+  sec = etSection(setPub({ status: 'available-incomplete', coverage: cov, count: null, items: null }));
+  ok(sec.includes('may be missing items') && !sec.includes('$75.00') && !/data-etransfer-item/.test(sec),
+    'incomplete with nothing collected: notice only, no list, no amount, no zero');
+  sec = etSection(setPub({ status: 'available-complete', coverage: { ...cov, pendingStatus: 'complete' }, count: 0, items: [] }));
+  ok(sec.includes('No outgoing e-transfers were observed this period.'),
+    'available-complete with zero items is the only rendered all-clear');
+  sec = etSection(setPub({ status: 'unavailable-stale', coverage: { ...cov, status: 'stale' }, count: null, items: null }));
+  ok(sec.includes("can't be confirmed") && !/data-etransfer-item/.test(sec) && !sec.includes('$'),
+    'stale: no list, no count, no money figure — a stale-evidence notice only');
+  sec = etSection(setPub({ status: 'unavailable-missing', coverage: null, count: null, items: null }));
+  ok(sec.includes("can't be confirmed") && !/data-etransfer-item/.test(sec) && !sec.includes('$'),
+    'missing: no list, no count, no money figure — an unavailable notice only');
+
+  // Plan-unavailable path: BudgetSurface skips browseHtml there, so the
+  // section must arrive through the unavailableHtml contribution as a
+  // notice only — never resurrecting items.
+  const unPage = page(); unPage.render(fx.served({ etransfer: true }));
+  const unHtml = unPage.rerender('__ctx.advice.operatingPlanUnavailable = true');
+  const unSec = etSection(unHtml);
+  ok(/data-budget-surface="unavailable"/.test(unHtml) && unSec
+    && /data-etransfer-state="unavailable-/.test(unHtml) && unSec.includes("can't be confirmed")
+    && !/data-etransfer-item/.test(unSec),
+    'plan unavailable: browse is skipped, yet the e-transfer section still renders as an unavailable notice with no items');
+  const failedHtml = page().render(fx.served({ unavailablePlan: true }));
+  ok(etSection(failedHtml).includes("can't be confirmed") && !/data-etransfer-item/.test(etSection(failedHtml)),
+    'failed-overlay served packet: the unavailable notice renders and no stale rows are resurrected');
+}
+
 console.log('\n=== the layout module stays a layout module ===');
 {
   const index = fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8');
