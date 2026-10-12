@@ -14,7 +14,9 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  # Separate jobs get independent GitHub-hosted workspaces. Within each job
+  # the explicit manifest remains serial: suites mutate shared checkout files.
+  standard:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +37,7 @@ jobs:
         run: npm ci --omit=dev
 
       - name: Run the correctness suite
-        run: npm test
+        run: node test/test.js --group standard
 
       # Local commits run .githooks/pre-commit, which delegates to
       # scripts/privacy-guard.js. GitHub API commits never run that hook.
@@ -45,3 +47,43 @@ jobs:
       # identifier list.
       - name: Confirm the privacy-guard engine is still present
         run: test -f .githooks/pre-commit && test -f scripts/privacy-guard.js
+
+  refresh-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # B92 clones this history for its unchanged mutation/anti-mutation proof.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install runtime dependencies
+        run: npm ci --omit=dev
+
+      - name: Run the refresh-isolation suite
+        run: node test/test.js --group refresh-isolation
+
+      - name: Confirm the privacy-guard engine is still present
+        run: test -f .githooks/pre-commit && test -f scripts/privacy-guard.js
+
+  # Keep the existing check name and workflow name for branch checks and
+  # atlas-test-repair.yml. Never turn an absent or non-success result green.
+  test:
+    name: test
+    needs: [standard, refresh-isolation]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every suite job to succeed
+        env:
+          STANDARD_RESULT: ${{ needs.standard.result }}
+          REFRESH_ISOLATION_RESULT: ${{ needs.refresh-isolation.result }}
+        run: |
+          printf 'standard=%s refresh-isolation=%s\n' "$STANDARD_RESULT" "$REFRESH_ISOLATION_RESULT"
+          if [ "$STANDARD_RESULT" != success ] || [ "$REFRESH_ISOLATION_RESULT" != success ]; then
+            exit 1
+          fi

@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['serial runner, complete CI partition and aggregation contracts', 'test-ci-split.js'],
   ['annual savings expense excluded from payday Bills with one conserved draw', 'test-annual-savings-payperiod.js'],
   ['owner-approved streaming bills on the incumbent held-elsewhere Wise path', 'test-owner-streaming-bills.js'],
   ['selector locale formatter equivalence', 'test-selector-formatters.js'],
@@ -389,24 +390,88 @@ const suites = [
   ['current spendable copy and recorded cash membership', 'test-recorded-cash-labels.js'],
 ];
 
-let failed = [];
-for (const [name, file] of suites) {
-  if (!fs.existsSync(path.join(__dirname, file))) {
-    console.log(`\n\x1b[31m✗\x1b[0m ${name} — ${file} is missing`);
-    failed.push(name);
-    continue;
+// One ordered manifest owns both the serial reference and the two CI groups.
+// Do not glob: probe-savings-daily-allocation-incumbent.js is also a suite.
+const ISOLATION_SUITE = 'test-refresh-isolation.js';
+const GROUPS = Object.freeze(['standard', 'refresh-isolation']);
+for (const suite of suites) Object.freeze(suite);
+Object.freeze(suites);
+
+function validateSuites(manifest) {
+  if (!Array.isArray(manifest) || manifest.length === 0) {
+    throw new Error('A suite selection must be nonempty');
   }
-  console.log(`\n\x1b[1m──────── ${name} ────────\x1b[0m`);
-  try {
-    execFileSync(process.execPath, [path.join(__dirname, file)], { cwd: ROOT, stdio: 'inherit' });
-  } catch {
-    failed.push(name);
+  const files = new Set();
+  for (const row of manifest) {
+    if (!Array.isArray(row) || row.length !== 2 ||
+        typeof row[0] !== 'string' || !row[0].trim() ||
+        typeof row[1] !== 'string' || !/^[a-z0-9-]+\.js$/.test(row[1])) {
+      throw new Error('Invalid suite manifest entry');
+    }
+    if (files.has(row[1])) throw new Error(`Duplicate suite: ${row[1]}`);
+    files.add(row[1]);
   }
 }
 
-console.log('\n' + '═'.repeat(60));
-if (failed.length) {
-  console.log(`\x1b[31mFAILED\x1b[0m — ${failed.length} of ${suites.length} suites: ${failed.join(', ')}`);
-  process.exit(1);
+function selectSuites(group = 'all', manifest = suites) {
+  if (group !== 'all' && !GROUPS.includes(group)) {
+    throw new Error(`Unknown suite group: ${group}`);
+  }
+  validateSuites(manifest);
+  if (!manifest.some(([, file]) => file === ISOLATION_SUITE)) {
+    throw new Error('The manifest must include the refresh-isolation suite');
+  }
+  const selected = manifest.filter(([, file]) => group === 'all' ||
+    (group === 'refresh-isolation' ? file === ISOLATION_SUITE : file !== ISOLATION_SUITE));
+  validateSuites(selected);
+  return selected;
 }
-console.log(`\x1b[32mALL ${suites.length} SUITES PASSED\x1b[0m`);
+
+function selectionFromArgs(args) {
+  if (args.length === 0) return selectSuites();
+  if (args.length !== 2 || args[0] !== '--group') {
+    throw new Error('Usage: node test/test.js [--group standard|refresh-isolation|all]');
+  }
+  return selectSuites(args[1]);
+}
+
+// Synchronous execution is deliberate: suites mutate shared checkout files.
+// The injected operations let the runner's failure contract be tested without
+// launching financial suites or changing their assertion/cleanup semantics.
+function runSuites(suites, { execute = execFileSync, exists = fs.existsSync,
+  log = console.log } = {}) {
+  validateSuites(suites);
+  const failed = [];
+  for (const [name, file] of suites) {
+    if (!exists(path.join(__dirname, file))) {
+      log(`\n\x1b[31m✗\x1b[0m ${name} — ${file} is missing`);
+      failed.push(name);
+      continue;
+    }
+    log(`\n\x1b[1m──────── ${name} ────────\x1b[0m`);
+    try {
+      execute(process.execPath, [path.join(__dirname, file)], { cwd: ROOT, stdio: 'inherit' });
+    } catch {
+      failed.push(name);
+    }
+  }
+
+  log('\n' + '═'.repeat(60));
+  if (failed.length) {
+    log(`\x1b[31mFAILED\x1b[0m — ${failed.length} of ${suites.length} suites: ${failed.join(', ')}`);
+    return 1;
+  }
+  log(`\x1b[32mALL ${suites.length} SUITES PASSED\x1b[0m`);
+  return 0;
+}
+
+if (require.main === module) {
+  try {
+    process.exitCode = runSuites(selectionFromArgs(process.argv.slice(2)));
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+}
+
+module.exports = { suites, GROUPS, selectSuites, selectionFromArgs, runSuites };
