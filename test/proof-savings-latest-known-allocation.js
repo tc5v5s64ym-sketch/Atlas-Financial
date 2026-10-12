@@ -116,8 +116,8 @@ const binding = process.env.ATLAS_SAVINGS_COHERENCE_PROOF === '1' ? captureSourc
     'test/fixtures/savings-daily-allocation-contract.js', 'test/fixtures/savings-v2-observation-data.js',
     'test/fixtures/savings-transfer-cutoffs.js', 'test/fixtures/budget-funding-data.js',
     'test/fixtures/savings-observer-contract-data.js', 'scripts/live-plan.js',
-    ...require('node:child_process').execFileSync('git', ['ls-files', '-z', '--', 'scripts'],
-      { cwd: root, encoding: 'utf8' }).split('\0').filter(file => file.endsWith('.js'))], base) : null;
+    ...Object.keys(require.cache).filter(file => file.startsWith(root + path.sep))
+      .map(file => path.relative(root, file).replace(/\\/g, '/'))], base) : null;
 const sourceBinding = Object.fromEntries(sourceFiles.map(file => [file, crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex')]));
 if (binding) verifySourceBinding(root, binding);
 console.log(JSON.stringify({ outcome: 'PASS', base, head: cp.execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),

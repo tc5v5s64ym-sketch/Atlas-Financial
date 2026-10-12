@@ -6,6 +6,7 @@ const { chromium } = require('playwright');
 const O = require('../scripts/provider-observe'), provider = require('./fixtures/savings-v2-observation-data');
 const consumer = require('./fixtures/savings-daily-consumer-data');
 const transferCutoffs = require('./fixtures/savings-transfer-cutoffs');
+const observed = require('./fixtures/savings-observer-contract-data');
 const { captureSourceBinding, verifySourceBinding } = require('./proof-source-binding');
 const root = path.resolve(__dirname, '..'), assets = path.join(root, 'public');
 const output = process.env.ATLAS_LATEST_SAVINGS_PROOF || path.join(require('node:os').tmpdir(), 'atlas-latest-savings-browser');
@@ -13,13 +14,15 @@ const files = cp.execFileSync('git', ['ls-files', '-z', '--', 'public', 'scripts
   'test/fixtures/savings-v2-observation-data.js', 'test/fixtures/savings-daily-consumer-data.js',
   'test/fixtures/savings-daily-allocation-contract.js', 'test/fixtures/budget-funding-data.js',
   'test/fixtures/savings-transfer-cutoffs.js',
-  'scripts', 'test/fixtures/savings-observer-contract-data.js',
+  'test/fixtures/savings-observer-contract-data.js',
   'test/browser-savings-latest-known-allocation.js', 'test/proof-source-binding.js'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean);
-const binding = captureSourceBinding(root, files, process.env.PROOF_BASE_SHA || null);
+const runtimeFiles = Object.keys(require.cache).filter(file => file.startsWith(root + path.sep))
+  .map(file => path.relative(root, file).replace(/\\/g, '/'));
+const binding = captureSourceBinding(root, [...files, ...runtimeFiles], process.env.PROOF_BASE_SHA || null);
 fs.mkdirSync(output, { recursive: true });
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function input(mode) {
-  if (mode.startsWith('pipeline-')) return require('./fixtures/savings-observer-contract-data')(mode.slice('pipeline-'.length)).data;
+  if (mode.startsWith('pipeline-')) return observed(mode.slice('pipeline-'.length)).data;
   if (mode.startsWith('cutoff-')) {
     const input = transferCutoffs(mode.slice('cutoff-'.length)), data = consumer('ready');
     data.meta.asOf = input.asOf; data.plan = input.plan;

@@ -17,11 +17,8 @@ function baseline(file) {
   m._compile(cp.execFileSync('git', ['show', base + ':' + file], { cwd: root, encoding: 'utf8', maxBuffer: 10000000 }), m.filename);
   return m.exports;
 }
-const files = cp.execFileSync('git', ['ls-files', '-z', '--', 'public/forecast.js', 'scripts',
-  'test/proof-source-binding.js', 'test/proof-savings-observer-contract.js', 'test/fixtures/savings-observer-contract-data.js',
-  'test/fixtures/savings-v2-observation-data.js', 'test/fixtures/savings-daily-consumer-data.js',
-  'test/fixtures/savings-daily-allocation-contract.js', 'test/fixtures/budget-funding-data.js'],
-  { cwd: root, encoding: 'utf8' }).split('\0').filter(file => file.endsWith('.js'));
+const files = Object.keys(require.cache).filter(file => file.startsWith(root + path.sep))
+  .map(file => path.relative(root, file).replace(/\\/g, '/'));
 const binding = captureSourceBinding(root, files, base);
 const O = baseline('scripts/provider-observe.js'), L = baseline('scripts/live-plan.js'), F = baseline('public/forecast.js');
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
