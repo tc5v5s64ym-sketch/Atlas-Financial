@@ -1,6 +1,6 @@
 {
   "outcome": "PASS",
-  "sourceCommit": "e9a43b790e12e0a55c151f7aad0d356c4ea6fb45",
+  "sourceCommit": "bf1798a62411c85b4856900d094da766db658221",
   "records": [
     {
       "file": "test/test-annual-savings-payperiod.js",

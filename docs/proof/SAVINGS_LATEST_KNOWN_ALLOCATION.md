@@ -608,3 +608,32 @@ affirmative raw-source completion. Fresh full hosted CI and exact-head Systems
 Review remain required. BLOCK 5496573478 controls until a fresh completed review.
 Failed-refresh continuity stays deferred; no merge, deployment or activation
 is performed here.
+
+## Serialized-window compatibility correction
+
+Exact-head 7ec5347e hosted runs 38321231312 and 38321226805 failed standard
+372/373, passed isolation 1/1 and failed aggregate. The sole failed suite was
+`test-private-period-history-completeness.js`. Local synthetic investigation
+isolated one genuine key difference: the new enumerable provenance fact leaked
+into `provenance.transactionWindow`, changing the frozen v1 content key. This
+was not dismissed as the prior Windows durability limitation.
+
+Commit `bf1798a62411c85b4856900d094da766db658221` keeps the captured original
+fact as an immutable, non-enumerable property during normalization. Sanitization
+still emits it explicitly in the serializable Savings packet before any worker
+handoff. Existing normalized-window JSON and history keys remain unchanged;
+no history code, fixture byte, assertion or storage policy is edited. An
+intermediate serialization that loses the internal property cannot earn source
+status: the sanitizer's missing-fact default remains unconfirmed.
+
+[Independent synthetic key comparison](savings-latest-known/history-key-repair.json)
+replays the frozen v1 content after the existing engine/Household alignment:
+one differing path before, zero after. The original history test blob equals
+reviewed main's blob. Windows filesystem durability remains unqualified and
+fresh Linux full CI is required; this memory comparison is not a storage PASS.
+
+The final fresh fetch, 282-ledger, 20-suite and ten-browser receipts above all
+exercise clean bf1798a6 source, with 21/25/116/77 exact bindings. All 318 focused
+tests and original financial assertions still pass. Earlier 7ec5347e receipts
+and failed full runs remain historical. Root's exact-head Systems decision and
+fresh full hosted checks remain required. No merge or activation occurred.

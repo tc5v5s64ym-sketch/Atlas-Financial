@@ -1,7 +1,7 @@
 {
   "outcome": "PASS",
   "base": "a773a950c1927e450fea7dafd3bef6b35ed0b8a6",
-  "head": "e9a43b790e12e0a55c151f7aad0d356c4ea6fb45",
+  "head": "bf1798a62411c85b4856900d094da766db658221",
   "sourceBinding": {
     "public/forecast.js": "197f8ebf83a7d01be35b526c355a3d0e6df20ce5572d94da3fc84845d1a32e17",
     "public/savings-inventory.js": "24c4f604fc2cdbe18a20bd24507d62ed7a25db9c71f797b7e9ed862c36fe8a95",
@@ -9,8 +9,8 @@
     "public/budget-blend.js": "8bff2f2e6240f6e0e5a8b2a288d46f95cb52966204655be2905d38d2fd6894f0"
   },
   "executionBinding": {
-    "sourceCommit": "e9a43b790e12e0a55c151f7aad0d356c4ea6fb45",
-    "sourceTree": "94fd95bad1a36f3d216b402dff292420ff8ea744",
+    "sourceCommit": "bf1798a62411c85b4856900d094da766db658221",
+    "sourceTree": "99adf6df42619ae80481d0e976f1e4d7ebf7f0c3",
     "baseCommit": "a773a950c1927e450fea7dafd3bef6b35ed0b8a6",
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -76,9 +76,9 @@
         "bytes": 13507
       },
       "scripts/provider-observe.js": {
-        "gitBlob": "42154d9a709c069915540a489c971409d0e767cd",
-        "sha256": "93daf4e1bdbfe189ab4ebaa5b8930bbfb2b0b7faab5591fa7616b38d75665fee",
-        "bytes": 193520
+        "gitBlob": "1be2b243d15eea1aacce533ee53579be6cede899",
+        "sha256": "33767a790d19b40cd4db3f0bad735fa648c3ead4eb165f838b1ad42590582eb9",
+        "bytes": 193765
       },
       "scripts/reconcile.js": {
         "gitBlob": "24286860e1a8efcdbe04d1629fd461899c3fb865",
