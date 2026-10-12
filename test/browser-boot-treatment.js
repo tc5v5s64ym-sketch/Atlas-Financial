@@ -31,11 +31,18 @@
 // the genuine-load interval with no gaps observed at ~100ms sampling
 // after first visibility, and is removed on arrival. The repeated
 // nav-to-content timing comparison is INCONCLUSIVE: the per-round
-// paired deltas vary more than any effect, so the median paired delta
-// and the difference of medians are recorded as measurements only —
-// they do not establish that the treatment adds no delay. What is
-// supported: the treatment adds no new blocking assets. No real-world
-// boot-speed claim.
+// paired deltas vary more than any effect. When a base tree is supplied
+// (BOOT_BASE_ROOT), the median paired delta and the difference of
+// medians are recorded in the receipt as measurements only — they do
+// not establish that the treatment adds no delay. Without a base tree,
+// baseComparison and repeatedTimingMeasures are null and NO paired
+// timing measurements are recorded for the run; timing numbers in
+// earlier receipts are historical measurements of those trees, not of
+// the tree under test. What is supported: the treatment adds no new
+// blocking assets. No real-world boot-speed claim. When no base tree is supplied (BOOT_BASE_ROOT
+// unset), baseComparison and repeatedTimingMeasures are null and NO
+// paired timing measurements are recorded; the receipt claim states
+// that explicitly instead of claiming recorded measurements.
 //
 //   CHROME_PATH=<Chromium> node test/browser-boot-treatment.js
 //   BOOT_BASE_ROOT=<pristine base checkout> — also measure the base tree
@@ -54,7 +61,9 @@ fs.mkdirSync(outDir, { recursive: true });
 const fx = require('./fixtures/budget-surface-data');
 const data = fx.served();
 
-const CLAIM = 'visible during the genuine-load interval with no gaps observed at ~100ms sampling after first visibility, removed on arrival, no new blocking assets; timing comparison inconclusive — median paired delta and difference of medians recorded as measurements, not a no-delay conclusion';
+const CLAIM_PREFIX = 'visible during the genuine-load interval with no gaps observed at ~100ms sampling after first visibility, removed on arrival, no new blocking assets; timing comparison inconclusive — ';
+const CLAIM_MEASURED = CLAIM_PREFIX + 'median paired delta and difference of medians recorded as measurements, not a no-delay conclusion';
+const CLAIM_UNMEASURED = CLAIM_PREFIX + 'no paired timing measurements are recorded in this receipt (baseComparison and repeatedTimingMeasures are null), not a no-delay conclusion';
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -669,6 +678,7 @@ async function waitContent(page, timeoutMs = 30000) {
         const hit = document.elementFromPoint(sr.left + sr.width / 2, sr.top + sr.height / 2);
         const head = document.querySelector('.site-head');
         const surface = document.querySelector('#operating-surface');
+        const surfaceCover = surface && surface.parentElement;
         const btn = document.querySelector('[data-blend-theme], #theme-btn');
         let focusDenied = null;
         if (btn) { btn.focus(); focusDenied = document.activeElement !== btn; }
@@ -676,7 +686,7 @@ async function waitContent(page, timeoutMs = 30000) {
           noticePresent: !!document.querySelector('[data-boot-notice]'),
           baked: {
             head: { inert: !!head.inert, ariaHidden: head.getAttribute('aria-hidden'), marker: head.hasAttribute('data-boot-inert') },
-            surface: { inert: !!surface.inert, ariaHidden: surface.getAttribute('aria-hidden'), marker: surface.hasAttribute('data-boot-inert') },
+            surface: { inert: !!surfaceCover.inert, ariaHidden: surfaceCover.getAttribute('aria-hidden'), marker: surfaceCover.hasAttribute('data-boot-inert') },
           },
           hitInsideStatic: !!(hit && hit.closest('[data-boot-static]')),
           staticPointerEvents: getComputedStyle(stat).pointerEvents,
@@ -941,11 +951,15 @@ async function waitContent(page, timeoutMs = 30000) {
     // it, and an element that was ALREADY inert + aria-hidden before
     // boot keeps exactly that prior state — restore returns prior
     // state, it does not blanket-clear. The fixture element is
-    // #operating-surface: a direct .wrap child, hence an ACTUAL node
-    // in boot's captured covered set (the old #risks fixture sat
-    // nested inside #road-ahead and was never captured). Note this
-    // fixture replaces the R2 bake on that element — it carries no
-    // data-boot-inert, so boot captures it as a genuine prior state.
+    // #road-ahead: a direct .wrap child carrying its own bake, hence
+    // an ACTUAL node in boot's captured covered set (the old #risks
+    // fixture sat nested inside #road-ahead and was never captured;
+    // #operating-surface served as the fixture until its opening tag
+    // was pinned bare and its bake moved to a data-boot-wrap wrapper,
+    // whose restore path unwraps rather than restores in place).
+    // Note this fixture replaces the R2 bake on that element — it
+    // carries no data-boot-inert, so boot captures it as a genuine
+    // prior state.
     // 10 — In-content crit isolation, on the same arrived page: a
     // rendered .note-box.crit without [data-boot-notice] is not an
     // overlay, by computed style.
@@ -955,8 +969,8 @@ async function waitContent(page, timeoutMs = 30000) {
         () => ({ delayMs: 0, status: 200 }),
         {
           htmlPatch: (rel, body) => rel === 'index.html'
-            ? body.replace('<section id="operating-surface" inert aria-hidden="true" data-boot-inert>',
-                '<section id="operating-surface" inert aria-hidden="true">')
+            ? body.replace('<section id="road-ahead" hidden inert aria-hidden="true" data-boot-inert>',
+                '<section id="road-ahead" hidden inert aria-hidden="true">')
             : body,
         });
       await page.goto('http://boot.test/', { waitUntil: 'commit' });
@@ -971,7 +985,7 @@ async function waitContent(page, timeoutMs = 30000) {
       // captured set; the during-coverage probes in the other runs
       // assert the generalized set.
       const state = await page.evaluate(() => {
-        const fixture = document.querySelector('#operating-surface');
+        const fixture = document.querySelector('#road-ahead');
         const probe = [document.querySelector('.site-head'),
           ...document.querySelectorAll('.wrap > *')].filter(Boolean)
           .filter(el => !el.hasAttribute('data-boot-notice') && !el.hasAttribute('data-boot-static'));
@@ -992,7 +1006,7 @@ async function waitContent(page, timeoutMs = 30000) {
       assert.equal(state.othersDirty, 0, 'early-ready: zero residual inert/aria-hidden on the ' + state.othersCount + ' other shell elements boot touched');
       assert.equal(state.bakedMarkersLeft, 0, 'early-ready: every baked data-boot-inert marker was consumed by boot');
       assert.ok(state.fixture.inert && state.fixture.ariaHidden === 'true',
-        'early-ready: the pre-existing inert + aria-hidden state on #operating-surface is preserved exactly (prior-state restore)');
+        'early-ready: the pre-existing inert + aria-hidden state on #road-ahead is preserved exactly (prior-state restore)');
       const probe = await page.evaluate(() => {
         const btn = document.querySelector('[data-blend-theme], #theme-btn');
         if (!btn) return { missing: true };
@@ -1000,7 +1014,7 @@ async function waitContent(page, timeoutMs = 30000) {
         return { focusedOk: document.activeElement === btn };
       });
       assert.ok(probe.focusedOk, 'early-ready: header control focusable after the fast load');
-      results.earlyReady = { delayMs: 0, noticeRemoved: true, residualInertOnTouchedShell: 0, bakedMarkersRemaining: 0, priorStatePreservedOnFixtureElement: '#operating-surface (an actual captured shell node; served with inert + aria-hidden="true" and no data-boot-inert for this run only — replaces the nested #risks fixture, which was never captured)', shellElementsProbed: probed, headerControlFocusable: true };
+      results.earlyReady = { delayMs: 0, noticeRemoved: true, residualInertOnTouchedShell: 0, bakedMarkersRemaining: 0, priorStatePreservedOnFixtureElement: '#road-ahead (an actual captured shell node; served with inert + aria-hidden="true" and no data-boot-inert for this run only — replaces the nested #risks fixture, which was never captured)', shellElementsProbed: probed, headerControlFocusable: true };
       const isolation = await page.evaluate(() => {
         const real = [...document.querySelectorAll('.note-box:not([data-boot-notice])')]
           .map(el => getComputedStyle(el).position);
@@ -1106,7 +1120,7 @@ async function waitContent(page, timeoutMs = 30000) {
     const receipt = {
       proof: 'browser-boot-treatment',
       baseMainSha: 'a96f911c252431ca4cfb2aba7bfda79134388d69',
-      claim: CLAIM,
+      claim: comparison ? CLAIM_MEASURED : CLAIM_UNMEASURED,
       scenarios: results,
       baseComparison: comparison,
       screenshots: shots,
