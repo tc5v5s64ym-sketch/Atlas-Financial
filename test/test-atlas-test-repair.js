@@ -30,8 +30,22 @@ ok(!/cursor-agent|git (?:push|commit)|upload-artifact|download-artifact|download
 const gate = fs.readFileSync(path.join(__dirname, '..', 'scripts/ci-repair-privacy.js'), 'utf8');
 ok(/HOLD_EXIT = 78/.test(gate) && /private-artifact-blocked/.test(gate), 'eligible repair fails closed with bounded status');
 ok(/pr.draft === true/.test(gate), 'Draft test-failure lane remains skipped');
-const tests = fs.readFileSync(path.join(__dirname, '..', '.github/workflows/test.yml'), 'utf8');
-ok(/run: npm test/.test(tests), 'normal full correctness checks remain required');
+const tests = sourceText(fs.readFileSync(path.join(__dirname, '..', '.github/workflows/test.yml'), 'utf8'));
+const runner = require('./test');
+ok(require('../package.json').scripts.test === 'node test/test.js',
+  'npm test retains the complete serial reference');
+ok(/^        run: node test\/test.js --group standard$/m.test(tests)
+  && /^        run: node test\/test.js --group refresh-isolation$/m.test(tests),
+  'normal CI runs both explicit correctness groups');
+const combined = [...runner.selectSuites('standard'), ...runner.selectSuites('refresh-isolation')]
+  .map(([, file]) => file);
+const full = runner.suites.map(([, file]) => file);
+ok(combined.length === full.length && new Set(combined).size === full.length
+  && JSON.stringify([...combined].sort()) === JSON.stringify([...full].sort()),
+  'split correctness jobs cover the full manifest exactly once');
+ok(/^    needs: \[standard, refresh-isolation\]$/m.test(tests)
+  && /^    if: \$\{\{ always\(\) \}\}$/m.test(tests),
+  'the stable aggregate requires both groups even after a non-success');
 ok(!/gh pr merge|merge_pull_request/.test(src), 'cannot merge');
 ok(/persist-credentials:\s*false/.test(src), 'trusted checkout does not persist credentials');
 
