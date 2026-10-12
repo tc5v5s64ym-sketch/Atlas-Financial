@@ -1899,7 +1899,14 @@
     const note = heading.querySelector('p');
     if (note && /Opening balance unavailable|Future period not observed|activity not observed|Posted through/i.test(text(note))) {
       note.classList.add('blend-card-posted', 'blend-card-aside');
-      if (panels[0]) panels[0].prepend(note);
+      if (panels[0]) {
+        // The panel leads with its reported balance (the card-detail
+        // lead); the re-homed strip status follows that lead when the
+        // panel carries one, and keeps the incumbent prepend when it
+        // does not. Status text and classes are unchanged either way.
+        const lead = panels[0].querySelector('.card-movement-lead');
+        if (lead) lead.after(note); else panels[0].prepend(note);
+      }
     }
     bento.querySelectorAll('.card-movement-trigger').forEach(button => {
       if (!button.querySelector('.blend-cc-chip')) {

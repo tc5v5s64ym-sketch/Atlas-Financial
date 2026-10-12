@@ -13,13 +13,13 @@
     "public/forecast.js": "39d74519c54508f4927a8d60b03f6edb31467abe",
     "public/budget-surface.js": "da8a27f58eb83575ba2a275aae4829d9527ea0bf",
     "public/budget-card-movements.js": "d19ab8847f3615aed1d09bc768d7bc8b18fc23d3",
-    "public/budget-blend.js": "7659539259ee0026ce125b538d4061c6c7486d70",
+    "public/budget-blend.js": "12df3e98ebfee9dab3495ebc824b779b58755762",
     "public/budget-river.js": "38f64e0f9c1f4fd8162e5fe05dfc2d3d7dc26e90",
     "public/budget-blend.css": "33198266e5fd7044371c4f9395f4d83c15f0c7c6",
     "public/budget-surface.css": "b23f895cea5f96f848ac5577f5e53a00a42f4479",
     "public/budget-gface.css": "fc9bdd8dce255d740c78cb86805acb7e7d10f554",
     "public/budget-sheet-motion.css": "85bcf401b7a24762d8de42eaa3cdd6c4efd7c58c",
-    "test/browser-card-panel-lead.js": "449266553255d76deb55c48468dd7ae71b98d8e5",
+    "test/browser-card-panel-lead.js": "4c1b7a9e2e829f47a463e4a2a84c5bab34134cfc",
     "test/fixtures/card-period-movements-data.js": "bee1a5dd4f71816b76872d741cdd385b72c7b210",
     "test/fixtures/budget-surface-data.js": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc"
   },
@@ -39,7 +39,7 @@
       "width": 390,
       "theme": "dark",
       "subject": "sheet open, unavailable lead",
-      "sha256": "399a05cfadc170e32e9e09bfd02cb8478b9041991309e5a22b1c7af0b578ef18"
+      "sha256": "5a5600e3a048eadce3da93ff0de2e5411f04e798457251507c410160e0f23b99"
     },
     {
       "file": "panel-strip-320-light.png",
@@ -55,7 +55,7 @@
       "width": 390,
       "theme": "light",
       "subject": "sheet open, lead first, disclosure collapsed",
-      "sha256": "60f35f2842ee546179e3a949cf2efd3863f61e79b69ef4a36d492db5f1ae6afb"
+      "sha256": "f81ca5654e6081922fc1baf3701231d4d046384e56db9e09105107fc42bd456a"
     },
     {
       "file": "panel-open-1440-dark.png",
@@ -63,7 +63,7 @@
       "width": 1440,
       "theme": "dark",
       "subject": "sheet open, lead first, disclosure collapsed",
-      "sha256": "8350bfa9e6e7ed86181dfa6b9d35b158005a38744637ca00015cabd86b0ff5f1"
+      "sha256": "29bdb76031ba7005147e81a074f5a1578a66df921f8f26b07a490615ce0c301d"
     }
   ],
   "states": [
@@ -73,9 +73,29 @@
       "theme": "light"
     },
     {
+      "proof": "travel-order",
+      "width": 390,
+      "theme": "light",
+      "states": [
+        "current",
+        "future",
+        "current-after-step-back"
+      ]
+    },
+    {
       "proof": "lead-truth",
       "width": 390,
       "theme": "dark"
+    },
+    {
+      "proof": "travel-order",
+      "width": 390,
+      "theme": "dark",
+      "states": [
+        "current",
+        "future",
+        "current-after-step-back"
+      ]
     },
     {
       "proof": "operation",

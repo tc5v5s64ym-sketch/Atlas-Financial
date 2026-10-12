@@ -13,7 +13,13 @@
 //      "Balance and payment details" disclosure, close the sheet;
 //  (d) close/reopen behaviour — focus returns to the card trigger on
 //      close, and the disclosure is collapsed again on reopen even
-//      though the sheet re-homes the same panel node.
+//      though the sheet re-homes the same panel node;
+//  (e) Travel-panel ordering under the blend skin — the strip's
+//      re-homed posted-status paragraph follows the balance lead,
+//      never precedes it, in the current "Posted through …" state and
+//      the future "Posted activity not observed" state, across
+//      rerenders (window steps) and close/reopen, present exactly
+//      once (advisory P2 4252570044).
 // Invented data; all network intercepted. No credentials, live accounts,
 // writes or DOM financial stubs.
 const assert = require('node:assert/strict');
@@ -73,6 +79,32 @@ const states = [], errors = [], writes = [], external = [];
   };
   const leadText = panel => panel.locator('.card-movement-lead').innerText();
   const detailsOpen = panel => panel.locator('details.card-movement-details').evaluate(el => el.open);
+  // Travel ordering (advisory P2 4252570044): the blend skin's
+  // paintCards() re-homes the strip's posted-status paragraph into
+  // panels[0] — the Travel panel. The reported-balance lead must stay
+  // the panel's first content, the status must sit immediately after
+  // it, and the status must appear exactly once.
+  const travelOrder = panel => panel.evaluate(el => {
+    const lead = el.querySelector('.card-movement-lead');
+    const notes = [...el.querySelectorAll('.blend-card-posted')];
+    return {
+      firstIsLead: !!lead && el.firstElementChild === lead,
+      noteCount: notes.length,
+      noteText: notes.length === 1 ? notes[0].textContent.trim() : null,
+      noteAfterLead: !!lead && notes.length === 1 && lead.nextElementSibling === notes[0],
+    };
+  });
+  const assertTravelOrder = async (panel, notePattern, where) => {
+    const order = await travelOrder(panel);
+    assert.equal(order.firstIsLead, true,
+      `${where}: Travel panel leads with the reported balance, ahead of the re-homed status`);
+    assert.equal(order.noteCount, 1,
+      `${where}: Travel panel carries the posted status exactly once`);
+    assert.match(order.noteText || '', notePattern,
+      `${where}: Travel posted status text is preserved`);
+    assert.equal(order.noteAfterLead, true,
+      `${where}: Travel posted status sits immediately after the balance lead`);
+  };
   try {
     // (a)+(b) lead truth at 390px in both themes, plus canonical captures.
     for (const theme of ['light', 'dark']) {
@@ -98,6 +130,12 @@ const states = [], errors = [], writes = [], external = [];
       const page = await boot(fx.served(), 390, theme);
       const strip = page.locator('[data-budget-card-movements]');
       await strip.waitFor();
+      // Travel ordering in the current period, before the window step:
+      // the re-homed "Posted through …" status follows the balance lead.
+      await page.locator('[data-budget-card-toggle="travelvisa"]').click();
+      await assertTravelOrder(page.locator('[data-budget-card-panel="travelvisa"]'),
+        /^Posted through /, `${theme} current`);
+      await page.keyboard.press('Escape');
       await page.evaluate(() => document.querySelector('[data-budget-window-step="1"]').click());
       await page.waitForFunction(s => document.querySelector('[data-budget-card-movements]')
         ?.getAttribute('data-card-period-start') === s, '2026-08-28', { timeout: 8000 });
@@ -107,11 +145,24 @@ const states = [], errors = [], writes = [], external = [];
         `${theme}: missing balance leads with the unavailable state`);
       assert.doesNotMatch(await leadText(panel), /\$0\.00/,
         `${theme}: missing balance is never printed as an invented zero`);
+      // Travel ordering in the future period, after the step's rerender:
+      // the "Posted activity not observed" status follows the lead too.
+      await assertTravelOrder(panel, /^Posted activity not observed$/, `${theme} future`);
       if (theme === 'dark') await capture(page.locator('[data-budget-detail-sheet]'),
         'panel-lead-unavailable-390-dark.png', { state: 'missing-balance', width: 390, theme, subject: 'sheet open, unavailable lead' });
       await page.keyboard.press('Escape');
+      // Stepping back is another rerender: the current-period ordering
+      // and the "Posted through …" status return, still exactly once.
+      await page.evaluate(() => document.querySelector('[data-budget-window-step="-1"]').click());
+      await page.waitForFunction(s => document.querySelector('[data-budget-card-movements]')
+        ?.getAttribute('data-card-period-start') === s, '2026-08-14', { timeout: 8000 });
+      await page.locator('[data-budget-card-toggle="travelvisa"]').click();
+      await assertTravelOrder(page.locator('[data-budget-card-panel="travelvisa"]'),
+        /^Posted through /, `${theme} current-after-step-back`);
+      await page.keyboard.press('Escape');
       await page.close();
       states.push({ proof: 'lead-truth', width: 390, theme });
+      states.push({ proof: 'travel-order', width: 390, theme, states: ['current', 'future', 'current-after-step-back'] });
     }
     // (c)+(d) keyboard and touch operation across widths and themes.
     for (const width of [320, 390, 1440]) for (const theme of ['light', 'dark']) {
@@ -128,6 +179,7 @@ const states = [], errors = [], writes = [], external = [];
       assert.equal(await sheet.evaluate(el => el.open), true, `${width}/${theme} keyboard: Enter opens the sheet`);
       assert.equal(await leadText(panel), 'Reported balance $927.40 · Aug 20',
         `${width}/${theme} keyboard: panel leads with the published balance and its date`);
+      await assertTravelOrder(panel, /^Posted through /, `${width}/${theme} keyboard`);
       assert.equal(await detailsOpen(panel), false, `${width}/${theme} keyboard: disclosure collapsed on open`);
       assert.equal(await panel.locator('details.card-movement-details > summary').innerText(),
         'Balance and payment details', `${width}/${theme} keyboard: summary label exact`);
@@ -158,6 +210,7 @@ const states = [], errors = [], writes = [], external = [];
       await trigger.click();
       assert.equal(await detailsOpen(panel), false,
         `${width}/${theme} reopen: disclosure is collapsed on reopen`);
+      await assertTravelOrder(panel, /^Posted through /, `${width}/${theme} reopen`);
       assert.equal(await page.evaluate(() => document.querySelector('[data-budget-detail-sheet]')?.contains(document.activeElement)), true,
         `${width}/${theme} reopen: focus lands inside the sheet`);
       if (width === 390 && theme === 'light') await capture(sheet,
