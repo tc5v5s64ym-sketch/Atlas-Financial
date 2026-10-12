@@ -17,6 +17,8 @@ if (!threads.isMainThread && process.env.ATLAS_COALESCING_TEST_WORKER_MODE) {
   const path = require('node:path');
   const http = require('node:http');
   const events = require('node:events');
+  const vm = require('node:vm');
+  const { createRequire } = require('node:module');
   const { performance } = require('node:perf_hooks');
   const workers = [], timings = [];
   const RealWorker = threads.Worker;
@@ -63,7 +65,7 @@ if (!threads.isMainThread && process.env.ATLAS_COALESCING_TEST_WORKER_MODE) {
   }
   async function provider() {
     const calls = [], pending = new Set();
-    let held = true, failure = false, active = 0;
+    let held = true, failure = false, active = 0, pendingHeld = false, categoryChanged = false;
     const server = http.createServer((req, res) => {
       const url = new URL(req.url, 'http://127.0.0.1');
       calls.push(url.pathname + (url.searchParams.get('is_pending') === 'true' ? '?pending' : ''));
@@ -82,17 +84,27 @@ if (!threads.isMainThread && process.env.ATLAS_COALESCING_TEST_WORKER_MODE) {
       if (url.pathname === '/v2/manual_accounts') return send(200, { manual_accounts: [] });
       if (url.pathname === '/v2/categories') return send(200, { categories: payload.categories });
       if (url.pathname === '/v2/tags') return send(200, { tags: [] });
-      if (url.pathname === '/v2/transactions') return send(200, { has_more: false,
-        transactions: payload.transactions.filter(tx => url.searchParams.get('is_pending') !== 'true' || tx.is_pending) });
+      if (url.pathname === '/v2/transactions') {
+        const isPending = url.searchParams.get('is_pending') === 'true';
+        const body = { has_more: false, transactions: payload.transactions.filter(tx => !isPending || tx.is_pending)
+          .map(tx => categoryChanged && tx.id === payload.transactions[2].id ? { ...tx, category_id: 14 } : tx) };
+        if (isPending && pendingHeld) { pending.add({ res, release: () => send(200, body) }); return; }
+        return send(200, body);
+      }
       send(404, {});
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     return { calls, get active() { return active; },
       base: 'http://127.0.0.1:' + server.address().port + '/v2',
       hold() { held = true; }, fail(value) { failure = value; },
+      holdPending() { pendingHeld = true; }, changeCategory(value) { categoryChanged = value; },
       release() {
         held = false;
-        for (const res of pending) { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"user_id":1}'); }
+        pendingHeld = false;
+        for (const entry of pending) {
+          if (entry.release) { if (!entry.res.destroyed) entry.release(); }
+          else if (!entry.destroyed) { entry.writeHead(200, { 'content-type': 'application/json' }); entry.end('{"user_id":1}'); }
+        }
         pending.clear();
       },
       async close() { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); },
@@ -108,6 +120,21 @@ if (!threads.isMainThread && process.env.ATLAS_COALESCING_TEST_WORKER_MODE) {
       ATLAS_PROVIDER_ACCOUNT_MAP_JSON: JSON.stringify(map) };
   }
   const countMe = mock => mock.calls.filter(call => call === '/v2/me').length;
+  function serverAdapter(service) {
+    const filename = path.resolve(__dirname, '..', 'server.js');
+    const source = fs.readFileSync(filename, 'utf8');
+    const requireFromServer = createRequire(filename), exported = { exports: {} };
+    const context = vm.createContext({ module: exported, process: { env: {} }, console,
+      require(name) {
+        if (name === './scripts/assistant-lunchmoney.js') return { createService: () => service };
+        if (name === './scripts/assistant-standing-runtime.js') return { fromEnv: () => ({}) };
+        if (name === './scripts/assistant-oauth.js') return { readConfig: () => ({ configured: false }) };
+        return requireFromServer(name);
+      } });
+    // Execute the actual deployed bootstrap/writer wiring, not a copied wrapper.
+    new vm.Script(source.slice(0, source.indexOf('if (!PASSWORD')) + '\nmodule.exports = lunchMoneyAssistant;', { filename }).runInContext(context);
+    return exported.exports;
+  }
   async function pair(mock, env, secondCanonical, secondEnv, label) {
     await drain(); mock.hold();
     const before = workers.length, callsBefore = countMe(mock);
@@ -159,6 +186,91 @@ if (!threads.isMainThread && process.env.ATLAS_COALESCING_TEST_WORKER_MODE) {
       await drain();
       check(workers.length - sequentialBefore, 1, 'sequential request starts another real worker');
       check(mock.calls.length - sequentialCalls, 7, 'no completed observation cache');
+
+      // The preserved real-worker race: posted transactions have been fetched,
+      // pending coverage is held, then an authorized adapter invocation changes
+      // synthetic provider state. No real provider write or credential is used.
+      for (const outcome of ['applied', 'write-unverified', 'unavailable', 'throw']) {
+        mock.release(); mock.changeCategory(false); mock.holdPending();
+        const pendingBefore = mock.calls.filter(call => call === '/v2/transactions?pending').length;
+        const beforeWrite = Refresh.serve(canonical, env);
+        const obsolete = rejection(beforeWrite, 'live-refresh-invalidated');
+        await until(() => mock.calls.filter(call => call === '/v2/transactions?pending').length === pendingBefore + 1, 'pre-edit posted window fetched');
+        const joinedBeforeWrite = rejection(Refresh.serve(canonical, env), 'live-refresh-invalidated');
+        const editError = new Error('synthetic-ambiguous-edit'), editResult = { status: outcome };
+        let finishEdit, invoked = 0, received;
+        const editDone = new Promise(resolve => { finishEdit = resolve; });
+        const service = { standingEnabled: true, standingCleanupEnabled: true, standingAdmissionEnabled: true,
+          async invoke(...args) {
+            invoked++; received = args; mock.changeCategory(true);
+            await editDone;
+            if (outcome === 'throw') throw editError;
+            return editResult;
+          } };
+        const adapter = serverAdapter(service), args = { previewId: 'synthetic-preview', confirmed: true };
+        const auth = { principal: 'synthetic-owner', scopes: ['synthetic-existing-scope'] };
+        const operation = outcome === 'write-unverified' || outcome === 'throw' ? 'applyStanding' : 'apply';
+        const editing = adapter.invoke(operation, args, auth);
+        const editCheck = outcome === 'throw' ? assert.rejects(editing, error => error === editError)
+          : editing.then(result => check(result, editResult, 'writer result returned unchanged'));
+        await bounded(Promise.all([obsolete, joinedBeforeWrite]), 'obsolete shared waiter invalidation');
+        check(received, [operation, args, auth], 'operation, arguments and auth forwarded unchanged');
+        check(received[1] === args && received[2] === auth, true, 'writer retains argument/auth ownership');
+        for (const flag of ['standingEnabled', 'standingCleanupEnabled', 'standingAdmissionEnabled']) check(adapter[flag], service[flag], 'capability flags preserved');
+        const duringBefore = workers.length;
+        await rejection(Refresh.serve(canonical, env), 'live-refresh-invalidated');
+        check(workers.length, duringBefore, 'during-edit read starts no mixed-evidence worker');
+        await drain(); mock.release(); finishEdit(); await editCheck;
+        const afterBefore = workers.length, callsBeforeEditRead = mock.calls.length;
+        const afterWrite = await Refresh.serve(canonical, env); await drain();
+        check(workers.length - afterBefore, 1, 'post-edit reader starts a new real worker');
+        check(mock.calls.length - callsBeforeEditRead, 7, 'post-edit reader performs a complete fresh observation');
+        assert.notDeepEqual(afterWrite.liveOverlay.currentPeriodActuals, expected.liveOverlay.currentPeriodActuals, 'post-edit actuals cannot equal the captured pre-edit window'); checks++;
+        check(afterWrite, await Live.applyForServer(canonical, env), 'post-edit whole publication equals an independent fresh execution');
+        check(invoked, 1, 'ambiguous/unavailable/error outcome never retries the edit');
+      }
+      mock.changeCategory(false);
+
+      // Read/preview adapter calls do not invalidate unrelated active readers.
+      mock.hold(); const readCalls = countMe(mock), readWorkers = workers.length;
+      const unaffected = Refresh.serve(canonical, env);
+      await until(() => countMe(mock) === readCalls + 1, 'read-only adapter control');
+      const readResult = { status: 'synthetic-preview' }, readArguments = [], readAdapter = serverAdapter({
+        standingEnabled: false, standingCleanupEnabled: false, standingAdmissionEnabled: false,
+        invoke(...args) { readArguments.push(args); return Promise.resolve(readResult); },
+      });
+      for (const operation of ['catalog', 'prepare']) check(await readAdapter.invoke(operation, {}, {}), readResult, 'read/preview result unchanged');
+      check(readArguments.map(args => args[0]), ['catalog', 'prepare'], 'only existing read/preview operations invoked');
+      mock.release(); check(await unaffected, expected, 'read/preview does not invalidate a pending publication');
+      await drain(); check(workers.length - readWorkers, 1, 'read/preview starts no replacement worker');
+
+      // Two overlapping attempts keep external live reads unavailable until
+      // the last attempt settles, even when the first reports success.
+      let finishA, finishB;
+      const doneA = new Promise(resolve => { finishA = resolve; }), doneB = new Promise(resolve => { finishB = resolve; });
+      const overlappingAdapter = serverAdapter({ invoke: async operation => {
+        await (operation === 'apply' ? doneA : doneB);
+        return { status: operation === 'apply' ? 'applied' : 'write-unverified' };
+      } });
+      const writingA = overlappingAdapter.invoke('apply', {}, {}), writingB = overlappingAdapter.invoke('applyStanding', {}, {});
+      const overlapWorkers = workers.length;
+      await rejection(Refresh.serve(canonical, env), 'live-refresh-invalidated');
+      finishA(); await writingA;
+      await rejection(Refresh.serve(canonical, env), 'live-refresh-invalidated');
+      check(workers.length, overlapWorkers, 'one settled writer cannot unblock another active writer');
+      finishB(); await writingB;
+      check(await Refresh.serve(canonical, env), expected, 'reads resume after all attempts settle'); await drain();
+
+      // Invalidation does not pretend terminating workers have released slots.
+      mock.hold(); const invalidationWorkers = workers.length;
+      const abandonedA = rejection(Refresh.serve(canonical, env), 'live-refresh-invalidated');
+      const abandonedB = rejection(Refresh.serve({ ...canonical, meta: { ...canonical.meta, syntheticRevision: 'write-cap' } }, env), 'live-refresh-invalidated');
+      await Refresh.withProviderWrite(async () => ({ status: 'write-unverified' }));
+      await Promise.all([abandonedA, abandonedB]);
+      await rejection(Refresh.serve(canonical, env), 'live-refresh-busy');
+      check(workers.length - invalidationWorkers, 2, 'invalidated workers retain both slots until exit');
+      await drain(); mock.release();
+      check(await Refresh.serve(canonical, env), expected, 'retry succeeds after actual worker cleanup'); await drain();
 
       // Cancelling the initiator or any joining caller cannot cancel survivors.
       for (const initiator of [true, false]) {
@@ -331,13 +443,13 @@ if (!threads.isMainThread && process.env.ATLAS_COALESCING_TEST_WORKER_MODE) {
         'waiterCount', 'peakWaiters', 'cancelledWaiters', 'timedOutWaiters'].sort();
       for (const entry of timings) {
         check(Object.keys(entry).sort(), allowed, 'timing uses only closed sanitized fields');
-        assert.ok(['completed', 'live-refresh-cancelled', 'live-refresh-timeout', 'live-refresh-unavailable'].includes(entry.outcome)); checks++;
+        assert.ok(['completed', 'live-refresh-cancelled', 'live-refresh-timeout', 'live-refresh-unavailable', 'live-refresh-invalidated'].includes(entry.outcome)); checks++;
         for (const key of allowed.filter(key => key.endsWith('Ms'))) {
           assert.ok(entry[key] === null || Number.isSafeInteger(entry[key]) && entry[key] >= 0); checks++;
         }
         assert.ok(entry.workerStartupMs === null || entry.workerStartupMs <= entry.totalMs); checks++;
       }
-      assert.ok(!/SYNTHETIC|token|secret|canonical|provider|key|\/|\\/i.test(JSON.stringify(timings))); checks++;
+      assert.ok(!/SYNTHETIC|token|secret|canonical|provider|key|generation|\/|\\/i.test(JSON.stringify(timings))); checks++;
       check(canonical, original, 'all paths preserve canonical input');
       originalLog('MEASURED ' + JSON.stringify({ equivalentCallers: 4, actualWorkers: 1, providerGETs: 7,
         lifecycle: sharedTiming, testedJobs: timings.length }));

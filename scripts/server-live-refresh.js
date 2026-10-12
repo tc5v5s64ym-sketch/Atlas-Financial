@@ -26,6 +26,7 @@ if (!isMainThread) {
   const keySalt = crypto.randomBytes(32);
   const active = new Set();
   const jobs = new Map();
+  let generation = 0n, activeWrites = 0;
   function unavailable(code) {
     const error = new Error(code);
     error.code = code;
@@ -69,7 +70,7 @@ if (!isMainThread) {
     const day = Forecast.financialDate(new Date(Date.now()).toISOString());
     return crypto.createHmac('sha256', keySalt)
       .update(JSON.stringify(contextValue([canonical, Object.entries(env).sort(([a], [b]) => a.localeCompare(b)),
-        day, process.execArgv, runtime, files]))).digest('hex');
+        day, process.execArgv, runtime, files, generation]))).digest('hex');
   }
   function emitTiming(job) {
     if (job.logged) return;
@@ -108,6 +109,22 @@ if (!isMainThread) {
     if (error) setTimeout(terminate, 50).unref();
     else terminate();
   }
+  function invalidate() {
+    generation++;
+    // Once a write may occur, no waiting reader can publish the obsolete job.
+    // Slots still belong to those workers until their actual exit.
+    for (const job of [...jobs.values()]) finishJob(job, unavailable('live-refresh-invalidated'));
+  }
+  async function withProviderWrite(invoke) {
+    activeWrites++;
+    invalidate();
+    try { return await invoke(); }
+    finally {
+      activeWrites--;
+      // Includes rejected, uncertain, audit-failed and thrown write attempts.
+      invalidate();
+    }
+  }
   function startJob(job, canonical, env) {
     if (job.settled) return;
     job.timer = setTimeout(() => finishJob(job, unavailable('live-refresh-timeout')), LIVE_REFRESH_TIMEOUT_MS);
@@ -115,8 +132,10 @@ if (!isMainThread) {
       const worker = job.worker = new Worker(__filename, { workerData: { canonical }, env });
       active.add(worker);
       worker.once('online', () => { if (!job.settled) job.online = performance.now(); });
-      worker.on('message', result => result?.data
-        ? finishJob(job, null, result.data) : finishJob(job, unavailable('live-refresh-unavailable')));
+      worker.on('message', result => {
+        if (job.generation !== generation || activeWrites) return finishJob(job, unavailable('live-refresh-invalidated'));
+        return result?.data ? finishJob(job, null, result.data) : finishJob(job, unavailable('live-refresh-unavailable'));
+      });
       worker.on('error', () => finishJob(job, unavailable('live-refresh-unavailable')));
       worker.on('exit', () => {
         active.delete(worker);
@@ -130,6 +149,7 @@ if (!isMainThread) {
     if (Live.overlayModeFromEnv(env) !== 'live') return Live.applyForServer(canonical, env);
     const signal = options.signal;
     if (signal?.aborted) return Promise.reject(unavailable('live-refresh-cancelled'));
+    if (activeWrites) return Promise.reject(unavailable('live-refresh-invalidated'));
     // Shorter budgets support bounded callers/tests; no caller can raise the cap.
     const requested = options.timeoutMs;
     const budget = Number.isFinite(requested) && requested > 0
@@ -145,7 +165,7 @@ if (!isMainThread) {
     // Equivalent callers can join even when the distinct-worker cap is full.
     if (fresh && active.size >= MAX_ACTIVE_LIVE_REFRESHES) return Promise.reject(unavailable('live-refresh-busy'));
     if (fresh) {
-      job = { key, started: performance.now(), waiters: new Set(), waiterCount: 0,
+      job = { key, generation, started: performance.now(), waiters: new Set(), waiterCount: 0,
         peakWaiters: 0, cancelledWaiters: 0, timedOutWaiters: 0, settled: false };
       jobs.set(key, job);
     }
@@ -169,5 +189,5 @@ if (!isMainThread) {
       if (fresh) startJob(job, input, workerEnv);
     });
   }
-  module.exports = { serve, LIVE_REFRESH_TIMEOUT_MS, MAX_ACTIVE_LIVE_REFRESHES };
+  module.exports = { serve, withProviderWrite, LIVE_REFRESH_TIMEOUT_MS, MAX_ACTIVE_LIVE_REFRESHES };
 }
