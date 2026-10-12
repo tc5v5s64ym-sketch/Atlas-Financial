@@ -1,0 +1,132 @@
+{
+  "synthetic": true,
+  "generatedBy": "test/browser-card-panel-lead.js",
+  "runtime": {
+    "node": "v24.20.0",
+    "chromium": "152.0.7977.82",
+    "platform": "linux"
+  },
+  "sourceBlobs": {
+    "public/index.html": "057a9bed86aa17dbcbc85c6ff9b194573230a795",
+    "public/app.js": "02764128ced8e291dd50f7566cab229926d1d8f9",
+    "public/plan.js": "6dff5df58c44e6f9a01e1476a0b1e6c47f9c4cb7",
+    "public/forecast.js": "39d74519c54508f4927a8d60b03f6edb31467abe",
+    "public/budget-surface.js": "da8a27f58eb83575ba2a275aae4829d9527ea0bf",
+    "public/budget-card-movements.js": "d19ab8847f3615aed1d09bc768d7bc8b18fc23d3",
+    "public/budget-blend.js": "7659539259ee0026ce125b538d4061c6c7486d70",
+    "public/budget-river.js": "38f64e0f9c1f4fd8162e5fe05dfc2d3d7dc26e90",
+    "public/budget-blend.css": "33198266e5fd7044371c4f9395f4d83c15f0c7c6",
+    "public/budget-surface.css": "b23f895cea5f96f848ac5577f5e53a00a42f4479",
+    "public/budget-gface.css": "fc9bdd8dce255d740c78cb86805acb7e7d10f554",
+    "public/budget-sheet-motion.css": "85bcf401b7a24762d8de42eaa3cdd6c4efd7c58c",
+    "test/browser-card-panel-lead.js": "449266553255d76deb55c48468dd7ae71b98d8e5",
+    "test/fixtures/card-period-movements-data.js": "bee1a5dd4f71816b76872d741cdd385b72c7b210",
+    "test/fixtures/budget-surface-data.js": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc"
+  },
+  "basedOn": "64fdd058e0a3f185c98ad9412c57123acd8c30cb",
+  "screenshots": [
+    {
+      "file": "panel-lead-zero-390-light.png",
+      "state": "zero-balance",
+      "width": 390,
+      "theme": "light",
+      "subject": "sheet open, zero lead",
+      "sha256": "4ac47da3925a18ec4c0f73cbf8e21a0e772ea3273bd0d3c09f313a5ef47a08a4"
+    },
+    {
+      "file": "panel-lead-unavailable-390-dark.png",
+      "state": "missing-balance",
+      "width": 390,
+      "theme": "dark",
+      "subject": "sheet open, unavailable lead",
+      "sha256": "399a05cfadc170e32e9e09bfd02cb8478b9041991309e5a22b1c7af0b578ef18"
+    },
+    {
+      "file": "panel-strip-320-light.png",
+      "state": "complete",
+      "width": 320,
+      "theme": "light",
+      "subject": "card strip closed, touch context",
+      "sha256": "7829f7fe7f3de336985ae32ad01e36ca92c67f7e9ca4a99767e69618db1d967e"
+    },
+    {
+      "file": "panel-open-390-light.png",
+      "state": "complete",
+      "width": 390,
+      "theme": "light",
+      "subject": "sheet open, lead first, disclosure collapsed",
+      "sha256": "60f35f2842ee546179e3a949cf2efd3863f61e79b69ef4a36d492db5f1ae6afb"
+    },
+    {
+      "file": "panel-open-1440-dark.png",
+      "state": "complete",
+      "width": 1440,
+      "theme": "dark",
+      "subject": "sheet open, lead first, disclosure collapsed",
+      "sha256": "8350bfa9e6e7ed86181dfa6b9d35b158005a38744637ca00015cabd86b0ff5f1"
+    }
+  ],
+  "states": [
+    {
+      "proof": "lead-truth",
+      "width": 390,
+      "theme": "light"
+    },
+    {
+      "proof": "lead-truth",
+      "width": 390,
+      "theme": "dark"
+    },
+    {
+      "proof": "operation",
+      "width": 320,
+      "theme": "light",
+      "keyboard": true,
+      "touch": true,
+      "reopen": true
+    },
+    {
+      "proof": "operation",
+      "width": 320,
+      "theme": "dark",
+      "keyboard": true,
+      "touch": true,
+      "reopen": true
+    },
+    {
+      "proof": "operation",
+      "width": 390,
+      "theme": "light",
+      "keyboard": true,
+      "touch": true,
+      "reopen": true
+    },
+    {
+      "proof": "operation",
+      "width": 390,
+      "theme": "dark",
+      "keyboard": true,
+      "touch": true,
+      "reopen": true
+    },
+    {
+      "proof": "operation",
+      "width": 1440,
+      "theme": "light",
+      "keyboard": true,
+      "touch": true,
+      "reopen": true
+    },
+    {
+      "proof": "operation",
+      "width": 1440,
+      "theme": "dark",
+      "keyboard": true,
+      "touch": true,
+      "reopen": true
+    }
+  ],
+  "errors": [],
+  "writes": [],
+  "external": []
+}
