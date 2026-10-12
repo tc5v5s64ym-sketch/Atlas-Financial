@@ -543,3 +543,68 @@ new production work in this repair is one private Forecast function (22 added,
 five replaced lines). Tests and generated receipts are counted separately.
 Failed-refresh continuity stays deferred. No merge, deployment or activation
 occurs in this lane.
+
+## Affirmative original fetch provenance and reviewed #598 integration
+
+The prior window-only claim was insufficient: absent raw completion normalized
+to null but the existing global packet defaulted to complete; absent window
+dates could be inferred from retained rows. Root independently identified this
+remaining producer gap. It reproduced on `60243c88` with production blobs
+identical to published `da0bc7be`; six invalid raw-provider examples still
+allocated 95/24. That candidate was not declared releasable.
+
+The approved two-file extension captures `transactionWindow.savingsFetchCoverage`
+from raw declarations before normalization. It contains only affirmative,
+noncontradictory completion and literal original start/end query dates. Missing,
+null, malformed or conflicting declarations remain unconfirmed. The sanitizer
+copies this fact into the Savings-only packet leaf; its existing global coverage
+status and date inference remain unchanged. Forecast requires this fact in its
+existing private guard. Neither normalized timestamps nor row-inferred dates
+can acquire original-source status. Older bank balances and midnight still pass
+when the original observation window is affirmatively complete.
+
+Runtime extension is committed in `74cadae7`; fresh clean proof exercises
+`e9a43b790e12e0a55c151f7aad0d356c4ea6fb45`, incorporating reviewed main
+`a773a950c1927e450fea7dafd3bef6b35ed0b8a6` after #598. [Integration evidence](savings-latest-known/integration-598.json)
+verifies all 12 imported paths outside the shared registry match main's blobs
+exactly. The card-panel registry entry is preserved, and its registered test
+passes. Net production scope remains the same four Savings files, 213 changed
+lines against this main; #598 implementation is not part of the net PR diff.
+
+- [Actual fetch RED/GREEN](savings-latest-known/fetch-red-green.json):
+  60 raw-provider cases across empty, unrelated-only and zero-only lists, with
+  prior-year/current reports. On exact 60243c88, 38 fail and 22 already pass;
+  all 60 pass after repair. Missing/null completion, absent dates/entire window,
+  timestamp or conflicting dates, more-pages/truncation contradictions and
+  malformed flags are covered. Actual returned packets remain unchanged through
+  overlay and Forecast. Global coverage still defaults/infer dates as before;
+  the new Savings-only source fact refuses to infer completeness. Original 12
+  observer and 82 window controls are freshly verified too.
+- [Exact-main financial proof](savings-latest-known/fetch-main-comparison.json):
+  282 invented ledgers, 569,349 equal subtrees, 77 incumbent held-backing
+  controls, zero unexpected differences. All reported amounts/dates and Known
+  Needed survive the appropriate holds. No household/private comparison was
+  repeated or uploaded.
+- [Focused acceptance](savings-latest-known/fetch-suite-repair.json):
+  20 registered suites pass, bound to 116 exact source/static/fixture files.
+  All five formerly failing suites pass, as do #598 and the allocation contract.
+  The focused Node run passed 318 tests: 130 latest-known, 176 observer/window/
+  source-provenance and 12 annual tests. A separate test proves later date
+  normalization cannot manufacture original provenance.
+- [Assertion preservation](savings-latest-known/fetch-assertion-preservation.json):
+  all original assertion-containing lines remain, and the three salary suite
+  blobs are unchanged. Their shared adapter adds the exact declared source fact
+  to both normalized window and packet while retaining every historical field
+  and the verified no-canonical-Savings premise. No numerical oracle is changed.
+- [Browser proof](savings-latest-known/browser-fetch-qualified.json):
+  ten App.boot/Edge cases pass after #598: source absences, metadata failures,
+  unrelated account isolation, prior-year balances and midnight. Negative Info
+  reasons, Known Needed, unavailable Saved/top-ups, bands/focus/overflow and
+  exact delivered screenshot hashes pass. No page error, external request or
+  write occurs; this is not an actual iPhone or bank-reconciliation claim.
+
+Previous receipts remain historical rather than being relabelled as proof of
+affirmative raw-source completion. Fresh full hosted CI and exact-head Systems
+Review remain required. BLOCK 5496573478 controls until a fresh completed review.
+Failed-refresh continuity stays deferred; no merge, deployment or activation
+is performed here.
