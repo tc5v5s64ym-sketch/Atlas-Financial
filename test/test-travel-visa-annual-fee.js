@@ -272,6 +272,23 @@ const count = (html, needle) => html.split(needle).length - 1;
   const cardPart = html.slice(0, html.indexOf('<div data-budget-funding-savings'));
   assert.equal(count(cardPart, 'data-budget-savings-annual-bill-note'), 1,
     'unavailable: exactly one relocation note on the Saving-for card');
+  // Codex P1 4243785333 on head 7a0ebb5f: in this degraded state the Bills
+  // surface reads the same unavailable publication, finds no backing and
+  // prints no upcoming entry — so the Savings note must NOT claim the fee
+  // "is shown under Bills" or that published funding stands. It must use
+  // unavailable-evidence copy, and the Bills section itself is rendered
+  // here to prove the fee is in fact absent from it.
+  assert.match(cardPart, /not a savings goal\. Savings evidence is unavailable for this view, so the fee is not shown under Bills here and no published amount or date is claimed for it\./,
+    'unavailable: the note uses unavailable-evidence copy, not the relocation claim');
+  assert.ok(!cardPart.includes('is shown under Bills as an upcoming annual bill'),
+    'unavailable: the note does not claim the fee is shown under Bills');
+  assert.ok(!cardPart.includes('published savings funding is unchanged'),
+    'unavailable: the note does not claim published funding stands');
+  const billsHtml = renderBills(null, billsPeriod(periodView));
+  assert.ok(!billsHtml.includes('data-budget-bill-bucket="upcoming"'),
+    'unavailable: the Bills section prints no upcoming bucket (same unavailable publication)');
+  assert.ok(!billsHtml.includes('data-budget-annual-bill="travelvisa-annual-fee-2027"'),
+    'unavailable: the Bills section prints no annual-bill entry for the fee');
 }
 
 console.log('PASS travel-visa-annual-fee: Savings exclusion + note on all three surfaces, publication untouched, '

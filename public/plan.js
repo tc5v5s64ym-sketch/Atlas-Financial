@@ -5068,6 +5068,7 @@ function budgetDailyNeededHtml(row) {
 const BUDGET_SAVINGS_ANNUAL_BILL_ROW = 'yearly-bill:travelvisa-annual-fee-2027';
 const BUDGET_SAVINGS_ANNUAL_BILL_ID = 'travelvisa-annual-fee-2027';
 const BUDGET_SAVINGS_ANNUAL_BILL_NOTE = 'The Travel Visa annual fee is shown under Bills as an upcoming annual bill, not as a savings goal. Its published savings funding is unchanged.';
+const BUDGET_SAVINGS_ANNUAL_BILL_UNAVAILABLE_NOTE = 'The Travel Visa annual fee is a bill, not a savings goal. Savings evidence is unavailable for this view, so the fee is not shown under Bills here and no published amount or date is claimed for it.';
 
 function budgetDailySavingsRows(packet, inventory, roster = []) {
   let rows;
@@ -5087,8 +5088,25 @@ function budgetDailySavingsRows(packet, inventory, roster = []) {
   // both canonical identity forms of this one fee — never its label.
   const visible = rows.filter(row => row?.key !== BUDGET_SAVINGS_ANNUAL_BILL_ROW
     && row?.key !== BUDGET_SAVINGS_ANNUAL_BILL_ID);
-  if (visible.length !== rows.length) visible.annualBillExcluded = true;
+  if (visible.length !== rows.length) {
+    visible.annualBillExcluded = true;
+    // The bare-id form only reaches this filter through the unavailable-
+    // publication fallback above. In that degraded state the Bills surface
+    // reads the same unavailable publication, finds no backing and prints
+    // no upcoming entry — so the relocation note would be false there.
+    // Flag it so both Savings surfaces print unavailable-evidence copy
+    // instead (Codex P1 4243785333).
+    if (rows.some(row => row?.key === BUDGET_SAVINGS_ANNUAL_BILL_ID))
+      visible.annualBillEvidenceUnavailable = true;
+  }
   return visible;
+}
+
+function budgetSavingsAnnualBillNoteHtml(listed) {
+  if (!listed?.annualBillExcluded) return '';
+  const note = listed.annualBillEvidenceUnavailable
+    ? BUDGET_SAVINGS_ANNUAL_BILL_UNAVAILABLE_NOTE : BUDGET_SAVINGS_ANNUAL_BILL_NOTE;
+  return `<p class="budget-savings-bill-note" data-budget-savings-annual-bill-note>${note}</p>`;
 }
 
 // Presentation join only. A grouped row's members are already published by
@@ -5169,8 +5187,7 @@ function budgetSavingsMemberFigures(member, thisPeriodTrust, historical = false)
 function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null, context = {}) {
   const value = (amount, trust) => budgetV3Money(amount, trust);
   const listed = budgetDailySavingsRows(packet, inventory);
-  const annualBillNote = listed.annualBillExcluded
-    ? `<p class="budget-savings-bill-note" data-budget-savings-annual-bill-note>${BUDGET_SAVINGS_ANNUAL_BILL_NOTE}</p>` : '';
+  const annualBillNote = budgetSavingsAnnualBillNoteHtml(listed);
   const rows = listed.map(row => {
     const needed = budgetDailyNeededHtml(row);
     const group = budgetSavingsRowMembers(packet, row);
@@ -6989,8 +7006,7 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
     const daily = budgetDailySavingsFor(ctx, period.id);
     const roster = [...(period.plannedCostFunding?.items || []), ...(period.plannedCostFunding?.unscheduled || [])];
     const listed = budgetDailySavingsRows(daily, ctx.advice?.savingsInventory, roster);
-    const annualBillNote = listed.annualBillExcluded
-      ? `<p class="budget-savings-bill-note" data-budget-savings-annual-bill-note>${BUDGET_SAVINGS_ANNUAL_BILL_NOTE}</p>` : '';
+    const annualBillNote = budgetSavingsAnnualBillNoteHtml(listed);
     const named = listed.map(row => {
       const group = budgetSavingsRowMembers(daily, row);
       const members = group ? `<div class="budget-goal-members">${group.members.map(member => {
