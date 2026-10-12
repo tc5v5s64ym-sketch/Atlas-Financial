@@ -28,6 +28,29 @@ for(const key of ['income','bills','household','savings']){
 assert.deepEqual([p.income.actual.amount,p.income.planned.amount],[1120,1000]);
 assert.deepEqual([p.bills.actual.amount,p.bills.planned.amount],[55,110],'actual 55 must not replace original planned 40');
 assert.deepEqual([p.household.actual.amount,p.household.planned.amount],[172,200],'150 + 15 + Other 7; original 120 + 80, never reserve 237');
+assert.deepEqual([p.household.delta?.amount,p.household.delta?.magnitude,p.household.delta?.direction],
+  [28,28,'left'],'20000 - (15000 + 1500 + 700) = 2800 cents of combined comparison');
+for(const [planned,spent,signed,direction] of [[925,247.63,677.37,'left'],[925,925,0,'left'],
+  [925,1144.56,-219.56,'over'],[925.99,926,-0.01,'over'],[100,99.01,0.99,'left'],[0,0,0,'left'],[0,0.01,-0.01,'over']]){
+  const r=fixture();r.householdBudget=[{id:'invented-total',planned,spent,recon:[]}];
+  const before=JSON.stringify(r),delta=publish(r).household.delta;
+  assert.deepEqual([delta.amount,delta.magnitude,delta.direction,delta.trust,delta.completeness],
+    [signed,Math.abs(signed),direction,'calculated','complete'],'independent exact-cent combined delta');
+  assert.equal(Object.is(delta.amount,-0),false);assert.equal(Object.is(delta.magnitude,-0),false);
+  assert.equal(JSON.stringify(r),before,'comparison never mutates source totals');
+}
+for(const [kind,change] of [['estimated-plan',r=>{r.householdBudget[0].plannedTrust='estimated';}],
+  ['estimated-actual',r=>{r.householdBudget[0].trust='estimated';}],
+  ['pending',r=>{r.householdBudget[0].recon=[{pending:true,amount:150}];}]]){
+  const r=fixture();change(r);const delta=publish(r).household.delta;
+  assert.equal(delta.trust,'estimated',kind+' cannot promote the difference');assert.equal(delta.amount,28);
+}
+for(const packet of [{...observed,transactionCoverage:'truncated'},{...observed,pendingCoverage:'unknown'},
+  {...observed,transactions:null},{...observed,coverageStart:null}]){
+  const delta=publish(fixture(),packet).household.delta;
+  assert.deepEqual([delta.amount,delta.magnitude,delta.direction,delta.completeness],[null,null,null,'unavailable'],
+    'missing or incomplete evidence cannot supply a precise remaining comparison');
+}
 assert.equal(p.household.actual.completeness,'complete');
 const signedPayments=fixture();signedPayments.bills[0].actual=-12;
 assert.equal(publish(signedPayments).bills.actual.amount,-12,'bill reversal never becomes a positive paid amount');
@@ -161,6 +184,29 @@ assert.deepEqual([current.budgetProgress.income.actual.amount,current.budgetProg
   current.budgetProgress.household.actual.amount,current.budgetProgress.household.planned.amount],[2600,1400,444.49,730]);
 assert.equal(current.budgetProgress.bills.actual.completeness,'partial');
 assert.equal(JSON.stringify(served),before,'publication never mutates inputs or assignments');
+// Exact current-main control: removing only the added disclosure must leave
+// every existing financial publication identical, not just the displayed pair.
+const Module=require('node:module');
+const baselineModule=new Module(path.join(__dirname,'../public/forecast-before-household-delta.js'));
+baselineModule.filename=baselineModule.id;baselineModule.paths=Module._nodeModulePaths(path.dirname(baselineModule.filename));
+baselineModule._compile(require('node:child_process').execFileSync('git',
+  ['show','c1d8c155552d87bc93aa0425147f1a00570146a9:public/forecast.js'],{encoding:'utf8',maxBuffer:4*1024*1024}),baselineModule.filename);
+const withoutDelta=value=>{
+  if(value&&typeof value==='object'){
+    if(value.source==='Forecast.budgetPeriodProgress'&&value.household)delete value.household.delta;
+    Object.values(value).forEach(withoutDelta);
+  }
+  return value;
+};
+const totalFixture=require('./fixtures/other-period-target');
+for(const [spent,opts] of [[137.26,{}],[618.73,{}],[1034.19,{}],[814.63,{}],
+  [137.26,{pendingOther:17.43}],[137.26,{pendingCoverage:'unknown'}]]){
+  const x=totalFixture.build(spent,totalFixture.asOf,opts),input=JSON.stringify(x);
+  const args={debts:[],currentPeriodActuals:x.packet};
+  assert.deepEqual(withoutDelta(clone(F.recommend(x.plan,x.date,args))),baselineModule.exports.recommend(x.plan,x.date,args),
+    'all pre-existing recommendation values/qualifications agree with exact main');
+  assert.equal(JSON.stringify(x),input);
+}
 for(const r of advice.payPeriodViews.filter(r=>['next','future'].includes(r.timelineRole)))
   for(const k of ['income','bills','household','savings'])assert.equal(r.budgetProgress[k].actual.amount,null);
 // Active presenter consumes new publications, not old total/reserve fields.
@@ -183,6 +229,19 @@ const primaryIncome=primary.split('data-operating-question="02"')[1].split('</su
 assert.ok(primaryIncome.includes('width:'+2600/4050*100+'%'));
 const spending=vm.runInContext('budgetSpendingSectionHtml(progressPeriod,progressCtx)',context);
 assert.match(spending,/data-budget-browse-hold[\s\S]*?444\.49[\s\S]*?730\.00/);
+assert.match(spending,/data-budget-household-delta hidden data-budget-delta-amount="285\.51" data-budget-delta-direction="left"/,
+  'browse stamps the exact published difference magnitude; the painter alone changes display precision');
+const householdBefore=clone(current.budgetProgress.household);delete householdBefore.delta;
+context.beforeDelta=householdBefore;context.afterDelta=current.budgetProgress.household;
+assert.equal(vm.runInContext("budgetProgressEvidenceHtml(beforeDelta,'household')",context),
+  vm.runInContext("budgetProgressEvidenceHtml(afterDelta,'household')",context),'native household sheet is byte-identical');
+for(const [delta,known] of [[p.household.delta,true],[publish(pending).household.delta,true],
+  [publish(fixture(),{...observed,pendingCoverage:'unknown'}).household.delta,false]]){
+  context.delta=delta;const html=vm.runInContext('budgetHouseholdDeltaHtml(delta)',context);
+  assert.equal(html.includes('data-budget-delta-amount='),known,'only qualified comparison amounts are stamped');
+  if(!known)assert.match(html,/Remaining unavailable/);
+  else if(delta.trust==='estimated')assert.match(html,/estimated/,'estimated comparison preserves accessible qualifier');
+}
 const bills=vm.runInContext('budgetBillsSectionHtml(progressPeriod,progressCtx)',context);
 assert.match(bills,/data-budget-ratio="bills"[\s\S]*?1,400\.00[\s\S]*?1,665\.00/);
 assert.match(bills,/data-budget-progress-kind="bills"/);
