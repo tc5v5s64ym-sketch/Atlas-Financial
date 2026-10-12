@@ -466,8 +466,9 @@ and evidence publication do not merge, deploy or activate the candidate.
 ## Window integrity repair after BLOCK 5496573478
 
 Root approved this bounded repair after independent reproduction on exact
-`f793d1998e8227c81750190aa425394a6981fc5f`. Exercised clean code is
-`14d5d4c8cb425d167e0fcdc38d9eea5d0a739bb4`, still incorporating exact main
+`f793d1998e8227c81750190aa425394a6981fc5f`. Runtime repair was committed in
+`14d5d4c8cb425d167e0fcdc38d9eea5d0a739bb4`; final fresh receipts exercise clean
+source `20e97ebe1b7202cac260dac4d81178801f3406e5`, still incorporating exact main
 `64fdd058e0a3f185c98ad9412c57123acd8c30cb`. The only new production edit is
 `savingsReportedMovementCoherence`. It qualifies the supplied observation
 and window before row allocation: explicit fetch coverage, compatible status,
@@ -504,7 +505,8 @@ is claimed.
   controls and zero unexpected differences. This is synthetic comparison only;
   the owner's separate private 600-row comparison was not repeated or uploaded.
 - [Acceptance and five-suite repair](savings-latest-known/window-suite-repair.json):
-  18 registered suites pass with 102 exact bound source/static/fixture files.
+  18 registered suites pass with 112 exact bound source/static/fixture files,
+  including their literal relative-import closure and all public assets.
   The five formerly failing hosted suites all pass on exact main and fail on
   f793d199; current committed repairs pass all five. Annual's positive supplies
   its existing evidence options. Budget's positive consumes the real observer's
@@ -523,6 +525,9 @@ is claimed.
   windows, unrelated card/unmapped uncertainty and midnight at 320px dark.
   Saved/Needed, existing bands, detail evidence, focus and overflow checks pass;
   no page error, external request or write occurs. Screenshot hashes verify.
+  Negative window cases explicitly expand Info and assert the withheld reason,
+  Needed 230 and unavailable Saved. The RED/GREEN receipt now explicitly binds
+  the lazy Budget fixture, closing the previous 20-source receipt limitation.
 
 The initial scoped run caught a new negative test reading Needed from the
 wrong publication; the assertion now reads the Savings Needed field. No

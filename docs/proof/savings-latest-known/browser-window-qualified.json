@@ -2,8 +2,8 @@
   "outcome": "PASS",
   "browser": "154.0.4258.62",
   "sourceBinding": {
-    "sourceCommit": "14d5d4c8cb425d167e0fcdc38d9eea5d0a739bb4",
-    "sourceTree": "4162bbea6a2bc29e275cf6a0fa92043ef8e79fc1",
+    "sourceCommit": "20e97ebe1b7202cac260dac4d81178801f3406e5",
+    "sourceTree": "20ae2e8f230c776a31b6318e20cfaf671a4ca53c",
     "baseCommit": "64fdd058e0a3f185c98ad9412c57123acd8c30cb",
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -354,9 +354,9 @@
         "bytes": 14525
       },
       "test/browser-savings-latest-known-allocation.js": {
-        "gitBlob": "678050a0e0339432f3783f4ffa1e08b2f7897444",
-        "sha256": "27f5f5d5901fc275dc9093297653d54c28af1e66b9cad112dee54a8ef8adb52c",
-        "bytes": 13139
+        "gitBlob": "bd59bfea1603dfd26b232e63532671b53b6a529c",
+        "sha256": "cd3782daf20ca7bc3d73ba6061ef5f9258ccd074e9bf2d1701f29d0fca26c319",
+        "bytes": 13171
       },
       "test/fixtures/budget-funding-data.js": {
         "gitBlob": "ac8ed6a00a71a810bb2ceb702589a929ea17f9d2",
@@ -685,5 +685,6 @@
   "errors": [],
   "external": [],
   "writes": [],
-  "delivery": "Screenshot filenames prefixed qualified-; pixels and execution bindings unchanged"
+  "delivery": "Screenshot filenames prefixed qualified-; pixels and execution bindings unchanged",
+  "negativeWindowInfoVerified": true
 }

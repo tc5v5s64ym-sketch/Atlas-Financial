@@ -2,8 +2,8 @@
   "outcome": "PASS",
   "base": "1afefc28aff0241644f1645f1e6177bcd8c2d1e7",
   "executionBinding": {
-    "sourceCommit": "14d5d4c8cb425d167e0fcdc38d9eea5d0a739bb4",
-    "sourceTree": "4162bbea6a2bc29e275cf6a0fa92043ef8e79fc1",
+    "sourceCommit": "20e97ebe1b7202cac260dac4d81178801f3406e5",
+    "sourceTree": "20ae2e8f230c776a31b6318e20cfaf671a4ca53c",
     "baseCommit": "1afefc28aff0241644f1645f1e6177bcd8c2d1e7",
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -78,6 +78,11 @@
         "sha256": "1c07c152efdf306389082aa9b21f95ae72b63b2c46160c63828c82fc04740f9a",
         "bytes": 14525
       },
+      "test/fixtures/budget-funding-data.js": {
+        "gitBlob": "ac8ed6a00a71a810bb2ceb702589a929ea17f9d2",
+        "sha256": "2194d94cba000ac4bcf96a2768e3dd75b5d7c61b16550b19d5a666c5fa7154a1",
+        "bytes": 1259
+      },
       "test/fixtures/savings-daily-allocation-contract.js": {
         "gitBlob": "687e3a3ee0a7d66cd96b430a26e9ed074f21e468",
         "sha256": "c30ae4a9e498aa90cd0d949d00fa3aa3cf7926ec1954732cd1b9178d05c24712",
@@ -99,9 +104,9 @@
         "bytes": 6031
       },
       "test/proof-savings-observer-contract.js": {
-        "gitBlob": "57ad15a5992011635ebc6cd781b41488b7ea1578",
-        "sha256": "83cf3125699a942553615eca0552ad341f39c00164f36898203f8ade453d1d9e",
-        "bytes": 7488
+        "gitBlob": "88fc559c4e663b4bccb6262599f7b52b4381d2a6",
+        "sha256": "b4f3d083e00e18d0a44bf47f1f8295640772b30316a767ffe7102a4238714f4b",
+        "bytes": 7596
       },
       "test/proof-source-binding.js": {
         "gitBlob": "0ef3063b8281592e93e7808ca706e5d0c585a0f4",

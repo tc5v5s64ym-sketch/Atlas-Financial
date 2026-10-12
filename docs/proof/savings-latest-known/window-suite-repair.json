@@ -1,8 +1,8 @@
 {
   "outcome": "PASS",
   "executionBinding": {
-    "sourceCommit": "14d5d4c8cb425d167e0fcdc38d9eea5d0a739bb4",
-    "sourceTree": "4162bbea6a2bc29e275cf6a0fa92043ef8e79fc1",
+    "sourceCommit": "20e97ebe1b7202cac260dac4d81178801f3406e5",
+    "sourceTree": "20ae2e8f230c776a31b6318e20cfaf671a4ca53c",
     "baseCommit": "f793d1998e8227c81750190aa425394a6981fc5f",
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -292,6 +292,11 @@
         "sha256": "bb0bc490c6481ef6236e8d7184e7b20fb0e9c627a42f2eb0942c5df543b2de37",
         "bytes": 38791
       },
+      "scripts/assistant-packet.js": {
+        "gitBlob": "1b7e2cd4f34a4678b75fd71a93b5348717b843db",
+        "sha256": "1c9b101657bd4ae16fefe736e326f8b7613e8e6cff0b2d192c5028e55798ba9d",
+        "bytes": 37774
+      },
       "scripts/canonical-refresh.js": {
         "gitBlob": "96aa5b15fecc816afd9129d74f0dc41ca9ea11b8",
         "sha256": "74aa9ba212178bafe9c1b744ebc1d6caa57639ededa783d9e442fa85450f2e7f",
@@ -301,6 +306,11 @@
         "gitBlob": "ea213c8a1c3b04c4844fe9e907bb77a2921aa2af",
         "sha256": "62a5cbbbfe0d61c5787ae5dbaf2795cbfe941a7c090a897acde39fb209b4faec",
         "bytes": 8322
+      },
+      "scripts/ci-output.js": {
+        "gitBlob": "17104a872a03ab213f5fd6ee6187400bbf790b74",
+        "sha256": "f5cc7fd1dc290f22703615fb4568e9d4e722993e2490cb786f4a5de7ba537b77",
+        "bytes": 8362
       },
       "scripts/live-plan.js": {
         "gitBlob": "3da2f2a01e1bc49c6df7d09de7c2c297b9d80210",
@@ -353,19 +363,44 @@
         "bytes": 14525
       },
       "test/browser-savings-latest-known-allocation.js": {
-        "gitBlob": "678050a0e0339432f3783f4ffa1e08b2f7897444",
-        "sha256": "27f5f5d5901fc275dc9093297653d54c28af1e66b9cad112dee54a8ef8adb52c",
-        "bytes": 13139
+        "gitBlob": "bd59bfea1603dfd26b232e63532671b53b6a529c",
+        "sha256": "cd3782daf20ca7bc3d73ba6061ef5f9258ccd074e9bf2d1701f29d0fca26c319",
+        "bytes": 13171
       },
       "test/fixtures/annual-snapshot-carry-data.js": {
         "gitBlob": "51a7458de81dcaa2775b1d9f7cd4ec91fa0b7bfc",
         "sha256": "1d7b69abb7fc8f771a5bddba429446ab9723f11506df2d8645e901c5e14ea77c",
         "bytes": 3368
       },
+      "test/fixtures/bills-header-payments-data.js": {
+        "gitBlob": "caf104f6f427390a81d3bf02b86719f5199492f1",
+        "sha256": "b1c7c116ba65708a58fb88a99089856acbc70f5780cb9808b6e3a2e98e962528",
+        "bytes": 3195
+      },
+      "test/fixtures/budget-funding-data.js": {
+        "gitBlob": "ac8ed6a00a71a810bb2ceb702589a929ea17f9d2",
+        "sha256": "2194d94cba000ac4bcf96a2768e3dd75b5d7c61b16550b19d5a666c5fa7154a1",
+        "bytes": 1259
+      },
       "test/fixtures/budget-income-receipts.js": {
         "gitBlob": "5261aaa8983530e0407f20269e66b71c5dae2b38",
         "sha256": "89101d9a8f95a74e38b4465df22b182e0a4c809d0ea069cfd9435a32acda5b4c",
         "bytes": 4751
+      },
+      "test/fixtures/budget-surface-data.js": {
+        "gitBlob": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc",
+        "sha256": "f6a3c46fb037c41f7371aaaef08ffaab5256bda97cb9bc5f994e4ee54e5fac0b",
+        "bytes": 14528
+      },
+      "test/fixtures/card-coverage-opening.js": {
+        "gitBlob": "89f3ba93e3e9f2f828b48e6d36c7050c1bd27e91",
+        "sha256": "70fed5621e6c62caf551f7136fb107b70c31d843a6473179a7253065092fa5d7",
+        "bytes": 597
+      },
+      "test/fixtures/card-period-movements-data.js": {
+        "gitBlob": "bee1a5dd4f71816b76872d741cdd385b72c7b210",
+        "sha256": "ba2b039d95f9ed777d3e81ef4dd39c1c38b59d6b0f035875586dfe60aaa0daf0",
+        "bytes": 8121
       },
       "test/fixtures/chronological-savings-data.js": {
         "gitBlob": "43bcb858d398a9ec303e6b334b6a6c3050ed64ca",
@@ -377,10 +412,20 @@
         "sha256": "a5c2c8c17cf3d03a8d9683b32a322b25f43c1c5438a8225fc2d8bce06e3abd4b",
         "bytes": 1648
       },
+      "test/fixtures/other-period-target.js": {
+        "gitBlob": "d6a6da8198f383f67b445b07820e7ca68bef8f4d",
+        "sha256": "37caf54bef867de5190bc4fdb184c4f17374a284a2c7ba0e12c3c2e28d7e8949",
+        "bytes": 4008
+      },
       "test/fixtures/salary-diagnostic-data.js": {
         "gitBlob": "ac6ab48c928b5f5ea4821520c64caa93f60bc9c0",
         "sha256": "d549c0057576fb0a2c5d9aa8d8c553cc5baab1f2cbb32ed70d46aa8886ce2fed",
         "bytes": 3855
+      },
+      "test/fixtures/savings-contribution-display-data.js": {
+        "gitBlob": "d777e1183ce258047dadbe8c8a18604dda9e9ba5",
+        "sha256": "668c3a1ed2ab1bedc8538b3c6380431af9e1fe53fb46727669f649634ce6ffd9",
+        "bytes": 897
       },
       "test/fixtures/savings-daily-allocation-contract.js": {
         "gitBlob": "687e3a3ee0a7d66cd96b430a26e9ed074f21e468",
@@ -413,9 +458,9 @@
         "bytes": 10583
       },
       "test/proof-savings-observer-contract.js": {
-        "gitBlob": "57ad15a5992011635ebc6cd781b41488b7ea1578",
-        "sha256": "83cf3125699a942553615eca0552ad341f39c00164f36898203f8ade453d1d9e",
-        "bytes": 7488
+        "gitBlob": "88fc559c4e663b4bccb6262599f7b52b4381d2a6",
+        "sha256": "b4f3d083e00e18d0a44bf47f1f8295640772b30316a767ffe7102a4238714f4b",
+        "bytes": 7596
       },
       "test/proof-source-binding.js": {
         "gitBlob": "0ef3063b8281592e93e7808ca706e5d0c585a0f4",
@@ -466,6 +511,11 @@
         "gitBlob": "8fef152993e6c22c02f4291b186c65cf94c6447e",
         "sha256": "399de8319ce45cb0ca6b63ea9c4ffdfbb1f0213baa92e91c1abfb9cfe26ac14a",
         "bytes": 32914
+      },
+      "test/test-helpers.js": {
+        "gitBlob": "03cb185caf70c9647c6a3ef16dda93c39d34f0a5",
+        "sha256": "780debd391195c89c02de84aaa60a8341f11f340aecc252594c39693cb9d31c4",
+        "bytes": 10957
       },
       "test/test-household-internal-movement.js": {
         "gitBlob": "32ba281369b23826bd363edf772ed651e101c1f4",
@@ -519,6 +569,7 @@
       }
     }
   },
+  "dependencyScope": "literal relative import closure plus all public assets and loaded observer/live runtime; exact Git bytes",
   "suites": 18,
   "passed": 18,
   "failed": 0,
