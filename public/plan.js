@@ -5067,8 +5067,13 @@ function budgetDailyNeededHtml(row) {
 // source + id; the label, amount and date are never matched.
 const BUDGET_SAVINGS_ANNUAL_BILL_ROW = 'yearly-bill:travelvisa-annual-fee-2027';
 const BUDGET_SAVINGS_ANNUAL_BILL_ID = 'travelvisa-annual-fee-2027';
-const BUDGET_SAVINGS_ANNUAL_BILL_NOTE = 'The Travel Visa annual fee is shown under Bills as an upcoming annual bill, not as a savings goal. Its published savings funding is unchanged.';
-const BUDGET_SAVINGS_ANNUAL_BILL_UNAVAILABLE_NOTE = 'The Travel Visa annual fee is a bill, not a savings goal. Savings evidence is unavailable for this view, so the fee is not shown under Bills here and no published amount or date is claimed for it.';
+// One neutral note in every state — normal publication, unavailable-
+// publication fallback (bare or prefixed identity), historical period and
+// the occurrence's own period (Atlas, Slack 1791764127.160729, superseding
+// the destination-claiming copy of 4243785333): it states only that the fee
+// is treated as a bill and that its funding is unchanged, and never claims
+// anything about the Bills destination the current view happens to render.
+const BUDGET_SAVINGS_ANNUAL_BILL_NOTE = 'Travel Visa annual fee is treated as a bill; its funding is unchanged.';
 
 function budgetDailySavingsRows(packet, inventory, roster = []) {
   let rows;
@@ -5088,25 +5093,13 @@ function budgetDailySavingsRows(packet, inventory, roster = []) {
   // both canonical identity forms of this one fee — never its label.
   const visible = rows.filter(row => row?.key !== BUDGET_SAVINGS_ANNUAL_BILL_ROW
     && row?.key !== BUDGET_SAVINGS_ANNUAL_BILL_ID);
-  if (visible.length !== rows.length) {
-    visible.annualBillExcluded = true;
-    // The bare-id form only reaches this filter through the unavailable-
-    // publication fallback above. In that degraded state the Bills surface
-    // reads the same unavailable publication, finds no backing and prints
-    // no upcoming entry — so the relocation note would be false there.
-    // Flag it so both Savings surfaces print unavailable-evidence copy
-    // instead (Codex P1 4243785333).
-    if (rows.some(row => row?.key === BUDGET_SAVINGS_ANNUAL_BILL_ID))
-      visible.annualBillEvidenceUnavailable = true;
-  }
+  if (visible.length !== rows.length) visible.annualBillExcluded = true;
   return visible;
 }
 
 function budgetSavingsAnnualBillNoteHtml(listed) {
   if (!listed?.annualBillExcluded) return '';
-  const note = listed.annualBillEvidenceUnavailable
-    ? BUDGET_SAVINGS_ANNUAL_BILL_UNAVAILABLE_NOTE : BUDGET_SAVINGS_ANNUAL_BILL_NOTE;
-  return `<p class="budget-savings-bill-note" data-budget-savings-annual-bill-note>${note}</p>`;
+  return `<p class="budget-savings-bill-note" data-budget-savings-annual-bill-note>${BUDGET_SAVINGS_ANNUAL_BILL_NOTE}</p>`;
 }
 
 // Presentation join only. A grouped row's members are already published by
