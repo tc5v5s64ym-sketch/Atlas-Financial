@@ -397,14 +397,22 @@ svg { display:block; width:100%; height:auto; overflow:visible; }
    stamps it [data-boot-notice] at creation (an attribute, because
    load() rewrites its className on every attempt) and builds the
    .boot-treatment mark inside it on every attempt; the treatment
-   leaves with the notice — removed on success, wiped when the crit
-   text replaces the loading text. .note-box is shared with in-content
+   leaves with the notice — removed on success, and on the crit
+   surface the loading copy is wiped with the crit text and a
+   static copy is re-appended, so the terminated surface keeps the
+   branding with all motion stopped. .note-box is shared with in-content
    plan.js boxes, so every overlay rule below is scoped to .boot-static
    or [data-boot-notice] and can never reach them. Both layers are
    purely decorative — aria-hidden, no focusable content in the
-   treatment, pointer-events none on the static layer — and the boot
-   notice remains the single role="status" announcer. While the notice
-   is up, app.js also inerts the shell behind it. Motion: the mark's
+   treatment — and the boot notice remains the single role="status"
+   announcer. Isolation: the static layer intercepts pointer events
+   while it covers the page, and index.html bakes the keyboard/AT
+   isolation for the pre-script interval into the shell markup
+   itself (inert + aria-hidden + data-boot-inert on the header and
+   each .wrap child); when scripts run, app.js takes the same
+   isolation over — every covered top-level subtree inert, prior
+   state captured (a baked element's prior state is the natural
+   one) and restored exactly on arrival. Motion: the mark's
    four blocks gently separate, bump against each other, settle, and
    hold — transform-only, one phased keyframe loop driven by per-block
    offset variables, staggered like the pulse it replaces. It runs
@@ -412,7 +420,7 @@ svg { display:block; width:100%; height:auto; overflow:visible; }
    reduced motion is fully static in both layers. */
 .boot-static { position:fixed; inset:0; z-index:100; display:flex;
   flex-direction:column; align-items:center; justify-content:center;
-  gap:14px; padding:24px; text-align:center; pointer-events:none;
+  gap:14px; padding:24px; text-align:center;
   color:var(--text-secondary); font-size:.95rem;
   background:radial-gradient(340px 340px at 50% 42%, rgba(86,80,224,.16), rgba(86,80,224,0) 70%), var(--plane); }
 .boot-static-mark { width:96px; height:96px; flex:none; }

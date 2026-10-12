@@ -5,16 +5,16 @@
   "scenarios": {
     "lightLong": {
       "delayMs": 5000,
-      "treatmentFirstVisibleMs": 526,
-      "contentRenderedMs": 6610,
-      "samples": 50,
+      "treatmentFirstVisibleMs": 655,
+      "contentRenderedMs": 7375,
+      "samples": 48,
       "visibilityGapsObserved": 0,
       "noFlashAtRemoval": true,
       "servedSha": {
-        "public/index.html": "620c5a5af2b1551cfc8ca4635024e0edfcb1dda9ae09ff5e983c8f4a1eab9670",
+        "public/index.html": "1250d138888ba5aa1ecdd37a34d8e0c74a49eb758604ecaccba4891b80351443",
         "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
         "public/fonts.css": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
-        "public/styles.css": "2460588bdfa3508c6700aaa06e65be6032061c19eebae276967e9899642ff9f6",
+        "public/styles.css": "ca789bfd31ab1f4dc38980e6052cb479e26dfb545f2e626ad66204c7028c174e",
         "public/household-view.css": "e5cb08cfe7d5663fab76da2eb51f68d4890b1c4b550cf80eb1f61930a749620e",
         "public/budget-polish.css": "29be9b313c3c7b4d402ff730abe76dfd09e07f38df4dfd04a26a12fa479d16fe",
         "public/bill-detail.css": "df5e707892d09bded4516822edd1c8a056b472e092c353062a645d7a79ef69c0",
@@ -24,7 +24,7 @@
         "public/budget-blend.css": "43ab6315177f95042f16b8f3239d9f9d85d49117cf9bcc3dd81483a3b74b1133",
         "public/budget-gface.css": "88d1d1aba917bd267150862839a1e09e2b66598b058e686fbdd62a7834562a9a",
         "public/budget-sheet-motion.css": "94fc264a45ee8cbcdf3a56356e52a65cde695ba24bc0cb4f5e706c824bd90377",
-        "public/app.js": "a5bb97f813c3fffb3e2d4aed2eccf278f51bb356c216c4e915a3b6028a9e23bb",
+        "public/app.js": "3399fab7c70eafc2ac6f727f334cae4eb7cf5de499a4179f40d88075e022f6f1",
         "public/forecast-card-period.js": "a0e1c461354da0a6e8c73ee55a2ba76510d6a9c8e840e4f729df3b627df9fb3b",
         "public/forecast.js": "5dcdf6106722b552b390a5f9be906a4ba43209000c37a256edbb7cd407e9b00c",
         "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
@@ -46,10 +46,10 @@
       "overlayCoversViewport1440": true,
       "headerCoveredByHitTest": true,
       "blockSeparationRangesPx": [
-        2.99,
-        4.21,
-        3.6,
-        2.8
+        3.03,
+        4.13,
+        4.19,
+        2.91
       ],
       "geometryRunDelayMs": 9000
     },
@@ -58,7 +58,7 @@
       "treatmentVisibleObserved": true,
       "overlayCoversViewport1440": true,
       "markAnimationName": "boot-blocks",
-      "screenshotAtMs": 1791758693231
+      "screenshotAtMs": 1791770026154
     },
     "reducedMotion": {
       "delayMs": 2500,
@@ -74,15 +74,15 @@
       "inContentNoteBoxesSeen": 0,
       "servedSha": {
         "public/bills.html": "4553fb11243604a1c2075c8b1a00644cedbf968115c84c3b919d8090971f0784",
-        "public/styles.css": "2460588bdfa3508c6700aaa06e65be6032061c19eebae276967e9899642ff9f6",
+        "public/styles.css": "ca789bfd31ab1f4dc38980e6052cb479e26dfb545f2e626ad66204c7028c174e",
         "public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010",
-        "public/app.js": "a5bb97f813c3fffb3e2d4aed2eccf278f51bb356c216c4e915a3b6028a9e23bb",
+        "public/app.js": "3399fab7c70eafc2ac6f727f334cae4eb7cf5de499a4179f40d88075e022f6f1",
         "public/forecast.js": "5dcdf6106722b552b390a5f9be906a4ba43209000c37a256edbb7cd407e9b00c",
         "public/bills.js": "e90da373b69868785a58b4d8d5d267f18b0e7a54d8cadcb9a2ca4139d259b764"
       }
     },
     "failureRetry": {
-      "critTreatmentAbsent": true,
+      "critBrandingPresentStatic": true,
       "critCoversViewport": true,
       "critClassExact": true,
       "critAnimationsRunning": 0,
@@ -92,10 +92,10 @@
       "retryTreatmentVisible": true,
       "removedAfterRetrySuccess": true,
       "shellRestoredAfterSuccess": true,
-      "shellElementsProbed": 9
+      "shellElementsProbed": 10
     },
     "cancelRetry": {
-      "cancelTreatmentAbsent": true,
+      "cancelledBrandingPresentStatic": true,
       "cancelledCoversViewport": true,
       "cancelledClassExact": true,
       "cancelledAnimationsRunning": 0,
@@ -105,19 +105,21 @@
       "shellInertThroughCycles": true,
       "removedAfterRetrySuccess": true,
       "shellRestoredAfterSuccess": true,
-      "shellElementsProbed": 9
+      "shellElementsProbed": 10
     },
     "staticStandalone": {
       "w1440-light": {
         "computedVisible": true,
         "coversViewport": true,
-        "pointerEvents": "none",
+        "bakedPreScriptIsolation": true,
+        "bakedElements": 9,
+        "pointerEvents": "auto",
         "markAnimationName": "boot-blocks",
         "blockSeparationRangesPx": [
-          3.04,
-          4.21,
-          3.91,
-          2.73
+          2.92,
+          4.15,
+          3.41,
+          2.77
         ]
       },
       "w1440-dark": {
@@ -140,7 +142,7 @@
       }
     },
     "inertFocus": {
-      "shellElementsProbed": 9,
+      "shellElementsProbed": 10,
       "tabZonesSeen": [
         "notice",
         "body",
@@ -149,26 +151,55 @@
         "notice",
         "body",
         "notice",
-        "body",
         "notice",
         "body",
         "notice",
         "body",
         "notice",
-        "body"
+        "body",
+        "notice"
       ],
       "cancelReachableByTab": true,
       "shellFocusDeniedDuringLoad": true,
       "headerControlOperableAfterArrival": true,
       "shellRestoredAfterArrival": true
     },
+    "staticPhaseHeldScript": {
+      "heldNoLiveNotice": true,
+      "bakedIsolationOnShell": true,
+      "staticPointerIntercept": true,
+      "hitLandsOnStaticLayer": true,
+      "focusDeniedPreScript": true,
+      "handoffGapSamples": 0,
+      "restoredAfterArrival": true,
+      "bakeMarkersRemaining": 0,
+      "headerControlFocusableAndClickable": true
+    },
+    "talkLifecycle": {
+      "composerInCoveredSet": true,
+      "composerInertDuringHeldLoad": true,
+      "composerFocusDeniedDuringLoad": true,
+      "composerInertBehindCancelled": true,
+      "composerInertBehindCrit": true,
+      "brandingStaticOnCancelled": true,
+      "brandingStaticOnCrit": true,
+      "composerRestoredAfterArrival": true,
+      "composerAcceptsInputAfterArrival": true,
+      "shellElementsProbed": 5
+    },
+    "preBootFocusRestore": {
+      "focusedBeforeBoot": true,
+      "restoredToSameControl": true,
+      "controlStillConnected": true
+    },
     "earlyReady": {
       "delayMs": 0,
       "noticeRemoved": true,
       "residualInertOnTouchedShell": 0,
-      "priorStatePreservedOnFixtureElement": "#risks (inert + aria-hidden=\"true\" in the served fixture)",
-      "headerControlFocusable": true,
-      "fixturePatchedIndex": "served index.html carried inert + aria-hidden=\"true\" on #risks for this run only"
+      "bakedMarkersRemaining": 0,
+      "priorStatePreservedOnFixtureElement": "#operating-surface (an actual captured shell node; served with inert + aria-hidden=\"true\" and no data-boot-inert for this run only — replaces the nested #risks fixture, which was never captured)",
+      "shellElementsProbed": 8,
+      "headerControlFocusable": true
     },
     "critIsolation": {
       "probePosition": "static",
@@ -195,49 +226,52 @@
   },
   "baseComparison": {
     "delay5000": {
-      "baseContentRenderedMs": 5944,
+      "baseContentRenderedMs": 6330,
       "baseTreatmentsSeen": 0,
-      "branchContentRenderedMs": 6610,
-      "addedDelayMs": 666
+      "branchContentRenderedMs": 7375,
+      "addedDelayMs": 1045
     },
     "delay1500": {
-      "baseContentRenderedMs": 2444,
+      "baseContentRenderedMs": 2657,
       "baseTreatmentsSeen": 0
     }
   },
   "screenshots": {
-    "boot-treatment-light.png": "2c5193d54af37427c9342aa9d2eaa46ad2eb86430be60ca5db99226c2c87ce21",
-    "boot-treatment-after.png": "9d6f2d673a153cb80b25f8c7e1fbd887fe5bc58b786f06fa2fcfb8b545accfa0",
-    "boot-treatment-dark.png": "8dcf164904b35226902efa9bc4a47c0e88c3a8d945e97dc03c618c4f8658287c",
+    "boot-treatment-light.png": "95ee4dcc5953dfd21d270bb41a53bd07590511152593ddeeace573f1deafdc0a",
+    "boot-treatment-after.png": "6c44b07c0dcb3a875dc0c11364da2cf2bbcc8ae17e63a97f299d64cc57cba4ff",
+    "boot-treatment-dark.png": "38c55daec9cd495f8434d04d51ae95336961579f0cb9d2e2ae0b04400915d455",
     "boot-treatment-reduced-motion.png": "646d9449f7104b5be241a957b5fcad76b033a4e2e22bbadd53e64f87e2e3c8ea",
     "boot-treatment-bills.png": "bd0aeb881193f43a170196a824d00889e635e5160a609f77d7fd3f77e38b4640",
-    "boot-treatment-crit.png": "71c55b73ca207770d94bd4a5bd4c083e0d15059f8522bd6e476d1bb257cd6bbf",
-    "boot-treatment-retry.png": "fa863424dc20f755f5a254b212d65d142c17b463785cc36002bda3da95eb0590",
-    "boot-treatment-cancel.png": "04ae54e2a038828f76195355b24bea7abbabf695385d0fc55cd65cbed87f5118",
+    "boot-treatment-crit.png": "17991763028e653baeb9ee0ada402ca93e5e3d72f0f9bc327d083fc269962f15",
+    "boot-treatment-retry.png": "6a2b49b2cb174a46cb0330de45380f3779a7b241e5a2d2f2a1ab64cbd05fca5d",
+    "boot-treatment-cancel.png": "3ff5579bb7821327ed0bd13eedbbc807ac3ec659e4ac0b0fcffa9015928493c1",
     "boot-treatment-static.png": "bb888982725ff5aaef95c436860f16da3586dc94c6581c3cdfc3c86f8ad5be7d",
-    "boot-treatment-ready.png": "e990d310125b04ef4e279d09d01720e604b1e9bf3340c96ed92eee946741a149"
+    "boot-treatment-static-held.png": "147b558c6228974d8dc057dc40e3a81abeb388446e3c49ddad7087ece4c13b42",
+    "boot-treatment-talk-cancel.png": "bd9dbec6aab20e6f82e488ea6b702429a42b514919b1fde74cd7072bd5b8d5dd",
+    "boot-treatment-talk-crit.png": "7a54682c33592fe7b1eb29189c1e2895b8b8a796a0114708f498c2e18e82647a",
+    "boot-treatment-ready.png": "030cb47660d0fe6ee9177bff65298353262c50dd0f9c036e1ee9b4b569dc4b98"
   },
   "repeatedTimingMeasures": {
     "method": "same nav->content measurement as the base comparison, fixed 5000ms /data.json delay, 3 alternating rounds per tree, headless Chromium on this machine",
     "branchMs": [
-      5811,
-      6256,
-      5874
+      6467,
+      6255,
+      6396
     ],
     "baseMs": [
-      5879,
-      6062,
-      5960
+      6192,
+      6391,
+      6436
     ],
     "pairedDeltasMs": [
-      -68,
-      194,
-      -86
+      275,
+      -136,
+      -40
     ],
-    "branchMedianMs": 5874,
-    "baseMedianMs": 5960,
-    "medianPairedDeltaMs": -68,
-    "differenceOfMediansMs": -86,
+    "branchMedianMs": 6396,
+    "baseMedianMs": 6391,
+    "medianPairedDeltaMs": -40,
+    "differenceOfMediansMs": 5,
     "conclusion": "inconclusive",
     "note": "Per-round paired deltas vary more than either aggregate; the fixture post-arrival render dominates and fluctuates by ~1s between identical runs. These aggregates are measurements only and do not establish that the treatment adds no delay. The supported claim is narrower: the treatment adds no new blocking assets."
   }

@@ -384,22 +384,45 @@ const App = (() => {
     // inert and aria-hidden, so keyboard and assistive interaction
     // cannot reach the covered controls; the notice itself — Cancel
     // while loading, Retry on the crit surface — is never in the list
-    // and stays operable. Each element's prior inert / aria-hidden
-    // state is captured here and restored exactly by restoreShell(),
-    // which runs on the successful resolution (the notice's only
-    // removal path). Failure and cancel keep the overlay, and with it
-    // the inert shell, until a retry succeeds or the page navigates
-    // away (the 401 path). Applied once here; load() never re-applies.
+    // and stays operable. The covered set is every top-level body
+    // subtree — the header, plus page furniture that lives outside
+    // .wrap (Talk's composer form is one) — with .wrap itself
+    // descended one level because the notice lives inside it. Each
+    // element's prior inert / aria-hidden state is captured here and
+    // restored exactly by restoreShell(), which runs on the
+    // successful resolution (the notice's only removal path).
+    // Failure and cancel keep the overlay, and with it the inert
+    // shell, until a retry succeeds or the page navigates away (the
+    // 401 path). Applied once here; load() never re-applies.
+    // On index.html the same isolation is baked into the static
+    // markup for the pre-script interval (inert + aria-hidden +
+    // data-boot-inert on the header and each .wrap child). A
+    // data-boot-inert element's baked state is boot's own, not the
+    // element's: its captured prior state is the natural one (not
+    // inert, no aria-hidden), so the restoration below returns the
+    // shell to full interactivity on arrival — the baked marker is
+    // consumed here and never restored.
     const shellState = [];
     let restoreShell = () => {};
     {
       const shell = [];
-      const head = document.querySelector('.site-head');
-      if (head) shell.push(head);
-      if (wrap) for (const el of wrap.children) if (el !== notice) shell.push(el);
+      const covered = new Set();
+      const cover = el => { if (el && !covered.has(el)) { covered.add(el); shell.push(el); } };
+      cover(document.querySelector('.site-head'));
+      for (const el of document.body.children) {
+        if (!el.tagName || el.tagName === 'SCRIPT') continue;
+        if (el === wrap) {
+          for (const child of el.children) if (child !== notice) cover(child);
+        } else cover(el);
+      }
       const priorFocus = document.activeElement;
       for (const el of shell) {
-        shellState.push({ el, inert: !!el.inert, ariaHidden: el.getAttribute('aria-hidden') });
+        if (el.hasAttribute('data-boot-inert')) {
+          shellState.push({ el, inert: false, ariaHidden: null });
+          el.removeAttribute('data-boot-inert');
+        } else {
+          shellState.push({ el, inert: !!el.inert, ariaHidden: el.getAttribute('aria-hidden') });
+        }
         el.inert = true;
         el.setAttribute('aria-hidden', 'true');
       }
@@ -416,6 +439,30 @@ const App = (() => {
         }
       };
     }
+    // Branded boot treatment: the brand mark — the same four-block
+    // SVG as index.html's static layer, filled by the shared
+    // .boot-mark-* classes in styles.css and animated there — over
+    // the ATLAS wordmark. Purely decorative: the whole span is
+    // aria-hidden and pointer-events disabled, so the notice stays
+    // the single role="status" announcer and the text contract in
+    // load() is untouched. The markup is one innerHTML string because
+    // SVG elements cannot be built with createElement in an HTML
+    // document; the string mirrors the static layer's markup in
+    // index.html.
+    const buildBootTreatment = () => {
+      const treatment = document.createElement('span');
+      treatment.className = 'boot-treatment';
+      treatment.setAttribute('aria-hidden', 'true');
+      treatment.setAttribute('data-boot-treatment', '');
+      treatment.innerHTML = '<svg class="boot-blocks-mark boot-treatment-mark" viewBox="0 0 32 32" aria-hidden="true">'
+        + '<rect width="32" height="32" rx="10" class="boot-mark-bg"/>'
+        + '<rect x="7" y="7" width="8" height="11" rx="2.6" class="boot-mark-a"/>'
+        + '<rect x="17" y="7" width="8" height="6" rx="2.6" class="boot-mark-b"/>'
+        + '<rect x="7" y="20" width="8" height="5" rx="2.5" class="boot-mark-b"/>'
+        + '<rect x="17" y="15" width="8" height="10" rx="2.6" class="boot-mark-c"/></svg>'
+        + '<span class="boot-wordmark">ATLAS</span>';
+      return treatment;
+    };
     let loading = false;
     function load() {
       if (loading) return;
@@ -430,32 +477,10 @@ const App = (() => {
       cancel.textContent = 'Cancel';
       cancel.addEventListener('click', () => { cancelled = true; controller.abort(); });
       notice.append(cancel);
-      // Branded boot treatment: the brand mark — the same four-block
-      // SVG as index.html's static layer, filled by the shared
-      // .boot-mark-* classes in styles.css and animated there — over
-      // the ATLAS wordmark. Purely decorative: the whole span is
-      // aria-hidden and pointer-events disabled, so this notice stays
-      // the single role="status" announcer and the text contract above
-      // is untouched. It is rebuilt here on every attempt because the
-      // textContent reset above wipes the notice's children; the
-      // failure path wipes it again when it prints the crit text, and
-      // success removes it with the notice. It therefore shows only
-      // while a load is genuinely pending. The markup is one innerHTML
-      // string because SVG elements cannot be built with createElement
-      // in an HTML document; the string mirrors the static layer's
-      // markup in index.html.
-      const treatment = document.createElement('span');
-      treatment.className = 'boot-treatment';
-      treatment.setAttribute('aria-hidden', 'true');
-      treatment.setAttribute('data-boot-treatment', '');
-      treatment.innerHTML = '<svg class="boot-blocks-mark boot-treatment-mark" viewBox="0 0 32 32" aria-hidden="true">'
-        + '<rect width="32" height="32" rx="10" class="boot-mark-bg"/>'
-        + '<rect x="7" y="7" width="8" height="11" rx="2.6" class="boot-mark-a"/>'
-        + '<rect x="17" y="7" width="8" height="6" rx="2.6" class="boot-mark-b"/>'
-        + '<rect x="7" y="20" width="8" height="5" rx="2.5" class="boot-mark-b"/>'
-        + '<rect x="17" y="15" width="8" height="10" rx="2.6" class="boot-mark-c"/></svg>'
-        + '<span class="boot-wordmark">ATLAS</span>';
-      notice.append(treatment);
+      // The treatment is rebuilt on every attempt because the
+      // textContent reset above wipes the notice's children; success
+      // removes it with the notice.
+      notice.append(buildBootTreatment());
       const wants = [fetch('/data.json', { credentials: 'same-origin', signal: controller.signal })
         .then(r => {
           if (r.status === 401) { location.href = '/login'; throw new Error('auth'); }
@@ -490,6 +515,13 @@ const App = (() => {
         notice.textContent = cancelled
           ? 'Loading cancelled. Figures remain unavailable. '
           : 'Current data could not be loaded. Figures remain unavailable. ';
+        // The textContent reset wiped the loading copy of the
+        // treatment; the terminated surface keeps the same branding
+        // as a fresh, static copy — the mark's animation is keyed to
+        // .is-loading and disabled under .crit, so nothing moves and
+        // nothing announces loading (the span stays aria-hidden
+        // decoration; the crit text above remains the message).
+        notice.append(buildBootTreatment());
         const retry = document.createElement('button');
         retry.type = 'button';
         retry.textContent = 'Retry';

@@ -4,19 +4,27 @@
 // layers, one composition (large brand mark, ATLAS wordmark, status
 // line, restrained brand glow on --plane). The static layer
 // (.boot-static, index.html markup) covers the pre-script interval on
-// / and /index.html; the live layer is the boot notice itself, stamped
-// [data-boot-notice] by app.js, with the .boot-treatment mark built
-// inside it on every load attempt. The overlay covers the full
+// / and /index.html — intercepting pointer hits, with the shell's
+// keyboard/AT isolation for that interval baked into the markup
+// itself (inert + aria-hidden + data-boot-inert on the header and
+// each .wrap child; a held-script run below proves the isolation and
+// the seamless handoff). The live layer is the boot notice itself,
+// stamped [data-boot-notice] by app.js, with the .boot-treatment mark
+// built inside it on every load attempt. The overlay covers the full
 // viewport including the header, in the loading state and on the crit
-// (failure / cancelled) surface; all loading motion stops on the crit
-// surface. While the overlay is up, app.js inerts the shell behind it
-// (header + .wrap sections) with each element's prior inert /
-// aria-hidden state captured and restored exactly on the successful
-// resolution; Cancel and Retry stay operable throughout. The notice
-// keeps role="status" as the single announcer; the treatment is
-// aria-hidden decoration. In-content plan.js .note-box.crit boxes
-// carry no [data-boot-notice] attribute and are never overlays —
-// asserted below by computed style, not by class inspection.
+// (failure / cancelled) surface; on the crit surface the branding
+// stays, as a static copy — all loading motion and loading semantics
+// stop. While the overlay is up, app.js inerts every covered
+// top-level shell subtree behind it (the header, .wrap's children,
+// and furniture outside .wrap such as Talk's composer form) with each
+// element's prior inert / aria-hidden state captured and restored
+// exactly on the successful resolution (a baked data-boot-inert
+// element's prior state is the natural one); Cancel and Retry stay
+// operable throughout. The notice keeps role="status" as the single
+// announcer; the treatment is aria-hidden decoration. In-content
+// plan.js .note-box.crit boxes carry no [data-boot-notice] attribute
+// and are never overlays — asserted below by computed style, not by
+// class inspection.
 //
 // Timing claim, deliberately limited: with /data.json held for a fixed,
 // identical delay on base and branch, the treatment is visible during
@@ -141,12 +149,41 @@ const noticeAnimations = page => page.evaluate(() => {
     .filter(el => getComputedStyle(el).animationName !== 'none').length;
 });
 
-// Stash the shell elements app.js inerts behind the overlay (header +
-// .wrap children other than the notice itself) so later assertions
-// read the SAME nodes' state after resolution.
+// The boot notice's branding on a terminated (crit) surface: the
+// treatment span present with its wordmark and four-block mark —
+// static is asserted separately via noticeAnimations.
+const noticeBranding = page => page.evaluate(() => {
+  const n = document.querySelector('[data-boot-notice]');
+  if (!n) return null;
+  const t = n.querySelector('[data-boot-treatment]');
+  return {
+    treatmentPresent: !!t,
+    wordmark: t ? (t.querySelector('.boot-wordmark')?.textContent || null) : null,
+    markRects: t ? t.querySelectorAll('.boot-blocks-mark rect').length : 0,
+  };
+});
+const assertBrandingStatic = async (page, why) => {
+  const b = await noticeBranding(page);
+  assert.ok(b && b.treatmentPresent, why + ': the brand treatment is present on the terminated surface');
+  assert.equal(b.wordmark, 'ATLAS', why + ': the ATLAS wordmark is present on the terminated surface');
+  assert.equal(b.markRects, 5, why + ': the four-block brand mark is present on the terminated surface');
+  assert.equal(await noticeAnimations(page), 0, why + ': no running animation anywhere in the notice');
+  return b;
+};
+
+// Stash the shell elements app.js inerts behind the overlay — every
+// top-level body subtree (header, page furniture outside .wrap),
+// with .wrap descended one level because it holds the notice — so
+// later assertions read the SAME nodes' state after resolution.
+// This mirrors app.js's covered set exactly.
 const stashShellProbe = page => page.evaluate(() => {
-  const els = [document.querySelector('.site-head'),
-    ...document.querySelectorAll('.wrap > *')].filter(Boolean);
+  const wrap = document.querySelector('.wrap');
+  const els = [];
+  for (const el of document.body.children) {
+    if (el.tagName === 'SCRIPT') continue;
+    if (el === wrap) els.push(...el.children);
+    else els.push(el);
+  }
   window.__shellProbe = els.filter(el => !el.hasAttribute('data-boot-notice'));
   return window.__shellProbe.length;
 });
@@ -172,6 +209,8 @@ const assertShellRestored = async (page, why, exceptIds = []) => {
 // answered by dataPlan(callIndex) -> { delayMs, status }.
 // extra.htmlPatch(rel, bodyString) may rewrite a served document
 // (used once, for the prior-state fixture in the early-ready run).
+// extra.holdScripts() may return a promise that every .js response
+// waits on (the held-script static-phase and pre-boot-focus runs).
 async function openPage(browser, serveDir, contextOpts, dataPlan, extra = {}) {
   const context = await browser.newContext(contextOpts);
   const page = await context.newPage();
@@ -192,6 +231,7 @@ async function openPage(browser, serveDir, contextOpts, dataPlan, extra = {}) {
     if (url.pathname === '/talk/capability') return intercepted.fulfill({ json: { available: false } });
     if (url.pathname === '/talk/context') return intercepted.fulfill({ status: 404, body: '' });
     const rel = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
+    if (rel.endsWith('.js') && extra.holdScripts) await extra.holdScripts();
     const file = path.join(serveDir, 'public', rel);
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return intercepted.fulfill({ status: 404, body: '' });
     let body = fs.readFileSync(file);
@@ -381,12 +421,13 @@ async function waitContent(page, timeoutMs = 30000) {
       await context.close();
     }
     // 5 — Failure, then Retry: the crit surface is the full-screen
-    // overlay with NO treatment and NO running animation anywhere in
-    // the notice, its class is exactly the crit class (no is-loading
-    // semantics persist), the shell stays inert behind it, and Retry
-    // is operable by keyboard (focus + Enter) and by touch (tap).
-    // First failure -> keyboard retry -> second failure -> touch
-    // retry -> success, with the shell restored at the end.
+    // overlay carrying the brand treatment as a STATIC copy (mark +
+    // wordmark present, no running animation anywhere in the notice,
+    // no loading semantics), its class is exactly the crit class (no
+    // is-loading state persists), the shell stays inert behind it,
+    // and Retry is operable by keyboard (focus + Enter) and by touch
+    // (tap). First failure -> keyboard retry -> second failure ->
+    // touch retry -> success, with the shell restored at the end.
     {
       let call = 0;
       const { context, page } = await openPage(browser, serveRoot,
@@ -399,7 +440,8 @@ async function waitContent(page, timeoutMs = 30000) {
       await page.waitForFunction(() => document.querySelector('.note-box')
         && document.querySelector('.note-box').innerText.includes('Current data could not be loaded'), { timeout: 15000 });
       let st = await page.evaluate(visFn);
-      assert.ok(!st.liveLayer.present && !st.staticLayer.present, 'no treatment on the crit surface');
+      assert.ok(st.liveLayer.present && st.liveLayer.visible && !st.staticLayer.present, 'the brand treatment is present on the crit surface');
+      await assertBrandingStatic(page, 'failure run, crit surface');
       const crit = await page.evaluate(() => {
         const n = document.querySelector('[data-boot-notice]');
         return { cls: n.className, text: n.innerText.trim() };
@@ -408,7 +450,6 @@ async function waitContent(page, timeoutMs = 30000) {
       assert.ok(crit.text.startsWith('Current data could not be loaded. Figures remain unavailable.'), 'exact failure text on the crit surface');
       const critRect = await rectOf(page, '[data-boot-notice]');
       assert.ok(coversViewport(critRect), 'crit overlay covers the full viewport');
-      assert.equal(await noticeAnimations(page), 0, 'crit surface: no running animation anywhere in the notice');
       await assertShellInert(page, 'failure run, crit surface');
       const retryVisible = await page.locator('.note-box button', { hasText: 'Retry' }).isVisible();
       assert.ok(retryVisible, 'Retry button visible on the crit surface');
@@ -421,7 +462,7 @@ async function waitContent(page, timeoutMs = 30000) {
       await treatmentVisible(page);
       await page.waitForFunction(() => document.querySelector('.note-box')
         && document.querySelector('.note-box').innerText.includes('Current data could not be loaded'), { timeout: 15000 });
-      assert.equal(await noticeAnimations(page), 0, 'second crit surface: motion still fully stopped');
+      await assertBrandingStatic(page, 'failure run, second crit surface');
       // Touch operability: tap the Retry button.
       await page.locator('.note-box button', { hasText: 'Retry' }).tap();
       await treatmentVisible(page);
@@ -430,14 +471,15 @@ async function waitContent(page, timeoutMs = 30000) {
       st = await page.evaluate(visFn);
       assert.ok(!st.liveLayer.present, 'treatment removed after retry success');
       await assertShellRestored(page, 'failure run, after retry success');
-      results.failureRetry = { critTreatmentAbsent: true, critCoversViewport: true, critClassExact: true, critAnimationsRunning: 0, shellInertDuringCrit: true, retryKeyboardOperable: true, retryTouchOperable: true, retryTreatmentVisible: true, removedAfterRetrySuccess: true, shellRestoredAfterSuccess: true, shellElementsProbed: probed };
+      results.failureRetry = { critBrandingPresentStatic: true, critCoversViewport: true, critClassExact: true, critAnimationsRunning: 0, shellInertDuringCrit: true, retryKeyboardOperable: true, retryTouchOperable: true, retryTreatmentVisible: true, removedAfterRetrySuccess: true, shellRestoredAfterSuccess: true, shellElementsProbed: probed };
       await context.close();
     }
     // 6 — Cancel twice, then Retry to success: the cancelled surface
     // is the same static full-screen overlay (exact cancelled text,
-    // no motion, shell still inert); Cancel is focusable during the
-    // load and operable by touch and mouse across repeated cycles;
-    // the shell is restored exactly once the boot resolves.
+    // static brand copy, no motion, shell still inert); Cancel is
+    // focusable during the load and operable by touch and mouse
+    // across repeated cycles; the shell is restored exactly once
+    // the boot resolves.
     {
       let calls = 0;
       const { context, page } = await openPage(browser, serveRoot,
@@ -454,7 +496,8 @@ async function waitContent(page, timeoutMs = 30000) {
       await page.waitForFunction(() => document.querySelector('.note-box')
         && document.querySelector('.note-box').innerText.includes('Loading cancelled.'), { timeout: 10000 });
       let st = await page.evaluate(visFn);
-      assert.ok(!st.liveLayer.present, 'no treatment after Cancel');
+      assert.ok(st.liveLayer.present && st.liveLayer.visible, 'the brand treatment is present after Cancel');
+      await assertBrandingStatic(page, 'cancel run, cancelled surface');
       const cancelled = await page.evaluate(() => {
         const n = document.querySelector('[data-boot-notice]');
         return { cls: n.className, text: n.innerText.trim() };
@@ -463,7 +506,6 @@ async function waitContent(page, timeoutMs = 30000) {
       assert.ok(cancelled.text.startsWith('Loading cancelled. Figures remain unavailable.'), 'exact cancelled text');
       const cancelRect = await rectOf(page, '[data-boot-notice]');
       assert.ok(coversViewport(cancelRect), 'cancelled overlay covers the full viewport');
-      assert.equal(await noticeAnimations(page), 0, 'cancelled surface: no running animation in the notice');
       await assertShellInert(page, 'cancel run, cancelled surface');
       await shot(page, 'boot-treatment-cancel.png');
       // Second cycle: touch Retry, mouse Cancel, mouse Retry.
@@ -479,7 +521,7 @@ async function waitContent(page, timeoutMs = 30000) {
       st = await page.evaluate(visFn);
       assert.ok(!st.liveLayer.present, 'treatment removed after cancel-retry success');
       await assertShellRestored(page, 'cancel run, after final success');
-      results.cancelRetry = { cancelTreatmentAbsent: true, cancelledCoversViewport: true, cancelledClassExact: true, cancelledAnimationsRunning: 0, cancelFocusableDuringLoad: true, cancelTouchOperable: true, cyclesCompleted: 2, shellInertThroughCycles: true, removedAfterRetrySuccess: true, shellRestoredAfterSuccess: true, shellElementsProbed: probed };
+      results.cancelRetry = { cancelledBrandingPresentStatic: true, cancelledCoversViewport: true, cancelledClassExact: true, cancelledAnimationsRunning: 0, cancelFocusableDuringLoad: true, cancelTouchOperable: true, cyclesCompleted: 2, shellInertThroughCycles: true, removedAfterRetrySuccess: true, shellRestoredAfterSuccess: true, shellElementsProbed: probed };
       await context.close();
     }
     // 7 — Static layer standalone, a small matrix: with JavaScript
@@ -511,7 +553,20 @@ async function waitContent(page, timeoutMs = 30000) {
         const entry = { computedVisible: true, coversViewport: true };
         if (cfg.name === 'w1440-light') {
           const pe = await page.evaluate(() => getComputedStyle(document.querySelector('[data-boot-static]')).pointerEvents);
-          assert.equal(pe, 'none', 'static layer never intercepts pointer events');
+          assert.equal(pe, 'auto', 'static layer intercepts pointer events while it covers the page');
+          const baked = await page.evaluate(() => {
+            const els = [document.querySelector('.site-head'),
+              ...document.querySelectorAll('.wrap > *')].filter(Boolean)
+              .filter(el => !el.hasAttribute('data-boot-static'));
+            return {
+              count: els.length,
+              allBaked: els.every(el => el.inert && el.getAttribute('aria-hidden') === 'true' && el.hasAttribute('data-boot-inert')),
+            };
+          });
+          assert.ok(baked.count > 3 && baked.allBaked,
+            'static phase: the header and every .wrap child carry the baked pre-script isolation (inert + aria-hidden + data-boot-inert), ' + baked.count + ' elements');
+          entry.bakedPreScriptIsolation = true;
+          entry.bakedElements = baked.count;
           const animName = await markAnimName(page, '[data-boot-static]');
           assert.equal(animName, 'boot-blocks', 'static layer blocks animate with the same phased loop');
           const geo = await markGeometry(page, '[data-boot-static]');
@@ -571,8 +626,8 @@ async function waitContent(page, timeoutMs = 30000) {
         }));
       }
       assert.ok(zones.includes('notice'), 'Tab reaches the notice (Cancel) during the held load: ' + zones.join(','));
-      assert.ok(zones.every(z => z === 'notice' || z === 'body' || z === 'other'),
-        'Tab never lands on a shell control behind the overlay: ' + zones.join(','));
+      assert.ok(zones.every(z => z === 'notice' || z === 'body'),
+        'Tab lands only on the notice or the body — containment is exact (' + zones.join(',') + ')');
       await waitContent(page);
       await assertShellRestored(page, 'inertness run, after arrival');
       const probe = await page.evaluate(() => {
@@ -589,13 +644,220 @@ async function waitContent(page, timeoutMs = 30000) {
       results.inertFocus = { shellElementsProbed: probed, tabZonesSeen: zones, cancelReachableByTab: true, shellFocusDeniedDuringLoad: true, headerControlOperableAfterArrival: true, shellRestoredAfterArrival: true };
       await context.close();
     }
+    // 11 — Static phase, held scripts (R2): with every script held,
+    // the page sits in the pre-script interval — the static layer
+    // visible, the shell's baked isolation in place, pointer hits
+    // intercepted by the static layer, and a covered control
+    // unfocusable. Releasing the scripts must hand off seamlessly:
+    // no sampled instant with neither layer shown, and after arrival
+    // the shell is fully restored — no inert or aria-hidden left on
+    // any element boot captured, no bake marker left, header control
+    // focusable and clickable.
+    {
+      let releaseScripts;
+      const gate = new Promise(res => { releaseScripts = res; });
+      const { context, page } = await openPage(browser, serveRoot,
+        { viewport: { width: 1440, height: 900 }, colorScheme: 'light' },
+        () => ({ delayMs: 300, status: 200 }),
+        { holdScripts: () => gate });
+      await page.goto('http://boot.test/', { waitUntil: 'commit' });
+      await page.waitForSelector('[data-boot-static]', { state: 'attached' });
+      await page.waitForTimeout(400); // scripts are held; the static phase persists
+      const held = await page.evaluate(() => {
+        const stat = document.querySelector('[data-boot-static]');
+        const sr = stat.getBoundingClientRect();
+        const hit = document.elementFromPoint(sr.left + sr.width / 2, sr.top + sr.height / 2);
+        const head = document.querySelector('.site-head');
+        const surface = document.querySelector('#operating-surface');
+        const btn = document.querySelector('[data-blend-theme], #theme-btn');
+        let focusDenied = null;
+        if (btn) { btn.focus(); focusDenied = document.activeElement !== btn; }
+        return {
+          noticePresent: !!document.querySelector('[data-boot-notice]'),
+          baked: {
+            head: { inert: !!head.inert, ariaHidden: head.getAttribute('aria-hidden'), marker: head.hasAttribute('data-boot-inert') },
+            surface: { inert: !!surface.inert, ariaHidden: surface.getAttribute('aria-hidden'), marker: surface.hasAttribute('data-boot-inert') },
+          },
+          hitInsideStatic: !!(hit && hit.closest('[data-boot-static]')),
+          staticPointerEvents: getComputedStyle(stat).pointerEvents,
+          focusDenied,
+        };
+      });
+      assert.ok(!held.noticePresent, 'static phase: no live boot notice exists while scripts are held');
+      assert.ok(held.baked.head.inert && held.baked.head.ariaHidden === 'true' && held.baked.head.marker, 'static phase: the header carries the baked isolation');
+      assert.ok(held.baked.surface.inert && held.baked.surface.ariaHidden === 'true' && held.baked.surface.marker, 'static phase: a .wrap child carries the baked isolation');
+      assert.equal(held.staticPointerEvents, 'auto', 'static phase: the static layer intercepts pointer events');
+      assert.ok(held.hitInsideStatic, 'static phase: a pointer hit at the static layer centre lands on the static layer, not the covered shell');
+      assert.equal(held.focusDenied, true, 'static phase: a covered header control cannot take focus before any script runs');
+      const heldSt = await page.evaluate(visFn);
+      assert.ok(heldSt.staticLayer.visible, 'static phase: the static layer is visible');
+      assert.ok(coversViewport(await rectOf(page, '[data-boot-static]')), 'static phase: the static layer covers the viewport');
+      await shot(page, 'boot-treatment-static-held.png');
+      releaseScripts();
+      await page.waitForSelector('[data-boot-notice]', { state: 'attached', timeout: 15000 });
+      await stashShellProbe(page);
+      await assertShellInert(page, 'static phase run, live phase after release');
+      const handoffSamples = [];
+      {
+        const t0 = Date.now();
+        while (Date.now() - t0 < 15000) {
+          const st = await page.evaluate(visFn).catch(() => null);
+          if (st) {
+            handoffSamples.push(st);
+            if (st.contentChars > 20) break;
+          }
+          await sleep(60);
+        }
+      }
+      assert.ok(handoffSamples.length >= 2, 'static phase handoff: sampling produced samples (' + handoffSamples.length + ')');
+      assert.ok(handoffSamples.every(s => s.staticLayer.visible || s.liveLayer.visible || s.contentChars > 20),
+        'static phase handoff: every sample shows a layer until content renders — no gap between the static layer and the live notice');
+      await waitContent(page);
+      await assertShellRestored(page, 'static phase run, after arrival');
+      const after = await page.evaluate(() => {
+        const btn = document.querySelector('[data-blend-theme], #theme-btn');
+        btn.focus();
+        return {
+          markersLeft: document.querySelectorAll('[data-boot-inert]').length,
+          focused: document.activeElement === btn,
+          staticLeft: !!document.querySelector('[data-boot-static]'),
+          themeAttr: document.documentElement.getAttribute('data-theme'),
+        };
+      });
+      assert.equal(after.markersLeft, 0, 'static phase: no bake marker survives arrival');
+      assert.ok(!after.staticLeft, 'static phase: the static layer is removed by boot');
+      assert.ok(after.focused, 'static phase: the header control is focusable after arrival');
+      await page.locator('[data-blend-theme], #theme-btn').first().click();
+      const themeAttrAfter = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+      assert.notEqual(themeAttrAfter, after.themeAttr, 'static phase: the header control is clickable after arrival (theme cycles)');
+      results.staticPhaseHeldScript = { heldNoLiveNotice: true, bakedIsolationOnShell: true, staticPointerIntercept: true, hitLandsOnStaticLayer: true, focusDeniedPreScript: true, handoffGapSamples: 0, restoredAfterArrival: true, bakeMarkersRemaining: 0, headerControlFocusableAndClickable: true };
+      await context.close();
+    }
+
+    // 12 — Talk route lifecycle (R1): the composer form lives OUTSIDE
+    // .wrap on talk.html. Across a held load, a cancel, a failure and
+    // two retries to arrival, the composer must be in boot's covered
+    // set (inert + aria-hidden) in every covered state, the terminated
+    // surfaces keep the static branding, and after arrival the
+    // composer is restored and usable — the textarea takes typed
+    // input. Talk's own loading element (data-talk-role) is a
+    // different surface and is never asserted on here.
+    {
+      let call = 0;
+      const plans = [
+        { delayMs: 6000, status: 200 }, // held load — cancelled
+        { delayMs: 300, status: 503 },  // retry after cancel — fails
+        { delayMs: 300, status: 200 },  // retry after failure — succeeds
+      ];
+      const { context, page } = await openPage(browser, serveRoot,
+        { viewport: { width: 390, height: 844 }, hasTouch: true },
+        () => plans[Math.min(call++, plans.length - 1)]);
+      await page.goto('http://boot.test/talk.html', { waitUntil: 'commit' });
+      await page.waitForFunction(() => {
+        const n = document.querySelector('[data-boot-notice]');
+        return n && [...n.querySelectorAll('button')].some(b => b.textContent.trim() === 'Cancel');
+      }, { timeout: 15000 });
+      const probed = await stashShellProbe(page);
+      const composerState = () => page.evaluate(() => {
+        const c = document.querySelector('#talk-composer');
+        const input = document.querySelector('#talk-input');
+        return {
+          inProbe: window.__shellProbe.includes(c),
+          inert: !!c.inert,
+          ariaHidden: c.getAttribute('aria-hidden'),
+          inputDisabled: input.disabled,
+        };
+      });
+      let cs = await composerState();
+      assert.ok(cs.inProbe, 'talk run: the composer form is in boot\'s covered shell set');
+      assert.ok(cs.inert && cs.ariaHidden === 'true', 'talk run: the composer is inert + aria-hidden during the held load');
+      await assertShellInert(page, 'talk run, held load');
+      const denied = await page.evaluate(() => {
+        const input = document.querySelector('#talk-input');
+        input.focus();
+        return document.activeElement !== input;
+      });
+      assert.ok(denied, 'talk run: the composer textarea cannot take focus during the held load');
+      // Cancel the held load — the composer stays covered behind the
+      // cancelled surface, which keeps the static branding.
+      await page.locator('[data-boot-notice] button', { hasText: 'Cancel' }).tap();
+      await page.waitForFunction(() => document.querySelector('[data-boot-notice]')
+        && document.querySelector('[data-boot-notice]').innerText.includes('Loading cancelled.'), { timeout: 15000 });
+      cs = await composerState();
+      assert.ok(cs.inert && cs.ariaHidden === 'true', 'talk run: the composer stays inert behind the cancelled surface');
+      await assertBrandingStatic(page, 'talk run, cancelled surface');
+      await shot(page, 'boot-treatment-talk-cancel.png');
+      // Retry — this attempt fails; the composer stays covered behind
+      // the crit surface too.
+      await page.locator('[data-boot-notice] button', { hasText: 'Retry' }).tap();
+      await page.waitForFunction(() => document.querySelector('[data-boot-notice]')
+        && document.querySelector('[data-boot-notice]').innerText.includes('Current data could not be loaded'), { timeout: 15000 });
+      cs = await composerState();
+      assert.ok(cs.inert && cs.ariaHidden === 'true', 'talk run: the composer stays inert behind the crit surface');
+      await assertBrandingStatic(page, 'talk run, crit surface');
+      await shot(page, 'boot-treatment-talk-crit.png');
+      // Retry — succeeds. The composer is restored and usable.
+      await page.locator('[data-boot-notice] button', { hasText: 'Retry' }).tap();
+      await page.waitForFunction(() => !document.querySelector('[data-boot-notice]'), { timeout: 15000 });
+      await assertShellRestored(page, 'talk run, after arrival');
+      cs = await composerState();
+      assert.ok(!cs.inert && cs.ariaHidden === null, 'talk run: the composer is restored after arrival');
+      await page.locator('#talk-input').click();
+      const focusOk = await page.evaluate(() => document.activeElement === document.querySelector('#talk-input'));
+      assert.ok(focusOk, 'talk run: the composer textarea takes focus after arrival');
+      await page.locator('#talk-input').fill('Can we afford this?');
+      const typed = await page.evaluate(() => document.querySelector('#talk-input').value);
+      assert.equal(typed, 'Can we afford this?', 'talk run: the composer accepts typed input after arrival');
+      results.talkLifecycle = { composerInCoveredSet: true, composerInertDuringHeldLoad: true, composerFocusDeniedDuringLoad: true, composerInertBehindCancelled: true, composerInertBehindCrit: true, brandingStaticOnCancelled: true, brandingStaticOnCrit: true, composerRestoredAfterArrival: true, composerAcceptsInputAfterArrival: true, shellElementsProbed: probed };
+      await context.close();
+    }
+
+    // 13 — Pre-boot focus restoration (f): with scripts held, focus a
+    // shell control that exists in the served markup (bills.html's
+    // theme button — the baked isolation is index-only, so pre-boot
+    // focus is only possible on an unbaked route). Boot then isolates the
+    // shell; on resolution the focus must return to that same live
+    // control.
+    {
+      let releaseScripts;
+      const gate = new Promise(res => { releaseScripts = res; });
+      const { context, page } = await openPage(browser, serveRoot,
+        { viewport: { width: 1440, height: 900 }, colorScheme: 'light' },
+        () => ({ delayMs: 0, status: 200 }),
+        { holdScripts: () => gate });
+      await page.goto('http://boot.test/bills.html', { waitUntil: 'commit' });
+      await page.waitForSelector('#theme-btn', { state: 'attached' });
+      const pre = await page.evaluate(() => {
+        const btn = document.querySelector('#theme-btn');
+        btn.focus();
+        return document.activeElement === btn;
+      });
+      assert.ok(pre, 'focus run: the shell control is focused before boot runs');
+      releaseScripts();
+      await page.waitForFunction(() => {
+        const t = document.querySelector('#bills-total');
+        return t && t.textContent.trim().length > 0 && !document.querySelector('.note-box');
+      }, { timeout: 15000 });
+      const post = await page.evaluate(() => {
+        const btn = document.querySelector('#theme-btn');
+        return { connected: btn.isConnected, focused: document.activeElement === btn };
+      });
+      assert.ok(post.connected && post.focused, 'focus run: focus returns to the same live shell control after boot resolves');
+      results.preBootFocusRestore = { focusedBeforeBoot: true, restoredToSameControl: true, controlStillConnected: true };
+      await context.close();
+    }
+
     // 9 — Early-ready: the load resolves almost immediately, so the
     // overlay barely paints. The restore path must still run
     // completely: no residual inert/aria-hidden anywhere boot applied
     // it, and an element that was ALREADY inert + aria-hidden before
-    // boot (fixture: the served index.html carries inert +
-    // aria-hidden="true" on #risks) keeps exactly that prior state —
-    // restore returns prior state, it does not blanket-clear.
+    // boot keeps exactly that prior state — restore returns prior
+    // state, it does not blanket-clear. The fixture element is
+    // #operating-surface: a direct .wrap child, hence an ACTUAL node
+    // in boot's captured covered set (the old #risks fixture sat
+    // nested inside #road-ahead and was never captured). Note this
+    // fixture replaces the R2 bake on that element — it carries no
+    // data-boot-inert, so boot captures it as a genuine prior state.
     // 10 — In-content crit isolation, on the same arrived page: a
     // rendered .note-box.crit without [data-boot-notice] is not an
     // overlay, by computed style.
@@ -605,28 +867,44 @@ async function waitContent(page, timeoutMs = 30000) {
         () => ({ delayMs: 0, status: 200 }),
         {
           htmlPatch: (rel, body) => rel === 'index.html'
-            ? body.replace('<section id="risks">', '<section id="risks" inert aria-hidden="true">')
+            ? body.replace('<section id="operating-surface" inert aria-hidden="true" data-boot-inert>',
+                '<section id="operating-surface" inert aria-hidden="true">')
             : body,
         });
       await page.goto('http://boot.test/', { waitUntil: 'commit' });
       await waitContent(page);
       await shot(page, 'boot-treatment-ready.png');
+      // This run resolves too fast to stash the probe during the
+      // covered instant, so it probes the SERVED shell set directly
+      // (header + .wrap children): exactly the elements the markup
+      // bake and boot's capture cover on index. Runtime-created
+      // decoration (e.g. .blend-ambient, aria-hidden by design and
+      // created by render code after boot) was never in boot's
+      // captured set; the during-coverage probes in the other runs
+      // assert the generalized set.
       const state = await page.evaluate(() => {
-        const risks = document.querySelector('#risks');
-        const others = [document.querySelector('.site-head'),
+        const fixture = document.querySelector('#operating-surface');
+        const probe = [document.querySelector('.site-head'),
           ...document.querySelectorAll('.wrap > *')].filter(Boolean)
-          .filter(el => el !== risks && !el.hasAttribute('data-boot-notice'));
+          .filter(el => !el.hasAttribute('data-boot-notice') && !el.hasAttribute('data-boot-static'));
+        const others = probe.filter(el => el !== fixture);
         return {
           noticePresent: !!document.querySelector('[data-boot-notice]'),
-          risks: { inert: !!risks.inert, ariaHidden: risks.getAttribute('aria-hidden') },
+          fixtureInProbe: probe.includes(fixture),
+          probed: probe.length,
+          fixture: { inert: !!fixture.inert, ariaHidden: fixture.getAttribute('aria-hidden') },
           othersCount: others.length,
           othersDirty: others.filter(el => el.inert || el.getAttribute('aria-hidden') !== null).length,
+          bakedMarkersLeft: document.querySelectorAll('[data-boot-inert]').length,
         };
       });
+      const probed = state.probed;
       assert.ok(!state.noticePresent, 'early-ready: boot notice removed after the fast load');
-      assert.equal(state.othersDirty, 0, 'early-ready: zero residual inert/aria-hidden on the ' + state.othersCount + ' shell elements boot touched');
-      assert.ok(state.risks.inert && state.risks.ariaHidden === 'true',
-        'early-ready: the pre-existing inert + aria-hidden state on #risks is preserved exactly (prior-state restore)');
+      assert.ok(state.fixtureInProbe, 'early-ready: the fixture element is an actual captured shell node (in the probed covered set)');
+      assert.equal(state.othersDirty, 0, 'early-ready: zero residual inert/aria-hidden on the ' + state.othersCount + ' other shell elements boot touched');
+      assert.equal(state.bakedMarkersLeft, 0, 'early-ready: every baked data-boot-inert marker was consumed by boot');
+      assert.ok(state.fixture.inert && state.fixture.ariaHidden === 'true',
+        'early-ready: the pre-existing inert + aria-hidden state on #operating-surface is preserved exactly (prior-state restore)');
       const probe = await page.evaluate(() => {
         const btn = document.querySelector('[data-blend-theme], #theme-btn');
         if (!btn) return { missing: true };
@@ -634,7 +912,7 @@ async function waitContent(page, timeoutMs = 30000) {
         return { focusedOk: document.activeElement === btn };
       });
       assert.ok(probe.focusedOk, 'early-ready: header control focusable after the fast load');
-      results.earlyReady = { delayMs: 0, noticeRemoved: true, residualInertOnTouchedShell: 0, priorStatePreservedOnFixtureElement: '#risks (inert + aria-hidden="true" in the served fixture)', headerControlFocusable: true, fixturePatchedIndex: 'served index.html carried inert + aria-hidden="true" on #risks for this run only' };
+      results.earlyReady = { delayMs: 0, noticeRemoved: true, residualInertOnTouchedShell: 0, bakedMarkersRemaining: 0, priorStatePreservedOnFixtureElement: '#operating-surface (an actual captured shell node; served with inert + aria-hidden="true" and no data-boot-inert for this run only — replaces the nested #risks fixture, which was never captured)', shellElementsProbed: probed, headerControlFocusable: true };
       const isolation = await page.evaluate(() => {
         const real = [...document.querySelectorAll('.note-box:not([data-boot-notice])')]
           .map(el => getComputedStyle(el).position);
