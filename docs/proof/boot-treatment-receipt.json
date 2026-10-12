@@ -5,9 +5,9 @@
   "scenarios": {
     "lightLong": {
       "delayMs": 5000,
-      "treatmentFirstVisibleMs": 1123,
-      "contentRenderedMs": 10323,
-      "samples": 42,
+      "treatmentFirstVisibleMs": 745,
+      "contentRenderedMs": 7688,
+      "samples": 48,
       "visibilityGapsObserved": 0,
       "noFlashAtRemoval": true,
       "servedSha": {
@@ -46,10 +46,10 @@
       "overlayCoversViewport1440": true,
       "headerCoveredByHitTest": true,
       "blockSeparationRangesPx": [
-        3.13,
-        3.95,
-        3.94,
-        2.66
+        2.84,
+        3.44,
+        4.23,
+        2.85
       ],
       "geometryRunDelayMs": 9000
     },
@@ -58,7 +58,7 @@
       "treatmentVisibleObserved": true,
       "overlayCoversViewport1440": true,
       "markAnimationName": "boot-blocks",
-      "screenshotAtMs": 1791782126697
+      "screenshotAtMs": 1791783841495
     },
     "reducedMotion": {
       "delayMs": 2500,
@@ -116,10 +116,10 @@
         "pointerEvents": "auto",
         "markAnimationName": "boot-blocks",
         "blockSeparationRangesPx": [
-          2.58,
-          3.95,
-          3.63,
-          2.83
+          2.87,
+          4.15,
+          3.41,
+          2.77
         ]
       },
       "w1440-dark": {
@@ -175,6 +175,13 @@
       "bakeMarkersRemaining": 0,
       "headerControlFocusableAndClickable": true
     },
+    "wrapperHandoff": {
+      "wrappersCarriedIsolationDuringHold": true,
+      "originalNodesSurvived": true,
+      "wrappersRemovedAfterArrival": true,
+      "disclosureRestoredToWrap": true,
+      "footerEndedInFiguresBody": true
+    },
     "talkLifecycle": {
       "composerInCoveredSet": true,
       "composerInertDuringHeldLoad": true,
@@ -227,18 +234,18 @@
   "baseComparison": null,
   "screenshots": {
     "boot-treatment-light.png": "6a2b49b2cb174a46cb0330de45380f3779a7b241e5a2d2f2a1ab64cbd05fca5d",
-    "boot-treatment-after.png": "d748a6dfda0b0fdb62a789a9ab903b5b5fe35424c8990958e328f7d3c60d3cae",
-    "boot-treatment-dark.png": "25d0758f10334a0fc6e41eac735952fcba2b40bd7eb79fd29cb2a2cd29201b27",
+    "boot-treatment-after.png": "aa445895a0d3de0b29179fa30057e4c5d99635ece1a5974d46d9d54f5e36ba6b",
+    "boot-treatment-dark.png": "8dcf164904b35226902efa9bc4a47c0e88c3a8d945e97dc03c618c4f8658287c",
     "boot-treatment-reduced-motion.png": "646d9449f7104b5be241a957b5fcad76b033a4e2e22bbadd53e64f87e2e3c8ea",
-    "boot-treatment-bills.png": "11f20d961e85d553d9e18953c171f657d85a13589228453ec92a7072e3418900",
+    "boot-treatment-bills.png": "06f4a264d1f12319334ddf943eda5c8e0b749bdf00cc96d346150cd9b39d472c",
     "boot-treatment-crit.png": "17991763028e653baeb9ee0ada402ca93e5e3d72f0f9bc327d083fc269962f15",
-    "boot-treatment-retry.png": "7490b4407fae284df83e24b7e02ce27f77f37d827fbb4409c9f1509fa255a58e",
+    "boot-treatment-retry.png": "2c5193d54af37427c9342aa9d2eaa46ad2eb86430be60ca5db99226c2c87ce21",
     "boot-treatment-cancel.png": "3ff5579bb7821327ed0bd13eedbbc807ac3ec659e4ac0b0fcffa9015928493c1",
-    "boot-treatment-static.png": "f081450a544ebb41a0f3d985bf50bc71f53ddb7ef46f42943a2cb10d18fcee67",
-    "boot-treatment-static-held.png": "511237796009c83acf46db9af5c0a0c8b336d0161c92ab39665691ee50e4bb40",
+    "boot-treatment-static.png": "7166d5a961760f0d4343add0f2f50a3159e4ccd61e517c2bfd8c7c03a30754af",
+    "boot-treatment-static-held.png": "720235c4e7fc1ea0c3ca77a9b81012957b60ff445be66a372a7241c6c5fde3cc",
     "boot-treatment-talk-cancel.png": "bd9dbec6aab20e6f82e488ea6b702429a42b514919b1fde74cd7072bd5b8d5dd",
     "boot-treatment-talk-crit.png": "7a54682c33592fe7b1eb29189c1e2895b8b8a796a0114708f498c2e18e82647a",
-    "boot-treatment-ready.png": "1aad908886b11d96c5372b0e1ead4487a546443eb2bceec0e06c3b07cf907a1a"
+    "boot-treatment-ready.png": "b66891992b880de832ef4b7535cb53e37be8f1fc789306c77df561f6563e934f"
   },
   "repeatedTimingMeasures": null
 }

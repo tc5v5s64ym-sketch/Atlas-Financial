@@ -734,6 +734,94 @@ async function waitContent(page, timeoutMs = 30000) {
       await context.close();
     }
 
+    // 11b — Baked-isolation wrapper handoff (post-PASS compatibility
+    // repair): the savings-accounts disclosure and the page footer
+    // have their opening tags pinned bare by static contracts
+    // elsewhere in the repo, so plain wrapper divs carry their baked
+    // isolation (data-boot-wrap). During a held load the wrappers
+    // carry the isolation and both subtrees are effectively inert;
+    // on arrival boot restores each wrapper like any covered element
+    // and replaces it with its contents. Asserted here: the original
+    // elements and child nodes survive the handoff as the same nodes
+    // (never re-created), both wrappers are removed from the
+    // document, the disclosure is back as a direct .wrap child, and
+    // the footer ends in its intended parent — budget-blend's
+    // provenance move takes it from .wrap into the Period figures
+    // body, which only its restored .wrap parentage makes findable
+    // (blend locates it with a .wrap > footer selector).
+    {
+      const { context, page } = await openPage(browser, serveRoot,
+        { viewport: { width: 1440, height: 900 }, colorScheme: 'light' },
+        () => ({ delayMs: 5000, status: 200 }));
+      await page.goto('http://boot.test/', { waitUntil: 'commit' });
+      await page.waitForSelector('[data-boot-notice]', { state: 'attached', timeout: 20000 });
+      await page.waitForTimeout(500); // held load: boot has covered the shell
+      const held = await page.evaluate(() => {
+        const details = document.querySelector('.budget-savings-accounts');
+        const footer = document.querySelector('footer');
+        window.__wrapProbe = {
+          details, footer,
+          wrap: document.querySelector('.wrap'),
+          summary: details && details.querySelector('summary'),
+          inventory: document.querySelector('#savings-inventory'),
+          footerFirstText: footer && footer.firstChild,
+          detailsWrap: details && details.parentElement,
+          footerWrap: footer && footer.parentElement,
+        };
+        const p = window.__wrapProbe;
+        return {
+          found: !!(p.details && p.footer && p.summary && p.inventory && p.footerFirstText),
+          detailsWrapped: !!(p.detailsWrap && p.detailsWrap.hasAttribute('data-boot-wrap')),
+          footerWrapped: !!(p.footerWrap && p.footerWrap.hasAttribute('data-boot-wrap')),
+          wrappersInert: !!(p.detailsWrap && p.detailsWrap.inert && p.detailsWrap.getAttribute('aria-hidden') === 'true'
+            && p.footerWrap && p.footerWrap.inert && p.footerWrap.getAttribute('aria-hidden') === 'true'),
+          detailsEffectivelyInert: !!(p.details && p.details.closest('[inert]')),
+          footerEffectivelyInert: !!(p.footer && p.footer.closest('[inert]')),
+        };
+      });
+      assert.ok(held.found, 'wrapper handoff: the disclosure, its children and the footer are present during the held load');
+      assert.ok(held.detailsWrapped && held.footerWrapped, 'wrapper handoff: both pinned elements sit inside data-boot-wrap wrappers during the held load');
+      assert.ok(held.wrappersInert && held.detailsEffectivelyInert && held.footerEffectivelyInert,
+        'wrapper handoff: the wrappers carry the isolation and both subtrees are effectively inert during the held load');
+      await waitContent(page);
+      // Budget-blend paints after arrival and moves the footer into
+      // the Period figures body; wait for that settled state.
+      await page.waitForFunction(() => {
+        const f = document.querySelector('footer');
+        return !!f && !!f.closest('[data-budget-period-info-body]');
+      }, { timeout: 30000 });
+      await page.waitForTimeout(400);
+      const after = await page.evaluate(() => {
+        const p = window.__wrapProbe;
+        const details = document.querySelector('.budget-savings-accounts');
+        const footer = document.querySelector('footer');
+        const figures = document.querySelector('[data-budget-period-info-body]');
+        return {
+          sameDetails: details === p.details,
+          sameSummary: !!details && details.querySelector('summary') === p.summary,
+          sameInventory: document.querySelector('#savings-inventory') === p.inventory,
+          detailsParentIsWrap: !!details && details.parentElement === p.wrap,
+          sameFooter: footer === p.footer,
+          sameFooterFirstText: !!footer && footer.firstChild === p.footerFirstText,
+          wrappersConnected: (p.detailsWrap && p.detailsWrap.isConnected) || (p.footerWrap && p.footerWrap.isConnected),
+          wrapMarkersLeft: document.querySelectorAll('[data-boot-wrap]').length,
+          footerParentIsFigures: !!footer && !!figures && footer.parentElement === figures,
+          footerProvenance: !!footer && footer.classList.contains('blend-provenance'),
+        };
+      });
+      assert.ok(after.sameDetails && after.sameSummary && after.sameInventory,
+        'wrapper handoff: the disclosure and its original child nodes survive arrival as the same nodes');
+      assert.ok(after.sameFooter && after.sameFooterFirstText,
+        'wrapper handoff: the footer and its original child nodes survive arrival as the same nodes');
+      assert.ok(!after.wrappersConnected && after.wrapMarkersLeft === 0,
+        'wrapper handoff: both temporary wrappers are removed from the document after arrival');
+      assert.ok(after.detailsParentIsWrap, 'wrapper handoff: the disclosure is restored as a direct .wrap child');
+      assert.ok(after.footerParentIsFigures && after.footerProvenance,
+        'wrapper handoff: the footer ends in its intended parent (the Period figures body, via the provenance move its restored .wrap parentage enables)');
+      results.wrapperHandoff = { wrappersCarriedIsolationDuringHold: true, originalNodesSurvived: true, wrappersRemovedAfterArrival: true, disclosureRestoredToWrap: true, footerEndedInFiguresBody: true };
+      await context.close();
+    }
+
     // 12 — Talk route lifecycle (R1): the composer form lives OUTSIDE
     // .wrap on talk.html. Across a held load, a cancel, a failure and
     // two retries to arrival, the composer must be in boot's covered
