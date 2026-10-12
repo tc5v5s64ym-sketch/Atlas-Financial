@@ -52,7 +52,10 @@ function compare(name, data, coherence = false, boundary = null) {
     assert.ok(b.savingsFunding.rows.every(row => row.saved == null));
     assert.equal(b.savingsFunding.period.proposal, null);
     assert.ok(b.sim.events.every(row => !row.reserveFunding), 'no uncertain evidence authorizes reserve payments');
-    assert.deepEqual(b.savingsInventory.reportedStock, a.savingsInventory.reportedStock, 'reports remain unchanged');
+    assert.deepEqual(diff(a.savingsInventory.reportedStock, b.savingsInventory.reportedStock)
+      .filter(row => row.path !== 'checkedAsOf'), [], 'reported values and bank dates remain unchanged');
+    assert.equal(b.savingsInventory.reportedStock.checkedAsOf, data.plan.savingsPoolObservation.asOf,
+      'the added check stamp is the original observation date');
     if (unexpected.length) {
       // Compare the conservative cash walk to an incumbent, independent
       // fail-closed entry path. No new number or balance is manufactured.
