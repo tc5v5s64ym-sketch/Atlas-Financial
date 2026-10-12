@@ -1897,22 +1897,6 @@ body:has([data-budget-bento]) .sitenav {
   scroll-snap-align: none;
 }
 .budget-blend-card-movements .card-movement-title { display: contents; }
-.budget-blend-card-movements .card-movement-qualifier {
-  grid-column: 1;
-  grid-row: 2;
-  min-width: 0;
-  overflow: visible;
-  text-overflow: clip;
-  white-space: normal;
-  overflow-wrap: normal;
-}
-.budget-blend-card-movements .card-movement-delta {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  margin: 0;
-  font-size: 13px;
-  white-space: nowrap;
-}
 .budget-blend-card-movements .blend-card-bar { grid-column: 3; grid-row: 1 / span 2; }
 .budget-blend-card-movements .card-movement-chevron {
   grid-column: 4;
@@ -1921,8 +1905,9 @@ body:has([data-budget-bento]) .sitenav {
   margin: 0;
 }
 
-/* The trigger's published reported balance (Balance · as of), printed from
-   the sealed card publication only; never a net or payday figure. */
+/* The trigger's published reported balance (the bare amount, or the
+   unavailable state word), printed from the sealed card publication
+   only; never a net or payday figure. */
 .card-movement-balance {
   display: block;
   font-size: 10px;
@@ -1936,50 +1921,28 @@ body:has([data-budget-bento]) .sitenav {
   min-width: 0;
 }
 
-/* Advisory fix (Systems Review 5480743096): in the gface bento face the
-   trigger grid's tracks are 44px / minmax(0,1fr) / auto with named areas
-   "chip name chg" / "chip bal chg" / "spark spark spark". The blend
-   placement above (column 1, row 3) squeezes the balance line into that
-   face's 44px chip column, where it wrapped 5-8 lines even at 1440px.
-   In the gface face the balance line takes the face's existing balance
-   area instead — the bal area the .cc-bal lines already use — with that
-   area's presentation. Placement only; the printed content is unchanged. */
-.budget-bento.atlas-g .budget-blend-card-movements .card-movement-balance {
-  grid-area: bal;
-  color: var(--g-ink-3);
-  font-size: 13px;
-  font-weight: 520;
-}
-
-/* Reported-balance emphasis swap (Atlas UI task 2 follow-on): when the
-   trigger prints the publication's reported balance, the balance is the
-   primary figure and the net change demotes. In this blend face the
-   balance takes the delta's slot (column 2, rows 1-2) at primary size;
-   the delta — and the blend unavailable dash that stands in for it —
-   move to the balance's former slot (column 1, row 3). Triggers with no
-   balance line match none of these rules and keep today's layout
-   exactly: nothing is promoted and no figure is invented. The gface
-   face restates the swap in budget-gface.css for its named areas. */
-.budget-blend-card-movements .card-movement-trigger:has(.card-movement-balance) .card-movement-balance {
+/* Face rows (Atlas UI task 2 second follow-on): in this blend face the
+   balance takes the right-hand column (column 2, rows 1–2) at primary
+   size at every width — the slot the net change used to occupy. The
+   net change no longer prints on the face at all, and a row with no
+   usable published balance prints the state word in the same slot.
+   The gface face places the balance in its named chg area instead;
+   that placement lives in budget-gface.css. */
+.budget-blend-card-movements .card-movement-trigger .card-movement-balance {
   grid-column: 2;
   grid-row: 1 / span 2;
   justify-self: end;
   text-align: right;
-  max-width: 44vw;
   font-size: 16px;
   font-weight: 650;
   color: var(--blend-ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.budget-blend-card-movements .card-movement-trigger:has(.card-movement-balance) .card-movement-delta {
-  grid-column: 1;
-  grid-row: 3;
-  justify-self: start;
-  font-weight: 520;
-}
-.budget-blend-card-movements .card-movement-trigger:has(.card-movement-balance) .blend-cc-dash {
-  grid-column: 1;
-  grid-row: 3;
-  justify-self: start;
+.budget-blend-card-movements .card-movement-trigger .card-movement-balance.is-unavailable {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .budget-blend-card-movements .card-movement-strip {
@@ -2443,7 +2406,6 @@ html.reduce .blend-sky { display: block; }
 }
 
 .budget-blend-card-movements .card-movement-trigger { position: relative; padding-left: 40px; }
-.budget-blend-card-movements .card-movement-qualifier { overflow-wrap: anywhere; }
 .blend-cc-chip {
   position: absolute;
   left: 0;

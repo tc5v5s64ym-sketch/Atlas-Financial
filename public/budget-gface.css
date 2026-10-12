@@ -667,13 +667,11 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
   box-shadow: var(--g-shadow);
   padding-bottom: 12px;
 }
-.budget-bento.atlas-g .blend-cc-net {
-  margin-left: auto;
-  color: var(--blend-ink-2);
-  font-size: 15px;
-  font-weight: 560;
+.budget-bento.atlas-g .card-movement-trigger .card-movement-balance.is-unavailable {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--g-ink-3);
 }
-.budget-bento.atlas-g .blend-cc-dash.is-unavailable { font-size: 12px; font-weight: 500; }
 .budget-bento.atlas-g .card-movement-track {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -682,7 +680,7 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
 .budget-bento.atlas-g .card-movement-trigger {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;
-  grid-template-areas: "chip name chg" "chip bal chg" "spark spark spark";
+  grid-template-areas: "chip name chg";
   align-items: center;
   column-gap: 12px;
   row-gap: 2px;
@@ -760,15 +758,6 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
   font-size: 13px;
   font-weight: 520;
 }
-.budget-bento.atlas-g .cc-chg,
-.budget-bento.atlas-g .blend-cc-dash {
-  grid-area: chg;
-  color: var(--g-ink-3);
-  font-size: 16px;
-  font-weight: 650;
-}
-.budget-bento.atlas-g .blend-cc-untracked,
-.budget-bento.atlas-g .cc-spark,
 .budget-bento.atlas-g .blend-g-bar.is-untracked,
 .budget-bento.atlas-g .blend-g-bar.is-untracked::before {
   grid-area: spark;
@@ -778,74 +767,25 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
   border: 0;
   background: radial-gradient(circle, color-mix(in srgb, var(--blend-ink) 18%, transparent) 0.9px, transparent 1.15px) left center / 7px 2px repeat-x;
 }
-.budget-bento.atlas-g .blend-cc-untracked::after,
-.budget-bento.atlas-g .cc-spark::after,
 .budget-bento.atlas-g .blend-g-bar.is-untracked::after { content: none; }
-.budget-bento.atlas-g .card-movement-delta {
+
+/* Face rows (Atlas UI task 2 second follow-on): the trigger's only
+   figure is the publication's reported balance, printed bare in the
+   chg slot at every width — one shared right column for every row, so
+   the amounts line up on a single right edge and never stack onto a
+   second line. A row with no usable published balance prints the
+   state word in the same slot (typography above). No net change, no
+   qualifier and no heading net meta print on this face; that evidence
+   lives in the detail panel. */
+.budget-bento.atlas-g .card-movement-trigger .card-movement-balance {
   grid-area: chg;
   justify-self: end;
-  align-self: center;
-}
-.budget-bento.atlas-g .card-movement-trigger:has(.blend-cc-dash.is-unavailable) .blend-cc-untracked { display: none; }
-
-/* Reported-balance emphasis swap (Atlas UI task 2 follow-on): when the
-   trigger prints the publication's reported balance, the balance is the
-   primary figure and the net change demotes — the delta keeps its
-   direction colours; only its slot and weight change. The blend
-   unavailable dash follows the delta it stands in for. Triggers with no
-   balance line match none of these rules and keep today's layout
-   exactly: nothing is promoted and no figure is invented. */
-.budget-bento.atlas-g .card-movement-trigger:has(.card-movement-balance) .card-movement-balance {
+  text-align: right;
   font-size: 16px;
   font-weight: 650;
   color: var(--blend-ink);
-}
-.budget-bento.atlas-g .card-movement-trigger:has(.card-movement-balance) .card-movement-delta {
-  font-weight: 520;
-}
-@media (min-width: 760px) {
-  /* Wide face: the balance takes the primary chg slot (both rows), the
-     delta and its dash take the bal slot under the card name. */
-  .budget-bento.atlas-g .card-movement-trigger:has(.card-movement-balance) .card-movement-balance {
-    grid-area: chg;
-    justify-self: end;
-    text-align: right;
-    max-width: none;
-  }
-  .budget-bento.atlas-g .card-movement-trigger:has(.card-movement-balance) .card-movement-delta {
-    grid-area: bal;
-    justify-self: start;
-  }
-  .budget-bento.atlas-g .card-movement-trigger:has(.card-movement-balance) .blend-cc-dash {
-    grid-area: bal;
-    justify-self: start;
-  }
-}
-@media (max-width: 1100px) {
-  /* Narrower faces: the chg column cannot hold the 16px balance string
-     beside the card name without crushing the name, so the swapped
-     balance takes a full-width primary row under the name row and the
-     demoted delta stays at the top right. Same swap, stacked. */
-  .budget-bento.atlas-g .card-movement-trigger:has(.card-movement-balance) {
-    grid-template-areas: "chip name chg" "bal bal bal" "spark spark spark";
-  }
-  .budget-bento.atlas-g .card-movement-trigger:has(.card-movement-balance):has(.blend-cc-dash.is-unavailable) {
-    grid-template-areas: "chip name chg" "bal bal bal" "spark spark spark";
-  }
-  .budget-bento.atlas-g .card-movement-trigger:has(.card-movement-balance) .card-movement-balance {
-    grid-area: bal;
-    justify-self: stretch;
-    text-align: left;
-    max-width: none;
-  }
-  .budget-bento.atlas-g .card-movement-trigger:has(.card-movement-balance) .card-movement-delta {
-    grid-area: chg;
-    justify-self: end;
-  }
-  .budget-bento.atlas-g .card-movement-trigger:has(.card-movement-balance) .blend-cc-dash {
-    grid-area: chg;
-    justify-self: end;
-  }
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .budget-bento.atlas-g .card-movement-chevron { display: none; }
 .budget-bento.atlas-g .card-movement-heading > p { display: none; }
@@ -1075,9 +1015,6 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
   .budget-bento.atlas-g .budget-blend-card-movements { padding: 22px 24px 18px; }
   .budget-bento.atlas-g .card-movement-track { margin: 12px -10px -8px; }
   .budget-bento.atlas-g .card-movement-trigger { min-height: 54px; padding: 7px 10px; row-gap: 1px; }
-  .budget-bento.atlas-g .card-movement-trigger:has(.blend-cc-dash.is-unavailable) {
-    grid-template-areas: "chip name chg" "chip bal chg";
-  }
 }
 
 @media (max-width: 1100px) {
