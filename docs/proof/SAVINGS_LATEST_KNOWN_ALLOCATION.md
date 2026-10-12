@@ -114,9 +114,9 @@ cents leaves 7,999,999,999,974,600 cents. The native remainder must stay
 79,999,999,999,746 dollars. A second control combines 100,000,000 dollars
 and 29 cents; its remainder after 254.01 is 99,999,746.28. The new acceptance
 has 32 passing cases, and the expanded 28-case complete-output comparison
-has zero unexpected changes. Fresh source-bound browser/receipt recording is
-pending for this repaired code; the earlier receipts remain explicitly bound
-to the initial code until replaced.
+has zero unexpected changes. The earlier nine-case browser receipt remains
+explicitly qualified to the initial code; it is not claimed as fresh evidence
+for the repaired/integrated head.
 
 The original full local `npm test` run reached a terminal result: 349 passed,
 20 failed out of 369 suites (exit 1). It exercised the initial code; only
@@ -145,4 +145,30 @@ once without conflicts. Its card validator/export and two test-registration
 lines are disjoint from the Savings edits; the foundation/store files retain
 main's bytes. The net PR remains the Savings outcome. The current-base
 28-case output comparison and new foundation checks are bounded composition
-proofs. Hosted final-head checks and root Systems re-review remain pending.
+proofs. [Integrated comparison](savings-latest-known/integrated-comparison.json)
+records zero unexpected changes and 16,210 equal subtrees against that current
+main. Its [binding](savings-latest-known/integrated-comparison-binding.json)
+preserves the execution-head qualification and checks recorded source bytes
+against code head `e63a50eb3ac89a69a6eed7c6d6ff1072e803b560`. Forecast's
+recorded bytes use the explicit Windows CRLF checkout representation; the
+other three recorded files match exact Git bytes. This is stated rather than
+claimed as an all-files raw-Git-byte run. The browser proof below uses exact
+Git bytes with no normalization. No finished comparison is rerun merely to
+replace a metadata SHA.
+
+The new prior-check-day browser case passes on that exact clean code head;
+[receipt](savings-latest-known/browser-prior-check.json) and
+[capture](savings-latest-known/prior-check-day-390-light.png) are recorded.
+It opens the real Info and Earlier planning evidence and proves the original
+October 6 check/October 5 balance dates against the October 7 Forecast day,
+the neutral sentence, unchanged Saved stamps/bars, withheld top-up, restored
+focus, no overflow, no page error, no external request and no write.
+
+The integrated #593 controller passes 144 synthetic checks; the store passes
+12 Windows type/privacy/inertness checks and does not claim POSIX durability.
+Three originally failing authenticated Savings integration suites pass after
+linking the existing local dependencies into the isolated checkout. No package
+is installed and no credentials or security setting changes. The original
+full-suite terminal result remains 349/369, with 20 failures; no finished full
+suite is repeated or promoted to PASS. Hosted final-head checks and root
+Systems re-review remain pending.
