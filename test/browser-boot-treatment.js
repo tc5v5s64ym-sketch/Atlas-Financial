@@ -769,30 +769,36 @@ async function waitContent(page, timeoutMs = 30000) {
       const held = await page.evaluate(() => {
         const details = document.querySelector('.budget-savings-accounts');
         const footer = document.querySelector('footer');
+        const surface = document.querySelector('#operating-surface');
         window.__wrapProbe = {
-          details, footer,
+          details, footer, surface,
           wrap: document.querySelector('.wrap'),
           summary: details && details.querySelector('summary'),
           inventory: document.querySelector('#savings-inventory'),
           footerFirstText: footer && footer.firstChild,
+          surfaceBody: document.querySelector('#operating-surface-body'),
           detailsWrap: details && details.parentElement,
           footerWrap: footer && footer.parentElement,
+          surfaceWrap: surface && surface.parentElement,
         };
         const p = window.__wrapProbe;
         return {
-          found: !!(p.details && p.footer && p.summary && p.inventory && p.footerFirstText),
+          found: !!(p.details && p.footer && p.summary && p.inventory && p.footerFirstText && p.surface && p.surfaceBody),
           detailsWrapped: !!(p.detailsWrap && p.detailsWrap.hasAttribute('data-boot-wrap')),
           footerWrapped: !!(p.footerWrap && p.footerWrap.hasAttribute('data-boot-wrap')),
+          surfaceWrapped: !!(p.surfaceWrap && p.surfaceWrap.hasAttribute('data-boot-wrap')),
           wrappersInert: !!(p.detailsWrap && p.detailsWrap.inert && p.detailsWrap.getAttribute('aria-hidden') === 'true'
-            && p.footerWrap && p.footerWrap.inert && p.footerWrap.getAttribute('aria-hidden') === 'true'),
+            && p.footerWrap && p.footerWrap.inert && p.footerWrap.getAttribute('aria-hidden') === 'true'
+            && p.surfaceWrap && p.surfaceWrap.inert && p.surfaceWrap.getAttribute('aria-hidden') === 'true'),
           detailsEffectivelyInert: !!(p.details && p.details.closest('[inert]')),
           footerEffectivelyInert: !!(p.footer && p.footer.closest('[inert]')),
+          surfaceEffectivelyInert: !!(p.surface && p.surface.closest('[inert]')),
         };
       });
-      assert.ok(held.found, 'wrapper handoff: the disclosure, its children and the footer are present during the held load');
-      assert.ok(held.detailsWrapped && held.footerWrapped, 'wrapper handoff: both pinned elements sit inside data-boot-wrap wrappers during the held load');
-      assert.ok(held.wrappersInert && held.detailsEffectivelyInert && held.footerEffectivelyInert,
-        'wrapper handoff: the wrappers carry the isolation and both subtrees are effectively inert during the held load');
+      assert.ok(held.found, 'wrapper handoff: the disclosure, its children, the footer and the operating surface are present during the held load');
+      assert.ok(held.detailsWrapped && held.footerWrapped && held.surfaceWrapped, 'wrapper handoff: all three pinned elements sit inside data-boot-wrap wrappers during the held load');
+      assert.ok(held.wrappersInert && held.detailsEffectivelyInert && held.footerEffectivelyInert && held.surfaceEffectivelyInert,
+        'wrapper handoff: the wrappers carry the isolation and all three subtrees are effectively inert during the held load');
       await waitContent(page);
       // Budget-blend paints after arrival and moves the footer into
       // the Period figures body; wait for that settled state.
@@ -805,6 +811,7 @@ async function waitContent(page, timeoutMs = 30000) {
         const p = window.__wrapProbe;
         const details = document.querySelector('.budget-savings-accounts');
         const footer = document.querySelector('footer');
+        const surface = document.querySelector('#operating-surface');
         const figures = document.querySelector('[data-budget-period-info-body]');
         return {
           sameDetails: details === p.details,
@@ -813,7 +820,10 @@ async function waitContent(page, timeoutMs = 30000) {
           detailsParentIsWrap: !!details && details.parentElement === p.wrap,
           sameFooter: footer === p.footer,
           sameFooterFirstText: !!footer && footer.firstChild === p.footerFirstText,
-          wrappersConnected: (p.detailsWrap && p.detailsWrap.isConnected) || (p.footerWrap && p.footerWrap.isConnected),
+          sameSurface: surface === p.surface,
+          sameSurfaceBody: document.querySelector('#operating-surface-body') === p.surfaceBody,
+          surfaceParentIsWrap: !!surface && surface.parentElement === p.wrap,
+          wrappersConnected: (p.detailsWrap && p.detailsWrap.isConnected) || (p.footerWrap && p.footerWrap.isConnected) || (p.surfaceWrap && p.surfaceWrap.isConnected),
           wrapMarkersLeft: document.querySelectorAll('[data-boot-wrap]').length,
           footerParentIsFigures: !!footer && !!figures && footer.parentElement === figures,
           footerProvenance: !!footer && footer.classList.contains('blend-provenance'),
@@ -823,12 +833,15 @@ async function waitContent(page, timeoutMs = 30000) {
         'wrapper handoff: the disclosure and its original child nodes survive arrival as the same nodes');
       assert.ok(after.sameFooter && after.sameFooterFirstText,
         'wrapper handoff: the footer and its original child nodes survive arrival as the same nodes');
+      assert.ok(after.sameSurface && after.sameSurfaceBody,
+        'wrapper handoff: the operating surface and its original child node survive arrival as the same nodes');
       assert.ok(!after.wrappersConnected && after.wrapMarkersLeft === 0,
-        'wrapper handoff: both temporary wrappers are removed from the document after arrival');
+        'wrapper handoff: all three temporary wrappers are removed from the document after arrival');
       assert.ok(after.detailsParentIsWrap, 'wrapper handoff: the disclosure is restored as a direct .wrap child');
+      assert.ok(after.surfaceParentIsWrap, 'wrapper handoff: the operating surface is restored as a direct .wrap child');
       assert.ok(after.footerParentIsFigures && after.footerProvenance,
         'wrapper handoff: the footer ends in its intended parent (the Period figures body, via the provenance move its restored .wrap parentage enables)');
-      results.wrapperHandoff = { wrappersCarriedIsolationDuringHold: true, originalNodesSurvived: true, wrappersRemovedAfterArrival: true, disclosureRestoredToWrap: true, footerEndedInFiguresBody: true };
+      results.wrapperHandoff = { wrappersCarriedIsolationDuringHold: true, originalNodesSurvived: true, wrappersRemovedAfterArrival: true, disclosureRestoredToWrap: true, operatingSurfaceRestoredToWrap: true, footerEndedInFiguresBody: true };
       await context.close();
     }
 

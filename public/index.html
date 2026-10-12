@@ -58,11 +58,11 @@
        state (a baked element's prior state is the natural one) and
        restores full interactivity on arrival. If scripts never run
        it all stays — the same failure mode as this shell's static
-       status text. Two .wrap children — the savings-accounts
-       disclosure and the page footer — sit inside plain wrapper
-       divs that carry the baked isolation for them, because their
-       own opening tags are pinned bare by static contracts
-       elsewhere in the repo; each wrapper (marked data-boot-wrap)
+       status text. Three .wrap children — the operating surface,
+       the savings-accounts disclosure and the page footer — sit
+       inside plain wrapper divs that carry the baked isolation
+       for them, because their own opening tags are pinned bare by
+       static contracts elsewhere in the repo; each wrapper
        is itself a .wrap child, so boot captures and consumes it
        exactly like the others, the contents stay inert and hidden
        through it for the whole loading interval, and on arrival
@@ -83,9 +83,11 @@
   <!-- Default Plan is the kitchen-counter operating surface only. Worksheet
        and longer Forecast diagnostics keep their mounts for renderPlan, but
        they are not part of the household default page. -->
-  <section id="operating-surface" inert aria-hidden="true" data-boot-inert>
-    <div class="operating-card" id="operating-surface-body" aria-live="polite"></div>
-  </section>
+  <div inert aria-hidden="true" data-boot-inert data-boot-wrap>
+    <section id="operating-surface">
+      <div class="operating-card" id="operating-surface-body" aria-live="polite"></div>
+    </section>
+  </div>
   <div inert aria-hidden="true" data-boot-inert data-boot-wrap>
     <details class="budget-savings-accounts">
       <summary>Savings accounts &amp; evidence</summary>

@@ -5,13 +5,13 @@
   "scenarios": {
     "lightLong": {
       "delayMs": 5000,
-      "treatmentFirstVisibleMs": 1087,
-      "contentRenderedMs": 8848,
-      "samples": 47,
+      "treatmentFirstVisibleMs": 2182,
+      "contentRenderedMs": 11099,
+      "samples": 45,
       "visibilityGapsObserved": 0,
       "noFlashAtRemoval": true,
       "servedSha": {
-        "public/index.html": "c8f0ce712cd85ade390f223f32404a86fa5e241f961aa241db3ceb86e24c148d",
+        "public/index.html": "817c7918b8b52251eb5c85e0cc9385996af53eac861aeab7ebb6a31be4947dd5",
         "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
         "public/fonts.css": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
         "public/styles.css": "ca789bfd31ab1f4dc38980e6052cb479e26dfb545f2e626ad66204c7028c174e",
@@ -46,9 +46,9 @@
       "overlayCoversViewport1440": true,
       "headerCoveredByHitTest": true,
       "blockSeparationRangesPx": [
-        2.95,
-        4.12,
-        3.38,
+        3.01,
+        4.19,
+        3.4,
         2.92
       ],
       "geometryRunDelayMs": 9000
@@ -58,7 +58,7 @@
       "treatmentVisibleObserved": true,
       "overlayCoversViewport1440": true,
       "markAnimationName": "boot-blocks",
-      "screenshotAtMs": 1791784392041
+      "screenshotAtMs": 1791787355610
     },
     "reducedMotion": {
       "delayMs": 2500,
@@ -116,10 +116,10 @@
         "pointerEvents": "auto",
         "markAnimationName": "boot-blocks",
         "blockSeparationRangesPx": [
-          3.02,
-          4.14,
-          4.14,
-          2.86
+          2.87,
+          4.15,
+          3.41,
+          2.77
         ]
       },
       "w1440-dark": {
@@ -180,6 +180,7 @@
       "originalNodesSurvived": true,
       "wrappersRemovedAfterArrival": true,
       "disclosureRestoredToWrap": true,
+      "operatingSurfaceRestoredToWrap": true,
       "footerEndedInFiguresBody": true
     },
     "talkLifecycle": {
@@ -204,7 +205,7 @@
       "noticeRemoved": true,
       "residualInertOnTouchedShell": 0,
       "bakedMarkersRemaining": 0,
-      "priorStatePreservedOnFixtureElement": "#operating-surface (an actual captured shell node; served with inert + aria-hidden=\"true\" and no data-boot-inert for this run only — replaces the nested #risks fixture, which was never captured)",
+      "priorStatePreservedOnFixtureElement": "#road-ahead (an actual captured shell node; served with inert + aria-hidden=\"true\" and no data-boot-inert for this run only — replaces the nested #risks fixture, which was never captured)",
       "shellElementsProbed": 8,
       "headerControlFocusable": true
     },
@@ -233,19 +234,19 @@
   },
   "baseComparison": null,
   "screenshots": {
-    "boot-treatment-light.png": "fa863424dc20f755f5a254b212d65d142c17b463785cc36002bda3da95eb0590",
-    "boot-treatment-after.png": "2f49c8d488baa67ef4617d31ddc83468e031a865f0de688828734867877e68a1",
-    "boot-treatment-dark.png": "38c55daec9cd495f8434d04d51ae95336961579f0cb9d2e2ae0b04400915d455",
+    "boot-treatment-light.png": "2c5193d54af37427c9342aa9d2eaa46ad2eb86430be60ca5db99226c2c87ce21",
+    "boot-treatment-after.png": "3802b98266e6940bb3886250a0a77c9b1a1838b802d50eed51496abc5a7ca5db",
+    "boot-treatment-dark.png": "8dcf164904b35226902efa9bc4a47c0e88c3a8d945e97dc03c618c4f8658287c",
     "boot-treatment-reduced-motion.png": "646d9449f7104b5be241a957b5fcad76b033a4e2e22bbadd53e64f87e2e3c8ea",
-    "boot-treatment-bills.png": "374bda84b376308d93f69ff6a3a9d39c36aa40cdd5fe7e516a58cd4716e07351",
+    "boot-treatment-bills.png": "3410c4b7885bcbdaf52c821d7351fd492c325863e0ca2469330249b4e6e62eb4",
     "boot-treatment-crit.png": "17991763028e653baeb9ee0ada402ca93e5e3d72f0f9bc327d083fc269962f15",
-    "boot-treatment-retry.png": "370d859140fcf2ffb22dc07b914a342e844b368b0430036d777cb7a9b24f18d4",
+    "boot-treatment-retry.png": "6a2b49b2cb174a46cb0330de45380f3779a7b241e5a2d2f2a1ab64cbd05fca5d",
     "boot-treatment-cancel.png": "3ff5579bb7821327ed0bd13eedbbc807ac3ec659e4ac0b0fcffa9015928493c1",
-    "boot-treatment-static.png": "d2f29dfd924446e755ef9d5a803eefecba66fa0030deef0317b509f399e85716",
-    "boot-treatment-static-held.png": "147b558c6228974d8dc057dc40e3a81abeb388446e3c49ddad7087ece4c13b42",
+    "boot-treatment-static.png": "9be2588c9d0957ac8eba80ec8e9a46c1def22a77d001f715a31b81fa2cce0907",
+    "boot-treatment-static-held.png": "d2f29dfd924446e755ef9d5a803eefecba66fa0030deef0317b509f399e85716",
     "boot-treatment-talk-cancel.png": "bd9dbec6aab20e6f82e488ea6b702429a42b514919b1fde74cd7072bd5b8d5dd",
     "boot-treatment-talk-crit.png": "7a54682c33592fe7b1eb29189c1e2895b8b8a796a0114708f498c2e18e82647a",
-    "boot-treatment-ready.png": "5b7e7869a318b019170b84eb4c1b8576aab77093390b1d6a4dcfc74487e85954"
+    "boot-treatment-ready.png": "709fe19bac8025c606b29b12d587b717b45bd0cfbd7de7817a750ee6a001166a"
   },
   "repeatedTimingMeasures": null
 }
