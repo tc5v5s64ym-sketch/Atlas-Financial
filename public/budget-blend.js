@@ -1945,22 +1945,10 @@
     face.className = 'blend-goals';
     face.setAttribute('data-blend-goals', '');
     face.setAttribute('aria-hidden', 'true');
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 160 160');
-    svg.classList.add('blend-goal-rings');
     const list = document.createElement('ul');
     list.className = 'blend-goal-legend';
     const goals = [...card.querySelectorAll('[data-budget-savings-goal]')];
-    goals.forEach((row, index) => {
-      const radius = 68 - index * 14;
-      if (radius > 16) {
-        const track = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        track.setAttribute('cx', '80');
-        track.setAttribute('cy', '80');
-        track.setAttribute('r', String(radius));
-        track.setAttribute('class', 'gr-track');
-        svg.appendChild(track);
-      }
+    goals.forEach(row => {
       const item = document.createElement('li');
       const name = document.createElement('span');
       name.textContent = text(row.querySelector('strong')) || 'Goal';
@@ -2029,13 +2017,26 @@
       const bar = document.createElement('span');
       bar.className = 'blend-g-bar';
       bar.setAttribute('aria-hidden', 'true');
-      const savedN = printedMagnitude(savedAmount);
-      const neededN = printedMagnitude(neededAmount);
-      if (savedN != null && neededN != null && savedN + neededN > 0) {
-        bar.style.setProperty('--w', Math.max(0, Math.min(1, savedN / (savedN + neededN))).toFixed(4));
-      } else {
-        bar.classList.add('is-untracked');
+      // Funding band from the typed stamps plan.js prints on the goal row
+      // (data-budget-goal-saved-amount / data-budget-goal-required-amount):
+      // saved over the TOTAL requirement, clamped to [0, 1]. A missing,
+      // blank, malformed or non-finite stamp — or a negative requirement —
+      // fails closed to the neutral unknown treatment, never coerced to
+      // zero. A known zero requirement is its own state (no funding
+      // required), distinct from missing evidence; it never divides.
+      const savedValue = stampedAmount(row.getAttribute('data-budget-goal-saved-amount'));
+      const requiredValue = stampedAmount(row.getAttribute('data-budget-goal-required-amount'));
+      let band = 'is-unknown';
+      if (savedValue != null && requiredValue != null && requiredValue >= 0) {
+        if (requiredValue === 0) band = 'is-no-funding-required';
+        else {
+          const ratio = savedValue / requiredValue;
+          band = ratio >= 1 ? 'is-full' : ratio >= 0.25 ? 'is-amber' : 'is-red';
+          bar.style.setProperty('--w', Math.max(0, Math.min(1, ratio)).toFixed(4));
+        }
       }
+      bar.classList.add(band);
+      item.classList.add(band);
       item.append(name, stack, bar);
       list.appendChild(item);
     });
@@ -2047,18 +2048,6 @@
         list.appendChild(item);
       }
     }
-    const progressed = goals.some(row => {
-      const amounts = [...row.querySelectorAll('.budget-goal-amounts > span')];
-      const read = label => {
-        const node = amounts.find(span => new RegExp('^' + label + '$', 'i').test(text(span.querySelector('small'))));
-        return printedMagnitude(text(node && node.querySelector('.budget-goal-amount')));
-      };
-      const savedN = read('Saved');
-      const neededN = read('Needed');
-      return savedN != null && neededN != null && savedN + neededN > 0;
-    });
-    if (progressed && svg.childNodes.length) face.appendChild(svg);
-    else face.classList.add('is-plain');
     face.appendChild(list);
     const title = document.createElement('button');
     title.type = 'button';

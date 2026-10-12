@@ -11,6 +11,7 @@ const { chromium } = require('playwright');
 const { captureSourceBinding, verifySourceBinding } = require('./proof-source-binding');
 const { proveRiverPort, riverHarnessHtml } = require('./browser-budget-river-port');
 const { provePanelRepairs } = require('./browser-budget-panel-repairs');
+const dailyConsumerData = require('./fixtures/savings-daily-consumer-data');
 
 const root = path.join(__dirname, '..');
 const outDir = path.join(root, 'docs/proof');
@@ -64,6 +65,7 @@ const composite = (fg, bg) => {
         viewport: { width, height: 1000 },
         colorScheme: theme,
         reducedMotion: (options && options.reducedMotion) || 'no-preference',
+        hasTouch: !!(options && options.hasTouch),
       });
       await page.addInitScript(chosen => {
         try { localStorage.setItem('hfd-theme', chosen); } catch (e) {}
@@ -2093,6 +2095,325 @@ const composite = (fg, bg) => {
       errors.push(`goal line style ${JSON.stringify(goalFace)}`);
     }
     await goalPage.close();
+
+    // ---- Savings funding bars: typed stamps -> banded continuous bars ----
+    // plan.js stamps data-budget-goal-saved-amount / -required-amount on the
+    // goal <li> under exactly the predicates that print the amounts; the
+    // painter bands saved over the TOTAL requirement (Forecast publishes
+    // `needed` as the goal's total requirement: forecast.js sums each
+    // member's full need into the daily row's needed), clamped to [0, 1] —
+    // green at fully funded, amber from 25% to below full, red below 25%.
+    // A missing, blank, malformed or non-finite stamp, or a negative
+    // requirement, stays the neutral unknown treatment (no fill, no dot or
+    // dash background, never coerced to zero); a known zero requirement is
+    // the distinct no-funding-required state and never divides. The
+    // decorative rings and their reserved column are gone.
+    const readFundingFace = page => page.evaluate(() => {
+      const card = document.querySelector('[data-budget-savings-goals]');
+      if (!card) return null;
+      const rows = [...card.querySelectorAll('[data-budget-savings-goal]')].map(row => ({
+        key: row.getAttribute('data-budget-savings-goal'),
+        savedStamp: row.getAttribute('data-budget-goal-saved-amount'),
+        requiredStamp: row.getAttribute('data-budget-goal-required-amount'),
+        amountsText: (row.querySelector('.budget-goal-amounts')?.innerText || '').replace(/\s+/g, ' ').trim(),
+      }));
+      const items = [...card.querySelectorAll('.blend-goal-legend li')].map(li => {
+        const bar = li.querySelector('.blend-g-bar');
+        const nameEl = li.querySelector('span');
+        const statusEl = li.querySelector('.blend-goal-status');
+        const fill = bar ? getComputedStyle(bar, '::before') : null;
+        let glyphHit = false;
+        if (nameEl && statusEl) {
+          const range = document.createRange();
+          range.selectNodeContents(nameEl);
+          const s = statusEl.getBoundingClientRect();
+          glyphHit = [...range.getClientRects()].some(r => r.right > s.left + 0.5 && r.left < s.right - 0.5
+            && r.bottom > s.top + 0.5 && r.top < s.bottom - 0.5);
+        }
+        return {
+          liClass: li.className, name: (nameEl?.textContent || '').trim(),
+          barClass: bar?.className || '', w: bar ? bar.style.getPropertyValue('--w') : null,
+          trackW: bar ? bar.clientWidth : 0,
+          fillW: fill ? parseFloat(fill.width) : 0,
+          fillBg: fill ? fill.backgroundColor : '',
+          barBgImage: bar ? getComputedStyle(bar).backgroundImage : '',
+          bulletBg: getComputedStyle(li, '::before').backgroundColor,
+          glyphHit, clipped: nameEl ? nameEl.scrollWidth > nameEl.clientWidth + 1 : false,
+          savedLine: li.querySelector('.blend-goal-saved')?.innerText?.replace(/\s+/g, ' ').trim() || null,
+          neededLine: li.querySelector('.blend-goal-needed')?.innerText?.replace(/\s+/g, ' ').trim() || null,
+        };
+      });
+      return {
+        rows, items,
+        rings: card.querySelectorAll('.blend-goal-rings').length,
+        docScrollW: document.documentElement.scrollWidth, innerW: window.innerWidth,
+        cardText: (card.innerText || '').replace(/\s+/g, ' ').trim(),
+      };
+    });
+    const expectBand = (face, name, band, w, label) => {
+      const item = face?.items.find(row => row.name === name);
+      if (!item) { errors.push(`${label}: no legend item for ${name}`); return null; }
+      if (item.barClass !== `blend-g-bar ${band}` || item.liClass !== band) {
+        errors.push(`${label}: ${name} band ${item.barClass} / li ${item.liClass}, expected ${band}`);
+      }
+      if (item.w !== w) errors.push(`${label}: ${name} --w ${JSON.stringify(item.w)}, expected ${JSON.stringify(w)}`);
+      if (item.barBgImage !== 'none') errors.push(`${label}: ${name} bar background image ${item.barBgImage} (dot/dash treatment must be gone)`);
+      return item;
+    };
+    const clubGoal = 'Invented club costs', homeGoal = 'Invented annual home cost';
+    const bandFills = { light: {}, dark: {} };
+
+    // Fixture modes on the real consumer path (390, both themes for ready).
+    const fbReady = await open(390, 'light', { data: dailyConsumerData('ready') });
+    const readyFace = await readFundingFace(fbReady);
+    const readyStamps = Object.fromEntries((readyFace?.rows || []).map(row => [row.key, [row.savedStamp, row.requiredStamp]]));
+    if (JSON.stringify(readyStamps) !== JSON.stringify({ 'group:club': ['95', '230'], 'yearly-bill:home-cost': ['24', '24'] })) {
+      errors.push(`funding ready stamps ${JSON.stringify(readyStamps)}`);
+    }
+    expectBand(readyFace, clubGoal, 'is-amber', '0.4130', 'funding ready');
+    // The $24/$24 full-funding case: before this change the painter's
+    // saved/(saved+needed) formula painted exactly 0.5000 here.
+    const readyHome = expectBand(readyFace, homeGoal, 'is-full', '1.0000', 'funding ready $24/$24');
+    if (readyHome && Math.abs(readyHome.fillW - readyHome.trackW) > 1.5) {
+      errors.push(`funding ready $24/$24 fill ${readyHome.fillW}px vs track ${readyHome.trackW}px`);
+    }
+    const readyClub = readyFace?.items.find(row => row.name === clubGoal);
+    if (readyClub?.savedLine !== 'Saved $95.00' || readyClub?.neededLine !== 'Needed $230.00') {
+      errors.push(`funding ready printed lines ${JSON.stringify(readyClub)}`);
+    }
+    if (readyFace?.rings !== 0) errors.push(`funding ready rings nodes ${readyFace?.rings}`);
+    bandFills.light.full = readyHome?.fillBg; bandFills.light.amber = readyClub?.fillBg;
+    await capture(fbReady, 'funding-bars-ready-390-light.png');
+    await fbReady.close();
+
+    const fbModes = [
+      ['partial', clubGoal, 'is-amber', '0.5435'],
+      ['full', clubGoal, 'is-amber', '0.7609'],
+      ['fully-backed', clubGoal, 'is-full', '1.0000'],
+    ];
+    for (const [mode, name, band, w] of fbModes) {
+      const page = await open(390, 'light', { data: dailyConsumerData(mode) });
+      const face = await readFundingFace(page);
+      expectBand(face, name, band, w, `funding ${mode}`);
+      if (face?.rings !== 0) errors.push(`funding ${mode} rings nodes ${face?.rings}`);
+      await page.close();
+    }
+
+    // Ranged need: no point requirement exists, so the required stamp is
+    // omitted and the bar stays neutral; the printed range text is intact.
+    const fbRanged = await open(390, 'light', { data: dailyConsumerData('ranged-need') });
+    const rangedFace = await readFundingFace(fbRanged);
+    const rangedClubRow = rangedFace?.rows.find(row => row.key === 'group:club');
+    if (rangedClubRow?.requiredStamp !== null) {
+      errors.push(`funding ranged-need required stamp ${JSON.stringify(rangedClubRow)}`);
+    }
+    if (!/\$230\.00/.test(rangedClubRow?.amountsText || '') || !/\$250\.00/.test(rangedClubRow?.amountsText || '')) {
+      errors.push(`funding ranged-need printed range ${JSON.stringify(rangedClubRow)}`);
+    }
+    const rangedClub = expectBand(rangedFace, clubGoal, 'is-unknown', '', 'funding ranged-need');
+    if (rangedClub && rangedClub.fillW !== 0) errors.push(`funding ranged-need fill ${rangedClub.fillW}px, expected 0`);
+    await fbRanged.close();
+
+    // Unavailable path: the saved side is withheld, stamps are absent on
+    // that side, bars stay neutral, and the printed Unavailable stands.
+    const fbMissing = await open(390, 'light', { data: dailyConsumerData('missing-stock') });
+    const missingFace = await readFundingFace(fbMissing);
+    if (!missingFace?.items.length) errors.push('funding missing-stock: no legend items');
+    for (const item of missingFace?.items || []) {
+      if (item.barClass !== 'blend-g-bar is-unknown' || item.w !== '' || item.fillW !== 0 || item.barBgImage !== 'none') {
+        errors.push(`funding missing-stock bar ${JSON.stringify(item)}`);
+      }
+    }
+    if (!/Unavailable/.test(missingFace?.cardText || '')) errors.push('funding missing-stock: Unavailable wording lost');
+    await fbMissing.close();
+
+    // Red band and the known-zero bar, from observed-pool tweaks of the
+    // same fixture (pool 10: club lands at 34/230 red; home at a trusted
+    // 0/24 — a known empty bar, red at --w 0, never the unknown treatment).
+    const poolTweak = value => data => {
+      data.plan.savingsPoolObservation.accounts[0].value = value;
+      data.plan.startingCash.breakdown[2].value = value;
+      return data;
+    };
+    const fbRed = await open(390, 'light', { data: poolTweak(10)(dailyConsumerData('ready')) });
+    const redFace = await readFundingFace(fbRed);
+    expectBand(redFace, clubGoal, 'is-red', '0.1478', 'funding red');
+    const redZero = expectBand(redFace, homeGoal, 'is-red', '0.0000', 'funding known zero');
+    if (redZero && redZero.fillW !== 0) errors.push(`funding known zero fill ${redZero.fillW}px, expected 0`);
+    bandFills.light.red = redFace?.items.find(row => row.name === clubGoal)?.fillBg;
+    await capture(fbRed, 'funding-bars-red-390-light.png');
+    await fbRed.close();
+
+    // Zero required (both commitments at 0, pool at 0): both stamps are the
+    // known value 0 and the state is no-funding-required — full-width
+    // neutral fill, no --w (no division), distinct from unknown.
+    const zeroReqData = dailyConsumerData('ready');
+    zeroReqData.plan.commitments[0].amount = 0;
+    zeroReqData.plan.commitments[1].amount = 0;
+    poolTweak(0)(zeroReqData);
+    const fbZeroReq = await open(390, 'light', { data: zeroReqData });
+    const zeroReqFace = await readFundingFace(fbZeroReq);
+    const zeroReqRow = zeroReqFace?.rows.find(row => row.key === 'group:club');
+    if (zeroReqRow?.savedStamp !== '0' || zeroReqRow?.requiredStamp !== '0') {
+      errors.push(`funding zero-required stamps ${JSON.stringify(zeroReqRow)}`);
+    }
+    const zeroReq = expectBand(zeroReqFace, clubGoal, 'is-no-funding-required', '', 'funding zero-required');
+    if (zeroReq && Math.abs(zeroReq.fillW - zeroReq.trackW) > 1.5) {
+      errors.push(`funding zero-required fill ${zeroReq.fillW}px vs track ${zeroReq.trackW}px`);
+    }
+    bandFills.light.none = zeroReq?.fillBg;
+    await capture(fbZeroReq, 'funding-bars-zero-required-390-light.png');
+    await fbZeroReq.close();
+
+    // Dark theme: same bands, distinguishable fills, bullet matches fill.
+    const fbDark = await open(390, 'dark', { data: dailyConsumerData('ready') });
+    const darkFace = await readFundingFace(fbDark);
+    const darkClub = expectBand(darkFace, clubGoal, 'is-amber', '0.4130', 'funding dark');
+    const darkHome = expectBand(darkFace, homeGoal, 'is-full', '1.0000', 'funding dark');
+    bandFills.dark.full = darkHome?.fillBg; bandFills.dark.amber = darkClub?.fillBg;
+    await fbDark.close();
+    const fbDarkRed = await open(390, 'dark', { data: poolTweak(10)(dailyConsumerData('ready')) });
+    const darkRedFace = await readFundingFace(fbDarkRed);
+    expectBand(darkRedFace, clubGoal, 'is-red', '0.1478', 'funding dark red');
+    bandFills.dark.red = darkRedFace?.items.find(row => row.name === clubGoal)?.fillBg;
+    await fbDarkRed.close();
+    for (const theme of ['light', 'dark']) {
+      const fills = bandFills[theme];
+      const distinct = new Set([fills.full, fills.amber, fills.red].filter(Boolean));
+      if (distinct.size !== 3) errors.push(`funding ${theme} band fills not mutually distinguishable ${JSON.stringify(fills)}`);
+      if (fills.none && (fills.none === fills.full || fills.none === fills.amber || fills.none === fills.red
+        || fills.none === 'rgba(0, 0, 0, 0)')) {
+        errors.push(`funding ${theme} no-funding-required fill collides ${JSON.stringify(fills)}`);
+      }
+    }
+    for (const face of [readyFace, darkFace]) {
+      for (const item of face?.items || []) {
+        if (item.bulletBg !== item.fillBg) {
+          errors.push(`funding bullet/fill mismatch ${item.name}: ${item.bulletBg} vs ${item.fillBg}`);
+        }
+      }
+    }
+
+    // Geometry across widths and themes on the progressed (ready) face:
+    // counts track the goals, fill width is --w x track, nothing overflows,
+    // and at 320 the goal name glyphs never reach the status column (the
+    // rings column used to crush the name to ~1px and overlap them).
+    for (const [width, theme] of [[320, 'light'], [320, 'dark'], [390, 'light'], [390, 'dark'], [1440, 'light'], [1440, 'dark']]) {
+      const page = await open(width, theme, { data: dailyConsumerData('ready') });
+      const face = await readFundingFace(page);
+      const label = `funding geometry ${width}/${theme}`;
+      if (!face || face.items.length !== face.rows.length || face.items.length !== 2) {
+        errors.push(`${label}: counts rows=${face?.rows.length} items=${face?.items.length}`);
+      }
+      if (face?.rings !== 0) errors.push(`${label}: rings nodes ${face?.rings}`);
+      if (face && face.docScrollW > face.innerW) errors.push(`${label}: horizontal overflow ${face.docScrollW} > ${face.innerW}`);
+      for (const item of face?.items || []) {
+        const expected = parseFloat(item.w) * item.trackW;
+        if (Math.abs(item.fillW - expected) > 1.5) {
+          errors.push(`${label}: ${item.name} fill ${item.fillW}px vs --w ${item.w} x track ${item.trackW}px`);
+        }
+        if (width === 320 && (item.glyphHit || item.clipped)) {
+          errors.push(`${label}: ${item.name} name/status overlap glyphHit=${item.glyphHit} clipped=${item.clipped}`);
+        }
+      }
+      if (width === 320) await capture(page, `funding-bars-ready-320-${theme}.png`);
+      await page.close();
+    }
+
+    // Band edges and stamp abuse, driven through the painter on a live
+    // page by restamping the source row (the painter must fail closed).
+    const fbEdge = await open(390, 'light', { data: dailyConsumerData('ready') });
+    const runEdge = (saved, required) => fbEdge.evaluate(([s, r]) => new Promise(resolve => {
+      const card = document.querySelector('[data-budget-savings-goals]');
+      const row = card.querySelector('[data-budget-savings-goal]');
+      if (s == null) row.removeAttribute('data-budget-goal-saved-amount');
+      else row.setAttribute('data-budget-goal-saved-amount', s);
+      if (r == null) row.removeAttribute('data-budget-goal-required-amount');
+      else row.setAttribute('data-budget-goal-required-amount', r);
+      card.querySelector('[data-blend-goals]')?.remove();
+      card.querySelectorAll('.blend-goals-source').forEach(node => node.classList.remove('blend-goals-source'));
+      document.querySelector('[data-budget-bento]').removeAttribute('data-blend-ready');
+      document.getElementById('operating-surface-body').appendChild(document.createTextNode(''));
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const li = card.querySelector('.blend-goal-legend li');
+        const bar = li?.querySelector('.blend-g-bar');
+        resolve({
+          barClass: bar?.className || '', w: bar ? bar.style.getPropertyValue('--w') : null,
+          fillW: bar ? parseFloat(getComputedStyle(bar, '::before').width) : 0,
+          trackW: bar ? bar.clientWidth : 0,
+        });
+      }));
+    }), [saved, required]);
+    const edgeCases = [
+      ['25', '100', 'is-amber', '0.2500'], ['24.99', '100', 'is-red', '0.2499'],
+      ['100', '100', 'is-full', '1.0000'], ['99.99', '100', 'is-amber', '0.9999'],
+      ['150', '100', 'is-full', '1.0000'], ['0', '100', 'is-red', '0.0000'],
+      ['0', '0', 'is-no-funding-required', ''],
+      ['', '100', 'is-unknown', ''], ['NaN', '100', 'is-unknown', ''],
+      ['Infinity', '100', 'is-unknown', ''], ['50', '', 'is-unknown', ''],
+      ['50', 'NaN', 'is-unknown', ''], ['50', 'Infinity', 'is-unknown', ''],
+      ['50', '-5', 'is-unknown', ''], ['50', 'abc', 'is-unknown', ''],
+      [null, '100', 'is-unknown', ''], ['50', null, 'is-unknown', ''],
+    ];
+    for (const [saved, required, band, w] of edgeCases) {
+      const got = await runEdge(saved, required);
+      if (got.barClass !== `blend-g-bar ${band}` || got.w !== w) {
+        errors.push(`funding edge saved=${JSON.stringify(saved)} required=${JSON.stringify(required)}: ${JSON.stringify(got)}, expected ${band} / ${JSON.stringify(w)}`);
+      }
+      if (band === 'is-no-funding-required' && Math.abs(got.fillW - got.trackW) > 1.5) {
+        errors.push(`funding edge zero-required fill ${got.fillW}px vs track ${got.trackW}px`);
+      }
+      if (band === 'is-unknown' && got.fillW !== 0) {
+        errors.push(`funding edge unknown fill ${got.fillW}px, expected 0`);
+      }
+    }
+    await fbEdge.close();
+
+    // Legacy branch: plan.js stamps fulfilled/required under
+    // budgetGoalContributionKnown, the printed labels stay
+    // Fulfilled / Required this period, and the painter bands the row
+    // identically (50/200 -> amber at exactly 25%).
+    const fbLegacy = await open(390, 'light', { data: dailyConsumerData('ready') });
+    const legacyHtml = await fbLegacy.evaluate(() => {
+      const period = { id: 'legacy-period', timelineRole: 'past', start: '2026-09-01', end: '2026-09-14',
+        plannedCostFunding: { items: [{ id: 'legacy-goal', label: 'Legacy goal' }], unscheduled: [] },
+        budgetProgress: { source: 'Forecast.budgetPeriodProgress', asOf: '2026-09-14', currency: 'CAD',
+          start: '2026-09-01', end: '2026-09-14',
+          savings: { goals: [{ id: 'legacy-goal', label: 'Legacy goal', status: 'still-to-fund',
+            required: { amount: 200, trust: 'calculated', completeness: 'complete' },
+            fulfilled: { amount: 50, trust: 'calculated', completeness: 'complete' },
+            remaining: { amount: 150, trust: 'calculated', completeness: 'complete' } }] } } };
+      return budgetSavingsGoalsHtml({ plan: {}, advice: {}, asOf: '2026-09-14' }, period, null);
+    });
+    if (!legacyHtml.includes('data-budget-goal-saved-amount="50"') || !legacyHtml.includes('data-budget-goal-required-amount="200"')
+      || !/>Fulfilled</.test(legacyHtml) || !/>Required this period</.test(legacyHtml)
+      || !legacyHtml.includes('$50.00') || !legacyHtml.includes('$200.00')) {
+      errors.push(`funding legacy stamps/labels ${legacyHtml.slice(0, 400)}`);
+    }
+    const legacyFace = await fbLegacy.evaluate(html => new Promise(resolve => {
+      const card = document.querySelector('[data-budget-savings-goals]');
+      const template = document.createElement('template');
+      template.innerHTML = html.trim();
+      card.replaceWith(template.content.firstElementChild);
+      document.querySelector('[data-budget-bento]').removeAttribute('data-blend-ready');
+      document.getElementById('operating-surface-body').appendChild(document.createTextNode(''));
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const next = document.querySelector('[data-budget-savings-goals]');
+        const li = next?.querySelector('.blend-goal-legend li');
+        const bar = li?.querySelector('.blend-g-bar');
+        resolve({
+          barClass: bar?.className || '', w: bar ? bar.style.getPropertyValue('--w') : null,
+          status: li?.querySelector('.blend-goal-status')?.innerText?.replace(/\s+/g, ' ').trim() || '',
+          savedLine: !!li?.querySelector('.blend-goal-saved'),
+          neededLine: !!li?.querySelector('.blend-goal-needed'),
+        });
+      }));
+    }), legacyHtml);
+    if (legacyFace.barClass !== 'blend-g-bar is-amber' || legacyFace.w !== '0.2500'
+      || legacyFace.status !== 'Still to fund' || legacyFace.savedLine || legacyFace.neededLine) {
+      errors.push(`funding legacy face ${JSON.stringify(legacyFace)}`);
+    }
+    await fbLegacy.close();
 
     const unavailable = await open(1440, 'light', { unavailablePlan: true });
     const unavailableDark = await open(390, 'dark', { unavailablePlan: true });

@@ -1784,15 +1784,10 @@ body:has([data-budget-bento]) .sitenav {
 }
 
 .blend-goals {
-  display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
+  display: block;
   margin: 8px 0 12px;
 }
 
-.blend-goal-rings { width: 120px; height: 120px; }
-.gr-track { fill: none; stroke: color-mix(in srgb, var(--blend-goals) 35%, transparent); stroke-width: 8; }
 .blend-goal-legend { list-style: none; margin: 0; padding: 0; }
 .blend-goal-legend li { display: flex; flex-wrap: nowrap; justify-content: space-between; align-items: flex-start; gap: 8px; font-size: 13px; }
 .blend-goal-status { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; text-align: right; }
@@ -2521,20 +2516,18 @@ html.reduce .blend-sky { display: block; }
   border-radius: 99px;
   background: var(--blend-goals);
 }
-.blend-g-bar.is-untracked {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: auto;
-  min-height: 5px;
-  overflow: visible;
-  background: none;
+/* Funding bands (typed saved / total-required stamps): the fill colour is
+   the band; unknown carries no fill at all (empty neutral track, no dot or
+   dash treatment), and a known zero requirement fills the track with a
+   neutral tone — complete, but not a funding band. */
+.blend-g-bar.is-full::before { background: var(--blend-income); }
+.blend-g-bar.is-amber::before { background: var(--blend-over); }
+.blend-g-bar.is-red::before { background: var(--blend-overdue); }
+.blend-g-bar.is-no-funding-required::before {
+  width: 100%;
+  background: color-mix(in srgb, var(--blend-ink) 30%, transparent);
 }
-.blend-g-bar.is-untracked::before {
-  flex: 1 1 auto;
-  width: auto;
-  height: 5px;
-}
+.blend-g-bar.is-unknown::before { background: transparent; }
 
 .budget-bento .blend-hero .blend-hero-pill .operating-prompt,
 .budget-bento .blend-hero .blend-hero-pill .budget-step-value {
