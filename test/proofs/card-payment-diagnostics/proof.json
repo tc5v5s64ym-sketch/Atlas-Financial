@@ -7,7 +7,7 @@
   },
   "sourceNormalization": "utf8-text-lf",
   "sourceSha256": {
-    "test/browser-card-payment-diagnostics.js": "6a8c54fe4cd6ef33ca1f062ba40906d0754192ce97c49a7d28a6e184b4e0b0a6",
+    "test/browser-card-payment-diagnostics.js": "bd8fcd888a9d1d07671826c4365820a8abdc53452e244ba5b16b4560cbf1aff0",
     "test/fixtures/card-period-movements-data.js": "ba2b039d95f9ed777d3e81ef4dd39c1c38b59d6b0f035875586dfe60aaa0daf0",
     "test/fixtures/budget-surface-data.js": "f6a3c46fb037c41f7371aaaef08ffaab5256bda97cb9bc5f994e4ee54e5fac0b",
     "public/index.html": "52444db8cc29f3bef684a1a86716fe612477679fe957d7602e472572467526a9",
@@ -25,7 +25,7 @@
     "public/budget-sheet-motion.css": "31fbea5e07e133925d3f357c62ddf6d7f38d84e7bc0b654d8473070e5d1ed2c4",
     "public/app.js": "8b99ebdecaad18f63fda3bdccf438b66a0312452b407662a9828e8d19d14528e",
     "public/forecast-card-period.js": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20",
-    "public/forecast.js": "6bf48a3dc994785cc61d8c443485ed23bcf19f5860b3d2b16eb1ebd09f50590b",
+    "public/forecast.js": "5a61acc1fc5119ecc4c2ee8098ff1b5a11bdb13389ff933498dd93478b7d1625",
     "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
     "public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
     "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
@@ -79,6 +79,18 @@
       "sha256": "01ef0f8cf31225640a95f30492bd8bdaa35ed2d5391a60b6523c08082e622e42"
     },
     {
+      "state": "shared-debit",
+      "width": 1440,
+      "screenshot": "shared-debit-1440.png",
+      "sha256": "6e7ea333b27aaa8ec63af1f8959d85521a5131c65d8a41ff52d2abcc125312ac"
+    },
+    {
+      "state": "ambiguous-parent",
+      "width": 1440,
+      "screenshot": "ambiguous-parent-1440.png",
+      "sha256": "1c6ea0f8caeefedfa60ade8b84b893a510dd6faeb4073011ad490042f74e96f4"
+    },
+    {
       "state": "confirmed",
       "width": 320,
       "screenshot": "confirmed-320.png",
@@ -113,6 +125,18 @@
       "width": 320,
       "screenshot": "plan-unavailable-320.png",
       "sha256": "0e30b4b1120278e045c853270de7ce41737f7b0e5539b96208036bad94f1c745"
+    },
+    {
+      "state": "shared-debit",
+      "width": 320,
+      "screenshot": "shared-debit-320.png",
+      "sha256": "49ef608f0a61cbc97c44ec398ce4758f780a6d4cb692a2a64ceae1750918ab95"
+    },
+    {
+      "state": "ambiguous-parent",
+      "width": 320,
+      "screenshot": "ambiguous-parent-320.png",
+      "sha256": "1c7c833aa83e8cfefb9012ba60d0683098f797fe4286bbb640dd41f1133fa52b"
     }
   ],
   "errors": [],

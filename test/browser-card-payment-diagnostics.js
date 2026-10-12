@@ -27,7 +27,17 @@ function dataFor(state) {
   if (state === 'unknown-opening') data.plan.cardPurchaseCoverage.opening.confirmed = false;
   if (state === 'no-intent') data.plan.cardPurchaseCoverage.payments = [];
   if (state === 'pending') data.liveOverlay.currentPeriodActuals.transactions.find(tx => tx.id === 'payment-a').pending = true;
-  if (state === 'reversal') {
+  if (state === 'shared-debit') {
+    data.liveOverlay.currentPeriodActuals.transactions.push(
+      { id: 'browser-second-purchase', coverageRef: 'invented-browser-second-purchase', atlasAccountId: 'travelvisa', account: 'travelvisa', accountRole: 'revolving-credit',
+        date: fx.AS_OF, amount: 100, currency: 'cad', displayedPayee: 'Invented second purchase', categoryLabel: 'Groceries', pending: false },
+      { id: 'browser-second-credit', coverageRef: 'invented-browser-second-credit', atlasAccountId: 'travelvisa', account: 'travelvisa', accountRole: 'revolving-credit',
+        date: fx.AS_OF, amount: -100, currency: 'cad', displayedPayee: 'Invented second payment', categoryLabel: 'Credit Card Payment', kindHint: 'payment', pending: false });
+    data.plan.cardPurchaseCoverage.payments.push({ id: 'invented-browser-second-allocation', confirmed: true,
+      debitRef: 'invented-cash-leg-a', creditRef: 'invented-browser-second-credit',
+      allocations: [{ purchaseRef: 'invented-browser-second-purchase', amount: 100 }], otherAmount: 0, otherPurpose: null });
+  }
+  if (state === 'reversal' || state === 'ambiguous-parent') {
     const packet = data.liveOverlay.currentPeriodActuals;
     packet.transactions.push({ id: 'browser-card-reversal', coverageRef: 'invented-browser-card-reversal',
       atlasAccountId: 'travelvisa', account: 'travelvisa', accountRole: 'revolving-credit',
@@ -45,6 +55,7 @@ function dataFor(state) {
     data.plan.startingCash.breakdown.find(row => row.id === 'chequing-a').value = 885;
     const cash = data.liveOverlay.observedCash?.accounts?.find(row => row.id === 'chequing-a');
     if (cash) cash.value = 885;
+    if (state === 'ambiguous-parent') data.plan.cardPurchaseCoverage.payments.push(structuredClone(data.plan.cardPurchaseCoverage.payments[0]));
   }
   if (state === 'plan-unavailable') data.liveOverlay.operatingPlan = 'unavailable';
   return data;
@@ -54,7 +65,7 @@ function dataFor(state) {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH });
   const runtime = { node: process.version, chromium: await browser.version(), platform: process.platform };
   try {
-    for (const width of [1440, 320]) for (const state of ['confirmed', 'unknown-opening', 'no-intent', 'pending', 'reversal', 'plan-unavailable']) {
+    for (const width of [1440, 320]) for (const state of ['confirmed', 'unknown-opening', 'no-intent', 'pending', 'reversal', 'plan-unavailable', 'shared-debit', 'ambiguous-parent']) {
       const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/*', route => {
@@ -79,6 +90,7 @@ function dataFor(state) {
         assert.match(text, /Confirmed at posting[\s\S]*\$100\.00/);
         assert.match(text, /Example grocer|Groceries/);
       } else assert.doesNotMatch(text, /Confirmed at posting/);
+      if (state === 'ambiguous-parent') assert.doesNotMatch(text, /Confirmed reversal/);
       if (state === 'reversal') {
         assert.match(text, /Confirmed reversal[\s\S]*\$20\.00/);
         assert.match(text, /\$947\.40/);
@@ -88,7 +100,7 @@ function dataFor(state) {
       assert.doesNotMatch(text, /invented-(?:cash-leg|payment|charge|browser-allocation)|coverageRef|purchaseRef|pc-/);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no viewport overflow');
       const allocation = panel.locator('[data-card-payment-allocation="reconciled"]');
-      if (['no-intent', 'pending'].includes(state)) assert.equal(await allocation.count(), 0);
+      if (['no-intent', 'pending', 'shared-debit', 'ambiguous-parent'].includes(state)) assert.equal(await allocation.count(), 0);
       if (width === 320 && state === 'unknown-opening') await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
       const file = state + '-' + width + '.png';
       await page.locator('[data-budget-detail-sheet]').screenshot({ path: path.join(out, file), animations: 'disabled' });

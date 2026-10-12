@@ -120,6 +120,6 @@ eq(run(untrustedPurpose).payment.paymentAllocation.otherPurpose, null, 'unneeded
 // Publication carries request-local row ids only, never allocation refs or source ids.
 for (const result of [positive, unknown, isolated, unresolved, splitResult, reversal, pending]) {
   const printed = JSON.stringify(result.pub);
-  eq(/pc-|coverageRef|purchaseRef|debitRef|creditRef|paymentId|8000[123]|invented-explicit-allocation|invented-other-account/.test(printed), false, 'private source and allocation identities stay internal');
+  eq(/pc-|coverageRef|purchaseRef|debitRef|creditRef|paymentId|parentRef|diagnosticCreditRef|8000[123]|invented-explicit-allocation|invented-other-account/.test(printed), false, 'private source and allocation identities stay internal');
 }
 console.log('PASS card payment diagnostics: ' + checks + ' synthetic provider/invariant checks');

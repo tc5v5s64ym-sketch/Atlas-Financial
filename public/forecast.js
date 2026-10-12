@@ -9828,7 +9828,8 @@
         covered.push({ ref, date: row.date, amount: cents / 100, categoryLabel: row.categoryLabel });
       }
       accepted.set(record.id, { account, amount, split, reversed: new Map(), other, otherReversed: 0,
-        date: credit.date, cashDate: debit.date });
+        date: credit.date, cashDate: debit.date,
+        ...(paymentLinks ? { diagnosticCreditRef: record.creditRef } : {}) });
       payments.push({ id: record.id, date: credit.date, accountLabel: label(account),
         status: 'reconciled', amount: amount / 100, backfill: backfill / 100,
         cardPayment: other / 100, otherPurpose: record.otherPurpose || null,
@@ -9866,6 +9867,7 @@
       payment.otherReversed += other;
       used.add(reversal.cardDebitRef); used.add(reversal.cashCreditRef);
       reversalLinks?.set(reversal.cardDebitRef, { status: 'reconciled', kind: 'reversal',
+        parentRef: payment.diagnosticCreditRef,
         backfill: Array.from(split.values()).reduce((a,b) => a+b, 0) / 100,
         cardPayment: other / 100, otherPurpose: null,
         purchases: Array.from(split, ([ref, cents]) => ({ date: purchases.get(ref).date,
@@ -9953,22 +9955,47 @@
       accountLabel: row.accountLabel,
     }]));
     if (!paymentLinks) return { publication, annotations };
+    // Diagnostic identity is independent of the allocator's iteration order.
+    // Inspect all explicitly confirmed declarations, including rejected ones:
+    // the first accepted claimant cannot prove a multiply claimed movement.
+    const declaredRefs = new Map(), declaredIds = new Map();
+    for (const record of Array.isArray(records) ? records : []) {
+      if (record?.confirmed !== true) continue;
+      for (const ref of new Set([record.debitRef, record.creditRef]
+        .filter(ref => typeof ref === 'string' && ref))) {
+        declaredRefs.set(ref, (declaredRefs.get(ref) || 0) + 1);
+      }
+      if (record.id) declaredIds.set(record.id, (declaredIds.get(record.id) || 0) + 1);
+    }
+    const ambiguousRefs = new Set(Array.from(declaredRefs).filter(([, count]) => count > 1).map(([ref]) => ref));
+    for (const [id, count] of declaredIds) if (count > 1) conflictingPaymentIds.add(id);
+    const ambiguousCredits = new Set();
+    for (const record of Array.isArray(records) ? records : []) {
+      if (record?.confirmed === true && (ambiguousRefs.has(record.debitRef)
+        || ambiguousRefs.has(record.creditRef) || conflictingPaymentIds.has(record.id))) {
+        ambiguousCredits.add(record.creditRef);
+      }
+    }
     const paymentAllocations = new Map();
     const unconfirmed = reason => ({ status: 'unreconciled', kind: 'payment', reason,
       backfill: null, cardPayment: null, otherPurpose: null, purchases: [] });
     for (const [ref, link] of paymentLinks) {
       const row = publishedPayments[link.index];
       const problem = issues.find(issue => issue.ref && link.refs.includes(issue.ref));
-      paymentAllocations.set(ref, problem || conflictingPaymentIds.has(payments[link.index].id)
-        ? unconfirmed(problem?.code || 'coverage-payment-intent-or-pair-unconfirmed') : {
+      const ambiguous = ambiguousCredits.has(ref) || link.refs.some(ref => ambiguousRefs.has(ref))
+        || conflictingPaymentIds.has(payments[link.index].id);
+      paymentAllocations.set(ref, problem || ambiguous
+        ? unconfirmed(ambiguous ? 'coverage-identity-ambiguous' : problem.code) : {
         status: row.status, kind: 'payment', reason: row.reason || null,
         backfill: row.backfill, cardPayment: row.cardPayment,
         otherPurpose: ['prior-debt', 'required-payment', 'other'].includes(row.otherPurpose) ? row.otherPurpose : null,
         purchases: row.purchases });
     }
-    for (const [ref, { refs, ...row }] of reversalLinks) {
+    for (const [ref, { refs, parentRef, ...row }] of reversalLinks) {
       const problem = issues.find(issue => issue.ref && refs.includes(issue.ref));
-      paymentAllocations.set(ref, problem ? { ...unconfirmed(problem.code), kind: 'reversal' } : row);
+      const parent = paymentAllocations.get(parentRef);
+      paymentAllocations.set(ref, problem || parent?.status !== 'reconciled'
+        ? { ...unconfirmed(problem?.code || 'coverage-reversal-unconfirmed'), kind: 'reversal' } : row);
     }
     // An unqualified declared reversal may still be an observed card movement.
     // Show that missing proof without calling its cash counterpart confirmed.
