@@ -50,6 +50,10 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            function privateError(error) {
+              try { require('fs').writeFileSync(process.env.RUNNER_TEMP + '/merge-card.private.log', String(error.stack || error), { mode: 0o600 }); } catch { /* Never print raw storage or API errors. */ }
+            }
+            try {
             const eventName = context.eventName || '';
             const eventPr = context.payload.pull_request || {};
             const dispatchInputs = context.payload.inputs || {};
@@ -78,7 +82,7 @@ jobs:
                 const runRefName = String(context.ref || '').replace(/^refs\/heads\//, '');
                 if (!defaultBranch || runRefName !== defaultBranch) {
                   core.setFailed(
-                    `Merge-card check failed closed: workflow run SHA ${runSha.slice(0, 7) || '(missing)'} is not the expected head ${eventHead.slice(0, 7)}.`
+                    'Merge-card check failed closed: workflow run SHA is not the expected head.'
                   );
                   return;
                 }
@@ -89,7 +93,7 @@ jobs:
               eventHead = ((eventPr.head || {}).sha) || '';
             } else {
               core.setFailed(
-                `Merge-card check failed closed: unsupported event ${eventName || '(missing)'}.`
+                'Merge-card check failed closed: unsupported event.'
               );
               return;
             }
@@ -112,8 +116,8 @@ jobs:
               });
               livePr = liveResponse && liveResponse.data;
             } catch (error) {
-              const detail = error && error.message ? ` (${error.message})` : '.';
-              core.setFailed(`Merge-card check failed closed: live pull request fetch failed${detail}`);
+              privateError(error);
+              core.setFailed('Merge-card check failed closed: live pull request fetch failed; private diagnostics withheld.');
               return;
             }
             if (!livePr || typeof livePr !== 'object') {
@@ -136,7 +140,7 @@ jobs:
             }
             if (!liveRepo || liveRepo.toLowerCase() !== expectedRepo.toLowerCase()) {
               core.setFailed(
-                `Merge-card check failed closed: live repository ${liveRepo || '(missing)'} is not ${expectedRepo}.`
+                'Merge-card check failed closed: live repository does not match the event repository.'
               );
               return;
             }
@@ -146,13 +150,13 @@ jobs:
             }
             if (liveBaseRef !== 'main') {
               core.setFailed(
-                `Merge-card check failed closed: pull request base is ${liveBaseRef || '(missing)'}, not main.`
+                'Merge-card check failed closed: pull request target is not main.'
               );
               return;
             }
             if (!/^[0-9a-f]{40}$/i.test(liveHead) || liveHead.toLowerCase() !== eventHead.toLowerCase()) {
               core.setFailed(
-                `Merge-card check failed closed: live head ${liveHead.slice(0, 7) || '(missing)'} is not the event head ${eventHead.slice(0, 7)}.`
+                'Merge-card check failed closed: live head is not the event head.'
               );
               return;
             }
@@ -168,8 +172,8 @@ jobs:
               const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
               helper = require(`${workspace}/scripts/atlas-primary-risk.js`);
             } catch (error) {
-              const detail = error && error.message ? ` (${error.message})` : '.';
-              core.setFailed(`Merge-card check failed closed: could not load the Primary-risk helper${detail}`);
+              privateError(error);
+              core.setFailed('Merge-card check failed closed: could not load the Primary-risk helper; private diagnostics withheld.');
               return;
             }
             if (!helper || typeof helper.parsePrimaryRisk !== 'function') {
@@ -348,8 +352,8 @@ jobs:
                   },
                 });
               } catch (error) {
-                const detail = error && error.message ? ` (${error.message})` : '.';
-                core.setFailed(`Merge-card check failed closed: could not record the required check on the expected head${detail}`);
+                privateError(error);
+                core.setFailed('Merge-card check failed closed: could not record the required check on the expected head; private diagnostics withheld.');
                 return;
               }
             }
@@ -358,4 +362,9 @@ jobs:
               core.setFailed(`${problems.length} mechanical merge-card problem(s):\n- ${problems.join('\n- ')}`);
             } else {
               core.info('Merge card mechanical fields are complete. Prose remains a reviewer judgement.');
+            }
+
+            } catch (error) {
+              privateError(error);
+              core.setFailed('Merge-card check failed closed; private diagnostics withheld.');
             }

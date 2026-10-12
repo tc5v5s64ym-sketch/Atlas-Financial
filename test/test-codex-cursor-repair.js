@@ -271,110 +271,29 @@ const denyGh = spawnSync('sh', [DENY_GH], { encoding: 'utf8' });
 ok(denyGh.status === 126 && /gh is disabled/.test(denyGh.stderr),
   'deny-gh wrapper blocks gh');
 
-console.log('\n=== shipped workflows ===');
+console.log('\n=== shipped workflow privacy boundary ===');
 const dispatch = sourceText(fs.readFileSync(DISPATCH, 'utf8'));
 const repair = sourceText(fs.readFileSync(REPAIR, 'utf8'));
-
-ok(!fs.existsSync(path.join(__dirname, '..', '.github/workflows/codex-review-request.yml')),
-  'Request Codex review comment-dispatcher is retired');
-ok(!/@codex review/.test(dispatch) && !/@codex review/.test(repair),
-  'Codex→Cursor repair path does not post @codex review');
-ok(!/ATLAS_CODEX_REVIEW_TOKEN/.test(dispatch) && !/ATLAS_CODEX_REVIEW_TOKEN/.test(repair),
-  'repair path does not use the retired review-request token');
-
-ok(!/\$\{\{\s*secrets\./.test(dispatch), 'dispatch workflow references no secrets');
-ok(/pull_request_review:/.test(dispatch) && /types:\s*\[submitted\]/.test(dispatch),
-  'dispatch listens for submitted reviews only');
-ok(!/issue_comment:/.test(dispatch), 'dispatch is not triggered by an issue comment');
-ok(!/CURSOR_API_KEY|ATLAS_AUTOMATION_TOKEN/.test(dispatch),
-  'dispatch names neither automation secret');
-ok(/chatgpt-codex-connector\[bot\]/.test(dispatch)
-  && /chatgpt-codex-connector'/.test(dispatch),
-  'dispatch still requires the genuine Codex identities');
-ok(!/\btrim\s*\(/.test(dispatch),
-  'dispatch GitHub Actions expression contains no trim(');
-ok(/startsWith\(github\.event\.review\.body, 'Atlas Contract \/ Systems Review — NOT PASS'\)/.test(dispatch),
-  'dispatch accepts exact-prefix Atlas NOT PASS');
-ok(/startsWith\(github\.event\.review\.body, 'Atlas Contract \/ Systems Review — BLOCKING'\)/.test(dispatch),
-  'dispatch accepts exact-prefix Atlas BLOCKING');
-ok(/startsWith\(github\.event\.review\.body, 'Atlas Contract \/ Systems Review — PASS'\)/.test(dispatch),
-  'dispatch records trusted Atlas PASS so the trusted workflow can sync the card');
-ok(/Trusted Atlas PASS does not start a repair/.test(repair),
-  'trusted workflow does not start Cursor after Atlas PASS');
-ok(/gh workflow run merge-card-check\.yml/.test(repair)
-  && /expected_head_sha/.test(repair)
-  && /atlas-merge-card-dispatch-ref\.js/.test(repair),
-  'trusted Atlas PASS dispatches Merge Card check with a head-aware workflow ref');
-ok(/actions:\s*write/.test(repair),
-  'trusted workflow has actions:write so it can dispatch Merge Card check');
-ok(!/gh api --method PATCH[\s\S]{0,120}\btitle\b/.test(repair)
-  && !/gh run rerun/.test(repair),
-  'repair workflow has no synthetic title edit or manual Merge Card rerun');
-ok(!/startsWith\(\s*trim\s*\(/.test(dispatch)
-  && !/startsWith\(\s*['"][ \t]/.test(dispatch),
-  'dispatch does not rely on leading-whitespace normalization');
-ok(/tc5v5s64ym-sketch/.test(dispatch),
-  'dispatch still requires the trusted Atlas reviewer login');
-
-ok(/workflow_run:/.test(repair) && /workflow_dispatch:/.test(repair),
-  'secret-bearing workflow starts from workflow_run or explicit dispatch');
-ok(!/^\s+pull_request_target:|^\s+pull_request:|^\s+pull_request_review:/m.test(repair),
-  'secret-bearing workflow is not triggered by a PR-controlled event');
-ok(!/issue_comment:/.test(repair),
-  'secret-bearing workflow is not triggered by an issue comment');
-ok(/select-review/.test(repair),
-  'trusted repair workflow selects Codex and Atlas reviews through the same gate');
-ok(!/ascii_downcase\) == "chatgpt-codex-connector/.test(repair),
-  'trusted workflow no longer hard-filters review_id to Codex-only jq');
-ok((repair.match(/cursor-agent --print/g) || []).length === 1,
-  'one cursor-agent invocation serves both lanes');
-ok((repair.match(/atlas-cursor-repair-gate\.js evaluate/g) || []).length === 1
-  && (repair.match(/atlas-cursor-repair-gate\.js prompt/g) || []).length === 1,
-  'one evaluate step and one prompt step serve both lanes');
-ok(/permissions:\n(?:  [^\n]+\n)*  contents: read/.test(repair),
-  'GITHUB_TOKEN contents permission is read-only');
-ok(!/contents:\s*write/.test(repair), 'GITHUB_TOKEN is not granted contents:write');
-ok(!/auto-merge|enablePullRequestAutoMerge|merge_method/.test(repair),
-  'no auto-merge machinery');
-
-const repairJob = (repair.split(/^  repair:\n/m)[1] || '').split(/^  test:\n/m)[0];
-const testJob = (repair.split(/^  test:\n/m)[1] || '').split(/^  push:\n/m)[0];
-const pushJob = repair.split(/^  push:\n/m)[1] || '';
-ok(Boolean(repairJob && testJob && pushJob), 'repair, test, and push are separate jobs');
-ok(/npm test/.test(testJob) && !/CURSOR_API_KEY|ATLAS_AUTOMATION_TOKEN/.test(testJob),
-  'the test job runs npm test without either secret');
-ok(!/npm test/.test(repairJob) && !/npm test/.test(pushJob),
-  'secret-bearing jobs do not execute the PR test suite');
-ok(!/checkout@v4[\s\S]{0,400}ref: \$\{ \{ needs\.gate\.outputs\.head_ref/.test(repair)
-  || /persist-credentials:\s*false/.test(repair),
-  'PR checkout used for Cursor has persist-credentials disabled or is not the secret push checkout');
-ok(/persist-credentials:\s*false/.test(repair),
-  'at least one checkout disables persisted credentials');
-ok(/ATLAS_AUTOMATION_TOKEN/.test(repair) && /git push/.test(repair),
-  'deterministic push path is present');
-ok(/token: \$\{\{ secrets\.ATLAS_AUTOMATION_TOKEN \}\}/.test(repair),
-  'push checkout uses the automation credential');
-const envBlocks = [...repair.matchAll(/^\s+env:\n(?:[ \t]+[^\n]+\n)+/gm)].map((match) => match[0]);
-ok(envBlocks.length > 0, 'repair workflow declares job or step env blocks');
-ok(envBlocks.every((block) => !(
-  block.includes('CURSOR_API_KEY') && block.includes('ATLAS_AUTOMATION_TOKEN')
-)), 'Cursor API key and automation token are not in the same job env block');
-ok(/atlas-cursor-repair-deny-git\.sh/.test(repair)
-  && /atlas-cursor-repair-deny-gh\.sh/.test(repair),
-  'repair job installs the deny wrappers on Cursor PATH');
-ok(/env -u GITHUB_TOKEN -u GH_TOKEN -u ATLAS_AUTOMATION_TOKEN/.test(repair),
-  'Cursor process is launched without GitHub tokens');
-ok(/vars\.ATLAS_CURSOR_MODEL/.test(repair)
-  && /cursor-agent --list-models/.test(repair)
-  && !/ATLAS_CURSOR_MODEL:-/.test(repair)
-  && !/\|\| ['"]grok/.test(repair),
-  'model id is an explicit repository variable with no silent fallback');
-ok(/--print/.test(repair) && /--trust/.test(repair),
-  'cursor-agent is invoked non-interactively');
-ok(/atlas-cursor-repair-state/.test(repair),
-  'round count is persisted in a GitHub comment marker');
-ok(/gh api --paginate[\s\S]{0,200}>\s*"\$\{/.test(repair),
-  'paginated comments are materialized before the state-marker search');
+const privacy = fs.readFileSync(path.join(__dirname, '..', 'scripts/ci-repair-privacy.js'), 'utf8');
+ok(!fs.existsSync(path.join(__dirname, '..', '.github/workflows/codex-review-request.yml')), 'paid reviewer request remains retired');
+ok(!/@codex review|ATLAS_CODEX_REVIEW_TOKEN/.test(dispatch + repair), 'no paid review request or retired token');
+ok(/pull_request_review:/.test(dispatch) && /types:\s*\[submitted\]/.test(dispatch), 'dispatcher still observes genuine submitted reviews');
+ok(/chatgpt-codex-connector\[bot\]/.test(dispatch) && /tc5v5s64ym-sketch/.test(dispatch), 'genuine reviewer identities unchanged');
+ok(!/\$\{\{\s*secrets\.|CURSOR_API_KEY|ATLAS_AUTOMATION_TOKEN|issue_comment:/.test(dispatch), 'dispatcher remains secret-free and review-triggered');
+ok(dispatch.includes(gate.ATLAS_PASS_MARKER) && gate.ATLAS_BLOCKING_MARKERS.every(marker => dispatch.includes(marker)),
+  'all genuine Atlas outcome lanes remain');
+ok(/workflow_run:/.test(repair) && /workflow_dispatch:/.test(repair), 'trusted workflow event sources unchanged');
+ok(!/^\s+pull_request_target:|^\s+pull_request:|^\s+pull_request_review:|^\s+issue_comment:/m.test(repair), 'no PR-controlled privileged trigger');
+ok(/ref: \$\{\{ github.event.repository.default_branch \}\}/.test(repair) && /persist-credentials: false/.test(repair), 'only trusted default branch is checked out');
+ok(/actions: write/.test(repair) && /contents: read/.test(repair) && !/contents: write/.test(repair), 'permissions preserve genuine card dispatch without content writes');
+ok(/ci-output.js --identity codex-review-gate -- node scripts\/ci-repair-privacy.js codex-review/.test(repair), 'trusted gate output uses private capture');
+ok(!/upload-artifact|download-artifact|cursor-agent|git push|CURSOR_API_KEY|ATLAS_AUTOMATION_TOKEN/.test(repair), 'no raw artifact, model credential, model call or automatic push path');
+ok(!/^  (?:test|push|repair):/m.test(repair), 'secret-bearing repair jobs are removed rather than combined');
+ok(!/buildRepairPrompt\(|writeFileSync[^\n]*(?:repair.patch|repair-prompt|repair-request)/.test(privacy), 'no raw review prompt or patch artifact is generated');
+ok(/Gate.evaluateRepairRequest\(/.test(privacy) && /Review.evaluateTrustedReview\(/.test(privacy), 'incumbent genuine-review predicates stay authoritative');
+ok(/Review.patchReviewBlock\(/.test(privacy) && /Dispatch.selectDispatchRef\(/.test(privacy), 'existing review patch and head-aware dispatch helpers retained');
+ok(/private-artifact-blocked/.test(privacy) && /HOLD_EXIT = 78/.test(privacy), 'unsafe automatic repair returns an explicit failure status');
+ok(!/auto-merge|enablePullRequestAutoMerge|merge_method/.test(repair), 'no automatic merge');
 
 console.log('\n=== gate→repair race: exact SHA pin ===');
 ok(gate.assertHeadsStillGated(HEAD, HEAD, HEAD).mutate === true,
@@ -571,97 +490,7 @@ try { fs.unlinkSync(reviewsFile); } catch { /* ignore */ }
 ok(!fs.existsSync(path.join(__dirname, '..', '.github/workflows/atlas-cursor-repair.yml')),
   'no second Atlas-specific repair workflow');
 
-ok(repairJob.includes('ref: ${{ needs.gate.outputs.head_sha }}'),
-  'repair job checks out the gated SHA');
-ok(!/needs\.gate\.outputs\.head_ref/.test(repairJob),
-  'repair job does not check out the mutable branch ref');
-ok(/needs\.gate\.outputs\.head_sha/.test(testJob)
-  && !/needs\.gate\.outputs\.head_ref/.test(testJob),
-  'test job checks out the gated SHA, not the branch ref');
-ok(/needs\.gate\.outputs\.head_ref/.test(pushJob),
-  'push job may check out the branch because it must mutate it');
-const pushSteps = pushJob.split(/\n      - name: /);
-const preserveStep = pushSteps.find((step) => step.includes('atlas-trusted-scripts')) || '';
-const prCheckoutStep = pushSteps.find((step) => step.startsWith('Checkout the PR branch')) || '';
-const commitStep = pushSteps.find((step) => step.startsWith('Commit, push, and persist the round')) || '';
-const pushScript = (commitStep.match(/run: \|\n([\s\S]*)$/) || [, ''])[1];
-const assertCalls = [...pushScript.matchAll(/node[^\n]*assert-head/g)].map((match) => match[0]);
-const firstAssertAt = pushScript.indexOf('assert-head');
-const secondAssertAt = pushScript.indexOf('assert-head', firstAssertAt + 1);
-const cachedApplyAt = pushScript.indexOf('git apply --cached');
-const mutationApplyAt = (() => {
-  let idx = 0;
-  while (idx < pushScript.length) {
-    const found = pushScript.indexOf('git apply', idx);
-    if (found < 0) return -1;
-    if (!pushScript.slice(found).startsWith('git apply --cached')) return found;
-    idx = found + 1;
-  }
-  return -1;
-})();
-const commitAt = pushScript.indexOf('git commit');
-const gitPushAt = pushScript.indexOf('git push');
-const classifyAt = pushScript.indexOf('classify-push-head');
-ok(assertCalls.length === 2,
-  'both pre-mutation assert-head calls remain', `count=${assertCalls.length}`);
-ok(firstAssertAt >= 0 && secondAssertAt > firstAssertAt
-  && mutationApplyAt > secondAssertAt && commitAt > mutationApplyAt && gitPushAt > commitAt,
-  'worktree git apply occurs only after both assert-head checks; commit/push only after apply',
-  `assert1=${firstAssertAt} assert2=${secondAssertAt} apply=${mutationApplyAt} commit=${commitAt} push=${gitPushAt}`);
-ok(cachedApplyAt >= 0 && cachedApplyAt < classifyAt && classifyAt < mutationApplyAt,
-  'expected tree is derived from repair.patch before classify; mutation apply stays after classify');
-ok(/push-provenance\.json/.test(pushScript)
-  && /reviewedSha/.test(pushScript)
-  && /expectedTreeSha/.test(pushScript)
-  && /liveTreeSha/.test(pushScript)
-  && /REVIEWED_SHA/.test(pushScript),
-  'push binds classify-push-head to reviewed SHA and the trusted patch tree');
-ok(/git write-tree/.test(pushScript) && pushScript.indexOf('git write-tree') < classifyAt,
-  'trusted expected tree is written from the gated index plus repair.patch');
-ok(/adopt-live/.test(pushScript) && /evaluate-pending/.test(pushScript)
-  && pushScript.indexOf('adopt-live') < pushScript.indexOf('evaluate-pending'),
-  'adopt-live still reaches PENDING bookkeeping without a second push');
-ok(/git apply/.test(pushScript) && /push_action.*"push"/.test(pushScript.replace(/\s+/g, ' '))
-  || /push_action\}" == "push"/.test(pushScript),
-  'git apply remains inside the classified push arm');
-ok(!/git apply(?! --cached)|git commit|git push|git rebase|git merge/.test(pushScript.slice(0, firstAssertAt)),
-  'no worktree apply, commit, push, rebase, or merge before the first assert-head');
-ok(/atlas-github-pr-head-sync\.js/.test(pushJob),
-  'push confirms the live PR head through the bounded helper');
-ok(/git push/.test(pushScript) && pushScript.indexOf('git push') < pushScript.indexOf('atlas-github-pr-head-sync.js'),
-  'live PR-head confirmation happens after git push');
-ok(pushScript.indexOf('atlas-github-pr-head-sync.js') < pushScript.indexOf('evaluate-pending')
-  && pushScript.indexOf('atlas-github-pr-head-sync.js') < pushScript.indexOf('atlas-cursor-repair-state'),
-  'PENDING and the repair-round marker wait for live PR-head confirmation');
-ok(!/git rebase|git merge|git push --force|git push -f/.test(pushJob),
-  'push path has no rebase, merge, or force-push');
-ok(/path: trusted/.test(pushJob.split('Checkout the PR branch')[0] || ''),
-  'trusted default-branch checkout uses path trusted');
-ok(preserveStep.includes('trusted/scripts/atlas-cursor-repair-gate.js')
-  && preserveStep.includes('${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js'),
-  'push job copies the trusted default-branch gate script to RUNNER_TEMP');
-ok(preserveStep.includes('trusted/scripts/atlas-github-pr-head-sync.js')
-  && preserveStep.includes('${RUNNER_TEMP}/atlas-trusted-scripts/atlas-github-pr-head-sync.js'),
-  'push job copies the trusted live PR-head confirmation helper to RUNNER_TEMP');
-ok(pushJob.indexOf('atlas-trusted-scripts') >= 0
-  && pushJob.indexOf('Checkout the PR branch') > pushJob.indexOf('atlas-trusted-scripts'),
-  'the trusted gate script is preserved before the PR-branch checkout');
-ok(/path: pr-worktree/.test(prCheckoutStep),
-  'PR-branch checkout uses sibling path pr-worktree and cannot overwrite trusted/');
-ok(!/clean:\s*false/.test(pushJob),
-  'push job does not keep trusted/ by disabling checkout clean inside the PR tree');
-ok(/working-directory:\s*pr-worktree/.test(commitStep),
-  'push mutation step runs inside the PR worktree');
-ok(assertCalls.every((call) => (
-  call.includes('${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js')
-)), 'both assert-head calls use the preserved RUNNER_TEMP trusted script');
-ok(!/node trusted\/scripts\/atlas-cursor-repair-gate\.js/.test(commitStep),
-  'assert-head does not depend on workspace trusted/ after the PR checkout');
-ok((repair.match(/^  push:\n/gm) || []).length === 1
-  && /LANE/.test(commitStep)
-  && /lane_label="Codex"/.test(commitStep)
-  && /LANE\}" == "atlas"/.test(commitStep),
-  'existing Codex and Atlas lanes still share the same downstream push path');
+ok(!/git push|git apply|upload-artifact|download-artifact/.test(repair), 'no automatic mutation or plaintext patch transfer is reachable');
 
 console.log('\n=== push job trusted script survives PR-branch checkout ===');
 const simRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'atlas-push-trusted-'));

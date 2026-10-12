@@ -1,7 +1,8 @@
 name: Published figures review
 
-# Says, on every pull request, exactly which figures the household would see
-# change if this merged.
+# Public counts describe change only. They never satisfy the owner's private
+# figure-level reconciliation. Changed or missing-baseline comparisons stay
+# incomplete until that existing requirement is satisfied privately.
 #
 # This is the review this repository actually needs. The defect that started
 # the correctness work was a weekly spending cap that was wrong by $400 and
@@ -10,10 +11,10 @@ name: Published figures review
 # have shown it, because the figure was DERIVED. So instead of reading the
 # source, this runs the engine on both revisions and compares the answers.
 #
-# It is deliberately NON-BLOCKING. A figure moving is usually the entire point
-# of the change; the failure mode is a figure moving unnoticed. The blocking
-# partner is `merge-card-check`, which requires the PR body to say which
-# figures were expected to move.
+# A figure moving is usually the point of a change. Public counts can flag
+# that change, but cannot complete the required private owner reconciliation.
+# Unchanged comparisons succeed; changed or missing-baseline comparisons remain
+# incomplete. No self-attested receipt makes that evidence accepted.
 #
 # TRUST MODEL: this runs under `pull_request`, not `pull_request_target`, so
 # the token is scoped to this PR and no repository secret is exposed to PR
@@ -46,6 +47,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -55,13 +57,13 @@ jobs:
       # revision's script against the other's data. The engine's shape changes
       # between revisions — that is the whole reason the script lives beside it.
       - name: Snapshot the head
-        run: env -u GITHUB_TOKEN -u GH_TOKEN node scripts/figures-snapshot.js > "$RUNNER_TEMP/head.json"
+        run: env -u GITHUB_TOKEN -u GH_TOKEN node scripts/ci-output.js --identity figures-head-snapshot --stdout-file "$RUNNER_TEMP/head.json" -- env -u GITHUB_TOKEN -u GH_TOKEN node scripts/figures-snapshot.js
 
       - name: Snapshot the base
         run: |
-          git worktree add "$RUNNER_TEMP/base" "origin/${{ github.base_ref }}"
+          env -u GITHUB_TOKEN -u GH_TOKEN node scripts/ci-output.js --identity figures-base-checkout -- git worktree add "$RUNNER_TEMP/base" "${{ github.event.pull_request.base.sha }}"
           if [ -f "$RUNNER_TEMP/base/scripts/figures-snapshot.js" ]; then
-            ( cd "$RUNNER_TEMP/base" && env -u GITHUB_TOKEN -u GH_TOKEN node scripts/figures-snapshot.js ) > "$RUNNER_TEMP/base.json"
+            env -u GITHUB_TOKEN -u GH_TOKEN node scripts/ci-output.js --identity figures-base-snapshot --cwd "$RUNNER_TEMP/base" --stdout-file "$RUNNER_TEMP/base.json" -- env -u GITHUB_TOKEN -u GH_TOKEN node scripts/figures-snapshot.js
           else
             # The script itself is new. Say so rather than reporting every
             # figure as an addition.
@@ -71,11 +73,11 @@ jobs:
       - name: Format the figures comment
         run: |
           env -u GITHUB_TOKEN -u GH_TOKEN \
+            node scripts/ci-output.js --identity figures-comment --stdout-file "$RUNNER_TEMP/comment.md" -- \
             node scripts/figures-comment.js \
               "$RUNNER_TEMP/base.json" \
               "$RUNNER_TEMP/head.json" \
-              "${{ github.base_ref }}" \
-              > "$RUNNER_TEMP/comment.md"
+              "${{ github.base_ref }}" --public-summary
 
       - name: Post the figures comment
         uses: actions/github-script@v7
@@ -83,12 +85,67 @@ jobs:
           script: |
             const fs = require('fs');
             const MARKER = '<!-- atlas-figures-review -->';
+            try {
             let body = fs.readFileSync(process.env.RUNNER_TEMP + '/comment.md', 'utf8');
-            if (!body.includes(MARKER)) {
-              core.setFailed('Formatted figures comment is missing the review marker.');
-              return;
+            // Validate the entire inert public format. No PR JavaScript runs
+            // with the posting token; arbitrary formatter text is never posted.
+            const prefix = MARKER + '\n### Published figures - public summary\n\n';
+            const lines = body.startsWith(prefix) ? body.slice(prefix.length).split('\n') : [];
+            const state = /^Comparison: (changed|unchanged|introduced)\.$/.exec(lines[0] || '');
+            const families = ['Plan', 'Bills', 'Subscriptions', 'Credit', 'Planning', 'Other'];
+            // Verify count claims against inert snapshots as well as syntax.
+            // An otherwise valid formatter cannot smuggle values as counts.
+            const base = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/base.json', 'utf8'));
+            const head = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/head.json', 'utf8'));
+            const keys = [...new Set([...Object.keys(base || {}), ...Object.keys(head)])];
+            const expected = families.map(() => ({ compared: 0, changed: 0 }));
+            for (const key of keys) {
+              let family = 5;
+              if (key.startsWith('bills.')) family = 1;
+              else if (key.startsWith('subscriptions.')) family = 2;
+              else if (key.startsWith('credit.')) family = 3;
+              else if (key.startsWith('planning.')) family = 4;
+              else if (/^(meta|cash|plan|payday|operating|totals|budget|scoreboard|debt|balance|heloc|action|policy)\./.test(key)) family = 0;
+              const a = base === null ? undefined : base[key], b = head[key];
+              const moved = base === null || (typeof a === 'number' && typeof b === 'number'
+                ? Math.abs(a - b) > 0.005 : a !== b);
+              expected[family].compared++;
+              if (moved) expected[family].changed++;
             }
-            body += `\n---\n_Generated by [Claude Code](https://claude.ai/code)_`;
+            let compared = 0, changed = 0;
+            if (!state || lines.length !== 15 || lines[1] !== ''
+                || lines[2] !== '| Publication family | Compared fields | Changed fields |'
+                || lines[3] !== '|---|---|---|') throw new Error('invalid-public-summary');
+            for (let i = 0; i < families.length; i++) {
+              const row = /^\| ([A-Za-z]+) \| (0|[1-9]\d*) \| (0|[1-9]\d*) \|$/.exec(lines[4 + i]);
+              if (!row || row[1] !== families[i]) throw new Error('invalid-public-summary');
+              const count = Number(row[2]), moved = Number(row[3]);
+              if (!Number.isSafeInteger(count) || !Number.isSafeInteger(moved) || moved > count)
+                throw new Error('invalid-public-summary');
+              if (count !== expected[i].compared || moved !== expected[i].changed)
+                throw new Error('invalid-public-summary');
+              compared += count; changed += moved;
+            }
+            if (lines[10] !== '' || lines[11] !== `Total: ${compared} compared; ${changed} changed.`
+                || lines[12] !== 'Financial values and raw diagnostics are withheld.'
+                || lines[13] !== (base === null || changed
+                  ? 'Figures acceptance: WITHHELD until the owner privately reconciles the exact-base/head figure-level diff with the merge card.'
+                  : 'Figures acceptance: no snapshot figures moved.')
+                || lines[14] !== ''
+                || !Number.isSafeInteger(compared) || !Number.isSafeInteger(changed)
+                || (state[1] === 'unchanged' && changed !== 0)
+                || (state[1] === 'changed' && changed === 0)
+                || (state[1] === 'introduced' && changed !== compared)
+                || (base === null) !== (state[1] === 'introduced')) throw new Error('invalid-public-summary');
+            const headSha = context.payload.pull_request.head.sha;
+            const baseSha = context.payload.pull_request.base.sha;
+            if (!/^[a-f0-9]{40}$/.test(headSha) || !/^[a-f0-9]{40}$/.test(baseSha))
+              throw new Error('invalid-review-revisions');
+            const live = (await github.rest.pulls.get({ ...context.repo,
+              pull_number: context.payload.pull_request.number })).data;
+            if (live.head.sha !== headSha || live.base.sha !== baseSha)
+              throw new Error('stale-review-revisions');
+            body += `\nComparison revisions: base \`${baseSha}\`; head \`${headSha}\`.\n`;
 
             // One comment per PR, updated in place — a new comment on every push
             // would bury the thread it is supposed to inform.
@@ -101,4 +158,11 @@ jobs:
               await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+            if (base === null || changed) core.setFailed(
+              'Figures acceptance withheld: private exact-base/head figure-level reconciliation is required; public counts do not complete it.');
+            } catch (error) {
+              try { fs.writeFileSync(process.env.RUNNER_TEMP + '/figures-post.private.log',
+                String(error.stack || error), { mode: 0o600 }); } catch { /* Fail closed even if storage failed. */ }
+              core.setFailed('Published figures summary failed; raw diagnostics withheld.');
             }
