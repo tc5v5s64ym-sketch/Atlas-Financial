@@ -6744,10 +6744,17 @@ function budgetRemainingEvidenceContext(period, asOf) {
 function budgetProgressValueHtml(pair, key) {
   const amount = (field, planned = false) => budgetProgressAmountKnown(field) && (!planned || field.amount >= 0)
     ? budgetBrowseMoney(field.amount, field.trust) : '<span class="budget-v3-unknown">Unknown</span>';
+  // Canonical amounts stamped on the outer span under exactly the
+  // predicates that print them (Household whole-dollar face, Option B):
+  // the blend tile reads these typed values instead of re-parsing the
+  // printed cents. Unknown sides omit the attribute. Inert everywhere
+  // else — the printed strings are byte-identical.
+  const actualStamp = budgetProgressAmountKnown(pair?.actual) ? ` data-budget-actual-amount="${pair.actual.amount}"` : '';
+  const plannedStamp = budgetProgressAmountKnown(pair?.planned) && pair.planned.amount >= 0 ? ` data-budget-planned-amount="${pair.planned.amount}"` : '';
   const partial = pair?.actual?.completeness === 'partial';
   const actualKnown = budgetProgressAmountKnown(pair?.actual), plannedKnown = budgetProgressAmountKnown(pair?.planned);
-  if (!actualKnown && !plannedKnown) return `<span data-budget-ratio="${key}"><span data-budget-ratio-actual>${amount(null)}</span><span class="budget-cash-sr" data-budget-ratio-plan>Actual and plan unknown</span></span>`;
-  return `<span data-budget-ratio="${key}"><span data-budget-ratio-actual>${amount(pair?.actual)}${partial && actualKnown ? '<span data-budget-progress-partial aria-hidden="true">*</span><span class="budget-cash-sr"> partial evidence</span>' : ''}</span><span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span><span data-budget-ratio-plan>${amount(pair?.planned, true)}</span></span>`;
+  if (!actualKnown && !plannedKnown) return `<span data-budget-ratio="${key}"${actualStamp}${plannedStamp}><span data-budget-ratio-actual>${amount(null)}</span><span class="budget-cash-sr" data-budget-ratio-plan>Actual and plan unknown</span></span>`;
+  return `<span data-budget-ratio="${key}"${actualStamp}${plannedStamp}><span data-budget-ratio-actual>${amount(pair?.actual)}${partial && actualKnown ? '<span data-budget-progress-partial aria-hidden="true">*</span><span class="budget-cash-sr"> partial evidence</span>' : ''}</span><span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span><span data-budget-ratio-plan>${amount(pair?.planned, true)}</span></span>`;
 }
 
 function budgetProgressBarHtml(pair, key) {
@@ -6820,7 +6827,15 @@ function budgetSpendingSectionHtml(period, ctx) {
     if (remainingEvidence.remainingEvidenceIncomplete && state.spentKnown) state.label = 'Remaining unavailable';
     const meta = state.other && !budgetBrowseKnown(displayRow.planned) ? budgetBrowseEscape(row.note || 'Not yet assigned to a category')
       : `<span class="budget-cash-sr">Spent </span>${budgetBrowseMoney(row.spent, row.trust)}<span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span>${budgetBrowseMoney(displayRow.planned, state.trust)}`;
-    return `<button type="button" class="budget-category-row is-${state.kind}" data-budget-category-open="${budgetBrowseEscape(row.id)}" data-budget-browse-origin="spending" aria-haspopup="dialog">
+    // Canonical pair amounts stamped under exactly the predicates that
+    // print the meta tokens above (Household whole-dollar face,
+    // Option B): the blend tile reads these typed values instead of
+    // re-parsing the printed cents. An unknown side omits its
+    // attribute. The printed meta is byte-identical.
+    const pairActualStamp = state.spentKnown ? ` data-budget-pair-actual="${row.spent}"` : '';
+    const pairPlannedStamp = budgetBrowseKnown(displayRow.planned) && !['unavailable', 'unknown', 'untrusted'].includes(state.trust)
+      ? ` data-budget-pair-planned="${displayRow.planned}"` : '';
+    return `<button type="button" class="budget-category-row is-${state.kind}"${pairActualStamp}${pairPlannedStamp} data-budget-category-open="${budgetBrowseEscape(row.id)}" data-budget-browse-origin="spending" aria-haspopup="dialog">
       <span class="budget-category-name">${budgetBrowseEscape(row.label || 'Category')}</span><span class="budget-category-status">${state.label}</span>
       <span class="budget-category-meta">${meta}</span><span class="budget-category-link">Transactions <span aria-hidden="true">›</span></span>
       ${budgetCategoryBarHtml(displayRow, state, pace)}

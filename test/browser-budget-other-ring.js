@@ -6,6 +6,15 @@
 // the circle; the tile's combined published Actual / Planned pair is
 // the Household tile's bottom totals; the Still planned / From today
 // cell lives in the sheet evidence body, not the tile header.
+// Whole-dollar face (follow-on amendment; Option B after Systems
+// BLOCK 5484530088): the beneath-circle pairs and the bottom totals
+// render in whole dollars — each figure rounded UP once (magnitude
+// ceiling) from its own typed published value, read from the
+// canonical amount plan.js stamps on the row / ratio span (the total
+// from the publication's own pair, never a sum of rounded categories;
+// a known zero prints $0; unknown prints its published word). The
+// source meta, the accessible names and the sheet evidence keep
+// exact cents, and the assertions below pin that split deliberately.
 // Overflow (approved boundary, ts 1791699806.567609): past 100% of
 // plan the ring laps — red on BOTH laps (correction 1), the second
 // lap drawn exactly through 200% with a fixed budget-limit marker at
@@ -255,8 +264,8 @@ function assertOverflow(face, fraction, what) {
         assert.ok(Math.abs(face.arcDrawn - (137.26 / 450) * CIRC) < 0.6,
           'arc fills with spent/plan, got dash ' + face.arcDrawn);
         assert.equal(face.centre, 'Other spending', 'centre is the published category name: ' + face.centre);
-        assert.equal(face.pair, 'Spent $137.26 / of planned $450.00',
-          'beneath the circle: the published Actual / Planned pair: ' + face.pair);
+        assert.equal(face.pair, 'Spent $138 / of planned $450',
+          'beneath the circle: the published Actual / Planned pair in whole dollars: ' + face.pair);
         assert.match(face.ariaLabel, /\$137\.26/, 'accessible name keeps the printed amounts');
         assert.doesNotMatch(face.ariaLabel, /planned Unavailable/,
           'known-plan control (Systems Review 5483272344): no synthesized '
@@ -266,9 +275,11 @@ function assertOverflow(face, fraction, what) {
         assert.doesNotMatch(face.headerText, /Still planned|From today/,
           'header carries no From-today sentence: ' + face.headerText);
         assert.equal(face.actualLabel, 'Actual ', 'bottom totals visibly label the actual');
-        assert.match(face.totalsText, /\$247\.63/, 'bottom totals print the published household actual');
+        assert.match(face.totalsText, /\$248/, 'bottom totals print the published household actual '
+          + 'rounded UP once from its own stamped value ($247.63 -> $248) — never the sum of the '
+          + 'rounded category actuals ($111 + $138 = $249, above the total by design)');
         assert.equal(face.planLabel, 'Planned ', 'bottom totals visibly label the plan');
-        assert.match(face.totalsText, /\$925\.00/, 'bottom totals print the published household plan');
+        assert.match(face.totalsText, /\$925/, 'bottom totals print the published household plan in whole dollars');
         assert.equal(face.totalsAfterRings, true, 'totals sit at the tile bottom, below the rings');
         assert.deepEqual(face.faceBadges.filter(t => /needs a category/i.test(t)), [],
           'no needs-a-category face badge is stamped on the Other ring');
@@ -281,8 +292,8 @@ function assertOverflow(face, fraction, what) {
         const groceries = await readOrdinary(page, 'groceries');
         assert.match(groceries.ringClass, /is-known/);
         assert.equal(groceries.centre, 'Groceries', 'groceries centre is the published name: ' + groceries.centre);
-        assert.equal(groceries.pair, 'Spent $110.37 / of planned $220.00',
-          'groceries beneath-circle pair is the published Actual / Planned: ' + groceries.pair);
+        assert.equal(groceries.pair, 'Spent $111 / of planned $220',
+          'groceries beneath-circle pair is the published Actual / Planned in whole dollars: ' + groceries.pair);
         assertNoOverflow(groceries, 'partial groceries (share < 1)');
         assert.ok(Math.abs(groceries.arcDrawn - (110.37 / 220) * CIRC) < 0.6,
           'groceries arc = spent/plan, got ' + groceries.arcDrawn);
@@ -293,8 +304,8 @@ function assertOverflow(face, fraction, what) {
         const fuel = await readOrdinary(page, 'fuel');
         assert.match(fuel.ringClass, /is-known/);
         assert.equal(fuel.centre, 'Fuel', 'fuel centre is the published name: ' + fuel.centre);
-        assert.equal(fuel.pair, 'Spent $0.00 / of planned $85.00',
-          'fuel pair prints the known-zero actual as published: ' + fuel.pair);
+        assert.equal(fuel.pair, 'Spent $0 / of planned $85',
+          'fuel pair prints the known-zero actual as $0: ' + fuel.pair);
         assert.equal(fuel.arcDrawn, null, 'fuel zero draws no arc');
         assert.equal(fuel.liquidPresent, false, 'R2: no liquid element at a known zero (no sliver)');
         // The personal categories: the VISUAL centre is exactly the
@@ -307,13 +318,13 @@ function assertOverflow(face, fraction, what) {
           'Dale visual centre is exactly the approved label: ' + dale.centre);
         assert.match(dale.ariaLabel, /Dale guilt-free spending/,
           'Dale accessible name keeps the full published label: ' + dale.ariaLabel);
-        assert.equal(dale.pair, 'Spent $0.00 / of planned $35.00', 'Dale pair: ' + dale.pair);
+        assert.equal(dale.pair, 'Spent $0 / of planned $35', 'Dale pair: ' + dale.pair);
         const amanda = await readOrdinary(page, 'amanda-guilt-free');
         assert.equal(amanda.centre, 'Amanda',
           'Amanda visual centre is exactly the approved label: ' + amanda.centre);
         assert.match(amanda.ariaLabel, /Amanda guilt-free spending/,
           'Amanda accessible name keeps the full published label: ' + amanda.ariaLabel);
-        assert.equal(amanda.pair, 'Spent $0.00 / of planned $45.00', 'Amanda pair: ' + amanda.pair);
+        assert.equal(amanda.pair, 'Spent $0 / of planned $45', 'Amanda pair: ' + amanda.pair);
       }
       // The ring opens the native Other Spending detail panel, and the
       // evidence body holds the Still planned / From today cell.
@@ -345,8 +356,8 @@ function assertOverflow(face, fraction, what) {
       await page.close();
     }
     // Known zero: empty arc (no segment), solid track, name centre and
-    // the printed $0.00 in the pair — a known zero is a printed value,
-    // not an unknown ring.
+    // the published $0.00 printed as $0 in the pair — a known zero is a
+    // printed value, not an unknown ring.
     {
       const { page } = await open(browser, fx.build(0).data);
       const face = await readFace(page);
@@ -356,8 +367,8 @@ function assertOverflow(face, fraction, what) {
         assert.equal(face.trackDotted, false, 'known zero keeps the solid track');
         assert.doesNotMatch(face.ringClass, /is-unknown/);
         assert.equal(face.centre, 'Other spending', 'zero: centre is the category name');
-        assert.equal(face.pair, 'Spent $0.00 / of planned $450.00',
-          'zero: the pair prints the known-zero actual as published: ' + face.pair);
+        assert.equal(face.pair, 'Spent $0 / of planned $450',
+          'zero: the pair prints the known-zero actual as $0: ' + face.pair);
         assert.equal(face.left, '0', 'zero: --left is 0');
         assert.equal(face.liquidPresent, false,
           'R2: no liquid element at a known zero — the interior is visibly empty, no wave sliver');
@@ -372,7 +383,7 @@ function assertOverflow(face, fraction, what) {
       if (!shotsOnly) {
         assert.ok(Math.abs(face.arcDrawn - CIRC) < 0.6, 'exact plan fills the arc: ' + face.arcDrawn);
         assert.equal(face.centre, 'Other spending', 'exact: centre is the category name');
-        assert.equal(face.pair, 'Spent $450.00 / of planned $450.00', 'exact pair: ' + face.pair);
+        assert.equal(face.pair, 'Spent $450 / of planned $450', 'exact pair: ' + face.pair);
         assertLiquidFull(face.liquidInfo, 'R2 exact Other liquid stays full');
         assertNoOverflow(face, 'exact 100%: full lap, no overflow, no marker');
       }
@@ -387,8 +398,8 @@ function assertOverflow(face, fraction, what) {
       if (!shotsOnly) {
         assert.ok(Math.abs(face.arcDrawn - CIRC) < 0.6, 'overspend caps the arc: ' + face.arcDrawn);
         assert.equal(face.centre, 'Other spending', 'over: centre is the category name: ' + face.centre);
-        assert.equal(face.pair, 'Spent $618.73 / of planned $450.00',
-          'over: the pair prints spent (not the overage) against plan: ' + face.pair);
+        assert.equal(face.pair, 'Spent $619 / of planned $450',
+          'over: the pair prints spent (not the overage) against plan, in whole dollars: ' + face.pair);
         assert.match(face.ringClass, /is-over/);
         assert.match(face.pill, /Over plan/);
         assert.match(face.ariaLabel, /168\.73 over/, 'accessible name keeps the over status');
@@ -408,13 +419,13 @@ function assertOverflow(face, fraction, what) {
       }).data);
       if (!shotsOnly) {
         const face = await readFace(page);
-        assert.equal(face.pair, 'Spent $562.50 / of planned $450.00', '125% pair: ' + face.pair);
+        assert.equal(face.pair, 'Spent $563 / of planned $450', '125% pair (562.50 rounds up): ' + face.pair);
         assert.ok(Math.abs(face.arcDrawn - CIRC) < 0.6, '125%: lap 1 is a complete lap');
         assertOverflow(face, 0.25, 'Other at 125%');
         assert.equal(face.overflow.badge, '', '125%: no 2x+ label');
-        assert.match(face.totalsText, /\$837\.50/, '125%: bottom totals keep the published pair (groceries 275.00 + Other 562.50)');
+        assert.match(face.totalsText, /\$838/, '125%: bottom totals print the publication pair in whole dollars ($837.50 -> $838)');
         const groceries = await readOrdinary(page, 'groceries');
-        assert.equal(groceries.pair, 'Spent $275.00 / of planned $220.00', 'groceries 125% pair: ' + groceries.pair);
+        assert.equal(groceries.pair, 'Spent $275 / of planned $220', 'groceries 125% pair: ' + groceries.pair);
         assertOverflow(groceries, 0.25, 'groceries at 125%');
         assert.equal(groceries.overflow.badge, '', 'groceries 125%: no 2x+ label');
         const fuel = await readOrdinary(page, 'fuel');
@@ -429,7 +440,7 @@ function assertOverflow(face, fraction, what) {
       const { page } = await open(browser, fx.build(900).data);
       const face = await readFace(page);
       if (!shotsOnly) {
-        assert.equal(face.pair, 'Spent $900.00 / of planned $450.00', '200% pair: ' + face.pair);
+        assert.equal(face.pair, 'Spent $900 / of planned $450', '200% pair: ' + face.pair);
         assertOverflow(face, 1, 'Other at exactly 200%');
         assert.equal(face.overflow.badge, '', 'exactly 200%: no 2x+ label');
       }
@@ -445,13 +456,13 @@ function assertOverflow(face, fraction, what) {
       }).data);
       if (!shotsOnly) {
         const face = await readFace(page);
-        assert.equal(face.pair, 'Spent $990.00 / of planned $450.00', '220% pair: ' + face.pair);
+        assert.equal(face.pair, 'Spent $990 / of planned $450', '220% pair: ' + face.pair);
         assertOverflow(face, 1, 'Other above 200% (geometry stays two full laps)');
         assert.equal(face.overflow.badge, '2x+', 'above 200%: the 2x+ label prints beside the pair');
         assert.match(face.ariaLabel, /540\.00 over/, 'accessible name keeps the published over status');
         assert.doesNotMatch(face.ariaLabel, /2x\+/, 'the 2x+ label never enters the accessible name');
         const groceries = await readOrdinary(page, 'groceries');
-        assert.equal(groceries.pair, 'Spent $484.00 / of planned $220.00', 'groceries 220% pair: ' + groceries.pair);
+        assert.equal(groceries.pair, 'Spent $484 / of planned $220', 'groceries 220% pair: ' + groceries.pair);
         assertOverflow(groceries, 1, 'groceries above 200%');
         assert.equal(groceries.overflow.badge, '2x+', 'groceries above 200%: the 2x+ label prints');
       }
@@ -466,7 +477,7 @@ function assertOverflow(face, fraction, what) {
       if (!shotsOnly) {
         const fuel = await readOrdinary(page, 'fuel');
         assert.equal(fuel.centre, 'Fuel', 'R1 fuel exact: centre is the published name');
-        assert.equal(fuel.pair, 'Spent $85.00 / of planned $85.00', 'R1 fuel exact pair: ' + fuel.pair);
+        assert.equal(fuel.pair, 'Spent $85 / of planned $85', 'R1 fuel exact pair: ' + fuel.pair);
         assert.ok(Math.abs(fuel.arcDrawn - CIRC) < 0.6, 'R1 fuel exact: full arc');
         assertLiquidFull(fuel.liquidInfo, 'R1 fuel exact liquid full');
       }
@@ -479,7 +490,7 @@ function assertOverflow(face, fraction, what) {
       if (!shotsOnly) {
         const groceries = await readOrdinary(page, 'groceries');
         assert.equal(groceries.centre, 'Groceries', 'R1 groceries over: centre is the published name');
-        assert.equal(groceries.pair, 'Spent $260.37 / of planned $220.00',
+        assert.equal(groceries.pair, 'Spent $261 / of planned $220',
           'R1 groceries over pair: ' + groceries.pair);
         assert.ok(Math.abs(groceries.arcDrawn - CIRC) < 0.6, 'R1 groceries over: arc caps full');
         assert.match(groceries.pill, /Over plan/, 'R1 groceries over: pill visible');
@@ -501,13 +512,13 @@ function assertOverflow(face, fraction, what) {
         assert.equal(face.arcDrawn, null);
         assert.equal(face.trackDotted, true, 'unknown actual gets the dotted track');
         assert.equal(face.centre, 'Other spending', 'unknown: centre is the category name: ' + face.centre);
-        assert.equal(face.pair, 'Spent Unavailable / of planned $450.00',
+        assert.equal(face.pair, 'Spent Unavailable / of planned $450',
           'unknown actual prints as Unavailable in the pair, never as zero: ' + face.pair);
         assert.equal(face.liquidPresent, false, 'unknown: no liquid');
         const groceries = await readOrdinary(page, 'groceries');
         assert.match(groceries.ringClass, /is-unknown/, 'R1: unknown treatment reaches ordinary rings');
         assert.equal(groceries.centre, 'Groceries', 'R1: unknown ordinary centre is the category name');
-        assert.equal(groceries.pair, 'Spent Unavailable / of planned $220.00',
+        assert.equal(groceries.pair, 'Spent Unavailable / of planned $220',
           'paired missing-side regression (missing actual): the Actual side prints '
           + 'explicitly Unavailable and the published Planned side is preserved, never a zero: '
           + groceries.pair);
@@ -519,8 +530,8 @@ function assertOverflow(face, fraction, what) {
     }
     // Missing plan (completed period, original plan withheld): no
     // geometry is invented, and the beneath-circle pair still prints
-    // in Actual / Planned order — the known spent side preserved
-    // verbatim, the withheld plan side explicitly Unavailable, never
+    // in Actual / Planned order — the known spent side preserved (in
+    // whole dollars), the withheld plan side explicitly Unavailable, never
     // a lone amount and never an invented zero (Systems Review
     // 5482743628). Other's row publishes no pair (its meta is the
     // unassigned note and its status carries the spent amount); the
@@ -546,9 +557,10 @@ function assertOverflow(face, fraction, what) {
         assert.equal(face.ringPresent, true, 'Other ring renders for the completed period');
         assert.equal(face.arcDrawn, null, 'no plan, no invented arc');
         assert.equal(face.centre, 'Other spending', 'no-plan: centre is the category name: ' + face.centre);
-        assert.equal(face.pair, 'Spent $137.26 / of planned Unavailable',
+        assert.equal(face.pair, 'Spent $138 / of planned Unavailable',
           'paired missing-side regression (missing plan): the published spent side is '
-          + 'preserved and the missing Planned side prints explicitly Unavailable: ' + face.pair);
+          + 'preserved (rendered in whole dollars) and the missing Planned side prints '
+          + 'explicitly Unavailable: ' + face.pair);
         assert.match(face.ariaLabel, /Not yet assigned to a budget category/,
           'accessible name carries the unassigned status: ' + face.ariaLabel);
         assert.match(face.ariaLabel, /\$137\.26/,
@@ -561,7 +573,7 @@ function assertOverflow(face, fraction, what) {
         assert.match(face.totalsText, /Unknown/, 'withheld plan prints as unknown in the totals');
         assertNoOverflow(face, 'no plan: no decomposition, no marker, no label');
         const groceries = await readOrdinary(page, 'groceries');
-        assert.equal(groceries.pair, 'Spent $110.37 / of planned Unavailable',
+        assert.equal(groceries.pair, 'Spent $111 / of planned Unavailable',
           'missing plan on an ordinary ring: published pair keeps the spent side and '
           + 'prints the plan side Unavailable: ' + groceries.pair);
         assert.match(groceries.ariaLabel, /\$110\.37/,
@@ -577,8 +589,8 @@ function assertOverflow(face, fraction, what) {
       await page.close();
     }
     // True zero plan (BLOCKER 3): a category whose plan is published
-    // as $0.00 is NOT a missing plan — both pair sides print verbatim
-    // ($0.00 / $0.00, never Unavailable), and the established handling
+    // as $0.00 is NOT a missing plan — both pair sides print as known
+    // values ($0 / $0 in whole dollars, never Unavailable), and the established handling
     // holds: no published share exists for a zero denominator, so no
     // arc, no liquid, no percentage and no overflow decomposition.
     {
@@ -586,9 +598,9 @@ function assertOverflow(face, fraction, what) {
       if (!shotsOnly) {
         const pets = await readOrdinary(page, 'pets');
         assert.equal(pets.centre, 'Dog food', 'zero-plan: centre is the category name: ' + pets.centre);
-        assert.equal(pets.pair, 'Spent $0.00 / of planned $0.00',
-          'zero-plan: the published pair prints both known sides verbatim, '
-          + 'the zero plan as $0.00 — not Unavailable, not a lone amount: ' + pets.pair);
+        assert.equal(pets.pair, 'Spent $0 / of planned $0',
+          'zero-plan: the published pair prints both known sides, '
+          + 'the zero plan as $0 — not Unavailable, not a lone amount: ' + pets.pair);
         assert.match(pets.ringClass, /is-unknown/,
           'zero-plan: no share is published for a zero denominator (established handling)');
         assert.equal(pets.arcDrawn, null, 'zero-plan: no arc is invented');
@@ -596,7 +608,7 @@ function assertOverflow(face, fraction, what) {
         assert.equal(pets.left, '', 'zero-plan: no --left share is published');
         assertNoOverflow(pets, 'zero-plan: no decomposition, no marker, no label');
         const other = await readFace(page);
-        assert.equal(other.pair, 'Spent $137.26 / of planned $450.00',
+        assert.equal(other.pair, 'Spent $138 / of planned $450',
           'zero-plan on a sibling leaves the Other pair untouched: ' + other.pair);
       }
       await page.close();
