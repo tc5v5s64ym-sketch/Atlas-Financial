@@ -184,16 +184,31 @@ assert.deepEqual([current.budgetProgress.income.actual.amount,current.budgetProg
   current.budgetProgress.household.actual.amount,current.budgetProgress.household.planned.amount],[2600,1400,444.49,730]);
 assert.equal(current.budgetProgress.bills.actual.completeness,'partial');
 assert.equal(JSON.stringify(served),before,'publication never mutates inputs or assignments');
-// Exact current-main control: removing only the added disclosure must leave
+// Exact current-main control: removing only the added disclosures must leave
 // every existing financial publication identical, not just the displayed pair.
 const Module=require('node:module');
 const baselineModule=new Module(path.join(__dirname,'../public/forecast-before-household-delta.js'));
 baselineModule.filename=baselineModule.id;baselineModule.paths=Module._nodeModulePaths(path.dirname(baselineModule.filename));
 baselineModule._compile(require('node:child_process').execFileSync('git',
   ['show','c1d8c155552d87bc93aa0425147f1a00570146a9:public/forecast.js'],{encoding:'utf8',maxBuffer:4*1024*1024}),baselineModule.filename);
+let etransferPublications=0;
 const withoutDelta=value=>{
   if(value&&typeof value==='object'){
     if(value.source==='Forecast.budgetPeriodProgress'&&value.household)delete value.household.delta;
+    if(value.outgoingETransfers){
+      // Authorized addition (outgoing e-transfer review list): validate the
+      // typed publication concretely before excluding it from this frozen
+      // comparison — unavailable states carry no list and no count, never
+      // zero; an available count is exactly its observed items length.
+      const pub=value.outgoingETransfers;
+      assert(pub&&typeof pub==='object','the added publication is present');
+      assert(['available-complete','available-posted-only','available-incomplete','unavailable-stale','unavailable-missing'].includes(pub.status),
+        'typed outgoing e-transfer publication state');
+      if(pub.status.startsWith('unavailable')){assert.equal(pub.count,null);assert.equal(pub.items,null);}
+      else assert.equal(pub.count,pub.items.length,'available count is its observed items length');
+      etransferPublications++;
+      delete value.outgoingETransfers;
+    }
     Object.values(value).forEach(withoutDelta);
   }
   return value;
@@ -207,6 +222,7 @@ for(const [spent,opts] of [[137.26,{}],[618.73,{}],[1034.19,{}],[814.63,{}],
     'all pre-existing recommendation values/qualifications agree with exact main');
   assert.equal(JSON.stringify(x),input);
 }
+assert.equal(etransferPublications,6,'the added outgoing e-transfer publication was concretely checked once per frozen comparison');
 for(const r of advice.payPeriodViews.filter(r=>['next','future'].includes(r.timelineRole)))
   for(const k of ['income','bills','household','savings'])assert.equal(r.budgetProgress[k].actual.amount,null);
 // Active presenter consumes new publications, not old total/reserve fields.
