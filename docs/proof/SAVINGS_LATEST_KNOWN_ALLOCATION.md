@@ -349,12 +349,42 @@ No old CI or reviewer execution is promoted to PASS. Required new-head tests,
 current-main composition and exact-head Systems acknowledgement remain gates.
 
 The broader commit was rejected twice by automatic approval review because it
-did not accept the delegated instruction as trusted authorization. The staged
-repair is local and uncommitted, pending direct confirmation. Local pre-approval
-proof validates exact working bytes against staged index blobs, explicitly
+did not accept the delegated instruction as trusted authorization. The repair
+was held local and uncommitted pending direct confirmation. Local pre-approval
+proof validated exact working bytes against staged index blobs, explicitly
 marks `uncommittedStagedSnapshot: true` and `releaseHeadQualified: false`, and
 does not satisfy the repository's clean committed-source release gate. The
 temporary proof harness changes source-binding verification only; financial
-and browser tests are unchanged. No GitHub publication, integration or commit
-workaround is used. All prior exact-head failures and review qualifications
-remain intact.
+and browser tests were unchanged. No commit workaround was used. Dale directly
+approved the requested commit/push at2026-10-12T20:43:33Z. The single authorized
+retry succeeded as code51fd718cdb50ea24bea9ea2c28f5de9eb967bb23, with the normal
+privacy hook enabled. All prior failures and review qualifications remain intact.
+
+Fresh normal [comparison](savings-latest-known/account-boundary-comparison.json)
+and [browser receipt](savings-latest-known/browser-account-boundary.json) now
+bind that clean committed code head with exact Git bytes and no normalization,
+using the repository's original source-binding harness. The temporary staged
+harness is not used or claimed as release proof. Comparison passes123 ledgers,
+170,416 equal subtrees and zero unexpected changes, including31 explicit
+held-backing controls. Nine regression suites and130 acceptance cases pass.
+The corrected chronological publication suite passes17/17 with the independent
+12900-cent positive oracle and same-day negative control.
+
+Eight fresh Edge154.0.4258.62 cases pass: withdrawal/deposit before report,
+same-current-day deposit, direct fee/credit before report, coherent withdrawal
+to zero, deposit to100 and fee to98.75. All65 browser-bound source blobs and30
+served hashes agree; numerical receipt binds12 source/fixture/proof files.
+Needed and Saved stamps/bands/Info, focus restoration and no overflow are
+verified; no page error, external request or write occurs. The
+[withdrawal capture](savings-latest-known/cutoff-boundary-withdraw-before-390-light.png)
+and [coherent fee capture](savings-latest-known/cutoff-boundary-fee-after-390-light.png)
+show the independent unavailable and74.75/24 outcomes. These are synthetic
+desktop-browser proofs at390px, not an actual iPhone/bank-reconciliation claim.
+The following evidence-only commit preserves all exercised production/test
+blobs. New-head CI and exact-head Systems review remain pending.
+
+Main advanced to9c414fcd2858f801744d6d4c35a0a1d748069865 through#597 and#589.
+Server refresh changes and the shared card-face runtime/styles are newer than
+this branch's007d9049 base. Integration need is reported before edits; no main
+or release merge occurs in this repair publication. Current-main composition
+and its exact-head verification remain coordinator gates.
