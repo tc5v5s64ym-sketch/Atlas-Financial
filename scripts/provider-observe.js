@@ -478,8 +478,9 @@ function normalizeLunchMoneyPayload(payload, fetchedAt) {
     transactions: (payload.transactions || []).map(tx =>
       normalizeLunchMoneyTransaction(tx, categoriesById, tagsById)),
     pendingCoverage: classifyPendingCoverage(payload),
-    transactionWindow: {
-      savingsFetchCoverage,
+    // Keep the existing serialized normalized-window/history key unchanged.
+    // The immutable original-source fact is emitted in the Savings packet below.
+    transactionWindow: Object.defineProperty({
       startDate: (txWindow && (txWindow.startDate || txWindow.start_date)) || null,
       endDate: (txWindow && (txWindow.endDate || txWindow.end_date)) || null,
       complete: txWindow && txWindow.complete === true
@@ -496,7 +497,7 @@ function normalizeLunchMoneyPayload(payload, fetchedAt) {
           ? false
           : null,
       truncated: !!(txWindow && txWindow.truncated === true),
-    },
+    }, 'savingsFetchCoverage', { value: Object.freeze(savingsFetchCoverage), enumerable: false }),
   };
 }
 

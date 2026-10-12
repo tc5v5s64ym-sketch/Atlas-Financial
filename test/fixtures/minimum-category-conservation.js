@@ -38,7 +38,6 @@ module.exports = function minimumCategoryExpectation(report, input, historicalOb
     startDate: originalDate(['startDate', 'start_date']), endDate: originalDate(['endDate', 'end_date']) };
   assert.ok(!Object.hasOwn(expected.transactionWindow, 'savingsFetchCoverage'));
   assert.ok(!Object.hasOwn(expected.currentPeriodActuals, 'savingsFetchCoverage'));
-  expected.transactionWindow.savingsFetchCoverage = sourceWindow;
   expected.currentPeriodActuals.savingsFetchCoverage = sourceWindow;
   return expected;
 };

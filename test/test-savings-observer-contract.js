@@ -125,6 +125,9 @@ for (const mode of observed.sourceWindowModes) for (const list of ['empty', 'unr
     const x = observed.windowObservation(mode, list, bank), advice = windowPublish(x), original = x.report.transactionWindow.savingsFetchCoverage;
     assert.strictEqual(x.packet, x.report.currentPeriodActuals);
     assert.deepEqual(x.packet.savingsFetchCoverage, original, 'source facts survive normalization and sanitization unchanged');
+    assert.equal(Object.getOwnPropertyDescriptor(x.report.transactionWindow, 'savingsFetchCoverage').enumerable, false,
+      'internal provenance does not change the existing serialized normalized-window/history key');
+    assert.equal(Object.isFrozen(original), true, 'original provenance cannot be rewritten after normalization');
     assert.deepEqual(Object.keys(original).sort(), ['complete', 'endDate', 'startDate']);
     assert.equal(typeof original.complete, 'boolean');
     assert.ok([original.startDate, original.endDate].every(date => date === null || /^\d{4}-\d{2}-\d{2}$/.test(date)));
