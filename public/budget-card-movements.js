@@ -93,6 +93,29 @@
       return '<small data-card-payment-allocation="' + (confirmed ? 'reconciled' : 'unreconciled') + '">'
         + text + '</small>' + purchases;
     };
+    const reported = card => card.reportedBalance && typeof card.reportedBalance.amount === 'number'
+      && Number.isFinite(card.reportedBalance.amount) ? card.reportedBalance : null;
+    // Panel lead (Atlas-approved card-detail panel cleanup): the panel
+    // opens with the publication's own reported balance — the amount, its
+    // as-of date and the manual-statement qualification stay attached to
+    // the lead — or with the unavailable state when the publication
+    // carries no usable reported balance. Nothing is inferred: a missing
+    // balance is never printed as $0.00, and a published $0 stays $0.00.
+    const lead = card => {
+      const stock = reported(card);
+      return stock
+        ? `<p class="card-movement-lead">Reported balance ${money(stock.amount)} · ${day(stock.date)}${card.manualStatement ? ' · Manual statement observation' : ''}</p>`
+        : '<p class="card-movement-lead">Reported balance Unavailable</p>';
+    };
+    // The period endpoints and their remnant evidence sit behind one
+    // native disclosure, collapsed initially. Every figure, date and
+    // qualification that printed before still prints, verbatim, inside.
+    const balanceDetails = card => `<details class="card-movement-details"><summary>Balance and payment details</summary>
+        <div class="card-movement-balances"><span><small>Opening · ${day(card.opening?.date)}</small><strong>${money(card.opening?.amount)}</strong></span><span><small>Closing · ${day(card.closing?.date)}</small><strong>${money(card.closing?.amount)}</strong></span></div>
+        ${card.reasons.length ? `<p class="card-movement-evidence">${card.reasons.map(reason => escape(reasons[reason] || 'Evidence unconfirmed')).join(' · ')}. Net change remains unavailable.</p>` : ''}
+        ${reported(card) ? '<p class="card-movement-evidence">This dated observation does not establish both period endpoints.</p>' : ''}
+        ${pub.observationAsOf ? `<p class="card-movement-evidence">Provider observation · ${day(pub.observationAsOf)}</p>` : ''}
+      </details>`;
     const transaction = tx => `<div class="card-movement-row" data-card-movement-transaction="${escape(tx.id)}" data-card-movement-kind="${escape(tx.kind)}">
       <time datetime="${escape(tx.date)}">${day(tx.date)}</time><span><b>${escape(tx.payee)}</b><small>${tx.pending ? 'Pending authorization' : allocationConfirmed(tx) ? tx.paymentAllocation.kind === 'reversal' ? 'Posted allocation reversal' : 'Posted payment' : tx.paymentAllocation?.kind === 'reversal' ? 'Posted movement · reversal allocation unconfirmed' : escape(kinds[tx.kind] || 'Movement · type unconfirmed')}</small>${allocation(tx)}</span>
       <span class="card-movement-amount ${tx.pending ? '' : 'is-' + escape(tx.direction)}">${tx.direction === 'up' ? '+' : tx.direction === 'down' ? '−' : ''}${money(tx.magnitude)}</span></div>`;
@@ -100,15 +123,13 @@
       <div class="card-movement-heading"><h2>Credit cards</h2><p>Posted${pub.through ? ' through ' + day(pub.through) : ' activity not observed'}</p></div>
       <div class="card-movement-track">${pub.cards.map(card => `<button type="button" class="card-movement-trigger" data-budget-card-toggle="${escape(card.id)}" aria-haspopup="dialog"><span class="card-movement-title">${escape(card.id === 'mbna' ? 'Amazon' : card.label)}<span class="card-movement-chevron" aria-hidden="true">⌄</span></span>${balance(card, money)}<span class="card-movement-sr">Show ${escape(card.label)} activity</span></button>`).join('')}</div>
       ${pub.cards.map(card => `<section class="card-movement-panel" id="budget-card-panel-${escape(card.id)}" data-budget-card-panel="${escape(card.id)}" aria-label="${escape(card.label)} activity" hidden>
-        <div class="card-movement-balances"><span><small>Opening · ${day(card.opening?.date)}</small><strong>${money(card.opening?.amount)}</strong></span><span><small>Closing · ${day(card.closing?.date)}</small><strong>${money(card.closing?.amount)}</strong></span></div>
-        ${card.reasons.length ? `<p class="card-movement-evidence">${card.reasons.map(reason => escape(reasons[reason] || 'Evidence unconfirmed')).join(' · ')}. Net change remains unavailable.</p>` : ''}
-        ${card.reportedBalance && typeof card.reportedBalance.amount === 'number' && Number.isFinite(card.reportedBalance.amount) ? `<p class="card-movement-evidence">Reported balance ${money(card.reportedBalance.amount)} · ${day(card.reportedBalance.date)}${card.manualStatement ? ' · Manual statement observation' : ''}. This dated observation does not establish both period endpoints.</p>` : ''}
+        ${lead(card)}
+        ${balanceDetails(card)}
         <h4 class="card-movement-ledger-heading">Posted activity · ${card.postedCoverage === 'complete-provider-response' ? 'complete provider response' : 'coverage incomplete'}</h4>
         ${card.posted.map(transaction).join('') || `<p class="card-movement-note">${card.postedCoverage === 'complete-provider-response' && pub.role !== 'future' ? 'No posted movements returned in this period.' : 'No qualified posted activity available.'}</p>`}
         <div class="card-movement-pending"><h4 class="card-movement-ledger-heading">Pending · separate from net change</h4>${card.pending.map(transaction).join('') || `<p class="card-movement-note">${card.pendingCoverage === 'complete-provider-response' ? 'No pending authorizations returned.' : card.pendingCoverage === 'not-observed' ? 'Pending activity not observed for this selected period.' : 'Pending coverage unavailable.'}</p>`}</div>
         <p class="card-movement-note">Payments reduce the ${card.id === 'heloc' ? 'HELOC' : 'card'} balance. ${card.id !== 'heloc' && card.posted.some(allocationConfirmed) ? 'Household allocation does not automatically settle scheduled minimums; lender confirmation remains separate.' : 'Purpose unconfirmed: payments do not automatically settle scheduled minimums; lender confirmation remains separate.'}</p>
         ${card.id !== 'heloc' ? '<p class="card-movement-note">Payment and reversal allocations are shown separately. This window does not establish historical coverage or available cash. Issuer minimum satisfaction remains separate.</p>' : ''}
-        ${pub.observationAsOf ? `<p class="card-movement-evidence">Provider observation · ${day(pub.observationAsOf)}</p>` : ''}
       </section>`).join('')}</section>`;
   }
   function wire(mount, sheet) {
@@ -126,6 +147,12 @@
         const id = button.getAttribute('data-budget-card-toggle');
         const panel = panels.find(node => node.getAttribute('data-budget-card-panel') === id);
         if (!panel) return;
+        // The sheet re-homes this same panel node across opens, so an
+        // expanded balance disclosure would otherwise survive a close;
+        // the panel always opens with the disclosure collapsed.
+        const details = typeof panel.querySelector === 'function'
+          ? panel.querySelector('details.card-movement-details') : null;
+        if (details) details.open = false;
         sheet.open(panel, button, panel.getAttribute('aria-label') || 'Card activity');
       });
     });

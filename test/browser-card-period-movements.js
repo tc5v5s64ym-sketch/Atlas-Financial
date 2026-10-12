@@ -283,6 +283,19 @@ const states = [], errors = [], writes = [], external = [];
       assert.equal(await panel.locator('[data-card-movement-transaction="cash-leg-a"]').count(), 0, 'paired cash leg not double-counted');
       assert.match(await panel.locator('[data-card-movement-transaction="payment-a"]').innerText(), state === 'credit-ambiguous' ? /Credit · type unconfirmed/ : /household purpose unconfirmed/);
       if (state === 'complete') {
+        // The Opening/Closing endpoints sit behind the panel's native
+        // "Balance and payment details" disclosure, collapsed on open;
+        // expanding it keeps every endpoint figure reachable verbatim.
+        const balanceDetails = panel.locator('details.card-movement-details');
+        assert.equal(await balanceDetails.evaluate(el => el.open), false,
+          'the balance disclosure starts collapsed');
+        assert.equal(await balanceDetails.locator('> summary').innerText(), 'Balance and payment details',
+          'the disclosure summary label is exact');
+        assert.doesNotMatch(await panel.innerText(), /\$820\.00/,
+          'the opening balance stays behind the collapsed disclosure');
+        await balanceDetails.locator('> summary').click();
+        assert.equal(await balanceDetails.evaluate(el => el.open), true,
+          'the summary expands the disclosure');
         assert.match(await panel.innerText(), /\$820\.00[\s\S]*\$927\.40/);
         for (const theme of ['light', 'dark']) {
           await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
@@ -382,6 +395,7 @@ const states = [], errors = [], writes = [], external = [];
         assert.equal(await sheet.evaluate(el => el.open), true, 'sheet stays open across the period switch');
         assert.equal(await panel.isVisible(), true, 'the same card panel is restored in the new period');
         assert.equal(await panel.evaluate(el => el.closest('[data-budget-detail-sheet]') !== null), true);
+        await panel.locator('details.card-movement-details > summary').click();
         assert.match(await panel.innerText(), /Future period not observed/,
           'the restored panel shows the new period qualification, not the old ledger');
         assert.equal(await panel.locator('[data-card-movement-transaction]').count(), 0,
@@ -413,6 +427,7 @@ const states = [], errors = [], writes = [], external = [];
         assert.match(await travel.innerText(), /Unavailable/);
         assert.doesNotMatch(await travel.innerText(), /Net/);
         await travel.click();
+        await panel.locator('details.card-movement-details > summary').click();
         assert.match(await panel.innerText(), /Future period not observed/);
         assert.equal(await panel.locator('[data-card-movement-transaction]').count(), 0, 'future never borrows current ledger');
         await page.keyboard.press('Escape');
@@ -507,6 +522,7 @@ const states = [], errors = [], writes = [], external = [];
       assert.equal(await panel.isVisible(), true);
       assert.equal(await panel.evaluate(el => el.closest('[data-budget-detail-sheet]') !== null), true,
         'panel moves into the native sheet on the unavailable branch');
+      await panel.locator('details.card-movement-details > summary').click();
       assert.match(await panel.innerText(), /\$820\.00[\s\S]*\$927\.40/,
         'balances stay accessible while the plan is unavailable');
       assert.equal(await panel.locator('[data-card-movement-transaction]').count(), 6,

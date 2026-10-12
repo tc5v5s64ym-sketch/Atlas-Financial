@@ -70,6 +70,7 @@ const suites = [
   ['Bills native unknown amounts and account-specific future cash', 'test-bills-period-end-native-requirements.js'],
   ['card minimum repair stock, proof and identity conservation', 'test-card-minimum-repair-conservation.js'],
   ['selected Seaspan card movement endpoints, coverage and conservation', 'test-card-period-movements.js'],
+  ['card detail panel lead and balance disclosure placement', 'test-card-panel-lead.js'],
   ['card-window allocation diagnostics through synthetic provider evidence', 'test-card-payment-diagnostics.js'],
   ['card allocation diagnostic identity and parent dependency regressions', 'test-card-payment-diagnostic-dependencies.js'],
   ['inert private card decision controller with real Forecast validation', 'test-card-payment-decisions.js'],
