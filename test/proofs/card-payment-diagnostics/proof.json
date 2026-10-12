@@ -1,0 +1,121 @@
+{
+  "synthetic": true,
+  "runtime": {
+    "node": "v24.18.0",
+    "chromium": "154.0.4258.62",
+    "platform": "win32"
+  },
+  "sourceNormalization": "utf8-text-lf",
+  "sourceSha256": {
+    "test/browser-card-payment-diagnostics.js": "6a8c54fe4cd6ef33ca1f062ba40906d0754192ce97c49a7d28a6e184b4e0b0a6",
+    "test/fixtures/card-period-movements-data.js": "ba2b039d95f9ed777d3e81ef4dd39c1c38b59d6b0f035875586dfe60aaa0daf0",
+    "test/fixtures/budget-surface-data.js": "f6a3c46fb037c41f7371aaaef08ffaab5256bda97cb9bc5f994e4ee54e5fac0b",
+    "public/index.html": "52444db8cc29f3bef684a1a86716fe612477679fe957d7602e472572467526a9",
+    "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
+    "public/fonts.css": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
+    "public/styles.css": "3c347e12482327da3442c3e14115e0897a4add1ac32bbe38ad2f8d0f708ebd1c",
+    "public/household-view.css": "e5cb08cfe7d5663fab76da2eb51f68d4890b1c4b550cf80eb1f61930a749620e",
+    "public/budget-polish.css": "29be9b313c3c7b4d402ff730abe76dfd09e07f38df4dfd04a26a12fa479d16fe",
+    "public/bill-detail.css": "df5e707892d09bded4516822edd1c8a056b472e092c353062a645d7a79ef69c0",
+    "public/savings-inventory.css": "39591b0f8fbb0c8109f5f2fe71dd707067dbaf54e85d467989ed96342e4e1a58",
+    "public/running-build.css": "1121433390812139a1c0fc810a882a7b97903e17a6d42f19dcc93fa05a5327d5",
+    "public/budget-surface.css": "69611d57c8ec3b692af7e18e775137d2a6823561eef3faa5ee31fead07bfdc73",
+    "public/budget-blend.css": "43ab6315177f95042f16b8f3239d9f9d85d49117cf9bcc3dd81483a3b74b1133",
+    "public/budget-gface.css": "88d1d1aba917bd267150862839a1e09e2b66598b058e686fbdd62a7834562a9a",
+    "public/budget-sheet-motion.css": "31fbea5e07e133925d3f357c62ddf6d7f38d84e7bc0b654d8473070e5d1ed2c4",
+    "public/app.js": "8b99ebdecaad18f63fda3bdccf438b66a0312452b407662a9828e8d19d14528e",
+    "public/forecast-card-period.js": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20",
+    "public/forecast.js": "6bf48a3dc994785cc61d8c443485ed23bcf19f5860b3d2b16eb1ebd09f50590b",
+    "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
+    "public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
+    "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
+    "public/savings-inventory.js": "49a38dd1b246456ba057f1861891020337d650b474b209d0c8a332539d007ea3",
+    "public/budget-surface.js": "af32d9e29d1487496365a1025a0bfb65d2dc062f2534392b8095675857f9552b",
+    "public/budget-card-movements.js": "494df8893f1f155fd63a60a6a2bd00a5ed4f0be02f635dd0441ccffe11305457",
+    "public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
+    "public/plan.js": "f5eb8916abe6dc71553536fa952bfcdfb88d167e0570e6a9a8a2195819af46a7",
+    "public/household-view.js": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
+    "public/budget-polish.js": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
+    "public/aurora.js": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
+    "public/budget-river.js": "dbff4d71770e510d65a1f79f8a3eaf489a42885dc286e66630b375b661818418",
+    "public/budget-blend.js": "cae08ceec2adb0ff81c786ff73cd6bb5100514e1b07f6a156f7c9860142700cf",
+    "public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010"
+  },
+  "states": [
+    {
+      "state": "confirmed",
+      "width": 1440,
+      "screenshot": "confirmed-1440.png",
+      "sha256": "19e2236bb5a0830e07febaf9cb1dcf29a42a858c85ffbad91810bfef33cdf2ad"
+    },
+    {
+      "state": "unknown-opening",
+      "width": 1440,
+      "screenshot": "unknown-opening-1440.png",
+      "sha256": "19e2236bb5a0830e07febaf9cb1dcf29a42a858c85ffbad91810bfef33cdf2ad"
+    },
+    {
+      "state": "no-intent",
+      "width": 1440,
+      "screenshot": "no-intent-1440.png",
+      "sha256": "585858666bb9a13be703d4f7d85ed4d81269cc6cb84dc2640afedc3a0e60b947"
+    },
+    {
+      "state": "pending",
+      "width": 1440,
+      "screenshot": "pending-1440.png",
+      "sha256": "6b482197b21e0d7a92646271704d9944c84914c0fc740456b2173d6d18cc1a29"
+    },
+    {
+      "state": "reversal",
+      "width": 1440,
+      "screenshot": "reversal-1440.png",
+      "sha256": "007900f06ec44ec68754b04dbe2ab9d76dc408510d310c20d5dddc31042f81c1"
+    },
+    {
+      "state": "plan-unavailable",
+      "width": 1440,
+      "screenshot": "plan-unavailable-1440.png",
+      "sha256": "01ef0f8cf31225640a95f30492bd8bdaa35ed2d5391a60b6523c08082e622e42"
+    },
+    {
+      "state": "confirmed",
+      "width": 320,
+      "screenshot": "confirmed-320.png",
+      "sha256": "e3a072330bb4ba2f7d4b75c30d7cdb6a3759edc74c4644cb17c5bc329e3160ba"
+    },
+    {
+      "state": "unknown-opening",
+      "width": 320,
+      "screenshot": "unknown-opening-320.png",
+      "sha256": "ac2adc6d4485b7e1faf1fa315c045dcda2b307fedc78e29fd811d5ee57e09da0"
+    },
+    {
+      "state": "no-intent",
+      "width": 320,
+      "screenshot": "no-intent-320.png",
+      "sha256": "ce9555598df992eb4ef623ed431584829dd083548c955c933f92bb6aea7edca0"
+    },
+    {
+      "state": "pending",
+      "width": 320,
+      "screenshot": "pending-320.png",
+      "sha256": "ed80c2c292330f34fd74dd1477d6912333752585259fcab93da7a480b4f1f09f"
+    },
+    {
+      "state": "reversal",
+      "width": 320,
+      "screenshot": "reversal-320.png",
+      "sha256": "546faf818278ef8c6677bf34a77ef452840faa5e61683fc49526e725aaeaab1a"
+    },
+    {
+      "state": "plan-unavailable",
+      "width": 320,
+      "screenshot": "plan-unavailable-320.png",
+      "sha256": "0e30b4b1120278e045c853270de7ce41737f7b0e5539b96208036bad94f1c745"
+    }
+  ],
+  "errors": [],
+  "externalRequests": 0,
+  "writeRequests": 0
+}

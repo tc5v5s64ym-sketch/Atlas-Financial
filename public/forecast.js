@@ -23,7 +23,9 @@
     opts = opts || {};
     const cycle = savingsDate(window?.start) ? spendingCycle(plan, window.start) : null;
     const packet = currentPeriodActualsPacket(opts);
+    const reconciliation = reconcileCardPurchases(packet?.transactions, { plan, debts, asOf, packet, paymentDiagnostics: true });
     return CardPeriodMovement.publish({ plan, debts, asOf, window, packet,
+      paymentAllocations: reconciliation.paymentAllocations,
       windowQualified: cycle?.start === window?.start && cycle?.end === window?.end,
       balanceEvidence: opts.cardPeriodBalanceEvidence || null, overlay: opts.liveOverlay || null }, {
       date: savingsDate, cents: savingsCents, skipParent: skipSplitParent,
@@ -9666,7 +9668,7 @@
     };
     const required = !!policy || packet.cardCoverageRequired === true || input.some(cardLike);
     if (!required) return { publication: { status: 'incumbent', reservedCash: 0,
-      purchases: [], active: [], payments: [], issues: [] }, annotations: new Map() };
+      purchases: [], active: [], payments: [], issues: [] }, annotations: new Map(), paymentAllocations: new Map() };
     const issues = [];
     const issue = (code, ref) => issues.push({ code, ...(ref ? { ref } : {}) });
     const opening = policy && policy.opening;
@@ -9688,6 +9690,13 @@
       issue('coverage-currency-or-amount-unconfirmed');
     }
     const byRef = new Map(), purchases = new Map(), used = new Set(), payments = [];
+    // Private joins for the selected-card diagnostic only. Existing validation,
+    // allocations and financial publication remain the authority. These refs
+    // are replaced with allowlisted presentation facts before leaving Forecast.
+    const paymentLinks = opts.paymentDiagnostics === true ? new Map() : null;
+    const reversalLinks = opts.paymentDiagnostics === true ? new Map() : null;
+    const conflictingPaymentIds = opts.paymentDiagnostics === true ? new Set() : null;
+    const conflictingReversalRefs = opts.paymentDiagnostics === true ? new Set() : null;
     const rows = input.filter(tx => tx && tx.date >= origin && tx.date <= asOf && !skipSplitParent(tx, packet));
     // Broader movement labels identify a leg only after an explicit household
     // confirmation names that reference. Category/hint alone never pairs a
@@ -9807,6 +9816,7 @@
       }
       const backfill = Array.from(split.values()).reduce((a,b) => a+b, 0);
       if (!valid || backfill + other !== amount) {
+        if (paymentIds.has(record?.id)) conflictingPaymentIds?.add(record.id);
         issue('coverage-payment-intent-or-pair-unconfirmed', record && record.creditRef); continue;
       }
       paymentIds.add(record.id); used.add(record.creditRef); used.add(record.debitRef);
@@ -9823,6 +9833,8 @@
         status: 'reconciled', amount: amount / 100, backfill: backfill / 100,
         cardPayment: other / 100, otherPurpose: record.otherPurpose || null,
         purchases: covered, satisfiesMinimum: false });
+      paymentLinks?.set(record.creditRef, { index: payments.length - 1,
+        refs: [record.debitRef, record.creditRef, ...split.keys()] });
     }
     for (const reversal of policy && Array.isArray(policy.reversals) ? policy.reversals : []) {
       const payment = accepted.get(reversal && reversal.paymentId);
@@ -9842,6 +9854,7 @@
         else split.set(ref, cents);
       }
       if (!valid || Array.from(split.values()).reduce((a,b) => a+b, 0) + other !== amount) {
+        if (reversal?.cardDebitRef) conflictingReversalRefs?.add(reversal.cardDebitRef);
         issue('coverage-reversal-unconfirmed'); continue;
       }
       for (const [ref, cents] of split) {
@@ -9852,6 +9865,12 @@
       }
       payment.otherReversed += other;
       used.add(reversal.cardDebitRef); used.add(reversal.cashCreditRef);
+      reversalLinks?.set(reversal.cardDebitRef, { status: 'reconciled', kind: 'reversal',
+        backfill: Array.from(split.values()).reduce((a,b) => a+b, 0) / 100,
+        cardPayment: other / 100, otherPurpose: null,
+        purchases: Array.from(split, ([ref, cents]) => ({ date: purchases.get(ref).date,
+          amount: cents / 100, categoryLabel: purchases.get(ref).categoryLabel })),
+        refs: [reversal.cardDebitRef, reversal.cashCreditRef, ...split.keys()] });
     }
     for (const tx of rows) {
       const account = cardId(tx), amount = money(tx);
@@ -9860,11 +9879,14 @@
       if (isRevolvingCardFinanceCharge(tx) && !paymentLike(tx)) continue;
       if (!used.has(tx.coverageRef) && ((account && amount < 0) || paymentLike(tx))) {
         issue('coverage-payment-or-credit-purpose-unconfirmed', tx.coverageRef);
-        if (account && paymentLike(tx) && amount < 0) payments.push({
+        if (account && paymentLike(tx) && amount < 0) {
+          payments.push({
           id: tx.coverageRef, date: tx.date, accountLabel: label(account),
           status: 'unreconciled', reason: 'payment-intent-unconfirmed',
           amount: unit(tx) ? -amount / 100 : null, backfill: null, cardPayment: null,
           purchases: [], satisfiesMinimum: false });
+          paymentLinks?.set(tx.coverageRef, { index: payments.length - 1, refs: [tx.coverageRef] });
+        }
       }
     }
     const ledger = Array.from(purchases.values()).sort((a,b) => a.date.localeCompare(b.date) || a.ref.localeCompare(b.ref))
@@ -9930,7 +9952,32 @@
       remaining: issues.length ? null : row.remaining,
       accountLabel: row.accountLabel,
     }]));
-    return { publication, annotations };
+    if (!paymentLinks) return { publication, annotations };
+    const paymentAllocations = new Map();
+    const unconfirmed = reason => ({ status: 'unreconciled', kind: 'payment', reason,
+      backfill: null, cardPayment: null, otherPurpose: null, purchases: [] });
+    for (const [ref, link] of paymentLinks) {
+      const row = publishedPayments[link.index];
+      const problem = issues.find(issue => issue.ref && link.refs.includes(issue.ref));
+      paymentAllocations.set(ref, problem || conflictingPaymentIds.has(payments[link.index].id)
+        ? unconfirmed(problem?.code || 'coverage-payment-intent-or-pair-unconfirmed') : {
+        status: row.status, kind: 'payment', reason: row.reason || null,
+        backfill: row.backfill, cardPayment: row.cardPayment,
+        otherPurpose: ['prior-debt', 'required-payment', 'other'].includes(row.otherPurpose) ? row.otherPurpose : null,
+        purchases: row.purchases });
+    }
+    for (const [ref, { refs, ...row }] of reversalLinks) {
+      const problem = issues.find(issue => issue.ref && refs.includes(issue.ref));
+      paymentAllocations.set(ref, problem ? { ...unconfirmed(problem.code), kind: 'reversal' } : row);
+    }
+    // An unqualified declared reversal may still be an observed card movement.
+    // Show that missing proof without calling its cash counterpart confirmed.
+    for (const row of Array.isArray(policy?.reversals) ? policy.reversals : []) {
+      if (row?.cardDebitRef && (!paymentAllocations.has(row.cardDebitRef) || conflictingReversalRefs.has(row.cardDebitRef))) {
+        paymentAllocations.set(row.cardDebitRef, { ...unconfirmed('coverage-reversal-unconfirmed'), kind: 'reversal' });
+      }
+    }
+    return { publication, annotations, paymentAllocations };
   }
 
   function visaPaymentReconciliation(transactions, opts) {

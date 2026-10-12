@@ -11,7 +11,7 @@
     ['triangle', 'Triangle'], ['mbna', 'Amazon Mastercard']];
   function publish(input, primitives) {
     const { date, cents, skipParent, classify } = primitives;
-    const { plan, debts, asOf, window, packet, balanceEvidence, overlay } = input;
+    const { plan, debts, asOf, window, packet, balanceEvidence, overlay, paymentAllocations } = input;
     // HELOC is the owner's existing revolving facility. Use the same native
     // movement and endpoint evidence; its recorded balance is never a net.
     const identities = (debts || []).some(row => row?.id === 'heloc')
@@ -128,6 +128,22 @@
           amount: value == null ? null : value / 100, magnitude: value == null ? null : Math.abs(value) / 100,
           direction: value == null ? null : value > 0 ? 'up' : value < 0 ? 'down' : 'flat',
           kind, pending: tx.pending === true };
+        const allocation = paymentAllocations?.get(tx.coverageRef);
+        if (id !== 'heloc' && (allocation || kind === 'payment' || kind === 'credit-unconfirmed')) {
+          // Diagnostic proof is local to these exact legs. Unknown legacy
+          // opening or another card does not erase an observed allocation.
+          // Pending/replacement/duplicate and incomplete-window evidence cannot
+          // turn a recorded purpose into a confirmed posted match.
+          const qualified = allocation?.status === 'reconciled' && !published.pending
+            && packetCurrent && coverage && packet.pendingCoverage === 'complete'
+            && published.id && value !== null && !duplicateCards.has(id) && !aliasCards.has(id)
+            && !tx.pendingPostedAmbiguous && !tx.pendingPostedDuplicate && !tx.contradictoryEvidence;
+          published.paymentAllocation = qualified ? allocation : {
+            status: 'unreconciled', kind: allocation?.kind || kind,
+            reason: allocation?.status === 'unreconciled' ? allocation.reason
+              : kind === 'credit-unconfirmed' ? 'credit-type-or-purpose-unconfirmed' : 'payment-intent-or-evidence-unconfirmed',
+            backfill: null, cardPayment: null, otherPurpose: null, purchases: [] };
+        }
         if (!published.id) issues.push('transaction-identity-unqualified');
         else if (seen.has(published.id)) issues.push('duplicate-identity');
         else seen.add(published.id);

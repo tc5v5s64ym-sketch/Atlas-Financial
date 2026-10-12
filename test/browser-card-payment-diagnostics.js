@@ -1,0 +1,110 @@
+'use strict';
+// Real App.boot + native card sheet, invented served evidence, intercepted GETs.
+// The companion unit suite proves the same allocation through provider-observe.
+const assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
+const { chromium } = require('playwright');
+const fx = require('./fixtures/card-period-movements-data');
+const root = path.resolve(__dirname, '..');
+const out = process.env.ATLAS_CARD_DIAGNOSTICS_PROOF_DIR || path.join(require('node:os').tmpdir(), 'atlas-card-payment-diagnostics-proof');
+const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
+const sources = {}, states = [], errors = [], requests = [];
+const bind = file => {
+  const bytes = fs.readFileSync(file);
+  // Git normalizes these text sources to LF; Windows checks them out as CRLF.
+  // Bind the executed source text to canonical repository bytes on either host.
+  const canonical = /\.(js|css|html|json|svg)$/.test(file) ? Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n')) : bytes;
+  sources[path.relative(root, file).split(path.sep).join('/')] = sha(canonical);
+};
+bind(__filename);
+for (const file of Object.keys(require.cache).filter(file => file.startsWith(path.join(__dirname, 'fixtures') + path.sep))) bind(file);
+function dataFor(state) {
+  const data = fx.served();
+  data.plan.cardPurchaseCoverage = { opening: { asOf: fx.START, confirmed: true, currency: 'cad', fundingAccountId: 'chequing-a', purchases: [] },
+    payments: [{ id: 'invented-browser-allocation', confirmed: true, debitRef: 'invented-cash-leg-a', creditRef: 'invented-payment-a',
+      allocations: [{ purchaseRef: 'invented-charge-a', amount: 100 }], otherAmount: 0, otherPurpose: null }],
+    refunds: [{ confirmed: true, refundRef: 'invented-refund-a', purchaseRef: 'invented-charge-a' }], reversals: [] };
+  if (state === 'unknown-opening') data.plan.cardPurchaseCoverage.opening.confirmed = false;
+  if (state === 'no-intent') data.plan.cardPurchaseCoverage.payments = [];
+  if (state === 'pending') data.liveOverlay.currentPeriodActuals.transactions.find(tx => tx.id === 'payment-a').pending = true;
+  if (state === 'reversal') {
+    const packet = data.liveOverlay.currentPeriodActuals;
+    packet.transactions.push({ id: 'browser-card-reversal', coverageRef: 'invented-browser-card-reversal',
+      atlasAccountId: 'travelvisa', account: 'travelvisa', accountRole: 'revolving-credit',
+      date: fx.AS_OF, amount: 20, currency: 'cad', displayedPayee: 'Invented reversal', categoryLabel: 'Credit Card Payment', kindHint: 'payment', pending: false },
+    { id: 'browser-cash-reversal', coverageRef: 'invented-browser-cash-reversal', atlasAccountId: 'chequing-a', account: 'chequing-a',
+      accountRole: 'household-cash', date: fx.AS_OF, amount: -20, currency: 'cad', categoryLabel: 'Credit Card Payment', kindHint: 'payment', pending: false });
+    data.plan.cardPurchaseCoverage.reversals.push({ confirmed: true, paymentId: 'invented-browser-allocation',
+      cardDebitRef: 'invented-browser-card-reversal', cashCreditRef: 'invented-browser-cash-reversal',
+      allocations: [{ purchaseRef: 'invented-charge-a', amount: 20 }], otherAmount: 0 });
+    // Independent 2000-cent reversal: liability and Bills stock each rise by
+    // 20. It is not another purchase and does not manufacture a discrepancy.
+    data.debts.find(row => row.id === 'travelvisa').balance = 947.40;
+    data.liveOverlay.cardPeriodBalanceEvidence.cards.find(row => row.id === 'travelvisa').closing.amount = 947.40;
+    data.liveOverlay.overlays.find(row => row.locator === 'debts:travelvisa').proposedValue = 947.40;
+    data.plan.startingCash.breakdown.find(row => row.id === 'chequing-a').value = 885;
+    const cash = data.liveOverlay.observedCash?.accounts?.find(row => row.id === 'chequing-a');
+    if (cash) cash.value = 885;
+  }
+  if (state === 'plan-unavailable') data.liveOverlay.operatingPlan = 'unavailable';
+  return data;
+}
+(async () => {
+  fs.mkdirSync(out, { recursive: true });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH });
+  const runtime = { node: process.version, chromium: await browser.version(), platform: process.platform };
+  try {
+    for (const width of [1440, 320]) for (const state of ['confirmed', 'unknown-opening', 'no-intent', 'pending', 'reversal', 'plan-unavailable']) {
+      const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+      page.on('pageerror', error => errors.push(error.message));
+      await page.route('**/*', route => {
+        const request = route.request(), url = new URL(request.url());
+        requests.push({ origin: url.origin, method: request.method() });
+        if (url.origin !== 'http://card-diagnostics.test' || request.method() !== 'GET') return route.abort();
+        if (url.pathname === '/data.json') return route.fulfill({ json: dataFor(state) });
+        if (['/periods.json', '/balance-history.json', '/running-build.json'].includes(url.pathname)) return route.fulfill({ json: null });
+        const file = path.join(root, 'public', url.pathname === '/' ? 'index.html' : url.pathname.slice(1));
+        if (!fs.existsSync(file)) return route.fulfill({ status: 404, body: '' });
+        bind(file);
+        return route.fulfill({ body: fs.readFileSync(file), contentType: file.endsWith('.js') ? 'application/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' });
+      });
+      await page.goto('http://card-diagnostics.test/');
+      const travel = page.locator('[data-budget-card-toggle="travelvisa"]');
+      await travel.waitFor();
+      await travel.click();
+      const panel = page.locator('[data-budget-card-panel="travelvisa"]');
+      await panel.waitFor({ state: 'visible' });
+      const text = await panel.innerText();
+      if (['confirmed', 'unknown-opening', 'plan-unavailable', 'reversal'].includes(state)) {
+        assert.match(text, /Confirmed at posting[\s\S]*\$100\.00/);
+        assert.match(text, /Example grocer|Groceries/);
+      } else assert.doesNotMatch(text, /Confirmed at posting/);
+      if (state === 'reversal') {
+        assert.match(text, /Confirmed reversal[\s\S]*\$20\.00/);
+        assert.match(text, /\$947\.40/);
+        assert.doesNotMatch(text, /Balances and posted activity do not reconcile/);
+      }
+      assert.match(text, /historical coverage|available cash/);
+      assert.doesNotMatch(text, /invented-(?:cash-leg|payment|charge|browser-allocation)|coverageRef|purchaseRef|pc-/);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no viewport overflow');
+      const allocation = panel.locator('[data-card-payment-allocation="reconciled"]');
+      if (['no-intent', 'pending'].includes(state)) assert.equal(await allocation.count(), 0);
+      if (width === 320 && state === 'unknown-opening') await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+      const file = state + '-' + width + '.png';
+      await page.locator('[data-budget-detail-sheet]').screenshot({ path: path.join(out, file), animations: 'disabled' });
+      await page.keyboard.press('Escape');
+      assert.equal(await travel.evaluate(node => node === document.activeElement), true, 'native sheet restores trigger focus');
+      const cashback = page.locator('[data-budget-card-toggle="cashback"]');
+      await cashback.click();
+      const otherPanel = page.locator('[data-budget-card-panel="cashback"]');
+      assert.doesNotMatch(await otherPanel.innerText(), /Confirmed at posting/, 'another card never inherits the confirmed allocation');
+      states.push({ state, width, screenshot: file, sha256: sha(fs.readFileSync(path.join(out, file))) });
+      await page.close();
+      console.log('PASS card diagnostics ' + state + ' ' + width + 'px');
+    }
+    assert.deepEqual(errors, []);
+    assert.equal(requests.every(row => row.origin === 'http://card-diagnostics.test' && row.method === 'GET'), true);
+    fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ synthetic: true, runtime, sourceNormalization: 'utf8-text-lf', sourceSha256: sources,
+      states, errors, externalRequests: 0, writeRequests: 0 }, null, 2) + '\n');
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });
