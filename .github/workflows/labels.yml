@@ -37,40 +37,49 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            const text = fs.readFileSync('.github/labels.yml', 'utf8');
+            try {
+              const fs = require('fs');
+              const text = fs.readFileSync('.github/labels.yml', 'utf8');
 
-            // A deliberately small parser for the one shape this manifest uses:
-            // a flat list of `- name: / color: / description:`. Pulling in a
-            // YAML dependency for three keys would be the larger risk.
-            const labels = [];
-            let cur = null;
-            for (const raw of text.split('\n')) {
-              const line = raw.replace(/\s+#.*$/, '');
-              let m;
-              if ((m = /^-\s*name:\s*(.+?)\s*$/.exec(line))) {
-                cur = { name: m[1].replace(/^["']|["']$/g, '') };
-                labels.push(cur);
-              } else if (cur && (m = /^\s+color:\s*(.+?)\s*$/.exec(line))) {
-                cur.color = m[1].replace(/^["']|["']$/g, '').replace(/^#/, '');
-              } else if (cur && (m = /^\s+description:\s*(.+?)\s*$/.exec(line))) {
-                cur.description = m[1].replace(/^["']|["']$/g, '');
+              // A deliberately small parser for the one shape this manifest uses:
+              // a flat list of `- name: / color: / description:`. Pulling in a
+              // YAML dependency for three keys would be the larger risk.
+              const labels = [];
+              let cur = null;
+              for (const raw of text.split('\n')) {
+                const line = raw.replace(/\s+#.*$/, '');
+                let m;
+                if ((m = /^-\s*name:\s*(.+?)\s*$/.exec(line))) {
+                  cur = { name: m[1].replace(/^["']|["']$/g, '') };
+                  labels.push(cur);
+                } else if (cur && (m = /^\s+color:\s*(.+?)\s*$/.exec(line))) {
+                  cur.color = m[1].replace(/^["']|["']$/g, '').replace(/^#/, '');
+                } else if (cur && (m = /^\s+description:\s*(.+?)\s*$/.exec(line))) {
+                  cur.description = m[1].replace(/^["']|["']$/g, '');
+                }
               }
-            }
-            if (!labels.length) core.setFailed('No labels parsed from .github/labels.yml');
+              if (!labels.length) {
+                core.setFailed('No labels parsed from .github/labels.yml');
+                return;
+              }
 
-            const { owner, repo } = context.repo;
-            for (const l of labels) {
-              const params = { owner, repo, name: l.name, color: l.color || 'ededed',
-                description: (l.description || '').slice(0, 100) };
-              try {
-                await github.rest.issues.updateLabel(params);
-                core.info(`updated ${l.name}`);
-              } catch (err) {
-                if (err.status !== 404) throw err;
-                await github.rest.issues.createLabel(params);
-                core.info(`created ${l.name}`);
+              const { owner, repo } = context.repo;
+              for (const l of labels) {
+                const params = { owner, repo, name: l.name, color: l.color || 'ededed',
+                  description: (l.description || '').slice(0, 100) };
+                try {
+                  await github.rest.issues.updateLabel(params);
+                  core.info('Updated a manifest label.');
+                } catch (err) {
+                  if (err.status !== 404) throw err;
+                  await github.rest.issues.createLabel(params);
+                  core.info('Created a manifest label.');
+                }
               }
+              core.summary.addRaw(`Synced ${labels.length} labels from the manifest.`);
+              await core.summary.write();
+            } catch (error) {
+              try { require('fs').writeFileSync(process.env.RUNNER_TEMP + '/labels-sync.private.log',
+                String(error.stack || error), { mode: 0o600 }); } catch { /* Keep diagnostic failures private. */ }
+              core.setFailed('Label sync failed; private diagnostics withheld.');
             }
-            core.summary.addRaw(`Synced ${labels.length} labels from the manifest.`);
-            await core.summary.write();

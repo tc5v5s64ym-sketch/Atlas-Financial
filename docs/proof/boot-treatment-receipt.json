@@ -1,129 +1,252 @@
 {
   "proof": "browser-boot-treatment",
-  "baseMainSha": "2921aa62dddd452ddc7d56b6fd0c09f92f5cef9a",
-  "claim": "visible during the genuine-load interval with no gaps observed at ~100ms sampling after first visibility, removed on arrival, no new blocking assets; timing comparison inconclusive — median paired delta and difference of medians recorded as measurements, not a no-delay conclusion",
+  "baseMainSha": "a96f911c252431ca4cfb2aba7bfda79134388d69",
+  "claim": "visible during the genuine-load interval with no gaps observed at ~100ms sampling after first visibility, removed on arrival, no new blocking assets; timing comparison inconclusive — no paired timing measurements are recorded in this receipt (baseComparison and repeatedTimingMeasures are null), not a no-delay conclusion",
   "scenarios": {
     "lightLong": {
       "delayMs": 5000,
-      "treatmentFirstVisibleMs": 204,
-      "contentRenderedMs": 7159,
-      "samples": 28,
+      "treatmentFirstVisibleMs": 2182,
+      "contentRenderedMs": 11099,
+      "samples": 45,
       "visibilityGapsObserved": 0,
+      "noFlashAtRemoval": true,
       "servedSha": {
-        "public/index.html": "52444db8cc29f3bef684a1a86716fe612477679fe957d7602e472572467526a9",
+        "public/index.html": "817c7918b8b52251eb5c85e0cc9385996af53eac861aeab7ebb6a31be4947dd5",
         "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
         "public/fonts.css": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
-        "public/styles.css": "3c347e12482327da3442c3e14115e0897a4add1ac32bbe38ad2f8d0f708ebd1c",
+        "public/styles.css": "ca789bfd31ab1f4dc38980e6052cb479e26dfb545f2e626ad66204c7028c174e",
         "public/household-view.css": "e5cb08cfe7d5663fab76da2eb51f68d4890b1c4b550cf80eb1f61930a749620e",
         "public/budget-polish.css": "29be9b313c3c7b4d402ff730abe76dfd09e07f38df4dfd04a26a12fa479d16fe",
         "public/bill-detail.css": "df5e707892d09bded4516822edd1c8a056b472e092c353062a645d7a79ef69c0",
         "public/savings-inventory.css": "39591b0f8fbb0c8109f5f2fe71dd707067dbaf54e85d467989ed96342e4e1a58",
         "public/running-build.css": "1121433390812139a1c0fc810a882a7b97903e17a6d42f19dcc93fa05a5327d5",
-        "public/budget-surface.css": "34f593f9b4464c6f587ddb075c4de2cbb30cd921366a76806eaba4692f2626a0",
-        "public/budget-blend.css": "3beb02629718a9405387cff0371c5cc5588e1a8e6c37b3fede68670323135716",
-        "public/budget-gface.css": "31d5a21c98beb9dbcefd1cca3c6d89af11bfa17558c7686f777d2f43848631ad",
-        "public/budget-sheet-motion.css": "94fc264a45ee8cbcdf3a56356e52a65cde695ba24bc0cb4f5e706c824bd90377",
-        "public/app.js": "8b99ebdecaad18f63fda3bdccf438b66a0312452b407662a9828e8d19d14528e",
+        "public/budget-surface.css": "69611d57c8ec3b692af7e18e775137d2a6823561eef3faa5ee31fead07bfdc73",
+        "public/budget-blend.css": "43ab6315177f95042f16b8f3239d9f9d85d49117cf9bcc3dd81483a3b74b1133",
+        "public/budget-gface.css": "88d1d1aba917bd267150862839a1e09e2b66598b058e686fbdd62a7834562a9a",
+        "public/budget-sheet-motion.css": "31fbea5e07e133925d3f357c62ddf6d7f38d84e7bc0b654d8473070e5d1ed2c4",
+        "public/app.js": "93244321102856d589ec5a0f2787a705e4c2f70cbe4351ee13b7b98bc143cb27",
         "public/forecast-card-period.js": "a0e1c461354da0a6e8c73ee55a2ba76510d6a9c8e840e4f729df3b627df9fb3b",
         "public/forecast.js": "5dcdf6106722b552b390a5f9be906a4ba43209000c37a256edbb7cd407e9b00c",
         "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
         "public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
         "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
-        "public/savings-inventory.js": "6e42b5a553d90ed8472bee9d63d5c71a0de042fd71589a097cce86ace4728e81",
+        "public/savings-inventory.js": "49a38dd1b246456ba057f1861891020337d650b474b209d0c8a332539d007ea3",
         "public/budget-surface.js": "af32d9e29d1487496365a1025a0bfb65d2dc062f2534392b8095675857f9552b",
-        "public/budget-card-movements.js": "c46ac87bc11249154bfe756f3177d7b2b9430135d37113c7e2f1388c8aec4403",
+        "public/budget-card-movements.js": "8c471fa191d26a051162cf1911235f07530be8535da13e6e1e9189c333687333",
         "public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
-        "public/plan.js": "be5aa3b1935d8268a02849f59e83ad02e48fe91e4c12d6be869266dfa99e3662",
+        "public/plan.js": "f5eb8916abe6dc71553536fa952bfcdfb88d167e0570e6a9a8a2195819af46a7",
         "public/household-view.js": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
         "public/budget-polish.js": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
         "public/aurora.js": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
         "public/budget-river.js": "dbff4d71770e510d65a1f79f8a3eaf489a42885dc286e66630b375b661818418",
-        "public/budget-blend.js": "a1c41e131653a0a98f30b4188bee46debb7f6fd0801b615ceced85543f292385",
+        "public/budget-blend.js": "cae08ceec2adb0ff81c786ff73cd6bb5100514e1b07f6a156f7c9860142700cf",
         "public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010"
       },
-      "pulseAnimationName": "boot-pulse"
+      "markAnimationName": "boot-blocks",
+      "overlayCoversViewport1440": true,
+      "headerCoveredByHitTest": true,
+      "blockSeparationRangesPx": [
+        3.01,
+        4.19,
+        3.4,
+        2.92
+      ],
+      "geometryRunDelayMs": 9000
     },
     "dark": {
       "delayMs": 1500,
       "treatmentVisibleObserved": true,
-      "screenshotAtMs": 1791740709117
+      "overlayCoversViewport1440": true,
+      "markAnimationName": "boot-blocks",
+      "screenshotAtMs": 1791787355610
     },
     "reducedMotion": {
       "delayMs": 2500,
       "animationName": "none",
-      "frameStable": true
+      "blockCentreDriftPx": 0,
+      "frameStable": true,
+      "overlayCoversViewport320": true
     },
     "billsDirectEntry": {
       "delayMs": 1500,
       "liveLayerVisible": true,
+      "overlayCoversViewport390": true,
+      "inContentNoteBoxesSeen": 0,
       "servedSha": {
         "public/bills.html": "4553fb11243604a1c2075c8b1a00644cedbf968115c84c3b919d8090971f0784",
-        "public/styles.css": "3c347e12482327da3442c3e14115e0897a4add1ac32bbe38ad2f8d0f708ebd1c",
+        "public/styles.css": "ca789bfd31ab1f4dc38980e6052cb479e26dfb545f2e626ad66204c7028c174e",
         "public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010",
-        "public/app.js": "8b99ebdecaad18f63fda3bdccf438b66a0312452b407662a9828e8d19d14528e",
+        "public/app.js": "93244321102856d589ec5a0f2787a705e4c2f70cbe4351ee13b7b98bc143cb27",
         "public/forecast.js": "5dcdf6106722b552b390a5f9be906a4ba43209000c37a256edbb7cd407e9b00c",
         "public/bills.js": "e90da373b69868785a58b4d8d5d267f18b0e7a54d8cadcb9a2ca4139d259b764"
       }
     },
     "failureRetry": {
-      "critTreatmentAbsent": true,
+      "critBrandingPresentStatic": true,
+      "critCoversViewport": true,
+      "critClassExact": true,
+      "critAnimationsRunning": 0,
+      "shellInertDuringCrit": true,
+      "retryKeyboardOperable": true,
+      "retryTouchOperable": true,
       "retryTreatmentVisible": true,
-      "removedAfterRetrySuccess": true
+      "removedAfterRetrySuccess": true,
+      "shellRestoredAfterSuccess": true,
+      "shellElementsProbed": 10
     },
     "cancelRetry": {
-      "cancelTreatmentAbsent": true,
-      "retryTreatmentVisible": true,
-      "removedAfterRetrySuccess": true
+      "cancelledBrandingPresentStatic": true,
+      "cancelledCoversViewport": true,
+      "cancelledClassExact": true,
+      "cancelledAnimationsRunning": 0,
+      "cancelFocusableDuringLoad": true,
+      "cancelTouchOperable": true,
+      "cyclesCompleted": 2,
+      "shellInertThroughCycles": true,
+      "removedAfterRetrySuccess": true,
+      "shellRestoredAfterSuccess": true,
+      "shellElementsProbed": 10
     },
     "staticStandalone": {
-      "computedVisible": true,
-      "pointerEvents": "none"
-    }
-  },
-  "baseComparison": {
-    "delay5000": {
-      "baseContentRenderedMs": 5432,
-      "baseTreatmentsSeen": 0,
-      "branchContentRenderedMs": 7159,
-      "addedDelayMs": 1727
+      "w1440-light": {
+        "computedVisible": true,
+        "coversViewport": true,
+        "bakedPreScriptIsolation": true,
+        "bakedElements": 9,
+        "pointerEvents": "auto",
+        "markAnimationName": "boot-blocks",
+        "blockSeparationRangesPx": [
+          2.87,
+          4.15,
+          3.41,
+          2.77
+        ]
+      },
+      "w1440-dark": {
+        "computedVisible": true,
+        "coversViewport": true
+      },
+      "w390-light": {
+        "computedVisible": true,
+        "coversViewport": true
+      },
+      "w320-dark": {
+        "computedVisible": true,
+        "coversViewport": true
+      },
+      "w390-reduced": {
+        "computedVisible": true,
+        "coversViewport": true,
+        "markAnimationName": "none",
+        "blockCentreDriftPx": 0
+      }
     },
-    "delay1500": {
-      "baseContentRenderedMs": 1935,
-      "baseTreatmentsSeen": 0
+    "inertFocus": {
+      "shellElementsProbed": 10,
+      "tabZonesSeen": [
+        "notice",
+        "body",
+        "notice",
+        "body",
+        "notice",
+        "body",
+        "notice",
+        "body",
+        "notice",
+        "notice",
+        "body",
+        "notice",
+        "body",
+        "notice"
+      ],
+      "cancelReachableByTab": true,
+      "shellFocusDeniedDuringLoad": true,
+      "headerControlOperableAfterArrival": true,
+      "shellRestoredAfterArrival": true
+    },
+    "staticPhaseHeldScript": {
+      "heldNoLiveNotice": true,
+      "bakedIsolationOnShell": true,
+      "staticPointerIntercept": true,
+      "hitLandsOnStaticLayer": true,
+      "focusDeniedPreScript": true,
+      "handoffGapSamples": 0,
+      "restoredAfterArrival": true,
+      "bakeMarkersRemaining": 0,
+      "headerControlFocusableAndClickable": true
+    },
+    "wrapperHandoff": {
+      "wrappersCarriedIsolationDuringHold": true,
+      "originalNodesSurvived": true,
+      "wrappersRemovedAfterArrival": true,
+      "disclosureRestoredToWrap": true,
+      "operatingSurfaceRestoredToWrap": true,
+      "footerEndedInFiguresBody": true
+    },
+    "talkLifecycle": {
+      "composerInCoveredSet": true,
+      "composerInertDuringHeldLoad": true,
+      "composerFocusDeniedDuringLoad": true,
+      "composerInertBehindCancelled": true,
+      "composerInertBehindCrit": true,
+      "brandingStaticOnCancelled": true,
+      "brandingStaticOnCrit": true,
+      "composerRestoredAfterArrival": true,
+      "composerAcceptsInputAfterArrival": true,
+      "shellElementsProbed": 5
+    },
+    "preBootFocusRestore": {
+      "focusedBeforeBoot": true,
+      "restoredToSameControl": true,
+      "controlStillConnected": true
+    },
+    "earlyReady": {
+      "delayMs": 0,
+      "noticeRemoved": true,
+      "residualInertOnTouchedShell": 0,
+      "bakedMarkersRemaining": 0,
+      "priorStatePreservedOnFixtureElement": "#road-ahead (an actual captured shell node; served with inert + aria-hidden=\"true\" and no data-boot-inert for this run only — replaces the nested #risks fixture, which was never captured)",
+      "shellElementsProbed": 8,
+      "headerControlFocusable": true
+    },
+    "critIsolation": {
+      "probePosition": "static",
+      "probeCoversViewport": false,
+      "renderedInContentNoteBoxesSeen": 0,
+      "method": "computed-style probe: a .note-box.crit element without the attribute, plus every rendered in-content note-box on the arrived page"
+    },
+    "directRoutes": {
+      "htmlDocumentsInPublic": 10,
+      "documents": [
+        "bills.html",
+        "credit.html",
+        "deepdive.html",
+        "index.html",
+        "modellers.html",
+        "plan-spend.html",
+        "planning.html",
+        "records.html",
+        "subscriptions.html",
+        "talk.html"
+      ],
+      "countedFrom": "public/ listing of the served tree at proof time"
     }
   },
+  "baseComparison": null,
   "screenshots": {
-    "boot-treatment-light.png": "57594bcaab077dc5d661ed2a2b91ad7b4acf5532c023e7e2ef65cb402056fd6d",
-    "boot-treatment-after.png": "4fc9c286b2d1f66674be426280d59d07263386b06ce9b8c0dd70fd9bf88138ed",
-    "boot-treatment-dark.png": "231efb33bad5b4a859e3a6c11c915e840964646173e0724bbc91b22d2be718be",
-    "boot-treatment-reduced-motion.png": "8f60d79941e99de32b4ec348e844fed30986a77650b0302c2e991a518bd206e3",
-    "boot-treatment-bills.png": "ad705b65bd3fbd9aee90080658c9975063771881325a0807d70a691dbaa9f45a",
-    "boot-treatment-crit.png": "3de356250a2549a9c4f25b6b89fb6b1d04314acbd15c324f2b7f19c70feccb34",
-    "boot-treatment-retry.png": "8555695acf6bb37838c0d236a08a32c31c2c1e4723f3fccf125b6eaf2e6d2672",
-    "boot-treatment-static.png": "7427df36661b0e591f5a6435415c3da62255fa657bc207f508d818d49584fe25"
+    "boot-treatment-light.png": "2c5193d54af37427c9342aa9d2eaa46ad2eb86430be60ca5db99226c2c87ce21",
+    "boot-treatment-after.png": "3802b98266e6940bb3886250a0a77c9b1a1838b802d50eed51496abc5a7ca5db",
+    "boot-treatment-dark.png": "8dcf164904b35226902efa9bc4a47c0e88c3a8d945e97dc03c618c4f8658287c",
+    "boot-treatment-reduced-motion.png": "646d9449f7104b5be241a957b5fcad76b033a4e2e22bbadd53e64f87e2e3c8ea",
+    "boot-treatment-bills.png": "3410c4b7885bcbdaf52c821d7351fd492c325863e0ca2469330249b4e6e62eb4",
+    "boot-treatment-crit.png": "17991763028e653baeb9ee0ada402ca93e5e3d72f0f9bc327d083fc269962f15",
+    "boot-treatment-retry.png": "6a2b49b2cb174a46cb0330de45380f3779a7b241e5a2d2f2a1ab64cbd05fca5d",
+    "boot-treatment-cancel.png": "3ff5579bb7821327ed0bd13eedbbc807ac3ec659e4ac0b0fcffa9015928493c1",
+    "boot-treatment-static.png": "9be2588c9d0957ac8eba80ec8e9a46c1def22a77d001f715a31b81fa2cce0907",
+    "boot-treatment-static-held.png": "d2f29dfd924446e755ef9d5a803eefecba66fa0030deef0317b509f399e85716",
+    "boot-treatment-talk-cancel.png": "bd9dbec6aab20e6f82e488ea6b702429a42b514919b1fde74cd7072bd5b8d5dd",
+    "boot-treatment-talk-crit.png": "7a54682c33592fe7b1eb29189c1e2895b8b8a796a0114708f498c2e18e82647a",
+    "boot-treatment-ready.png": "709fe19bac8025c606b29b12d587b717b45bd0cfbd7de7817a750ee6a001166a"
   },
-  "repeatedTimingMeasures": {
-    "method": "same nav->content measurement as the base comparison, fixed 5000ms /data.json delay, 3 alternating rounds per tree, headless Chromium on this machine",
-    "branchMs": [
-      5416,
-      5491,
-      5468
-    ],
-    "baseMs": [
-      5426,
-      5441,
-      5438
-    ],
-    "pairedDeltasMs": [
-      -10,
-      50,
-      30
-    ],
-    "branchMedianMs": 5468,
-    "baseMedianMs": 5438,
-    "medianPairedDeltaMs": 30,
-    "differenceOfMediansMs": 30,
-    "conclusion": "inconclusive",
-    "note": "Per-round paired deltas vary more than either aggregate; the fixture post-arrival render dominates and fluctuates by ~1s between identical runs. These aggregates are measurements only and do not establish that the treatment adds no delay. The supported claim is narrower: the treatment adds no new blocking assets."
-  }
+  "repeatedTimingMeasures": null
 }

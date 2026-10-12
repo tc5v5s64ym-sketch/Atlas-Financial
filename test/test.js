@@ -21,10 +21,30 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+if (process.env.GITHUB_ACTIONS === 'true' || process.env.ATLAS_PUBLIC_CI === '1') {
+  const failRunner = error => {
+    try {
+      const root = process.env.ATLAS_CI_DIAGNOSTICS_DIR || process.env.RUNNER_TEMP || os.tmpdir();
+      fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+      const dir = fs.mkdtempSync(path.join(root, 'atlas-ci-runner-private-'));
+      fs.chmodSync(dir, 0o700);
+      fs.writeFileSync(path.join(dir, 'error.log'), String(error && error.stack || error), { mode: 0o600 });
+    } catch { /* Reporting failure must not expose the original error. */ }
+    fs.writeSync(2, JSON.stringify({ type: 'ci-runner-error', identity: 'test.js',
+      status: 'fail', category: 'runner-failed', exitCode: 1 }) + '\n');
+    process.exit(1);
+  };
+  process.on('uncaughtException', failRunner);
+  process.on('unhandledRejection', failRunner);
+}
+const CiOutput = require('../scripts/ci-output');
 
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['public CI output and synthetic privacy canaries', 'test-ci-output.js'],
+  ['serial runner, complete CI partition and aggregation contracts', 'test-ci-split.js'],
   ['annual savings expense excluded from payday Bills with one conserved draw', 'test-annual-savings-payperiod.js'],
   ['owner-approved streaming bills on the incumbent held-elsewhere Wise path', 'test-owner-streaming-bills.js'],
   ['selector locale formatter equivalence', 'test-selector-formatters.js'],
@@ -47,6 +67,10 @@ const suites = [
   ['Bills native unknown amounts and account-specific future cash', 'test-bills-period-end-native-requirements.js'],
   ['card minimum repair stock, proof and identity conservation', 'test-card-minimum-repair-conservation.js'],
   ['selected Seaspan card movement endpoints, coverage and conservation', 'test-card-period-movements.js'],
+  ['card-window allocation diagnostics through synthetic provider evidence', 'test-card-payment-diagnostics.js'],
+  ['card allocation diagnostic identity and parent dependency regressions', 'test-card-payment-diagnostic-dependencies.js'],
+  ['inert private card decision controller with real Forecast validation', 'test-card-payment-decisions.js'],
+  ['private card decision typed store, operation outcomes and POSIX durability', 'test-card-payment-decision-store.js'],
   ['card statement cycle replacement and sender-only minimum evidence', 'test-card-minimum-cycle-contract.js'],
   ['bounded strict card-minimum date validation', 'test-card-minimum-date-cache.js'],
   ['card minimum issuer confirmation across advancing live refreshes', 'test-card-minimum-issuer-lifecycle.js'],
@@ -58,6 +82,7 @@ const suites = [
   ['daily savings incumbent financial probes', 'probe-savings-daily-allocation-incumbent.js'],
   ['active daily Budget Savings consumer contracts', 'test-savings-daily-consumer.js'],
   ['grouped savings rows expose published member rows on both surfaces', 'test-savings-group-members.js'],
+  ['Travel Visa annual fee excluded from Savings and shown under Bills', 'test-travel-visa-annual-fee.js'],
   ['v2 observed savings semantic date and independent Budget stock', 'test-provider-v2-savings-stock.js'],
   ['v2 semantic credit dates, qualified live stock and active Credit renderer', 'test-provider-v2-credit-date.js'],
   ['native utility settlement units and independent holds', 'test-utility-settlement-currency.js'],
@@ -323,6 +348,7 @@ const suites = [
   ['merge-card check behaviour', 'test-mergecard.js'],
   ['figures comment Plan/Credit/Planning scope (B82/B100)', 'test-figures-comment.js'],
   ['figures snapshot Credit and Planning coverage (B100)', 'test-figures-snapshot-credit-planning.js'],
+  ['Trusted repair privacy gate and private artifact hold', 'test-ci-repair-privacy.js'],
   ['Codex Cursor repair gate', 'test-codex-cursor-repair.js'],
   ['Atlas review-block card sync', 'test-atlas-review-block.js'],
   ['Atlas bounded re-review handoff', 'test-atlas-api-rereview.js'],
@@ -390,24 +416,121 @@ const suites = [
   ['current spendable copy and recorded cash membership', 'test-recorded-cash-labels.js'],
 ];
 
-let failed = [];
-for (const [name, file] of suites) {
-  if (!fs.existsSync(path.join(__dirname, file))) {
-    console.log(`\n\x1b[31m✗\x1b[0m ${name} — ${file} is missing`);
-    failed.push(name);
-    continue;
+
+// One ordered manifest owns both the serial reference and the two CI groups.
+// Do not glob: probe-savings-daily-allocation-incumbent.js is also a suite.
+const ISOLATION_SUITE = 'test-refresh-isolation.js';
+const GROUPS = Object.freeze(['standard', 'refresh-isolation']);
+for (const suite of suites) Object.freeze(suite);
+Object.freeze(suites);
+
+function validateSuites(manifest) {
+  if (!Array.isArray(manifest) || manifest.length === 0) {
+    throw new Error('A suite selection must be nonempty');
   }
-  console.log(`\n\x1b[1m──────── ${name} ────────\x1b[0m`);
-  try {
-    execFileSync(process.execPath, [path.join(__dirname, file)], { cwd: ROOT, stdio: 'inherit' });
-  } catch {
-    failed.push(name);
+  const files = new Set();
+  for (const row of manifest) {
+    if (!Array.isArray(row) || row.length !== 2 ||
+        typeof row[0] !== 'string' || !row[0].trim() ||
+        typeof row[1] !== 'string' || !/^[a-z0-9-]+\.js$/.test(row[1])) {
+      throw new Error('Invalid suite manifest entry');
+    }
+    if (files.has(row[1])) throw new Error(`Duplicate suite: ${row[1]}`);
+    files.add(row[1]);
   }
 }
 
-console.log('\n' + '═'.repeat(60));
-if (failed.length) {
-  console.log(`\x1b[31mFAILED\x1b[0m — ${failed.length} of ${suites.length} suites: ${failed.join(', ')}`);
-  process.exit(1);
+function selectSuites(group = 'all', manifest = suites) {
+  if (group !== 'all' && !GROUPS.includes(group)) {
+    throw new Error(`Unknown suite group: ${group}`);
+  }
+  validateSuites(manifest);
+  if (!manifest.some(([, file]) => file === ISOLATION_SUITE)) {
+    throw new Error('The manifest must include the refresh-isolation suite');
+  }
+  const selected = manifest.filter(([, file]) => group === 'all' ||
+    (group === 'refresh-isolation' ? file === ISOLATION_SUITE : file !== ISOLATION_SUITE));
+  validateSuites(selected);
+  return selected;
 }
-console.log(`\x1b[32mALL ${suites.length} SUITES PASSED\x1b[0m`);
+
+function selectionFromArgs(args) {
+  if (args.length === 0) return selectSuites();
+  if (args.length !== 2 || args[0] !== '--group') {
+    throw new Error('Usage: node test/test.js [--group standard|refresh-isolation|all]');
+  }
+  return selectSuites(args[1]);
+}
+
+// Synchronous execution is deliberate: suites mutate shared checkout files.
+// The injected operations let the runner's failure contract be tested without
+// launching financial suites or changing their assertion/cleanup semantics.
+function runSuites(suites, { execute = execFileSync, exists = fs.existsSync,
+  log = console.log, publicCI = CiOutput.publicMode() } = {}) {
+  validateSuites(suites);
+  const failed = [];
+  let suiteOrdinal = 0;
+  for (const [name, file] of suites) {
+    const identity = CiOutput.suiteIdentity(file, ++suiteOrdinal);
+    if (publicCI && identity.startsWith('suite-')) {
+      CiOutput.publish({ identity, status: 'fail', category: 'invalid-configuration',
+        exitCode: 1, signal: null, executed: false });
+      failed.push(identity);
+      continue;
+    }
+    if (!exists(path.join(__dirname, file))) {
+      if (publicCI) {
+        CiOutput.publish({ identity, status: 'fail', category: 'missing-suite',
+          exitCode: 1, signal: null, executed: false });
+        failed.push(file);
+        continue;
+      }
+      log(`\n\x1b[31m✗\x1b[0m ${name} — ${file} is missing`);
+      failed.push(name);
+      continue;
+    }
+    if (publicCI) {
+      CiOutput.startSuite(identity);
+      const result = CiOutput.runCaptured(process.execPath, [path.join(__dirname, file)],
+        { cwd: ROOT, identity: file });
+      CiOutput.publish(result);
+      if (result.status !== 'pass') failed.push(file);
+      continue;
+    }
+    log(`\n\x1b[1m──────── ${name} ────────\x1b[0m`);
+    try {
+      execute(process.execPath, [path.join(__dirname, file)], { cwd: ROOT, stdio: 'inherit' });
+    } catch {
+      failed.push(name);
+    }
+  }
+
+  if (publicCI) {
+    log(JSON.stringify({ type: 'ci-suite-summary', total: suites.length,
+      passed: suites.length - failed.length, failed: failed.length,
+      failedSuites: failed, exitCode: failed.length ? 1 : 0 }));
+    return failed.length ? 1 : 0;
+  }
+  log('\n' + '═'.repeat(60));
+  if (failed.length) {
+    log(`\x1b[31mFAILED\x1b[0m — ${failed.length} of ${suites.length} suites: ${failed.join(', ')}`);
+    return 1;
+  }
+  log(`\x1b[32mALL ${suites.length} SUITES PASSED\x1b[0m`);
+  return 0;
+}
+
+if (require.main === module) {
+  if (CiOutput.publicMode()) {
+    // Let the installed privacy boundary handle selection/runner exceptions.
+    // Catching and printing their raw message here would bypass that boundary.
+    process.exitCode = runSuites(selectionFromArgs(process.argv.slice(2)));
+  } else try {
+    process.exitCode = runSuites(selectionFromArgs(process.argv.slice(2)));
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+}
+
+module.exports = { suites, GROUPS, selectSuites, selectionFromArgs, runSuites };

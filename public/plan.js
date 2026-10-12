@@ -5058,15 +5058,48 @@ function budgetDailyNeededHtml(row) {
 }
 
 
+// The Travel Visa annual fee is a bill, not a savings goal. Forecast still
+// publishes its yearly-bill funding row (the reserve protection is unchanged),
+// but the Savings lists do not print it: it is shown under Bills as an
+// upcoming annual bill (budgetUpcomingAnnualBill). Display-only — the
+// packet, its funding and its totals are never altered here. Identity is
+// the published row key, which Forecast derives from the backing item's
+// source + id; the label, amount and date are never matched.
+const BUDGET_SAVINGS_ANNUAL_BILL_ROW = 'yearly-bill:travelvisa-annual-fee-2027';
+const BUDGET_SAVINGS_ANNUAL_BILL_ID = 'travelvisa-annual-fee-2027';
+// One neutral note in every state — normal publication, unavailable-
+// publication fallback (bare or prefixed identity), historical period and
+// the occurrence's own period (Atlas, Slack 1791764127.160729, superseding
+// the destination-claiming copy of 4243785333): it states only that the fee
+// is treated as a bill and that its funding is unchanged, and never claims
+// anything about the Bills destination the current view happens to render.
+const BUDGET_SAVINGS_ANNUAL_BILL_NOTE = 'Travel Visa annual fee is treated as a bill; its funding is unchanged.';
+
 function budgetDailySavingsRows(packet, inventory, roster = []) {
-  if (packet?.rows?.length) return packet.rows;
-  // Preserve published goal names even when policy/evidence withholds amounts.
-  // This roster supplies labels only; no old proposal/backing is substituted.
-  const seen = new Set();
-  return [...(inventory?.goals || []), ...(inventory?.pools || []).flatMap(pool => pool.plannedGoals || []),
-    ...roster.map(row => ({ key: row.id, label: row.label }))]
-    .filter(row => row?.key && !seen.has(row.key) && seen.add(row.key))
-    .map(row => ({ key: row.key, label: row.label, saved: null, needed: null, thisPeriod: null }));
+  let rows;
+  if (packet?.rows?.length) {
+    rows = packet.rows;
+  } else {
+    // Preserve published goal names even when policy/evidence withholds amounts.
+    // This roster supplies labels only; no old proposal/backing is substituted.
+    const seen = new Set();
+    rows = [...(inventory?.goals || []), ...(inventory?.pools || []).flatMap(pool => pool.plannedGoals || []),
+      ...roster.map(row => ({ key: row.id, label: row.label }))]
+      .filter(row => row?.key && !seen.has(row.key) && seen.add(row.key))
+      .map(row => ({ key: row.key, label: row.label, saved: null, needed: null, thisPeriod: null }));
+  }
+  // The unavailable-publication fallback above names roster items by their
+  // bare item id, not the published row key, so the exclusion must match
+  // both canonical identity forms of this one fee — never its label.
+  const visible = rows.filter(row => row?.key !== BUDGET_SAVINGS_ANNUAL_BILL_ROW
+    && row?.key !== BUDGET_SAVINGS_ANNUAL_BILL_ID);
+  if (visible.length !== rows.length) visible.annualBillExcluded = true;
+  return visible;
+}
+
+function budgetSavingsAnnualBillNoteHtml(listed) {
+  if (!listed?.annualBillExcluded) return '';
+  return `<p class="budget-savings-bill-note" data-budget-savings-annual-bill-note>${BUDGET_SAVINGS_ANNUAL_BILL_NOTE}</p>`;
 }
 
 // Presentation join only. A grouped row's members are already published by
@@ -5146,7 +5179,9 @@ function budgetSavingsMemberFigures(member, thisPeriodTrust, historical = false)
 
 function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null, context = {}) {
   const value = (amount, trust) => budgetV3Money(amount, trust);
-  const rows = budgetDailySavingsRows(packet, inventory).map(row => {
+  const listed = budgetDailySavingsRows(packet, inventory);
+  const annualBillNote = budgetSavingsAnnualBillNoteHtml(listed);
+  const rows = listed.map(row => {
     const needed = budgetDailyNeededHtml(row);
     const group = budgetSavingsRowMembers(packet, row);
     const members = group ? `<ul class="budget-savings-members">${group.members.map(member => {
@@ -5165,7 +5200,7 @@ function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null,
   }).join('');
   const period = packet.period;
   return `<section data-budget-planned-savings-summary data-budget-daily-savings>
-    <ul class="budget-savings-contributions">${rows || '<li>Named savings unavailable.</li>'}</ul>
+    <ul class="budget-savings-contributions">${rows || '<li>Named savings unavailable.</li>'}</ul>${annualBillNote}
     <p class="operating-line"><span>Unsent top-up today</span><strong data-budget-daily-proposal>${value(period?.proposal, period?.trust)}</strong></p>
     <details class="budget-savings-info" data-budget-savings-info><summary>Info</summary><div>
       <p>${budgetV3Escape(packet.allocationDescription || 'Savings allocation evidence is unavailable.')} These figures are replaced on refresh. A proposal is not a transfer or a confirmed manual assignment.</p>
@@ -6868,13 +6903,54 @@ function budgetBillBrowseRowHtml(row) {
   </button>`;
 }
 
+// The Bills counterpart of the Savings exclusion: the Travel Visa annual
+// fee, read from the CURRENT Forecast savings publication — never the
+// selected period's packet; the occurrence is a future commitment and the
+// current packet is the one guaranteed to carry its backing item. Identity
+// is the backing item's published source + id, never its label. Only the
+// label, the published amount and the published occurrence date print,
+// with the publication's own trust qualifications; the published saved
+// figure never prints here — this is a bill, shown as a bill. The entry
+// carries no period figure, so it cannot enter the period's published due
+// totals or calendar, which are read from period fields only.
+function budgetUpcomingAnnualBill(period, ctx) {
+  if (budgetBrowseHistorical(period)) return null;
+  const packet = budgetDailySavingsFor(ctx);
+  const published = [...(packet?.backing?.items || []), ...(packet?.unresolved || [])];
+  const matches = published.filter(item => item?.source === 'yearly-card-paid-bill'
+    && item?.id === 'travelvisa-annual-fee-2027');
+  if (!matches.length) return null;
+  // A duplicated identity fails closed, exactly like the savings member
+  // join: no occurrence is picked and no figure is invented.
+  if (matches.length > 1) return { label: matches[0].label || 'Annual bill',
+    amount: budgetV3Money(null, 'unknown'), when: 'Date unavailable' };
+  const item = matches[0];
+  const date = isValidIsoCalendarDate(item.date) ? item.date : null;
+  // When the occurrence belongs to the selected period it already prints
+  // once in that period's native bill buckets; the upcoming entry steps aside.
+  if (date && period?.start && period?.end && date >= period.start && date <= period.end) return null;
+  return { label: item.label || 'Annual bill', amount: budgetDailyNeededHtml(item),
+    when: date ? fmtDateFull(date) + (item.trust === 'estimated' ? ' · estimated' : '') : 'Date unavailable' };
+}
+
+function budgetUpcomingAnnualBillRowHtml(entry) {
+  // Plain markup only — never a data-budget-bill-open row and never the
+  // shared .budget-bill-row class: the bucket then hides under any day
+  // filter, the row never opens the bill sheet, and the blend layer's
+  // bill-row scans (calendar hits, confirm counts) never see it.
+  return `<div class="budget-annual-bill-row" data-budget-annual-bill="travelvisa-annual-fee-2027">
+    <span class="budget-bill-label"><strong>${budgetBrowseEscape(entry.label)}</strong><span class="budget-bill-when">${budgetBrowseEscape(entry.when)}</span></span>
+    <span class="budget-bill-value"><span class="budget-bill-amount">${entry.amount}</span></span></div>`;
+}
+
 function budgetBillsSectionHtml(period, ctx) {
   const progress = budgetProgressFor(period, ctx.asOf)?.bills;
   const rows = (period.bills || []).filter(Boolean);
   const feeAllowanceRetained = rows.some(row => row.scheduledFeeAllowance?.remainingAllowance > 0);
   const groups = { due: [], pending: [], check: [], paid: [], unknown: [] };
   rows.forEach(row => groups[budgetBillPresentation(row).kind].push(row));
-  const section = (key, title, list, note = '') => list.length ? `<div id="budget-bill-bucket-${key}" class="budget-bill-group${key === 'paid' ? ' budget-browse-paid' : ''}" data-budget-bill-bucket="${key}"><h3>${title} <span aria-label="Group total unavailable">Unavailable</span></h3>${list.map(budgetBillBrowseRowHtml).join('')}${note ? `<p>${note}</p>` : ''}</div>` : '';
+  const section = (key, title, list, note = '', render = budgetBillBrowseRowHtml) => list.length ? `<div id="budget-bill-bucket-${key}" class="budget-bill-group${key === 'paid' ? ' budget-browse-paid' : ''}" data-budget-bill-bucket="${key}"><h3>${title} <span aria-label="Group total unavailable">Unavailable</span></h3>${list.map(render).join('')}${note ? `<p>${note}</p>` : ''}</div>` : '';
+  const upcomingAnnualBill = budgetUpcomingAnnualBill(period, ctx);
   const historical = budgetBrowseHistorical(period);
   const withholdActionableRemaining = historical
     && (groups.check.length > 0 || groups.unknown.length > 0);
@@ -6890,6 +6966,7 @@ function budgetBillsSectionHtml(period, ctx) {
     ${section('check', 'To confirm', groups.check, 'The bill may already be paid. Check its evidence before paying again.')}
     ${section('due', 'Due', groups.due)}${section('pending', 'Pending', groups.pending)}
     ${section('paid', 'Paid', groups.paid)}${section('unknown', 'Status unavailable', groups.unknown)}
+    ${section('upcoming', 'Upcoming annual bills', upcomingAnnualBill ? [upcomingAnnualBill] : [], '', budgetUpcomingAnnualBillRowHtml)}
     <p class="budget-browse-note" data-budget-bill-filter-empty hidden>No published bills in this filter.</p>
     <details class="budget-bill-period-evidence"><summary>Period evidence</summary><div class="budget-bills-progress-wrapper">${budgetProgressBarHtml(progress, 'bills')}</div>
       <div class="budget-bills-figures"><span>${budgetBrowseMoney(period.paidBills)} confirmed settled or included in opening</span><span>${budgetBrowseMoney(period.totalBillsThisPeriod)} this period</span></div></details>
@@ -6936,19 +7013,29 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
       || ctx.advice?.savingsFunding != null) {
     const daily = budgetDailySavingsFor(ctx, period.id);
     const roster = [...(period.plannedCostFunding?.items || []), ...(period.plannedCostFunding?.unscheduled || [])];
-    const named = budgetDailySavingsRows(daily, ctx.advice?.savingsInventory, roster).map(row => {
+    const listed = budgetDailySavingsRows(daily, ctx.advice?.savingsInventory, roster);
+    const annualBillNote = budgetSavingsAnnualBillNoteHtml(listed);
+    const named = listed.map(row => {
+      // Canonical typed amounts stamped on the goal <li> under exactly the
+      // predicates that print them (funding-bar bands): the blend tile reads
+      // these typed values instead of re-parsing printed text. Unknown or
+      // ranged sides omit the attribute. Printed strings are byte-identical.
+      const savedStamp = budgetV3Known(row.saved, row.savedTrust)
+        ? ` data-budget-goal-saved-amount="${row.saved}"` : '';
+      const requiredStamp = !row.neededRange && budgetV3Known(row.needed, row.neededTrust ?? row.trust)
+        ? ` data-budget-goal-required-amount="${row.needed}"` : '';
       const group = budgetSavingsRowMembers(daily, row);
       const members = group ? `<div class="budget-goal-members">${group.members.map(member => {
         const figures = budgetSavingsMemberFigures(member, row.thisPeriodTrust, group.historical);
         return `<div class="budget-goal-member" data-budget-savings-member="${budgetV3Escape(member.key)}"><span>${budgetV3Escape(figures.name)}${figures.date ? ` <small>${budgetV3Escape(fmtDate(figures.date))}</small>` : ''}</span><span><span data-budget-savings-member-saved>${figures.saved}</span> / <span data-budget-savings-member-needed>${figures.needed}</span><small>Saved / needed</small></span><span><span data-budget-savings-member-proposed>${figures.proposed}</span><small>This period</small></span></div>`;
       }).join('')}</div>` : '';
-      return `<li data-budget-savings-goal="${budgetV3Escape(row.key)}"><button type="button" class="budget-goal-row" data-budget-goal-open="${budgetV3Escape(row.key)}" aria-haspopup="dialog">
+      return `<li data-budget-savings-goal="${budgetV3Escape(row.key)}"${savedStamp}${requiredStamp}><button type="button" class="budget-goal-row" data-budget-goal-open="${budgetV3Escape(row.key)}" aria-haspopup="dialog">
       <div class="budget-goal-heading"><strong>${budgetV3Escape(group ? group.title : row.label)}</strong></div>
       <div class="budget-goal-amounts"><span><span class="budget-goal-amount">${budgetV3Money(row.saved, row.savedTrust)}</span><small>Saved</small></span><span aria-hidden="true">/</span><span><span class="budget-goal-amount">${budgetDailyNeededHtml(row)}</span><small>Needed</small></span></div>
       <p class="budget-goal-context">${daily.period?.kind === 'projected' ? 'Projected top-up: ' : ''}${budgetV3Money(row.thisPeriod, row.thisPeriodTrust)} this period<span class="budget-goal-evidence">Info <span aria-hidden="true">></span></span></p>${members}
     </button></li>`;
     }).join('');
-    return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3><ul>${named || '<li>Named savings unavailable.</li>'}</ul>
+    return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3><ul>${named || '<li>Named savings unavailable.</li>'}</ul>${annualBillNote}
       <button type="button" class="budget-surface-link" data-budget-funding-inventory aria-haspopup="dialog">Accounts &amp; evidence</button>
       <div data-budget-funding-savings hidden>${daily ? budgetDailySavingsHtml(daily, '', ctx.advice?.savingsInventory, { asOf: ctx.asOf || ctx.advice?.defaultView?.asOf, period }) : 'Daily savings unavailable.'}</div></div>`;
   }
@@ -6977,7 +7064,12 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
     const fulfilled = budgetGoalContributionKnown(goal?.fulfilled);
     const remaining = budgetProgressAmountKnown(goal?.remaining) && goal.remaining.completeness === 'complete';
     const unknown = '<span class="budget-v3-unknown">Unknown</span>';
-    return `<li data-budget-savings-goal="${budgetV3Escape(row.id)}"><button type="button" class="budget-goal-row is-${state.kind}" data-budget-goal-open="${budgetV3Escape(row.id)}" aria-haspopup="dialog">
+    // Same typed stamps as the current branch, under this branch's exact
+    // print predicates (budgetGoalContributionKnown, as the booleans above):
+    // fulfilled is the saved side, required the total requirement side.
+    const savedStamp = fulfilled ? ` data-budget-goal-saved-amount="${goal.fulfilled.amount}"` : '';
+    const requiredStamp = required ? ` data-budget-goal-required-amount="${goal.required.amount}"` : '';
+    return `<li data-budget-savings-goal="${budgetV3Escape(row.id)}"${savedStamp}${requiredStamp}><button type="button" class="budget-goal-row is-${state.kind}" data-budget-goal-open="${budgetV3Escape(row.id)}" aria-haspopup="dialog">
       <div class="budget-goal-heading"><strong>${budgetV3Escape(goal?.label || label)}</strong><span class="budget-goal-state">${state.label}</span></div>
       <div class="budget-goal-amounts"><span><span class="budget-goal-amount" data-budget-goal-fulfilled>${fulfilled ? budgetV3Money(goal.fulfilled.amount, goal.fulfilled.trust) : unknown}</span><small>Fulfilled</small></span><span aria-hidden="true">/</span><span><span class="budget-goal-amount" data-budget-goal-required>${required ? budgetV3Money(goal.required.amount, goal.required.trust) : unknown}</span><small>Required this period</small></span></div>
       <p class="budget-goal-context">${remaining ? `${budgetV3Money(goal.remaining.amount, goal.remaining.trust)} remaining` : required ? 'Current Forecast requirement' : proposal ? `${budgetV3Money(goal.proposal.amount, goal.proposal.trust)} proposed; requirement unavailable` : 'Required contribution unavailable'}<span class="budget-goal-evidence">Evidence <span aria-hidden="true">></span></span></p>

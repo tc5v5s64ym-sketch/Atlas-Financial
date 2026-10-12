@@ -519,37 +519,34 @@ ok(gate.isExactCurrentHead(PUSHED, PUSHED), 'exact-head equality remains the suc
 ok(!gate.isExactCurrentHead(PUSHED, PREV), 'exact-head still distinguishes the previous SHA');
 ok(!gate.isExactCurrentHead(PUSHED, OTHER), 'exact-head still distinguishes a third SHA');
 
-console.log('\n=== shipped repair workflow uses the helper after push ===');
+console.log('\n=== shipped repair workflow withholds automatic pushes ===');
 {
   const repair = sourceText(fs.readFileSync(REPAIR, 'utf8'));
-  const pushJob = repair.split(/^  push:\n/m)[1] || '';
-  const pushSteps = pushJob.split(/\n      - name: /);
-  const preserveStep = pushSteps.find((step) => step.includes('atlas-trusted-scripts')) || '';
-  const commitStep = pushSteps.find((step) => step.startsWith('Commit, push, and persist the round')) || '';
-  const pushScript = (commitStep.match(/run: \|\n([\s\S]*)$/) || [, ''])[1];
-  const gitPushAt = pushScript.indexOf('git push');
-  const confirmAt = pushScript.indexOf('atlas-github-pr-head-sync.js');
-  const pendingAt = pushScript.indexOf('evaluate-pending');
-  const markerAt = pushScript.indexOf('atlas-cursor-repair-state');
-  ok(/atlas-github-pr-head-sync\.js/.test(pushJob),
-    'push job confirms the live PR head through the helper');
-  ok(/HEAD_REF:/.test(commitStep) && /needs\.gate\.outputs\.head_ref/.test(commitStep),
-    'push job pins the gated PR branch for identity checks');
-  ok(preserveStep.includes('trusted/scripts/atlas-github-pr-head-sync.js')
-    && preserveStep.includes('${RUNNER_TEMP}/atlas-trusted-scripts/atlas-github-pr-head-sync.js'),
-    'push job preserves the trusted head-sync helper outside the PR worktree');
-  ok(gitPushAt >= 0 && confirmAt > gitPushAt,
-    'live-head confirmation happens after git push, not instead of it');
-  ok(pendingAt > confirmAt, 'review-block PENDING waits for live-head confirmation');
-  ok(markerAt > confirmAt, 'repair-round marker waits for live-head confirmation');
-  ok(!/while\s+true|for\s+\(\(;/.test(pushScript),
-    'push job has no duplicated shell retry loop');
-  ok(/live_head=/.test(pushScript) && /repair_sha/.test(pushScript),
-    'push job still compares the confirmed live head to the locally pushed SHA');
-  ok(pushScript.indexOf('git push') < pushScript.indexOf('evaluate-pending'),
-    'successful git push alone is not treated as proof for PENDING');
-  ok(/confirm/.test(pushScript) && /atlas-trusted-scripts\/atlas-github-pr-head-sync\.js/.test(pushScript),
-    'confirm CLI runs from the preserved trusted copy');
+  ok(!/^  push:/m.test(repair) && !/git push|upload-artifact|download-artifact/.test(repair),
+    'unsafe automatic push and plaintext artifact jobs are retired');
+  ok(/ci-output.js --identity codex-review-gate -- node scripts\/ci-repair-privacy.js codex-review/.test(repair),
+    'trusted review gate uses private output capture');
+  const privacy = require('../scripts/ci-repair-privacy');
+  const review = { id: 9, user: { login: 'chatgpt-codex-connector[bot]' },
+    commit_id: PUSHED, body: 'Synthetic bounded finding.', submitted_at: '2041-07-09' };
+  const calls = [];
+  const result = privacy.run('codex-review', { GITHUB_REPOSITORY: 'owner/atlas',
+    EVENT_NAME: 'workflow_dispatch', DISPATCH_PR: '55', DEFAULT_BRANCH: 'main' }, {
+    api(route, request = {}) {
+      calls.push({ route, request });
+      if (request.method && request.method !== 'GET') throw new Error('unexpected mutation');
+      if (route.endsWith('/pulls/55')) return snapshot();
+      if (route.endsWith('/reviews')) return [review];
+      if (route.endsWith('/reviews/9')) return review;
+      if (route.endsWith('/comments')) return [];
+      throw new Error('unexpected synthetic API route');
+    },
+    dispatch() { throw new Error('unexpected dispatch'); },
+  });
+  ok(result.exitCode === 78 && result.code === 'private-artifact-blocked',
+    'eligible repair is withheld before any automatic push');
+  ok(calls.every(call => !call.request.method || call.request.method === 'GET'),
+    'withheld repair writes no PENDING, repair-round marker or bookkeeping');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
