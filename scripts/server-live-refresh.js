@@ -1,6 +1,9 @@
 'use strict';
 // Request lifecycle only. The existing LivePlan/Forecast modules own all values.
+// Share equivalent in-flight work only; every sequential/cold request still
+// refreshes. No completed observation or calculated-publication cache lives here.
 const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
+const { performance } = require('node:perf_hooks');
 const LIVE_REFRESH_TIMEOUT_MS = 150000;
 const MAX_ACTIVE_LIVE_REFRESHES = 2;
 
@@ -12,55 +15,141 @@ if (!isMainThread) {
     .then(data => parentPort.postMessage({ data }))
     .catch(() => parentPort.postMessage({ error: 'live-refresh-unavailable' }));
 } else {
+  const crypto = require('node:crypto');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { serialize } = require('node:v8');
+  const Forecast = require('../public/forecast');
+  const Observer = require('./provider-observe');
+  const Credentials = require('./local-credentials');
+  const root = path.resolve(__dirname, '..') + path.sep;
+  // Private process-local identity only. Never log a key, environment or input.
+  const keySalt = crypto.randomBytes(32);
   const active = new Set();
+  const jobs = new Map();
   function unavailable(code) {
     const error = new Error(code);
     error.code = code;
     return error;
+  }
+  function fileRevision(file) {
+    if (!file) return null;
+    try {
+      const stat = fs.statSync(file, { bigint: true });
+      return [file, stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs];
+    } catch (error) {
+      // A missing file is stable. Unreadable metadata must never authorize reuse.
+      return [file, error.code === 'ENOENT' ? null : crypto.randomBytes(32)];
+    }
+  }
+  function jobKey(canonical, env) {
+    const runtime = Object.keys(require.cache).filter(file => file.startsWith(root))
+      .sort().map(fileRevision);
+    const files = [Observer.DEFAULT_IDENTITY, Observer.DEFAULT_MAP, Observer.LOCAL_MAP,
+      env[Observer.MAP_PATH_ENV] && path.resolve(env[Observer.MAP_PATH_ENV]),
+      !Credentials.envToken(env) && process.platform === 'win32'
+        ? Credentials.defaultCredentialPath(env) : null].filter(Boolean).map(fileRevision);
+    const day = Forecast.financialDate(new Date(Date.now()).toISOString());
+    return crypto.createHmac('sha256', keySalt)
+      .update(serialize([canonical, Object.entries(env).sort(([a], [b]) => a.localeCompare(b)),
+        day, process.execArgv, runtime, files])).digest('hex');
+  }
+  function emitTiming(job) {
+    if (job.logged) return;
+    job.logged = true;
+    const elapsed = (start, end) => start == null || end == null ? null : Math.max(0, Math.round(end - start));
+    // Closed fields only: no payload, error text, provider identity or key.
+    // completed means the worker returned, not that provider evidence qualified.
+    console.log(JSON.stringify({ type: 'live-refresh-lifecycle', outcome: job.outcome,
+      totalMs: elapsed(job.started, job.finished),
+      workerStartupMs: elapsed(job.started, job.online),
+      workerRunMs: elapsed(job.online, job.finished),
+      cleanupMs: elapsed(job.finished, performance.now()),
+      waiterCount: job.waiterCount, peakWaiters: job.peakWaiters,
+      cancelledWaiters: job.cancelledWaiters, timedOutWaiters: job.timedOutWaiters }));
+  }
+  function settleWaiter(job, waiter, error, data) {
+    if (!job.waiters.delete(waiter)) return;
+    clearTimeout(waiter.timer);
+    waiter.signal?.removeEventListener('abort', waiter.cancelled);
+    if (error) waiter.reject(error);
+    // Each request keeps the same independent ownership as a dedicated worker.
+    else waiter.resolve(structuredClone(data));
+  }
+  function finishJob(job, error, data) {
+    if (job.settled) return;
+    job.settled = true;
+    job.finished = performance.now();
+    job.outcome = error ? error.code : 'completed';
+    clearTimeout(job.timer);
+    if (jobs.get(job.key) === job) jobs.delete(job.key);
+    for (const waiter of [...job.waiters]) settleWaiter(job, waiter, error, data);
+    if (!job.worker) return emitTiming(job);
+    const terminate = () => job.worker.terminate().catch(() => {});
+    try { job.worker.postMessage({ abort: true }); } catch (_) { /* Already exited. */ }
+    // Give cooperative transports their existing grace, then stop synchronous work.
+    if (error) setTimeout(terminate, 50).unref();
+    else terminate();
+  }
+  function startJob(job, canonical, env) {
+    if (job.settled) return;
+    job.timer = setTimeout(() => finishJob(job, unavailable('live-refresh-timeout')), LIVE_REFRESH_TIMEOUT_MS);
+    try {
+      const worker = job.worker = new Worker(__filename, { workerData: { canonical }, env });
+      active.add(worker);
+      worker.once('online', () => { if (!job.settled) job.online = performance.now(); });
+      worker.on('message', result => result?.data
+        ? finishJob(job, null, result.data) : finishJob(job, unavailable('live-refresh-unavailable')));
+      worker.on('error', () => finishJob(job, unavailable('live-refresh-unavailable')));
+      worker.on('exit', () => {
+        active.delete(worker);
+        if (!job.settled) finishJob(job, unavailable('live-refresh-unavailable'));
+        emitTiming(job);
+      });
+    } catch (_) { finishJob(job, unavailable('live-refresh-unavailable')); }
   }
   function serve(canonical, env, options = {}) {
     const Live = require('./live-plan');
     if (Live.overlayModeFromEnv(env) !== 'live') return Live.applyForServer(canonical, env);
     const signal = options.signal;
     if (signal?.aborted) return Promise.reject(unavailable('live-refresh-cancelled'));
-    if (active.size >= MAX_ACTIVE_LIVE_REFRESHES) return Promise.reject(unavailable('live-refresh-busy'));
     // Shorter budgets support bounded callers/tests; no caller can raise the cap.
     const requested = options.timeoutMs;
     const budget = Number.isFinite(requested) && requested > 0
       ? Math.min(requested, LIVE_REFRESH_TIMEOUT_MS) : LIVE_REFRESH_TIMEOUT_MS;
+    let key, input, workerEnv;
+    try {
+      input = structuredClone(canonical);
+      workerEnv = Object.fromEntries(Object.entries(env || process.env).map(([name, value]) => [name, String(value)]));
+      key = jobKey(input, workerEnv);
+    } catch (_) { return Promise.reject(unavailable('live-refresh-unavailable')); }
+    let job = jobs.get(key);
+    const fresh = !job;
+    // Equivalent callers can join even when the distinct-worker cap is full.
+    if (fresh && active.size >= MAX_ACTIVE_LIVE_REFRESHES) return Promise.reject(unavailable('live-refresh-busy'));
+    if (fresh) {
+      job = { key, started: performance.now(), waiters: new Set(), waiterCount: 0,
+        peakWaiters: 0, cancelledWaiters: 0, timedOutWaiters: 0, settled: false };
+      jobs.set(key, job);
+    }
     return new Promise((resolve, reject) => {
-      let settled = false, worker;
-      const finish = (error, data) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        signal?.removeEventListener('abort', cancelled);
-        if (worker) {
-          // Termination also closes the worker's sockets and interrupts synchronous
-          // projection; racing a Promise would leave that work running.
-          worker.postMessage({ abort: true });
-          // Let cooperative transports stop their child processes first. Busy
-          // synchronous work still gets forcibly interrupted after this short grace.
-          if (error) setTimeout(() => worker.terminate().catch(() => {}), 50);
-          else worker.terminate().catch(() => {});
-        }
-        if (error) reject(error); else resolve(data);
+      const waiter = { resolve, reject, signal };
+      const leave = code => {
+        if (!job.waiters.has(waiter)) return;
+        if (code === 'live-refresh-cancelled') job.cancelledWaiters++;
+        else job.timedOutWaiters++;
+        const error = unavailable(code);
+        settleWaiter(job, waiter, error);
+        if (!job.waiters.size) finishJob(job, error);
       };
-      const cancelled = () => finish(unavailable('live-refresh-cancelled'));
-      const timer = setTimeout(() => finish(unavailable('live-refresh-timeout')), budget);
-      signal?.addEventListener('abort', cancelled, { once: true });
-      try {
-        worker = new Worker(__filename, { workerData: { canonical }, env });
-        active.add(worker);
-        worker.on('message', result => result?.data
-          ? finish(null, result.data) : finish(unavailable('live-refresh-unavailable')));
-        worker.on('error', () => finish(unavailable('live-refresh-unavailable')));
-        worker.on('exit', () => {
-          active.delete(worker);
-          if (!settled) finish(unavailable('live-refresh-unavailable'));
-        });
-        if (signal?.aborted) cancelled();
-      } catch (_) { finish(unavailable('live-refresh-unavailable')); }
+      waiter.cancelled = () => leave('live-refresh-cancelled');
+      waiter.timer = setTimeout(() => leave('live-refresh-timeout'), budget);
+      job.waiters.add(waiter);
+      job.waiterCount++;
+      job.peakWaiters = Math.max(job.peakWaiters, job.waiters.size);
+      signal?.addEventListener('abort', waiter.cancelled, { once: true });
+      if (signal?.aborted) waiter.cancelled();
+      if (fresh) startJob(job, input, workerEnv);
     });
   }
   module.exports = { serve, LIVE_REFRESH_TIMEOUT_MS, MAX_ACTIVE_LIVE_REFRESHES };
