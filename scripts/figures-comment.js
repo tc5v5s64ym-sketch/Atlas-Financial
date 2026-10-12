@@ -1,6 +1,6 @@
 'use strict';
 /* Format the published-figures review comment from two snapshots.
- * `node scripts/figures-comment.js <base.json> <head.json> <baseRef>`
+ * `node scripts/figures-comment.js <base.json> <head.json> <baseRef> [--public-summary]`
  *
  * The snapshot in `scripts/figures-snapshot.js` covers Plan, Bills,
  * Subscriptions, Credit, and Planning household-facing figures. This helper
@@ -40,6 +40,43 @@ function fmt(k, v) {
   return money(v);
 }
 
+// One comparison contract for both the private detail and public count-only
+// report. Public families are fixed labels, never interpolated snapshot keys.
+function compareFigures(base, head) {
+  const keys = [...new Set([...Object.keys(base || {}), ...Object.keys(head)])].sort();
+  const moved = base === null ? keys : keys.filter(k => {
+    const a = base[k], b = head[k];
+    if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) > 0.005;
+    return a !== b;
+  });
+  return { keys, moved };
+}
+const PUBLIC_FAMILIES = ['Plan', 'Bills', 'Subscriptions', 'Credit', 'Planning', 'Other'];
+function publicFamily(key) {
+  if (key.startsWith('bills.')) return 'Bills';
+  if (key.startsWith('subscriptions.')) return 'Subscriptions';
+  if (key.startsWith('credit.')) return 'Credit';
+  if (key.startsWith('planning.')) return 'Planning';
+  if (/^(meta|cash|plan|payday|operating|totals|budget|scoreboard|debt|balance|heloc|action|policy)\./.test(key)) return 'Plan';
+  return 'Other';
+}
+function formatPublicFiguresComment(base, head) {
+  const { keys, moved } = compareFigures(base, head);
+  const changed = new Set(moved);
+  const families = PUBLIC_FAMILIES.map(name => ({ name, compared: 0, changed: 0 }));
+  for (const key of keys) {
+    const row = families.find(row => row.name === publicFamily(key));
+    row.compared++;
+    if (changed.has(key)) row.changed++;
+  }
+  const state = base === null ? 'introduced' : moved.length ? 'changed' : 'unchanged';
+  return MARKER + '\n### Published figures - public summary\n\nComparison: ' + state
+    + '.\n\n| Publication family | Compared fields | Changed fields |\n|---|---|---|\n'
+    + families.map(row => '| ' + row.name + ' | ' + row.compared + ' | ' + row.changed + ' |').join('\n')
+    + '\n\nTotal: ' + keys.length + ' compared; ' + moved.length + ' changed.\n'
+    + 'Financial values and raw diagnostics are withheld.\n';
+}
+
 function formatFiguresComment(base, head, baseRef) {
   if (base === null) {
     const rows = Object.entries(head)
@@ -50,12 +87,7 @@ function formatFiguresComment(base, head, baseRef) {
       `will diff against them.\n\n| Figure | Value |\n|---|---|\n${rows}\n`;
   }
 
-  const keys = [...new Set([...Object.keys(base), ...Object.keys(head)])].sort();
-  const moved = keys.filter(k => {
-    const a = base[k], b = head[k];
-    if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) > 0.005;
-    return a !== b;
-  });
+  const { keys, moved } = compareFigures(base, head);
 
   if (!moved.length) {
     return `${MARKER}\n### 📊 Published figures — unchanged\n\n` +
@@ -90,15 +122,17 @@ function formatFiguresComment(base, head, baseRef) {
 
 function main(argv) {
   const [, , basePath, headPath, baseRef] = argv;
-  if (!basePath || !headPath || argv.length !== 5) {
+  const publicSummary = argv.length === 6 && argv[5] === '--public-summary';
+  if (!basePath || !headPath || (argv.length !== 5 && !publicSummary)) {
     process.stderr.write(
-      'usage: node scripts/figures-comment.js <base.json> <head.json> <baseRef>\n'
+      'usage: node scripts/figures-comment.js <base.json> <head.json> <baseRef> [--public-summary]\n'
     );
     return 1;
   }
   const base = JSON.parse(fs.readFileSync(basePath, 'utf8'));
   const head = JSON.parse(fs.readFileSync(headPath, 'utf8'));
-  process.stdout.write(formatFiguresComment(base, head, baseRef));
+  process.stdout.write(publicSummary ? formatPublicFiguresComment(base, head)
+    : formatFiguresComment(base, head, baseRef));
   return 0;
 }
 
@@ -112,4 +146,6 @@ module.exports = {
   isCount,
   isRate,
   main,
+  compareFigures,
+  formatPublicFiguresComment,
 };

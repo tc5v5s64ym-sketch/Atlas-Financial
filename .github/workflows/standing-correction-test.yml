@@ -24,16 +24,16 @@ jobs:
         with:
           node-version: '20'
       - name: Install runtime dependencies
-        run: npm ci --omit=dev
+        run: node scripts/ci-output.js --identity install-runtime -- npm ci --omit=dev
       - name: Prove bounded synthetic standing contract
-        run: node test/test-assistant-standing-corrections.js
+        run: node scripts/ci-output.js --identity test-assistant-standing-corrections.js -- node test/test-assistant-standing-corrections.js
       - name: Prove actual durable authority and two-process category execution
-        run: node test/test-assistant-standing-store.js
+        run: node scripts/ci-output.js --identity test-assistant-standing-store.js -- node test/test-assistant-standing-store.js
       - name: Prove incumbent interactive contract
-        run: node test/test-assistant-lunchmoney.js
+        run: node scripts/ci-output.js --identity test-assistant-lunchmoney.js -- node test/test-assistant-lunchmoney.js
       - name: Prove preserving metadata cleanup and reusable previews
-        run: node test/test-assistant-cleanup.js
+        run: node scripts/ci-output.js --identity test-assistant-cleanup.js -- node test/test-assistant-cleanup.js
       - name: Prove automatic routine cleanup, real financial effects and durable private history
-        run: node test/test-assistant-routine-cleanup.js
+        run: node scripts/ci-output.js --identity test-assistant-routine-cleanup.js -- node test/test-assistant-routine-cleanup.js
       - name: Prove incumbent HTTP and JWT boundary
-        run: node test/test-assistant-interface.js
+        run: node scripts/ci-output.js --identity test-assistant-interface.js -- node test/test-assistant-interface.js
