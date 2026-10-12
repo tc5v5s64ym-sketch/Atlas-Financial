@@ -67,6 +67,9 @@ for (const [mode, mutate] of Object.entries({
   malformedTransactions: p => { p.transactions = null; },
   incompatiblePacketCurrency: p => { p.currency = 'USD'; },
   malformedPacketCurrency: p => { p.currency = null; },
+  missingFetchSource: p => { delete p.savingsFetchCoverage; },
+  malformedFetchSource: p => { p.savingsFetchCoverage = { complete: true }; },
+  forgedFetchSource: p => { p.savingsFetchCoverage = { ...p.savingsFetchCoverage, rawDescriptor: 'untrusted' }; },
 })) test('cloned packet ' + mode + ' cannot silently become clear', () => {
   const { data, report } = observed('valid');
   const before = JSON.stringify(report);
@@ -117,6 +120,28 @@ for (const list of ['empty', 'unrelated', 'zero']) for (const mode of observed.w
       assert.deepEqual(after.goalAllocation.balanceDates, s.goalAllocation.balanceDates);
     }
   });
+for (const mode of observed.sourceWindowModes) for (const list of ['empty', 'unrelated', 'zero'])
+  for (const bank of ['prior-year', 'valid-v2']) test('actual original-window ' + mode + ':' + list + ':' + bank, () => {
+    const x = observed.windowObservation(mode, list, bank), advice = windowPublish(x), original = x.report.transactionWindow.savingsFetchCoverage;
+    assert.strictEqual(x.packet, x.report.currentPeriodActuals);
+    assert.deepEqual(x.packet.savingsFetchCoverage, original, 'source facts survive normalization and sanitization unchanged');
+    assert.deepEqual(Object.keys(original).sort(), ['complete', 'endDate', 'startDate']);
+    assert.equal(typeof original.complete, 'boolean');
+    assert.ok([original.startDate, original.endDate].every(date => date === null || /^\d{4}-\d{2}-\d{2}$/.test(date)));
+    held(advice); assert.deepEqual(advice.savingsFunding.rows.map(row => row.needed), [230, 24]);
+    assert.equal(JSON.stringify(x.report), x.originalReport);
+    if (mode === 'source-missing-completion' || mode === 'source-null-completion') {
+      assert.equal(x.report.transactionWindow.complete, null, 'global normalized completion is preserved');
+      assert.equal(x.packet.transactionCoverage, 'complete', 'global packet behavior is preserved');
+      assert.equal(original.complete, false, 'Savings does not infer affirmative completion');
+    }
+    if (mode === 'source-missing-dates' || mode === 'source-missing-window') {
+      assert.equal(original.startDate, null); assert.equal(original.endDate, null);
+      if (list !== 'empty') {
+        assert.equal(x.packet.coverageStart, x.data.meta.asOf); assert.equal(x.packet.coverageThrough, x.data.meta.asOf);
+      }
+    }
+  });
 for (const mode of observed.rawWindowModes) for (const bank of ['prior-year', 'valid-v2'])
   test('actual observer ' + mode + ' holds ' + bank + ' funding without adjusting stock', () => {
     const x = observed.windowObservation(mode, 'empty', bank), advice = windowPublish(x);
@@ -138,3 +163,14 @@ for (const mode of ['unrelated-card', 'unrelated-unmapped', 'card-with-savings-f
     const truncated = { ...x, packet: { ...x.packet, transactionCoverage: 'truncated' } };
     held(windowPublish(truncated));
   });
+test('normalizing a timestamp afterward cannot manufacture original query-date provenance', () => {
+  const x = observed.windowObservation('source-timestamp-dates'), normalized = O.normalizeLunchMoneyPayload(x.input.payload);
+  assert.equal(normalized.transactionWindow.savingsFetchCoverage.startDate, null);
+  assert.equal(normalized.transactionWindow.savingsFetchCoverage.endDate, null);
+  normalized.transactionWindow.startDate = '2026-10-02'; normalized.transactionWindow.endDate = x.data.meta.asOf;
+  const packet = O.sanitizedCurrentPeriodActuals({ ...x.report, transactionWindow: normalized.transactionWindow },
+    { accountMap: x.input.accountMap, plan: x.data.plan, asOf: x.data.meta.asOf });
+  assert.equal(packet.coverageThrough, x.data.meta.asOf);
+  assert.equal(packet.savingsFetchCoverage.startDate, null); assert.equal(packet.savingsFetchCoverage.endDate, null);
+  held(windowPublish({ ...x, packet }));
+});

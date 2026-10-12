@@ -52,6 +52,7 @@ function fixture() {
         observationAsOf: AS_OF, coverageStart: '2026-10-02', coverageThrough: AS_OF,
         pendingCoverage: 'complete', transactionCoverage: { complete: true },
         savingsMovementUnconfirmed: [],
+        savingsFetchCoverage: { complete: true, startDate: '2026-10-02', endDate: AS_OF },
         representedActuals: [{ id: 'payroll', date: '2026-10-02', actual: 200, transactionId: 'income-1' }], transactions: [
           { id: 'income-1', date: '2026-10-02', amount: -200, pending: false, isIncome: true,
             atlasAccountId: 'chequing-a', accountRole: 'household-cash', currency: 'CAD',
@@ -84,6 +85,7 @@ function advance(input, asOf) {
   input.plan.savingsPoolObservation.asOf = asOf;
   input.plan.savingsPoolObservation.accounts.forEach(row => { row.evidenceDate = asOf; });
   input.opts.currentPeriodActuals.observationAsOf = input.opts.currentPeriodActuals.coverageThrough = asOf;
+  input.opts.currentPeriodActuals.savingsFetchCoverage.endDate = asOf;
   return input;
 }
 function monthBoundaryFixture() {
@@ -94,6 +96,7 @@ function monthBoundaryFixture() {
   input.plan.opening.paydaySnapshot = { periodStart: '2026-10-30', asOf: '2026-10-30', opening: 20 };
   input.plan.opening.representedEvents = [{ id: 'payroll', date: '2026-10-30' }];
   input.opts.currentPeriodActuals.coverageStart = '2026-10-30';
+  input.opts.currentPeriodActuals.savingsFetchCoverage.startDate = '2026-10-30';
   input.opts.currentPeriodActuals.representedActuals.push({ id: 'payroll', date: '2026-10-30', actual: 200, transactionId: 'month-income' });
   input.opts.currentPeriodActuals.transactions.push(
     { id: 'month-income', date: '2026-10-30', amount: -200, currency: 'CAD', pending: false,

@@ -91,16 +91,29 @@ const windowMutations = {
     { accountId: 'chequing-b', reason: 'transaction-amount-or-date-unconfirmed' }]; },
 };
 const rawWindowModes = ['raw-truncated', 'raw-missing-window', 'raw-impossible-start', 'raw-future-end', 'raw-incomplete-end'];
+const sourceWindowModes = ['source-missing-completion', 'source-null-completion', 'source-string-completion',
+  'source-missing-dates', 'source-missing-window', 'source-timestamp-dates', 'source-conflicting-dates',
+  'source-has-more', 'source-truncated', 'source-malformed-flag'];
 function windowObservation(mode = 'complete', list = 'empty', bank = 'prior-year') {
   const x = fx.input(bank); delete x.data.liveOverlay;
   if (list !== 'empty') x.payload.transactions.push({ id: 'invented-window-control',
-    account_id: list === 'zero' ? '9003' : '9001', date: '2026-10-03',
+    account_id: list === 'zero' ? '9003' : '9001', date: mode.startsWith('source-') ? x.data.meta.asOf : '2026-10-03',
     amount: list === 'zero' ? '0' : '1', currency: 'cad', is_pending: false });
   if (mode === 'raw-truncated') x.payload.transactionWindow.truncated = true;
   if (mode === 'raw-missing-window') delete x.payload.transactionWindow;
   if (mode === 'raw-impossible-start') x.payload.transactionWindow.startDate = '2026-02-30';
   if (mode === 'raw-future-end') x.payload.transactionWindow.endDate = '2026-10-06';
   if (mode === 'raw-incomplete-end') x.payload.transactionWindow.endDate = '2026-10-04';
+  if (mode === 'source-missing-completion') for (const key of ['complete', 'hasMore', 'truncated']) delete x.payload.transactionWindow[key];
+  if (mode === 'source-null-completion') for (const key of ['complete', 'hasMore', 'truncated']) x.payload.transactionWindow[key] = null;
+  if (mode === 'source-string-completion') x.payload.transactionWindow.complete = 'true';
+  if (mode === 'source-missing-dates') { delete x.payload.transactionWindow.startDate; delete x.payload.transactionWindow.endDate; }
+  if (mode === 'source-missing-window') delete x.payload.transactionWindow;
+  if (mode === 'source-timestamp-dates') { x.payload.transactionWindow.startDate += 'T00:00:00Z'; x.payload.transactionWindow.endDate += 'T00:00:00Z'; }
+  if (mode === 'source-conflicting-dates') x.payload.transactionWindow.start_date = '2026-10-01';
+  if (mode === 'source-has-more') x.payload.transactionWindow.hasMore = true;
+  if (mode === 'source-truncated') x.payload.transactionWindow.truncated = true;
+  if (mode === 'source-malformed-flag') x.payload.transactionWindow.hasMore = 'false';
   if (mode === 'unrelated-card' || mode === 'card-with-savings-fee') {
     x.data.debts = [{ id: 'invented-card', label: 'Invented card', balance: 10, pending: 0, limit: 100,
       rate: 0, confidence: 'verified', structure: 'Revolving credit' }];
@@ -133,3 +146,4 @@ function windowObservation(mode = 'complete', list = 'empty', bank = 'prior-year
 module.exports.windowObservation = windowObservation;
 module.exports.windowModes = Object.keys(windowMutations);
 module.exports.rawWindowModes = rawWindowModes;
+module.exports.sourceWindowModes = sourceWindowModes;

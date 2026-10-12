@@ -5,9 +5,10 @@ const assert = require('node:assert/strict'), cp = require('node:child_process')
 const Module = require('node:module'), path = require('node:path'), crypto = require('node:crypto');
 const observed = require('./fixtures/savings-observer-contract-data');
 const { captureSourceBinding, verifySourceBinding } = require('./proof-source-binding');
-const root = path.resolve(__dirname, '..'), base = process.argv[2], windowBase = process.argv[3], cache = new Map();
+const root = path.resolve(__dirname, '..'), base = process.argv[2], windowBase = process.argv[3], fetchBase = process.argv[4], cache = new Map();
 assert.match(base || '', /^[0-9a-f]{40}$/, 'explicit full pre-repair SHA is required');
 assert.match(windowBase || '', /^[0-9a-f]{40}$/, 'explicit full window pre-repair SHA is required');
+assert.match(fetchBase || '', /^[0-9a-f]{40}$/, 'explicit full fetch pre-repair SHA is required');
 function baseline(file, sha = base) {
   const key = sha + ':' + file;
   if (cache.has(key)) return cache.get(key).exports;
@@ -87,9 +88,34 @@ for (const mode of ['unrelated-card', 'unrelated-unmapped', 'card-with-savings-f
   windowControl(mode, 'empty', mode === 'card-with-savings-fee' ? 'valid-v2' : 'prior-year');
 const windowFailures = windowCases.filter(row => !row.beforePass).length;
 assert.equal(windowCases.length, 82); assert.equal(windowFailures, 74);
+const FetchBefore = baseline('public/forecast.js', fetchBase), ObserverBefore = baseline('scripts/provider-observe.js', fetchBase);
+const OverlayBefore = baseline('scripts/live-plan.js', fetchBase), fetchCases = [];
+for (const mode of observed.sourceWindowModes) for (const list of ['empty', 'unrelated', 'zero'])
+  for (const bank of ['prior-year', 'valid-v2']) {
+    const x = observed.windowObservation(mode, list, bank), inputHash = hash(x.input);
+    const original = ObserverBefore.observe({ provider: 'lunchmoney', ...x.input }), originalHash = hash(original);
+    const data = OverlayBefore.overlayLiveState({ data: x.input.data, report: original }).data;
+    assert.deepEqual(data.liveOverlay.currentPeriodActuals, original.currentPeriodActuals);
+    const before = FetchBefore.recommend(data.plan, data.meta.asOf, { weeklyVariable: 40, debts: data.debts, ...data.liveOverlay });
+    const after = Current.recommend(x.data.plan, x.data.meta.asOf,
+      { weeklyVariable: 40, debts: x.data.debts, ...x.data.liveOverlay });
+    assert.deepEqual(after.savingsFunding.rows.map(row => row.saved), [null, null]);
+    assert.deepEqual(after.savingsFunding.rows.map(row => row.needed), [230, 24]);
+    assert.equal(after.savingsInventory.reportedStock.amount, 119); assert.equal(after.savingsFunding.period.proposal, null);
+    assert.ok(after.sim.events.every(row => !row.reserveFunding));
+    assert.equal(hash(x.input), inputHash); assert.equal(hash(original), originalHash); assert.equal(JSON.stringify(x.report), x.originalReport);
+    fetchCases.push({ mode, list, bank, inputSha256: inputHash, returnedPacketsUnchanged: true,
+      beforeCoverage: original.currentPeriodActuals.transactionCoverage, afterCoverage: x.packet.transactionCoverage,
+      sourceCoverage: x.packet.savingsFetchCoverage, beforeStatus: before.savingsFunding.goalAllocation.status,
+      afterStatus: after.savingsFunding.goalAllocation.status, beforePass: before.savingsFunding.goalAllocation.status === 'unavailable',
+      afterPass: true, knownNeeded: [230, 24], reportedStock: 119 });
+  }
+assert.equal(fetchCases.length, 60); assert.equal(fetchCases.filter(row => !row.beforePass).length, 38);
 verifySourceBinding(root, binding);
 console.log(JSON.stringify({ outcome: 'PASS', base, executionBinding: binding,
   before: { controls: 12, pass: 6, fail: 6, aggregate: 'FAIL' },
   after: { controls: 12, pass: 12, fail: 0, aggregate: 'PASS' }, cases,
   windowRepair: { base: windowBase, before: { controls: 82, pass: 8, fail: windowFailures, aggregate: 'FAIL' },
-    after: { controls: 82, pass: 82, fail: 0, aggregate: 'PASS' }, cases: windowCases } }, null, 2));
+    after: { controls: 82, pass: 82, fail: 0, aggregate: 'PASS' }, cases: windowCases },
+  fetchRepair: { base: fetchBase, before: { controls: 60, pass: 22, fail: 38, aggregate: 'FAIL' },
+    after: { controls: 60, pass: 60, fail: 0, aggregate: 'PASS' }, cases: fetchCases } }, null, 2));

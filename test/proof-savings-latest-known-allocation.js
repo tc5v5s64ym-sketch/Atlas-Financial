@@ -121,6 +121,8 @@ if (process.env.ATLAS_SAVINGS_COHERENCE_PROOF === '1') {
   for (const mode of windows.rawWindowModes) for (const bank of ['prior-year', 'valid-v2']) windowCompare(mode, 'empty', bank);
   for (const mode of ['unrelated-card', 'unrelated-unmapped', 'card-with-savings-fee'])
     windowCompare(mode, 'empty', mode === 'card-with-savings-fee' ? 'valid-v2' : 'prior-year');
+  for (const mode of windows.sourceWindowModes) for (const list of ['empty', 'unrelated', 'zero'])
+    for (const bank of ['prior-year', 'valid-v2']) windowCompare(mode, list, bank);
 }
 const sourceFiles = ['public/forecast.js', 'public/savings-inventory.js', 'public/plan.js', 'public/budget-blend.js'];
 const fs = require('node:fs');

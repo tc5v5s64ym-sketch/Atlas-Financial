@@ -18984,7 +18984,11 @@
       || transactions.some(row => row?.accountRole === 'unmapped'));
     const fetchComplete = (coverage === 'complete' || coverage?.complete === true)
       && transactionCoverageStatus(packet) === 'complete' || rowIncomplete;
+    const sourceWindow = packet.savingsFetchCoverage;
     if (packet.schema !== 'atlas-current-period-actuals/v1' || !fetchComplete
+      || !savingsKeys(sourceWindow, ['complete', 'startDate', 'endDate']) || sourceWindow.complete !== true
+      || !savingsDate(sourceWindow.startDate) || !savingsDate(sourceWindow.endDate)
+      || sourceWindow.startDate !== packet.coverageStart || sourceWindow.endDate !== packet.coverageThrough
       || coverage?.status != null && coverage.status !== 'complete'
       || pendingCoverageStatus(packet) !== 'complete'
       || packet.pendingCoverage?.status != null && packet.pendingCoverage.status !== 'complete'

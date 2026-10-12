@@ -179,6 +179,7 @@ test('Vancouver midnight does not erase the last checked packet or rewrite its d
   const input = fixture();
   input.plan.savingsPoolObservation.asOf = '2026-10-06';
   input.opts.currentPeriodActuals.observationAsOf = input.opts.currentPeriodActuals.coverageThrough = '2026-10-06';
+  input.opts.currentPeriodActuals.savingsFetchCoverage.endDate = '2026-10-06';
   input.asOf = F.financialDate('2026-10-07T06:59:59Z');
   input.plan.opening.asOf = input.asOf;
   const before = publish(input).savingsFunding;

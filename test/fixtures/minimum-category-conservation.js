@@ -26,5 +26,19 @@ module.exports = function minimumCategoryExpectation(report, input, historicalOb
   assert.ok(!Object.hasOwn(expected.currentPeriodActuals, 'savingsMovementUnconfirmed'),
     'historical actuals predate the account-scoped Savings provenance leaf');
   expected.currentPeriodActuals.savingsMovementUnconfirmed = [];
+  const rawWindow = input.payload.transactionWindow || input.payload.transaction_window || {};
+  const originalDate = keys => {
+    const values = keys.filter(key => Object.hasOwn(rawWindow, key)).map(key => rawWindow[key]);
+    return values.length && values.every(value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      && value === values[0]) ? values[0] : null;
+  };
+  const sourceWindow = { complete: Object.hasOwn(rawWindow, 'complete') && rawWindow.complete === true
+    && ['hasMore', 'has_more', 'truncated'].every(key => !Object.hasOwn(rawWindow, key)
+      || rawWindow[key] == null || rawWindow[key] === false),
+    startDate: originalDate(['startDate', 'start_date']), endDate: originalDate(['endDate', 'end_date']) };
+  assert.ok(!Object.hasOwn(expected.transactionWindow, 'savingsFetchCoverage'));
+  assert.ok(!Object.hasOwn(expected.currentPeriodActuals, 'savingsFetchCoverage'));
+  expected.transactionWindow.savingsFetchCoverage = sourceWindow;
+  expected.currentPeriodActuals.savingsFetchCoverage = sourceWindow;
   return expected;
 };

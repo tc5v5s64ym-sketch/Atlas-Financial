@@ -455,6 +455,22 @@ function normalizeLunchMoneyPayload(payload, fetchedAt) {
   const categoriesById = categoryIndexFromPayload(payload);
   const tagsById = tagIndexFromPayload(payload);
   const txWindow = payload.transactionWindow || payload.transaction_window || null;
+  // Capture original declarations before any normalization or row inference.
+  // Only literal query dates and an affirmative, noncontradictory completion
+  // cross the Savings boundary; absence never earns source provenance.
+  const declared = txWindow && typeof txWindow === 'object' && !Array.isArray(txWindow) ? txWindow : {};
+  const declaredDate = keys => {
+    const values = keys.filter(key => Object.hasOwn(declared, key)).map(key => declared[key]);
+    return values.length && values.every(value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      && value === values[0]) ? values[0] : null;
+  };
+  const savingsFetchCoverage = {
+    complete: Object.hasOwn(declared, 'complete') && declared.complete === true
+      && ['hasMore', 'has_more', 'truncated'].every(key => !Object.hasOwn(declared, key)
+        || declared[key] == null || declared[key] === false),
+    startDate: declaredDate(['startDate', 'start_date']),
+    endDate: declaredDate(['endDate', 'end_date']),
+  };
   return {
     provider: 'lunchmoney',
     fetchedAt: payload.fetchedAt || fetchedAt,
@@ -463,6 +479,7 @@ function normalizeLunchMoneyPayload(payload, fetchedAt) {
       normalizeLunchMoneyTransaction(tx, categoriesById, tagsById)),
     pendingCoverage: classifyPendingCoverage(payload),
     transactionWindow: {
+      savingsFetchCoverage,
       startDate: (txWindow && (txWindow.startDate || txWindow.start_date)) || null,
       endDate: (txWindow && (txWindow.endDate || txWindow.end_date)) || null,
       complete: txWindow && txWindow.complete === true
@@ -4497,6 +4514,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     cardCoverageRequired: ((mapDoc && mapDoc.mappings) || []).some(m => atlasAccountRole(m) === 'revolving-credit'),
     currencyUnconfirmed,
     savingsMovementUnconfirmed,
+    savingsFetchCoverage: window.savingsFetchCoverage || { complete: false, startDate: null, endDate: null },
     paydayGapComplete: paydayGapCompleteFromEvidence({
       plan: opts.plan,
       asOf,
