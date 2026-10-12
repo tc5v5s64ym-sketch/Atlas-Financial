@@ -4,7 +4,23 @@ Synthetic-fixture renders only (`test/fixtures/card-period-movements-data.js`,
 served through route interception; invented balances and payees). No live
 site, no household figures, no credentials.
 
-## What this proves
+## Historical scope
+
+This directory is the original owner proof archive for reviewed head
+`0aae08d5dfa095c41cc95f43bc20270d0deda14e`. Its receipt and screenshots
+remain unchanged. They identify the source bytes exercised at capture time;
+they are not a current-head receipt after later main integrations.
+
+Integration `52fa450dfeab2bf9db4b41fb4cb180455d94004d` incorporated main's
+new detail-panel allocation content. Fresh source-bound verification for that
+integration is recorded in [Systems Review 5493821924](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/589#pullrequestreview-5493821924).
+That public review describes separately supplied synthetic evidence and its
+limits; those private captures are not published in this directory. This
+archive alone does not prove preservation of the later allocation content,
+and its old images are not relabelled as fresh integration renders. A later
+head still needs its own exact-head review and repository release gates.
+
+## What this historical run proved
 
 `test/browser-card-period-movements.js` boots the real app (`App.boot`)
 against the fixture and asserts, from rendered state (computed style and
@@ -69,9 +85,10 @@ bounding boxes, not DOM presence):
 
 `proof.json` is the harness's own receipt: the Chromium/Node runtime,
 the SHA-256 of every screenshot, and `sourceBlobs` — git blob SHAs of
-every exercised source file, so each file resolves by content in the
-pushed head on GitHub. `basedOn` records the base commit the proof ran
-against (current main at build time).
+every exercised source file. Those content addresses resolve in the original
+capture version, not necessarily in a later pushed head. `basedOn` records
+the base commit used at build time. Compare these historical bindings with
+that version; use the separate integration review for current-source claims.
 
 ## Bite checks (each reverted, re-run, restored)
 
