@@ -134,8 +134,12 @@ if (!threads.isMainThread && process.env.ATLAS_COALESCING_TEST_WORKER_MODE) {
       mock.hold();
       const before = workers.length, callsBefore = mock.calls.length, original = structuredClone(canonical);
       const inputs = [canonical, structuredClone(canonical), structuredClone(canonical), canonical];
-      const requests = inputs.map(input => Refresh.serve(input, Object.fromEntries(Object.entries(env).reverse())));
+      const requests = inputs.slice(0, 3).map(input => Refresh.serve(input, Object.fromEntries(Object.entries(env).reverse())));
       await until(() => mock.calls.length === callsBefore + 1, 'shared provider start');
+      // Equal strings can have different V8 wire encodings. A later caller
+      // with two-byte-backed strings is still the identical request context.
+      const equalEnv = Object.fromEntries(Object.entries(env).map(([name, value]) => [name, ('\u1234' + value).slice(1)]));
+      requests.push(Refresh.serve(inputs[3], equalEnv));
       check(workers.length - before, 1, 'four equivalent callers start one actual worker');
       check(countMe(mock), 2, 'four equivalent callers start one provider observation');
       mock.release();

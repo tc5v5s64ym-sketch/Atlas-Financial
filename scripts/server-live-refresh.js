@@ -18,7 +18,6 @@ if (!isMainThread) {
   const crypto = require('node:crypto');
   const fs = require('node:fs');
   const path = require('node:path');
-  const { serialize } = require('node:v8');
   const Forecast = require('../public/forecast');
   const Observer = require('./provider-observe');
   const Credentials = require('./local-credentials');
@@ -39,8 +38,26 @@ if (!isMainThread) {
       return [file, stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs];
     } catch (error) {
       // A missing file is stable. Unreadable metadata must never authorize reuse.
-      return [file, error.code === 'ENOENT' ? null : crypto.randomBytes(32)];
+      return [file, error.code === 'ENOENT' ? null : crypto.randomBytes(32).toString('hex')];
     }
+  }
+  function contextValue(value, seen = new Map()) {
+    // Private identity encoding, never a financial packet or stored schema.
+    // V8's wire bytes can differ for equal one-/two-byte-backed JS strings.
+    if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+    if (typeof value === 'number') return ['number', Object.is(value, -0) ? '-0' : String(value)];
+    if (typeof value === 'bigint') return ['bigint', String(value)];
+    if (value === undefined) return ['undefined'];
+    if (typeof value !== 'object') throw unavailable('live-refresh-unavailable');
+    if (seen.has(value)) return ['reference', seen.get(value)];
+    const id = seen.size;
+    seen.set(value, id);
+    const entries = Object.entries(value).map(([name, child]) => [name, contextValue(child, seen)]);
+    if (Array.isArray(value)) return ['array', id, value.length, entries];
+    if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
+      throw unavailable('live-refresh-unavailable');
+    }
+    return ['object', id, entries];
   }
   function jobKey(canonical, env) {
     const runtime = Object.keys(require.cache).filter(file => file.startsWith(root))
@@ -51,8 +68,8 @@ if (!isMainThread) {
         ? Credentials.defaultCredentialPath(env) : null].filter(Boolean).map(fileRevision);
     const day = Forecast.financialDate(new Date(Date.now()).toISOString());
     return crypto.createHmac('sha256', keySalt)
-      .update(serialize([canonical, Object.entries(env).sort(([a], [b]) => a.localeCompare(b)),
-        day, process.execArgv, runtime, files])).digest('hex');
+      .update(JSON.stringify(contextValue([canonical, Object.entries(env).sort(([a], [b]) => a.localeCompare(b)),
+        day, process.execArgv, runtime, files]))).digest('hex');
   }
   function emitTiming(job) {
     if (job.logged) return;
