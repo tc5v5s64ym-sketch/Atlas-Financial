@@ -414,5 +414,144 @@ check('exact worker entrypoints capture parse/load/launcher failures before Node
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+check('record protocol requires complete coherent all-pass evidence and one successful terminal', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-ci-protocol-'));
+  assert(dir.startsWith(path.resolve(os.tmpdir()) + path.sep));
+  try {
+    const root = path.join(dir, 'fixture');
+    fs.mkdirSync(path.join(root, 'scripts'), { recursive: true }); fs.mkdirSync(path.join(root, 'test'));
+    for (const file of ['ci-test.sh', 'ci-test.js', 'ci-test-records.js'])
+      fs.writeFileSync(path.join(root, 'scripts', file), sourceText(fs.readFileSync(path.join(ROOT, 'scripts', file), 'utf8')));
+    for (const file of ['test-fixture-first.js', 'test-fixture-second.js', 'test-refresh-isolation.js'])
+      fs.writeFileSync(path.join(root, 'test', file), '');
+    const canary = 'SYNTHETIC_PROTOCOL_PRIVATE_2041_947_31';
+    let ordinal = 0;
+    const start = identity => ({ type: 'ci-suite-start', identity });
+    const outcome = (identity, failed = false) => ({ type: 'ci-outcome', identity,
+      status: failed ? 'fail' : 'pass', category: failed ? 'process-failed' : 'none',
+      exitCode: failed ? 7 : 0, signal: null, executed: true,
+      counts: { total: 1, passed: failed ? 0 : 1, failed: failed ? 1 : 0 } });
+    const summary = (files, failed = []) => ({ type: 'ci-suite-summary', total: files.length,
+      passed: files.length - failed.length, failed: failed.length, failedSuites: failed,
+      exitCode: failed.length ? 1 : 0 });
+    const worker = (group, exitCode = 0) => ({ type: 'ci-worker-outcome', identity: group,
+      status: exitCode ? 'fail' : 'pass', category: exitCode ? 'process-failed' : 'none', exitCode, signal: null });
+    function run(group, records, hook = '') {
+      const privateDir = path.join(dir, 'private-' + ++ordinal); fs.mkdirSync(privateDir);
+      const args = [];
+      if (hook) {
+        const preload = path.join(dir, 'storage-' + ordinal + '.js');
+        fs.writeFileSync(preload, 'const fs=require("fs"),open=fs.openSync,close=fs.closeSync,write=fs.writeSync;let target;'
+          + 'fs.openSync=(file,...args)=>{const fd=open(file,...args);if(String(file).endsWith("bootstrap.stdout.log"))target=fd;return fd;};'
+          + (hook === 'close' ? 'fs.closeSync=fd=>{if(fd===target)throw new Error(' + JSON.stringify(canary) + ');return close(fd);};'
+            : 'fs.writeSync=(fd,...args)=>{if(fd===target)throw new Error(' + JSON.stringify(canary) + ');return write(fd,...args);};'));
+        args.push('--require', preload);
+      }
+      args.push(path.join(root, 'scripts/ci-test-records.js'), group);
+      const child = spawnSync(process.execPath, args,
+        { cwd: root, env: { ...process.env, ATLAS_CI_BOOTSTRAP_DIR: privateDir },
+          input: records.map(row => typeof row === 'string' ? row : JSON.stringify(row)).join('\n') + '\n',
+          encoding: 'utf8', timeout: 10000 });
+      assert.ifError(child.error); assert.equal(child.stderr, '');
+      assert(!child.stdout.includes(canary));
+      const published = child.stdout.trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+      assert.equal(published.filter(row => row.type === 'ci-worker-outcome').length, 1, 'one terminal, published only after EOF');
+      if (child.status !== 0) assert(!published.some(row => row.type === 'ci-worker-outcome' && row.status === 'pass'));
+      return child;
+    }
+    for (const group of GROUPS) {
+      const files = group === 'standard' ? ['test-fixture-first.js', 'test-fixture-second.js'] : ['test-refresh-isolation.js'];
+      const success = files.flatMap(file => [start(file), outcome(file)]);
+      const complete = [...success, summary(files), worker(group)];
+      assert.equal(run(group, complete).status, 0);
+      const failed = [start(files[0]), outcome(files[0], true), summary([files[0]], [files[0]])];
+      assert.equal(run(group, [...failed, worker(group)]).status, 1, 'failed summary plus zero launcher remains red');
+      assert.equal(run(group, [...failed, worker(group, 7)]).status, 1, 'valid failing terminal is red');
+      assert.equal(run(group, [worker(group, 126)]).status, 1, 'legitimate early startup failure needs no summary');
+      const teardown = run(group, [...success, summary(files), worker(group, 7)]);
+      assert.equal(teardown.status, 1);
+      assert.equal(JSON.parse(teardown.stdout.trim().split('\n').at(-1)).exitCode, 7, 'successful summary may precede a genuine teardown failure');
+      const signal = run(group, [{ ...worker(group, 7), category: 'signal-terminated', exitCode: null, signal: 'SIGTERM' }]);
+      assert.equal(signal.status, 1);
+      assert.equal(JSON.parse(signal.stdout.trim().split('\n').at(-1)).signal, 'SIGTERM', 'early signal failure needs no summary');
+      for (const hook of ['close', 'write']) assert.equal(run(group, complete, hook).status, 1,
+        'private storage failure cannot publish terminal success');
+      const negatives = [
+        [...success, worker(group)], // missing summary
+        [...success, summary(files)], // missing worker
+        [...success, summary(files), summary(files), worker(group)],
+        [...complete, worker(group)],
+        [worker(group), ...success, summary(files)],
+        [...success, worker(group), summary(files)],
+        [...complete, start(files[0])],
+        [...complete, canary],
+        [outcome(files[0]), summary([files[0]]), worker(group)], // missing start
+        [{ ...outcome(files[0]), executed: false }, summary([files[0]]), worker(group)],
+        [start(files[0]), { ...outcome(files[0]), executed: false }, summary([files[0]]), worker(group)],
+        [start(files[0]), start(files[0]), outcome(files[0]), summary([files[0]]), worker(group)],
+        [start('test-fixture-first.js'), start('test-fixture-second.js'), outcome('test-fixture-second.js'), worker(group)],
+        [start('test-fixture-first.js'), outcome('test-fixture-second.js'), worker(group)],
+        [start(files[0]), outcome(files[0]), start(files[0]), summary([files[0]]), worker(group)],
+        [start(files[0]), outcome(files[0]), outcome(files[0]), summary([files[0]]), worker(group)],
+        [start(files[0]), summary([files[0]]), outcome(files[0]), worker(group)],
+        [...success, { ...summary(files), total: files.length + 1 }, worker(group)],
+        [...success, { ...summary(files), passed: 0 }, worker(group)],
+        [...success, { ...summary(files), failed: 1 }, worker(group)],
+        [...success, { ...summary(files), failedSuites: [files[0]] }, worker(group)],
+        [...success, { ...summary(files), exitCode: 1 }, worker(group)],
+        [...success, { ...summary(files), status: 'fail' }, worker(group)],
+        [...success, summary(files), { ...worker(group), category: 'process-failed' }],
+        [...success, summary(files), { ...worker(group), exitCode: 7 }],
+        [...success, summary(files), { ...worker(group, 7), category: 'none' }],
+        [...success, summary(files), { ...worker(group, 7), exitCode: 0 }],
+        [...success, summary(files), { ...worker(group, 7), signal: 'SIGTERM' }],
+        [...success, summary(files), { ...worker(group, 7), category: 'signal-terminated' }],
+        [...success, summary(files), { ...worker(group, 7), category: 'signal-terminated', signal: 'SIGTERM' }],
+      ];
+      for (const change of [{ category: 'none' }, { exitCode: 0 }, { signal: 'SIGTERM' },
+        { category: 'signal-terminated', signal: null },
+        { category: 'signal-terminated', signal: 'SIGTERM', exitCode: 7 },
+        { category: 'signal-terminated', signal: 'SIGTERM', exitCode: null, executed: false }])
+        negatives.push([start(files[0]), { ...outcome(files[0], true), ...change },
+          summary([files[0]], [files[0]]), worker(group)]);
+      for (const records of negatives) assert.equal(run(group, records).status, 1);
+      // Exercise the actual workflow after an exit-propagation regression:
+      // valid failed records followed by a zero runner exit must stay red.
+      fs.writeFileSync(path.join(root, 'test/test.js'), 'for(const row of ' + JSON.stringify(failed)
+        + ')console.log(JSON.stringify(row));');
+      const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
+      const child = spawnSync(bash, ['scripts/ci-test.sh', group], { cwd: root,
+        env: { ...process.env, ATLAS_CI_DIAGNOSTICS_DIR: path.join(dir, 'bootstrap').replace(/\\/g, '/') }, encoding: 'utf8' });
+      assert.equal(child.status, 1); assert.equal(child.stderr, '');
+      assert(!child.stdout.includes('"status":"pass"'));
+      for (const exit of [7, 126]) {
+        fs.writeFileSync(path.join(root, 'test/test.js'), 'for(const row of ' + JSON.stringify([...success, summary(files)])
+          + ')console.log(JSON.stringify(row));process.exit(' + exit + ');');
+        const actual = spawnSync(bash, ['scripts/ci-test.sh', group], { cwd: root,
+          env: { ...process.env, ATLAS_CI_DIAGNOSTICS_DIR: path.join(dir, 'bootstrap').replace(/\\/g, '/') }, encoding: 'utf8' });
+        assert.equal(actual.status, exit, 'shell preserves genuine post-summary failure status'); assert.equal(actual.stderr, '');
+        const terminal = actual.stdout.trim().split('\n').map(line => JSON.parse(line)).find(row => row.type === 'ci-worker-outcome');
+        assert.equal(terminal.status, 'fail'); assert.equal(terminal.exitCode, exit); assert.equal(terminal.category, 'process-failed');
+      }
+    }
+    const installed = outcome('install-runtime');
+    assert.equal(run('install-runtime', [installed, worker('install-runtime')]).status, 0);
+    for (const records of [[worker('install-runtime')], [installed],
+      [outcome('install-runtime', true), worker('install-runtime')],
+      [{ ...installed, executed: false }, worker('install-runtime')],
+      [installed, installed, worker('install-runtime')], [installed, worker('install-runtime'), worker('install-runtime')]])
+      assert.equal(run('install-runtime', records).status, 1);
+    const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
+    for (const [record, exit, expected] of [[outcome('install-runtime', true), 0, 1], [installed, 7, 7], [installed, 126, 126]]) {
+      fs.writeFileSync(path.join(root, 'scripts/ci-output.js'), 'console.log(' + JSON.stringify(JSON.stringify(record)) + ');process.exit(' + exit + ');');
+      const actual = spawnSync(bash, ['scripts/ci-test.sh', 'install-runtime'], { cwd: root,
+        env: { ...process.env, ATLAS_CI_DIAGNOSTICS_DIR: path.join(dir, 'bootstrap').replace(/\\/g, '/') }, encoding: 'utf8' });
+      assert.equal(actual.status, expected); assert.equal(actual.stderr, '');
+      const terminal = actual.stdout.trim().split('\n').map(line => JSON.parse(line)).find(row => row.type === 'ci-worker-outcome');
+      assert.equal(terminal.status, 'fail');
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 console.log(`\n${checks - failures}/${checks} CI split contract checks passed.`);
 process.exitCode = failures ? 1 : 0;
