@@ -5562,6 +5562,12 @@
   function outgoingETransferNamedCategory(tx, plan) {
     const label = normalizeCategoryLabel(tx && tx.categoryLabel);
     if (!label || TRANSFER_CATEGORY_LABELS.has(label)) return false;
+    // Canonical `uncategorised` is the remainder bucket, not a trusted named
+    // category (the same rule categoryRemainingClaimFrom states): the plan
+    // carries it as a category, so without this guard every flagged row the
+    // owner has not categorised would be excluded by its own bucket and
+    // vanish from the review list.
+    if (label === 'uncategorised') return false;
     if (lunchMoneyGuiltFreeCategoryOwner(label, plan)) return true;
     if (EATING_OUT_LABELS.has(label) || BILL_CATEGORY_LABELS.has(label)
       || REFUND_LABELS.has(label) || DEBT_PAYMENT_CATEGORY_LABELS.has(label)) return true;
@@ -5583,7 +5589,15 @@
     if (tx.accountRole !== 'household-cash') return false;
     const amt = Number(tx.amount);
     if (!isFinite(amt) || !(amt > 0)) return false;
-    if (!cls || (cls.kind !== 'transfer' && cls.kind !== 'unclassified')) return false;
+    // Population: transfer- and unclassified-classified rows, plus rows the
+    // classifier could only place in the canonical `uncategorised` remainder
+    // bucket (kind 'spend' there is a bucket assignment, not a confirmed
+    // category — a flagged row must stay visible regardless of that state).
+    // Named-category spend is admitted never; the direct checks below and
+    // the named-category guard still exclude every resolved row.
+    if (!cls || (cls.kind !== 'transfer' && cls.kind !== 'unclassified'
+      && !(cls.kind === 'spend'
+        && (cls.categoryId || 'uncategorised') === 'uncategorised'))) return false;
     // Direct row/packet checks, not kind alone: classify returns transfer
     // before ever evaluating the represented-bill and pending-card-paid-bill
     // rules, and a card payment can arrive classified as transfer.
@@ -5627,13 +5641,33 @@
         && pendCov.status !== 'insufficient');
     const explicitBounds = !!cov.observationAsOf && !!cov.coverageStart
       && (!periodStart || cov.coverageStart <= periodStart) && txComplete;
+    // Provenance (Atlas repair, 2026-10-12): the coverage echo alone cannot
+    // carry an all-clear. The observation date must be a real calendar date
+    // that does not predate the coverage it claims and is not after the
+    // financial as-of; an old or invalidly-dated observation fails closed.
+    // The packet's own transaction window must also be present, complete,
+    // and actually span the period: coverage derived by falling back to the
+    // transactions' own min/max dates, or a window that starts after the
+    // period origin or ends before the as-of, is out-of-window evidence and
+    // must not produce an all-clear either.
+    const win = packet.transactionWindow;
+    const provenanceOk = savingsDate(cov.observationAsOf)
+      && savingsDate(cov.coverageStart) && savingsDate(cov.coverageThrough)
+      && cov.coverageThrough <= cov.observationAsOf
+      && (!asOf || cov.observationAsOf <= asOf)
+      && !!win && typeof win === 'object'
+      && savingsDate(win.startDate) && savingsDate(win.endDate)
+      && win.complete === true && win.truncated !== true && win.hasMore !== true
+      && (!periodStart || win.startDate <= periodStart)
+      && (!asOf || win.endDate >= asOf)
+      && cov.coverageStart >= win.startDate && cov.coverageThrough <= win.endDate;
     const items = Array.isArray(collectedItems) ? collectedItems : null;
     if (coverage.status === 'current' && coverage.remainingClaim === 'precise'
-      && explicitBounds && pendComplete) {
+      && explicitBounds && provenanceOk && pendComplete) {
       return { status: 'available-complete', coverage: cov, count: items ? items.length : 0, items: items || [] };
     }
     if (coverage.status === 'current' && coverage.remainingClaim === 'posted-only'
-      && explicitBounds) {
+      && explicitBounds && provenanceOk) {
       // posted-only is produced only when pending coverage is the sole
       // failing check, so the observed items are a truthful subset whose
       // only known gap is pending evidence.

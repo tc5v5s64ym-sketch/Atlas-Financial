@@ -636,7 +636,10 @@ console.log('=== 10. Proven internal movement carrying the e-transfer boolean st
   });
   const txs = [src, dst];
   const plan = paydayPlan();
-  const fullPacket = Object.assign(packet(txs), { transactionCoverage: 'complete' });
+  const fullPacket = Object.assign(packet(txs), {
+    transactionCoverage: 'complete',
+    transactionWindow: { startDate: PAYDAY, endDate: PAYDAY, complete: true, hasMore: false, truncated: false },
+  });
   const action = F.currentPeriodAction(plan, PAYDAY,
     { currentPeriodActuals: fullPacket, packet: fullPacket });
   ok(action.internalMovements && action.internalMovements.length === 1

@@ -7053,7 +7053,12 @@ function budgetOutgoingETransfersHtml(period, ctx) {
 // Plan-unavailable path: BudgetSurface skips browseHtml there, so without
 // this contribution the section would vanish and read as "none found".
 // Notice only — no items are ever resurrected as current-period fact.
+// Same current-period gate as budgetOutgoingETransfersHtml: the publication
+// always describes the current period, so when the selected period is a
+// past or future one the notice must not render under that selection.
 function budgetOutgoingETransfersUnavailableHtml(ctx) {
+  const period = payPeriodSelection(ctx && ctx.advice || {}, ctx && ctx.planPayPeriodId).period;
+  if (!period || period.timelineRole !== 'current') return '';
   const pub = ctx && ctx.advice && ctx.advice.currentPeriodAction
     ? ctx.advice.currentPeriodAction.outgoingETransfers : null;
   const status = pub && pub.status === 'unavailable-stale' ? 'unavailable-stale' : 'unavailable-missing';

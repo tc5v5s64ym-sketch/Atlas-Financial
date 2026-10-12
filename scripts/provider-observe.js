@@ -4483,6 +4483,18 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     observationAsOf: asOf,
     coverageStart,
     coverageThrough,
+    // The window bounds themselves, not only the coverage dates derived
+    // from them: when the window is absent those dates fall back to the
+    // transactions' own min/max, which manufactures bounds. Downstream
+    // provenance checks (the outgoing e-transfer publication) read the
+    // window from here; dates and booleans only, never raw descriptors.
+    transactionWindow: {
+      startDate: window.startDate || null,
+      endDate: window.endDate || null,
+      complete: window.complete === true ? true : window.complete === false ? false : null,
+      hasMore: window.hasMore === true ? true : window.hasMore === false ? false : null,
+      truncated: window.truncated === true,
+    },
     pendingCoverage,
     transactionCoverage,
     cardCoverageUnconfirmed,

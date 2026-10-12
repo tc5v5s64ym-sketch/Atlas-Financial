@@ -561,6 +561,24 @@ console.log('=== N. outgoing e-transfer identity boolean (SEND E-TFR, originalNa
     'the packet publishes the boolean only — no raw descriptor text anywhere');
   ok(packet.transactions.every(row => typeof row.outgoingETransferIdentity === 'boolean'),
     'every packet row carries the boolean (true or false), never the descriptor');
+  // Provenance repair (Atlas, 2026-10-12): the packet carries the window
+  // bounds themselves so Forecast can validate them instead of trusting
+  // coverage dates that fall back to the transactions' own min/max.
+  ok(JSON.stringify(packet.transactionWindow) === JSON.stringify({
+    startDate: '2026-08-01', endDate: '2026-08-16', complete: true, hasMore: false, truncated: false,
+  }), 'the packet carries the sanitized transaction window bounds',
+    JSON.stringify(packet.transactionWindow));
+  const noWindowPacket = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-08-16T18:00:00.000Z',
+    pendingCoverage: { complete: true },
+    transactions: txs, collapsedTransactions: txs,
+    representedEventCandidates: [],
+  }, { asOf: '2026-08-16', accountMap, plan: data.plan });
+  ok(noWindowPacket.transactionWindow && noWindowPacket.transactionWindow.startDate === null
+    && noWindowPacket.transactionWindow.endDate === null
+    && noWindowPacket.transactionWindow.complete === null,
+    'a report with no window yields explicit null bounds on the packet — never invented ones',
+    JSON.stringify(noWindowPacket.transactionWindow));
 }
 
 if (failures) {

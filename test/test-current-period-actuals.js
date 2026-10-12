@@ -1437,6 +1437,7 @@ console.log('\n=== ET. outgoing e-transfer review publication (additional visibi
   });
   const etPacket = (txs, extra) => packet(txs, Object.assign({
     asOf: MID, coverageStart: PAYDAY, coverageThrough: MID, transactionCoverage: 'complete',
+    transactionWindow: { startDate: PAYDAY, endDate: MID, complete: true, hasMore: false, truncated: false },
   }, extra || {}));
   const groceryRow = {
     id: 'et-grocery', date: '2026-09-02', amount: 50, pending: false,
@@ -1591,6 +1592,71 @@ console.log('\n=== ET. outgoing e-transfer review publication (additional visibi
     && zeroComplete.outgoingETransfers.count === 0
     && Array.isArray(zeroComplete.outgoingETransfers.items) && zeroComplete.outgoingETransfers.items.length === 0,
     'available-complete with no flagged rows is the only factual zero');
+
+  // Repair (Atlas, 2026-10-12) — canonical Uncategorised is the remainder
+  // bucket, not a confirmed named category: a flagged row the owner has not
+  // categorised must stay in the review list on both classification paths
+  // (transfer via an early hint return, and spend into the bucket itself).
+  const uncatHint = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-uncat-hint', { categoryLabel: 'Uncategorised', kindHint: 'transfer' })]),
+  }));
+  ok(uncatHint.outgoingETransfers.count === 1
+    && uncatHint.outgoingETransfers.items.some(i => i.id === 'et-uncat-hint' && i.amount === 75),
+    'flagged $75 row labelled Uncategorised with a transfer hint stays in the review list');
+  const uncatSpend = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-uncat-spend', { categoryLabel: 'Uncategorised' })]),
+  }));
+  ok(uncatSpend.outgoingETransfers.count === 1
+    && uncatSpend.outgoingETransfers.items.some(i => i.id === 'et-uncat-spend' && i.amount === 75),
+    'flagged $75 row classified spend into the Uncategorised bucket stays in the review list');
+  ok(uncatSpend.outgoingETransfers.status === 'available-complete',
+    'the Uncategorised-bucket row publishes under the same complete evidence');
+  const uncatUnflagged = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-uncat-spend', { categoryLabel: 'Uncategorised', outgoingETransferIdentity: false })]),
+  }));
+  ok(incumbent(uncatSpend) === incumbent(uncatUnflagged),
+    'listing the bucket row changes no category total, unclassified count or claim');
+
+  // Repair (Atlas, 2026-10-12) — provenance: the transaction window bounds
+  // and the observation date are validated, not assumed. Out-of-window or
+  // invalidly-dated evidence must not produce an all-clear.
+  const noWindow = etPacket([etRow('et-nowin')]); delete noWindow.transactionWindow;
+  const noWindowAction = F.currentPeriodAction(etPlan(), MID, opts({ currentPeriodActuals: noWindow }));
+  ok(noWindowAction.outgoingETransfers.status === 'available-incomplete',
+    'missing transactionWindow: no available-complete all-clear');
+  const openWindow = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-openwin')], {
+      transactionWindow: { startDate: PAYDAY, endDate: MID, complete: false, hasMore: false, truncated: false },
+    }),
+  }));
+  ok(openWindow.outgoingETransfers.status === 'available-incomplete',
+    'window not marked complete: no available-complete all-clear');
+  const lateWindow = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-latewin')], {
+      transactionWindow: { startDate: '2026-09-03', endDate: MID, complete: true, hasMore: false, truncated: false },
+    }),
+  }));
+  ok(lateWindow.outgoingETransfers.status === 'available-incomplete',
+    'window starting after the period origin: no available-complete all-clear');
+  const shortWindow = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-shortwin')], {
+      transactionWindow: { startDate: PAYDAY, endDate: '2026-09-05', complete: true, hasMore: false, truncated: false },
+    }),
+  }));
+  ok(shortWindow.outgoingETransfers.status === 'available-incomplete',
+    'window ending before the as-of: no available-complete all-clear');
+  const badObs = etPacket([etRow('et-badobs')]); badObs.observationAsOf = 'not-a-date';
+  const badObsAction = F.currentPeriodAction(etPlan(), MID, opts({ currentPeriodActuals: badObs }));
+  ok(badObsAction.outgoingETransfers.status === 'available-incomplete',
+    'invalid observationAsOf: no available-complete all-clear');
+  const oldObs = etPacket([etRow('et-oldobs')]); oldObs.observationAsOf = '2026-09-02';
+  const oldObsAction = F.currentPeriodAction(etPlan(), MID, opts({ currentPeriodActuals: oldObs }));
+  ok(oldObsAction.outgoingETransfers.status === 'available-incomplete',
+    'observationAsOf predating the coverage it claims: no available-complete all-clear');
+  const futureObs = etPacket([etRow('et-futureobs')]); futureObs.observationAsOf = '2026-12-31';
+  const futureObsAction = F.currentPeriodAction(etPlan(), MID, opts({ currentPeriodActuals: futureObs }));
+  ok(futureObsAction.outgoingETransfers.status === 'available-incomplete',
+    'observationAsOf after the financial as-of: no available-complete all-clear');
 }
 
 if (failures) {

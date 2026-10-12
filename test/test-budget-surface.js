@@ -1056,6 +1056,25 @@ console.log('\n=== outgoing e-transfer review section (browse + unavailable path
   const failedHtml = page().render(fx.served({ unavailablePlan: true }));
   ok(etSection(failedHtml).includes("can't be confirmed") && !/data-etransfer-item/.test(etSection(failedHtml)),
     'failed-overlay served packet: the unavailable notice renders and no stale rows are resurrected');
+
+  // Repair (Atlas, 2026-10-12): the unavailable contribution carries the
+  // same current-period gate as the browse renderer — under a past or
+  // future selection the current-period notice must not render either.
+  const gatePage = page(); gatePage.render(fx.served({ etransfer: true }));
+  const gateViews = gatePage.context.__ctx.advice.payPeriodViews;
+  const gateNext = gateViews.find(row => row.timelineRole === 'next');
+  const gatePast = gateViews.find(row => row.timelineRole === 'past');
+  ok(gateNext && !etSection(gatePage.rerender(
+    `__ctx.advice.operatingPlanUnavailable = true; __ctx.planPayPeriodId = ${JSON.stringify(gateNext.id)}`)),
+    'plan unavailable + future period selected: no e-transfer notice under the future period');
+  if (gatePast) {
+    ok(!etSection(gatePage.rerender(
+      `__ctx.advice.operatingPlanUnavailable = true; __ctx.planPayPeriodId = ${JSON.stringify(gatePast.id)}`)),
+      'plan unavailable + past period selected: no e-transfer notice under the past period');
+  }
+  ok(etSection(gatePage.rerender(
+    '__ctx.advice.operatingPlanUnavailable = true; __ctx.planPayPeriodId = null')).includes("can't be confirmed"),
+    'plan unavailable + current period selected: the notice renders again');
 }
 
 console.log('\n=== the layout module stays a layout module ===');
