@@ -28,7 +28,7 @@ function data(mode = 'ready') {
   d.plan.savingsPoolObservation.accounts[1].value = d.plan.startingCash.heldElsewhere[0].value = 89;
   d.plan.commitments.push({ id:'trip', label:'Invented winter trip', date:'2027-01-15', amount:37,
     confidence:'confirmed', sinkingFund:true });
-  if (mode === 'deposit') fx.transfer(input,10,'AA101','savings-dont-touch');
+  if (mode === 'deposit') fx.transfer(input,10,'AA101','savings-dont-touch','2026-10-06');
   if (mode === 'settled') d.plan.commitments[0].settledOn = '2026-10-04';
   if (mode === 'missing') d.plan.savingsPoolObservation.accounts.pop();
   if (mode === 'stale') d.plan.savingsPoolObservation.accounts[1].evidenceDate = '2026-10-06';

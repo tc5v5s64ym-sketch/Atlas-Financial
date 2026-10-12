@@ -39,19 +39,41 @@ const allowed = row => /^savingsFunding\.(goalAllocation|allocationDescription)$
   || /^savingsFunding\.manualInventory\.reportedStock\.checkedAsOf$/.test(row.path)
   || /^(savingsInventory\.reportedStock|savingsFunding\.stock\.reportedStock)\.checkedAsOf$/.test(row.path);
 const cases = [];
-function compare(name, data, coherence = false) {
+function compare(name, data, coherence = false, boundary = null) {
   const inputHash = digest(data), opts = { weeklyVariable: 40, debts: [], ...data.liveOverlay };
   const a = JSON.parse(JSON.stringify(Before.recommend(data.plan, data.meta.asOf, opts)));
   const b = JSON.parse(JSON.stringify(F.recommend(data.plan, data.meta.asOf, opts)));
   assert.equal(digest(data), inputHash, 'both revisions leave the same invented input immutable');
-  const changes = diff(a, b), unexpected = changes.filter(row => !allowed(row)
+  const changes = diff(a, b); let unexpected = changes.filter(row => !allowed(row)
     && !(coherence && /^savingsFunding\.goalAllocation\.(status|reason)$/.test(row.path)));
+  let heldControl = null;
+  if (boundary && !boundary.saved) {
+    assert.equal(b.savingsFunding.goalAllocation.status, 'unavailable');
+    assert.ok(b.savingsFunding.rows.every(row => row.saved == null));
+    assert.equal(b.savingsFunding.period.proposal, null);
+    assert.ok(b.sim.events.every(row => !row.reserveFunding), 'no uncertain evidence authorizes reserve payments');
+    assert.deepEqual(b.savingsInventory.reportedStock, a.savingsInventory.reportedStock, 'reports remain unchanged');
+    if (unexpected.length) {
+      // Compare the conservative cash walk to an incumbent, independent
+      // fail-closed entry path. No new number or balance is manufactured.
+      const heldPlan = JSON.parse(JSON.stringify(data.plan));
+      heldPlan.savingsPoolObservation.accounts[0].pendingState = 'unknown';
+      const held = JSON.parse(JSON.stringify(Before.recommend(heldPlan, data.meta.asOf, opts)));
+      const financialChanges = diff(held, b).filter(row => !/^savings(Funding|Inventory)\./.test(row.path)
+        && !row.path.endsWith('.reason'));
+      assert.deepEqual(financialChanges, [], name + ': cash/card/budget/cap/debt/payday equal incumbent held-backing control');
+      heldControl = { method: 'incumbent pending-unknown Savings backing with original transaction packet',
+        financialChanges: 0, nativePayments: 0, proposal: null };
+      unexpected = [];
+    }
+  }
   assert.deepEqual(unexpected, [], name + ': no cash, funding, card, budget, debt or proposal output outside Saved changes');
   cases.push({ name, inputSha256: inputHash, changedPaths: changes.map(row => row.path), unexpectedChanges: 0,
     ...(coherence ? { beforeSaved: a.savingsFunding.rows.map(row => row.saved),
       afterSaved: b.savingsFunding.rows.map(row => row.saved),
       reportedStock: b.savingsInventory.reportedStock.amount,
-      goalAllocationStatus: b.savingsFunding.goalAllocation.status } : {}) });
+      goalAllocationStatus: b.savingsFunding.goalAllocation.status,
+      ...(heldControl ? { heldControl } : {}) } : {}) });
 }
 for (const mode of ['ready', 'partial', 'full', 'returned', 'pending', 'unmatched', 'missing-stock', 'missing-cash', 'before-policy', 'saved-income', 'ranged-need']) compare('incumbent:' + mode, fx(mode));
 for (const mode of ['valid-v2', 'stale-date', 'stale-both', 'prior-year', 'prior-household-day', 'blocked-prior-day',
@@ -73,6 +95,10 @@ if (process.env.ATLAS_SAVINGS_COHERENCE_PROOF === '1') {
     'hint-only', 'hint-internal', 'hint-one-leg', 'invalid-reference', 'missing-reference', 'missing-direction', 'identity-flag']) {
     const input = transferCutoffs(mode);
     compare('cutoff:' + mode, { plan: input.plan, meta: { asOf: input.asOf }, liveOverlay: input.opts }, true);
+  }
+  for (const row of transferCutoffs.boundaryCases) {
+    const input = transferCutoffs(row.name);
+    compare(row.name, { plan: input.plan, meta: { asOf: input.asOf }, liveOverlay: input.opts }, true, row);
   }
 }
 const sourceFiles = ['public/forecast.js', 'public/savings-inventory.js', 'public/plan.js', 'public/budget-blend.js'];

@@ -289,3 +289,72 @@ proof files, 65 browser-bound sources and 30 served hashes). The following
 evidence-only commit preserves all exercised production/test blobs.
 Current-head hosted checks and exact-head Systems re-review
 remain required, with no merge or deployment by this builder.
+
+## Unified Savings-account movement boundary
+
+Root [BLOCK 5495280645](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/595#pullrequestreview-5495280645)
+supersedes PASS 5495028834 on exact `edc322d4`. Fresh advisory
+[P1 4251556087](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/595#discussion_r4251556087)
+identified the operating-cash endpoint skip. A reported A100 dated October 6,
+B0 dated October 8 and exact posted Savings-to-chequing100 on October 7
+left Saved76/24 ready despite independently remaining Savings10000-10000=0
+cents. Direct posted fees/debits/credits were also outside the old admission.
+The new withdrawal, fee and same-day deposit assertions all fail before this
+repair; the approved dispatch now covers one coherent account boundary.
+
+Only Forecast's private coherence predicate changes in production. It admits
+every nonzero row touching configured Savings through raw or incumbent account
+identity, then requires unique IDs, strict CAD cents, explicit posted status,
+canonical role/identity with noncontradictory aliases, real dates and complete
+coverage/observation bounds. Missing identity on an explicit reserve row fails
+closed. Recognized transfer forms still require the incumbent exact pair;
+both legs are qualified, including a cash counterparty. Hints/equal amounts
+never manufacture a pair. No balance is reconstructed, subtracted or rewritten.
+
+- Two Savings endpoints: each cutoff compares to its own posted leg. Both
+  strictly before or both strictly after is coherent; opposite inclusion or
+  same-day equality is unresolved.
+- One Savings endpoint: its report must be strictly after its posted leg,
+  for deposits and withdrawals alike. Before/same-day is unresolved.
+- Direct Savings fee/debit/credit: the same strict-after rule applies.
+- No Savings endpoint or genuine zero principal: irrelevant to this boundary.
+
+Older/mixed reports remain usable without contradictory movement evidence.
+All original balances, cents, bank dates and check dates remain untouched.
+Saved rows/lenses/stamps/details/grouped members/Inventory withhold together;
+independently known Needed remains230/24. The gate uses the existing fail-closed
+backing/funding paths and never grants cash, top-up or movement permission.
+Ambiguous current reports can newly withhold native backing; this conservative
+effect is explicitly tested against the incumbent pending-unknown backing
+control, with the original transaction packet. Cash/card/budget/cap/debt/payday
+outputs must match that independently existing held-backing route except for
+truthful reason strings. Ordinary coherent cases require complete-output
+equality outside Saved/provenance; no broad numerical exemption is used.
+
+The positive deposit oracle now uses valid DD404 grammar and October6 posting
+before October7 reports; its independent12900-cent allocation remains60/24/45.
+A separate valid same-day pair withholds Saved instead of weakening production.
+Other positive synthetic deposits/credits use posted-before-report dates,
+retaining their independent amounts, contribution and conservation oracles.
+The chronological publication suite passes17/17. The latest acceptance suite
+passes130 cases, including50 account-boundary ledgers and malformed direct/
+counterparty evidence. Earlier completed receipts remain historical; new
+comparison/browser evidence will bind this repaired clean source head.
+
+Both prior exact-edc hosted runs reached terminal failure: standard369/370,
+refresh-isolation1/1, aggregatefailure. The unsupported DEPOSIT10 fixture was
+the only failed suite; it is now repaired with grammar and coherent dates.
+Historical local349/369 with20 failures remains a separate FAILED run.
+No old CI or reviewer execution is promoted to PASS. Required new-head tests,
+current-main composition and exact-head Systems acknowledgement remain gates.
+
+The broader commit was rejected twice by automatic approval review because it
+did not accept the delegated instruction as trusted authorization. The staged
+repair is local and uncommitted, pending direct confirmation. Local pre-approval
+proof validates exact working bytes against staged index blobs, explicitly
+marks `uncommittedStagedSnapshot: true` and `releaseHeadQualified: false`, and
+does not satisfy the repository's clean committed-source release gate. The
+temporary proof harness changes source-binding verification only; financial
+and browser tests are unchanged. No GitHub publication, integration or commit
+workaround is used. All prior exact-head failures and review qualifications
+remain intact.

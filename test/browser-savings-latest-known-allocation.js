@@ -43,7 +43,7 @@ function input(mode) {
   const errors = [], external = [], writes = [], cases = [], served = {};
   try {
     const selected = process.env.ATLAS_LATEST_SAVINGS_CASES?.split(',');
-    for (const [mode, width, theme, expected, bands] of [
+    for (const [mode, width, theme, expected, bands, topUpHeld = true] of [
       ['stale-date', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['stale-both', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['prior-household-day', 320, 'dark', [95, 24], ['is-amber', 'is-full']],
@@ -51,13 +51,21 @@ function input(mode) {
       ['cutoff-double-count', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
       ['cutoff-inverse', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
       ['cutoff-both-before', 390, 'light', [76, 24], ['is-amber', 'is-full']],
-      ['cutoff-both-after', 390, 'light', [76, 24], ['is-amber', 'is-full']],
+      ['cutoff-both-after', 390, 'light', [76, 24], ['is-amber', 'is-full'], false],
       ['cutoff-unrelated-mixed', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['cutoff-zero', 390, 'light', [0, 0], ['is-red', 'is-red']],
       ['cutoff-duplicate', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
       ['cutoff-hint-only', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
       ['cutoff-invalid-reference', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
       ['cutoff-missing-reference', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['cutoff-boundary-withdraw-before', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['cutoff-boundary-deposit-before', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['cutoff-boundary-deposit-same-current', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['cutoff-boundary-fee-before', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['cutoff-boundary-credit-before', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['cutoff-boundary-withdraw-after', 390, 'light', [0, 0], ['is-red', 'is-red'], false],
+      ['cutoff-boundary-deposit-after', 390, 'light', [76, 24], ['is-amber', 'is-full'], false],
+      ['cutoff-boundary-fee-after', 390, 'light', [74.75, 24], ['is-amber', 'is-full'], false],
       ['blocked-prior-day', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['withdrawal-stale', 390, 'light', [39.02, 0], ['is-red', 'is-red']],
       ['zero-stale', 390, 'light', [0, 0], ['is-red', 'is-red']],
@@ -111,7 +119,7 @@ function input(mode) {
       await summary.focus(); await page.keyboard.press('Enter');
       const body = page.locator('[data-budget-detail-body]');
       await page.locator('[data-budget-detail-sheet]').waitFor({ state: 'visible' });
-      if (mode !== 'cutoff-both-after') assert.match(await body.locator('[data-budget-daily-proposal]').innerText(), /Unavailable/);
+      if (topUpHeld) assert.match(await body.locator('[data-budget-daily-proposal]').innerText(), /Unavailable/);
       if (mode.startsWith('cutoff-') && expected[0] == null) {
         await body.locator('[data-budget-savings-info] > summary').click();
         assert.match(await body.innerText(), /Saved allocation is withheld/);
@@ -133,7 +141,7 @@ function input(mode) {
       await page.keyboard.press('Escape');
       assert.equal(await summary.evaluate(el => el === document.activeElement), true);
       cases.push({ mode, width, theme, rows: result.rows, bars: result.bars, noOverflow: true,
-        topUpHeld: mode !== 'cutoff-both-after', focusRestored: true, inputSha256: inputHash,
+        topUpHeld, focusRestored: true, inputSha256: inputHash,
         screenshot: filename, screenshotSha256: hash(fs.readFileSync(path.join(output, filename))) });
       await page.close(); console.log('PASS latest Saved browser: ' + mode + ' ' + width + 'px');
     }

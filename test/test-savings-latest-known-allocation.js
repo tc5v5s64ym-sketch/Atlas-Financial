@@ -50,6 +50,21 @@ test('paired reserve transfer across opposite cutoffs cannot allocate the same 1
   assert.deepEqual(packet.rows.map(row => row.needed), [230, 24]);
   assert.equal(packet.period.proposal, null);
 });
+for (const row of transferCutoffs.boundaryCases) test(row.name + ' uses one Savings-account boundary', () => {
+  const input = transferCutoffs(row.name), advice = publish(input), packet = advice.savingsFunding;
+  assert.equal(packet.goalAllocation.status, row.saved ? 'ready' : 'unavailable');
+  assert.deepEqual(packet.backing.items.map(item => item.saved), row.saved || [null, null, null]);
+  assert.deepEqual(packet.rows.map(item => item.needed), [230, 24]);
+  assert.deepEqual(packet.goalAllocation.balanceDates, input.plan.savingsPoolObservation.accounts
+    .map(item => ({ accountId: item.accountId, date: item.evidenceDate })));
+  if (!row.saved) {
+    assert.ok(packet.rows.every(item => item.saved === null && item.savedTrust === 'unknown'));
+    assert.ok(packet.lenses.every(lens => lens.items.every(item => item.saved === null && item.savedTrust === 'unknown')));
+    assert.equal(packet.period.proposal, null);
+    assert.equal(packet.moneyMovementPermission, 'not-granted');
+    assert.ok(advice.sim.events.every(item => !item.reserveFunding));
+  }
+});
 for (const mode of ['inverse', 'opposite-direction', 'same-day', 'same-day-one', 'unknown-stock', 'pending',
   'missing-pending', 'currency', 'missing-currency', 'fractional', 'string-amount', 'null-amount', 'date',
   'impossible-date', 'future-date', 'alias', 'alias-outside', 'missing-id', 'malformed-id', 'role', 'duplicate', 'ambiguous-reference', 'duplicate-id-elsewhere', 'unmatched',
@@ -236,7 +251,8 @@ vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];'
 
 test('uncertain transfer Saved stays unknown in Plan, shared Inventory and grouped members', () => {
   for (const mode of ['double-count', 'inverse', 'duplicate', 'unmatched', 'hint-only', 'hint-internal',
-    'hint-one-leg', 'invalid-reference', 'missing-reference', 'missing-direction', 'identity-flag']) {
+    'hint-one-leg', 'invalid-reference', 'missing-reference', 'missing-direction', 'identity-flag',
+    ...transferCutoffs.boundaryCases.filter(row => !row.saved).map(row => row.name)]) {
     const input = transferCutoffs(mode), advice = publish(input);
     const packet = F.savingsFundingPublication(advice.savingsFunding, { asOf: input.asOf, advice });
     assert.ok(packet, 'the shared Forecast publication remains accepted');

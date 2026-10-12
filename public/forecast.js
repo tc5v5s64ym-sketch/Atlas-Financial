@@ -18945,8 +18945,8 @@
       && typeof policy.source === 'string' && !!policy.source.trim() && policy.source.length <= 200;
   }
   const savingsDailyBackingContexts = new WeakMap();
-  // Coherence only: retain reports and never subtract a move. The incumbent
-  // owns pair identity; qualify its legs before comparing date-only cutoffs.
+  // One account boundary: qualify posted evidence and compare its own cutoff.
+  // The incumbent owns pair identity; never reconstruct or adjust a report.
   function savingsReportedMovementCoherence(plan, day, opts, reported) {
     const packet = currentPeriodActualsPacket(opts), transactions = packet?.transactions;
     if (!Array.isArray(transactions)) return null;
@@ -18954,44 +18954,60 @@
     for (const tx of transactions) if (tx?.id != null) {
       const id = String(tx.id), rows = byId.get(id) || []; rows.push(tx); byId.set(id, rows);
     }
-    const unknown = 'A savings transfer lacks unique, qualified posted evidence. Balance-cutoff inclusion is unproven; Saved allocation is withheld.';
-    const uncertain = 'Reported balance cutoffs cannot establish that both savings-transfer legs are included together. Saved allocation is withheld.';
+    const unknown = 'A savings movement lacks unique, qualified posted evidence. Balance-cutoff inclusion is unproven; Saved allocation is withheld.';
+    const uncertain = 'Reported balance cutoffs cannot establish inclusion of the savings movement. Saved allocation is withheld.';
     const complete = packet.transactionCoverage === 'complete' || packet.transactionCoverage?.complete === true;
+    const validId = id => typeof id === 'string' && !!id.trim() && id === id.trim()
+      || typeof id === 'number' && Number.isSafeInteger(id) && id >= 0;
+    const unconfirmed = row => packet.currencyUnconfirmed != null && (!Array.isArray(packet.currencyUnconfirmed)
+      || packet.currencyUnconfirmed.some(flag => !flag || !validId(flag.id) || String(flag.id) === String(row.id)));
+    const covered = row => complete && transactionCoverageStatus(packet) === 'complete'
+      && packet.currency === 'CAD' && savingsDate(packet.observationAsOf) && packet.observationAsOf <= day
+      && savingsDate(packet.coverageStart) && savingsDate(packet.coverageThrough)
+      && row.date >= packet.coverageStart && row.date <= packet.coverageThrough && row.date <= packet.observationAsOf;
+    const qualified = (row, accountId) => {
+      const id = row?.id, cents = savingsCents(row?.amount, true), ids = [row?.atlasAccountId, row?.accountId, row?.account];
+      const role = accounts.has(accountId) || !HOUSEHOLD_CHEQUING_IDS.includes(accountId) ? 'household-reserve' : 'household-cash';
+      return validId(id)
+        && byId.get(String(id))?.length === 1 && row.pending === false
+        && typeof row.currency === 'string' && row.currency.toUpperCase() === 'CAD' && !unconfirmed(row)
+        && row.accountRole === role && householdCashLocationId(row) === accountId && ids.some(id => id === accountId)
+        && ids.every(id => id == null || id === '' || id === accountId)
+        && cents != null && cents !== 0 && savingsDate(row.date) && row.date <= day && covered(row);
+    };
+    const inclusion = (row, accountId) => {
+      const cutoff = reported.balanceDates.find(item => item.accountId === accountId)?.date;
+      return !savingsDate(cutoff) || cutoff === row.date ? null : cutoff > row.date;
+    };
     const checked = new Set();
     for (const tx of transactions) {
       const aliases = [tx?.atlasAccountId, tx?.accountId, tx?.account];
-      if (!aliases.some(id => accounts.has(id)) || !isInternalHouseholdTransfer(tx) || tx.amount === 0) continue;
-      const present = aliases.filter(id => id != null && id !== '');
-      if (present.some(id => id !== present[0])) return unknown;
+      const location = householdCashLocationId(tx);
+      const accountId = aliases.find(id => accounts.has(id)) || (accounts.has(location) ? location : null);
+      if (tx?.amount === 0) continue;
+      if (!accountId) {
+        if (tx?.accountRole === 'household-reserve' && aliases.every(id => id == null || id === '')) return unknown;
+        continue;
+      }
+      if (!qualified(tx, accountId)) return unknown;
+      if (!isInternalHouseholdTransfer(tx)) {
+        if (inclusion(tx, accountId) !== true) return uncertain;
+        continue;
+      }
       const movement = provenInternalMovementForTx(tx, opts)?.movement;
-      if (movement && (!accounts.has(movement.sourceAccountId) || !accounts.has(movement.destinationAccountId))) continue;
       if (!movement) return unknown;
       if (checked.has(movement)) continue; checked.add(movement);
       const source = byId.get(movement.sourceTransactionId), destination = byId.get(movement.destinationTransactionId);
       if (source?.length !== 1 || destination?.length !== 1) return unknown;
-      const qualified = (row, accountId) => {
-        const id = row.id, cents = savingsCents(row.amount, true), ids = [row.atlasAccountId, row.accountId, row.account];
-        return (typeof id === 'string' && !!id.trim() && id === id.trim()
-          || typeof id === 'number' && Number.isSafeInteger(id) && id >= 0)
-          && row.pending === false && typeof row.currency === 'string' && row.currency.toUpperCase() === 'CAD'
-          && row.accountRole === 'household-reserve' && ids.some(id => id === accountId)
-          && ids.every(id => id == null || id === '' || id === accountId)
-          && cents != null && cents !== 0 && savingsDate(row.date) && row.date <= day;
-      };
       const debit = source[0], credit = destination[0];
       if (!qualified(debit, movement.sourceAccountId) || !qualified(credit, movement.destinationAccountId)
           || savingsCents(debit.amount, true) <= 0 || savingsCents(credit.amount, true) >= 0
           || savingsCents(debit.amount, true) !== -savingsCents(credit.amount, true)
-          || savingsCents(movement.amount) !== savingsCents(debit.amount, true)
-          || !complete || transactionCoverageStatus(packet) !== 'complete'
-          || packet.currency !== 'CAD' || !savingsDate(packet.observationAsOf) || packet.observationAsOf > day
-          || !savingsDate(packet.coverageStart) || !savingsDate(packet.coverageThrough)
-          || [debit, credit].some(row => row.date < packet.coverageStart || row.date > packet.coverageThrough
-            || row.date > packet.observationAsOf)) return unknown;
-      const from = reported.balanceDates.find(row => row.accountId === movement.sourceAccountId)?.date;
-      const to = reported.balanceDates.find(row => row.accountId === movement.destinationAccountId)?.date;
-      if (!savingsDate(from) || !savingsDate(to) || from === debit.date || to === credit.date
-          || (from > debit.date) !== (to > credit.date)) return uncertain;
+          || savingsCents(movement.amount) !== savingsCents(debit.amount, true)) return unknown;
+      const included = [[debit, movement.sourceAccountId], [credit, movement.destinationAccountId]]
+        .filter(([, id]) => accounts.has(id)).map(([row, id]) => inclusion(row, id));
+      if (included.some(value => value == null) || (included.length === 2
+          ? included[0] !== included[1] : included[0] !== true)) return uncertain;
     }
     return null;
   }
