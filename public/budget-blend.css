@@ -1963,6 +1963,33 @@ body:has([data-budget-bento]) .sitenav {
   box-shadow: none;
 }
 
+/* Card-detail panel lead and balance disclosure (Atlas-approved panel
+   cleanup): the panel leads with the publication's reported balance, and
+   the period endpoints with their evidence sit behind the native
+   "Balance and payment details" disclosure. Additive and scoped to the
+   panel; the wording and figures live in budget-card-movements.js. */
+.card-movement-panel .card-movement-lead {
+  margin: 1px 0 9px;
+  font-size: 15px;
+  font-weight: 620;
+  line-height: 1.35;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.card-movement-panel .card-movement-details { margin: 0 0 4px; }
+.card-movement-panel .card-movement-details > summary {
+  padding: 7px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.card-movement-panel .card-movement-details > summary:focus-visible {
+  outline: 2px solid var(--s1);
+  outline-offset: 2px;
+}
+.card-movement-panel .card-movement-details .card-movement-balances { margin-top: 8px; }
+
 .blend-in-panel {
   max-height: 0;
   margin: 0;
