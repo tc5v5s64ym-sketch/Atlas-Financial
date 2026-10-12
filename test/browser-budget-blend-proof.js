@@ -2214,8 +2214,12 @@ const composite = (fg, bg) => {
     if (rangedClub && rangedClub.fillW !== 0) errors.push(`funding ranged-need fill ${rangedClub.fillW}px, expected 0`);
     await fbRanged.close();
 
-    // Unavailable path: the saved side is withheld, stamps are absent on
+    // Unavailable path: the saved side is withheld, the stamp is absent on
     // that side, bars stay neutral, and the printed Unavailable stands.
+    // The accepted unavailable packet still publishes known Needed
+    // amounts, so the required stamp is present on these rows — this is
+    // a per-side unknown, NOT the label-only rejected-publication path
+    // proven by the next case.
     const fbMissing = await open(390, 'light', { data: dailyConsumerData('missing-stock') });
     const missingFace = await readFundingFace(fbMissing);
     if (!missingFace?.items.length) errors.push('funding missing-stock: no legend items');
@@ -2226,6 +2230,36 @@ const composite = (fg, bg) => {
     }
     if (!/Unavailable/.test(missingFace?.cardText || '')) errors.push('funding missing-stock: Unavailable wording lost');
     await fbMissing.close();
+
+    // Rejected publication: the served plan carries no allocation
+    // policy, so Forecast publishes no sealed savings packet for the
+    // page to select — Forecast.savingsFundingPublication returns null
+    // and plan.js substitutes the unavailable packet (source
+    // Budget.savingsDailyFundingUnavailable, no rows). The goal rows
+    // then render label-only from the roster: NO saved or required
+    // stamp on either row (contrast missing-stock above, whose accepted
+    // packet retains known Needed amounts and the required stamp),
+    // both printed amounts Unavailable, and the bars stay neutral.
+    const rejectedData = dailyConsumerData('ready');
+    delete rejectedData.plan.savingsEarmarks.allocationPolicy;
+    const fbRejected = await open(390, 'light', { data: rejectedData });
+    const rejectedFace = await readFundingFace(fbRejected);
+    if (!rejectedFace?.rows.length) errors.push('funding rejected-publication: no label-only rows');
+    for (const row of rejectedFace?.rows || []) {
+      if (row.savedStamp !== null || row.requiredStamp !== null) {
+        errors.push(`funding rejected-publication stamps ${JSON.stringify(row)}`);
+      }
+      if (!/Unavailable/.test(row.amountsText || '')) {
+        errors.push(`funding rejected-publication amounts ${JSON.stringify(row)}`);
+      }
+    }
+    for (const item of rejectedFace?.items || []) {
+      if (item.barClass !== 'blend-g-bar is-unknown' || item.w !== '' || item.fillW !== 0 || item.barBgImage !== 'none') {
+        errors.push(`funding rejected-publication bar ${JSON.stringify(item)}`);
+      }
+    }
+    await capture(fbRejected, 'funding-bars-rejected-publication-390-light.png');
+    await fbRejected.close();
 
     // Red band and the known-zero bar, from observed-pool tweaks of the
     // same fixture (pool 10: club lands at 34/230 red; home at a trusted
