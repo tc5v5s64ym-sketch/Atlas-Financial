@@ -388,3 +388,77 @@ Server refresh changes and the shared card-face runtime/styles are newer than
 this branch's007d9049 base. Integration need is reported before edits; no main
 or release merge occurs in this repair publication. Current-main composition
 and its exact-head verification remain coordinator gates.
+
+## Observer contract repair and current-main composition
+
+The candidate now incorporates released main
+`64fdd058e0a3f185c98ad9412c57123acd8c30cb`; exercised clean code is
+`ce0108f0cd2fbfaeade724bf908c49d6dd4d9cd6`. Root Systems review
+5496003775 BLOCK on `1afefc28` identified two genuine contract defects:
+the observer does not publish packet-level currency, and discarded Savings
+rows could disappear without account-scoped uncertainty. Earlier provider
+fixtures consumed real balances but retained handwritten actuals. Their
+receipts remain historical and are superseded for this contract by the
+complete observer-to-overlay-to-Forecast proofs below.
+
+The approved repair touches `scripts/provider-observe.js` and Forecast's
+existing private movement predicate. The observer always publishes
+`savingsMovementUnconfirmed`, containing only canonical Savings account IDs
+and fixed reasons. Undated/invalid-amount rows, currency uncertainty before
+or during pending/posted collapse, and sanitization fallback retain that
+uncertainty. Valid confirmed collapse does not become unconfirmed merely
+because the duplicate was removed. No descriptor, provider ID, amount or
+raw private data is included in the new collection.
+
+Forecast validates the collection even when transactions are empty. Missing
+legacy provenance, malformed entries, and failed-overlay missing actuals
+withhold Saved; legacy v1 remains readable by its existing other consumers.
+Valid unrelated canonical-account uncertainty does not poison Savings.
+Packet-level currency is optional because the producer does not emit it;
+an explicit incompatible value still fails closed, as does incompatible
+per-row currency. Neither evidence packet is patched by overlay or Forecast.
+There is no new calculator, balance reconstruction, classification change,
+global cash relaxation or failed-refresh retention.
+
+- [Exact pre-repair RED / repaired GREEN receipt](savings-latest-known/observer-contract-red-green.json):
+  twelve actual-pipeline controls, six failed and six passed on exact
+  `1afefc28`; all twelve pass on integrated code. The six failures were genuine
+  CAD fee/transfer positives and undated, null/malformed-amount, and undated
+  pending negatives. Original reports and actuals remain unchanged through
+  both boundaries. Thirty registered contract tests also pass, including
+  dropped-row/fallback, legacy/malformed provenance and unrelated-account
+  controls; the 130 existing acceptance tests pass.
+- [Current-main financial comparison](savings-latest-known/current-main-comparison.json):
+  140 synthetic ledgers against exact main `64fdd058`, 298,918 equal subtrees,
+  zero unexpected differences. Forty-two conservative cases match the
+  incumbent held-backing route outside Savings, excluding truthful reasons.
+  Reported amounts and bank dates are never adjusted. Independent 11900/12900
+  cents oracles allocate 6000 + 2400 + 3500/4500 cents.
+- [Integrated browser receipt](savings-latest-known/browser-observer-contract.json):
+  seventeen App.boot/Edge cases pass, including genuine actual packets,
+  dropped/fallback evidence, older/mixed/check dates and external/direct
+  movement cutoffs. Saved/Needed stamps and existing bar bands, Info,
+  focus restoration and no overflow pass; no page errors, external requests
+  or writes occur. Delivered screenshot hashes match the original captures.
+- [Main preservation receipt](savings-latest-known/main-preservation.json):
+  all 72 imported paths other than shared Forecast, Plan and test registry
+  retain exact main blobs. Main's Household calculator/renderer, card-face
+  implementation and refresh coordinator are preserved. Net changes in the
+  three shared files are confined to Savings and two suite registrations.
+
+Thirteen registered focused/composition suites pass, plus released refresh
+coalescing (515 checks) and deadline (49 checks) using synthetic loopback
+providers. The initial sandboxed composition invocation failed those two
+transport tests; the qualified reruns pass. The frozen legacy-history byte
+check passes with exact Git bytes, but its unchanged storage test still
+fails with `history-io-failed` on this Windows executor, including an
+ordinary-host-access rerun. No storage test or implementation is weakened.
+The pre-integration broad local run was stopped incomplete and is not a PASS.
+Fresh hosted full CI and exact-head Systems review remain required.
+
+The net implementation footprint against current main is four production
+files and 174 changed lines: Forecast, provider observer, shared Inventory
+wording, and one neutral Plan sentence. Tests/fixtures/proof sources and
+generated synthetic artifacts are counted separately in the merge card.
+Failed-refresh continuity remains a separate follow-on. This composition
+and evidence publication do not merge, deploy or activate the candidate.
