@@ -53,9 +53,14 @@ test('paired reserve transfer across opposite cutoffs cannot allocate the same 1
 for (const mode of ['inverse', 'opposite-direction', 'same-day', 'same-day-one', 'unknown-stock', 'pending',
   'missing-pending', 'currency', 'missing-currency', 'fractional', 'string-amount', 'null-amount', 'date',
   'impossible-date', 'future-date', 'alias', 'alias-outside', 'missing-id', 'malformed-id', 'role', 'duplicate', 'ambiguous-reference', 'duplicate-id-elsewhere', 'unmatched',
-  'unknown-coverage', 'missing-coverage', 'coverage-gap', 'unknown-observation', 'packet-currency', 'split-posting-dates'])
+  'unknown-coverage', 'missing-coverage', 'coverage-gap', 'unknown-observation', 'packet-currency', 'split-posting-dates',
+  'hint-only', 'hint-internal', 'hint-one-leg', 'invalid-reference', 'missing-reference', 'missing-direction', 'identity-flag'])
   test('reserve-cutoff ' + mode + ' cannot authorize Saved or reconciliation', () => {
     const input = transferCutoffs(mode), advice = publish(input), packet = advice.savingsFunding;
+    if (mode.startsWith('hint-') || mode.includes('reference') || mode === 'missing-direction' || mode === 'identity-flag') {
+      assert.equal(F.householdInternalMovements(input.plan, input.opts).length, 0, 'hint or malformed reference cannot prove a pair by amounts');
+      assert.equal(advice.savingsInventory.reportedStock.amount, 200, 'original reports are not adjusted');
+    }
     assert.equal(packet.goalAllocation.status, 'unavailable');
     assert.ok(packet.backing.items.every(row => row.saved === null));
     assert.ok(packet.rows.every(row => row.saved === null && row.savedTrust === 'unknown'));
@@ -230,7 +235,8 @@ for (const name of ['app', 'bill-detail', 'savings-inventory', 'budget-surface',
 vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];', page);
 
 test('uncertain transfer Saved stays unknown in Plan, shared Inventory and grouped members', () => {
-  for (const mode of ['double-count', 'inverse', 'duplicate', 'unmatched']) {
+  for (const mode of ['double-count', 'inverse', 'duplicate', 'unmatched', 'hint-only', 'hint-internal',
+    'hint-one-leg', 'invalid-reference', 'missing-reference', 'missing-direction', 'identity-flag']) {
     const input = transferCutoffs(mode), advice = publish(input);
     const packet = F.savingsFundingPublication(advice.savingsFunding, { asOf: input.asOf, advice });
     assert.ok(packet, 'the shared Forecast publication remains accepted');

@@ -52,6 +52,17 @@ function fixture(mode = 'double-count') {
   if (mode === 'duplicate-id-elsewhere') input.opts.currentPeriodActuals.transactions.push({ id: 'cutoff-out',
     date: input.asOf, amount: 1, currency: 'CAD', pending: false, atlasAccountId: 'chequing-a', accountRole: 'household-cash' });
   if (mode === 'unmatched') legs.pop();
+  if (['hint-only', 'hint-internal', 'hint-one-leg', 'invalid-reference', 'missing-reference', 'missing-direction', 'identity-flag'].includes(mode)) {
+    legs.forEach(row => { row.kindHint = mode === 'hint-internal' ? 'internal-transfer' : 'transfer'; });
+    if (['hint-only', 'hint-internal', 'hint-one-leg', 'identity-flag'].includes(mode)) {
+      legs.forEach(row => { delete row.tfrReference; delete row.tfrDirection; });
+    }
+    if (mode === 'hint-one-leg') delete legs[1].kindHint;
+    if (mode === 'invalid-reference') legs.forEach(row => { row.tfrReference = 'not-a-reference'; });
+    if (mode === 'missing-reference') legs.forEach(row => { delete row.tfrReference; });
+    if (mode === 'missing-direction') legs.forEach(row => { delete row.tfrDirection; });
+    if (mode === 'identity-flag') legs.forEach(row => { delete row.kindHint; row.internalTransferIdentity = true; });
+  }
   if (mode === 'unknown-coverage') input.opts.currentPeriodActuals.transactionCoverage = { complete: false };
   if (mode === 'missing-coverage') delete input.opts.currentPeriodActuals.transactionCoverage;
   if (mode === 'coverage-gap') input.opts.currentPeriodActuals.coverageStart = '2026-10-08';

@@ -248,3 +248,31 @@ not an actual iPhone or bank-reconciliation claim. A following evidence-only
 commit preserves every exercised production/test blob.
 Draft #595 remains open pending required checks and a new exact-head Systems
 review. Release sequencing with #596 remains the coordinator's responsibility.
+
+## Incumbent transfer-form admission repair
+
+Root [Systems BLOCK 5494925090](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/595#pullrequestreview-5494925090)
+on exact `45fa53946d99cf5cbd78c740535c4b562890a1c9` verified the referenced
+counterexample repair but found a narrower bypass. The provider can publish
+`kindHint: 'transfer'` without a parsable reference. The guard admitted only
+`isInternalTransferIdentity`, although incumbent `isInternalHouseholdTransfer`
+also recognizes `transfer` and `internal-transfer` hints. Invented hint-only
+reserve legs therefore left reported 200 allocated as Saved 176/24 without
+any proven pair. The new assertion fails before the one-line repair.
+
+Admission now reuses `isInternalHouseholdTransfer`. Exact pairing remains
+solely incumbent `provenInternalMovementForTx`; a hint, malformed/missing
+reference or direction, or identity flag cannot prove a pair by equal amounts.
+The existing unmatched/unqualified branch withholds Saved. No balance,
+allocation arithmetic, date, cash gate, provider or renderer code changes.
+
+Seven new forms exercise hint-only, internal-transfer hint, one hinted leg,
+invalid reference, missing reference, missing direction and identity-only flag.
+All retain original reported 200, have zero proven pairs, and withhold Saved
+across rows, lenses, Plan stamps/detail, grouped members and shared Inventory;
+Needed remains 230/24. The acceptance suite now has 80 cases. Five focused
+internal-movement/consumer/review-boundary/provider/authority suites cover this
+one-line admission change. Earlier receipts remain bound to their original
+sources; new targeted browser and full-output receipts will bind the repaired
+clean code head. Current-head hosted checks and exact-head Systems re-review
+remain required, with no merge or deployment by this builder.

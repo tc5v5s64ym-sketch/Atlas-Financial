@@ -69,7 +69,8 @@ if (process.env.ATLAS_SAVINGS_COHERENCE_PROOF === '1') {
     'unknown-stock', 'pending', 'missing-pending', 'currency', 'missing-currency', 'fractional', 'string-amount',
     'null-amount', 'date', 'impossible-date', 'future-date', 'alias', 'alias-outside', 'missing-id', 'malformed-id',
     'role', 'duplicate', 'ambiguous-reference', 'duplicate-id-elsewhere', 'unmatched', 'unknown-coverage',
-    'missing-coverage', 'coverage-gap', 'unknown-observation', 'packet-currency', 'split-posting-dates']) {
+    'missing-coverage', 'coverage-gap', 'unknown-observation', 'packet-currency', 'split-posting-dates',
+    'hint-only', 'hint-internal', 'hint-one-leg', 'invalid-reference', 'missing-reference', 'missing-direction', 'identity-flag']) {
     const input = transferCutoffs(mode);
     compare('cutoff:' + mode, { plan: input.plan, meta: { asOf: input.asOf }, liveOverlay: input.opts }, true);
   }

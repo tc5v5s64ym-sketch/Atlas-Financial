@@ -18960,7 +18960,7 @@
     const checked = new Set();
     for (const tx of transactions) {
       const aliases = [tx?.atlasAccountId, tx?.accountId, tx?.account];
-      if (!aliases.some(id => accounts.has(id)) || !isInternalTransferIdentity(tx) || tx.amount === 0) continue;
+      if (!aliases.some(id => accounts.has(id)) || !isInternalHouseholdTransfer(tx) || tx.amount === 0) continue;
       const present = aliases.filter(id => id != null && id !== '');
       if (present.some(id => id !== present[0])) return unknown;
       const movement = provenInternalMovementForTx(tx, opts)?.movement;
