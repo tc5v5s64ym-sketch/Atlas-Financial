@@ -219,9 +219,21 @@ try {
     if (regenerated.content.engine.commit !== record.content.engine.commit) {
       rejects(() => append(archive, regenerated), 'history-original-or-closing-conflict');
     }
-    // Same content under the legacy record's engine version: the v2 retry is
-    // the v1 revision (v1 contentKey unchanged; derived labels excluded).
+    // The additive Household comparison is part of the keyed publication.
+    // Even after restoring the old engine identity, new publication content
+    // must conflict; never weaken the archive's financial equality rule.
+    const legacyPublication = clone(regenerated.content.publication);
+    assert.deepEqual(legacyPublication.budgetProgress.household.delta,
+      { amount: 67.66, trust: 'calculated', completeness: 'complete', reason: null,
+        magnitude: 67.66, direction: 'left' }, 'invented original plan 80 less observed 12.34');
+    assert.ok(!Object.hasOwn(record.content.publication.budgetProgress.household, 'delta'), 'frozen v1 predates the comparison');
+    delete legacyPublication.budgetProgress.household.delta;
+    assert.deepEqual(legacyPublication, record.content.publication, 'every existing publication field remains exact');
     regenerated.content.engine = clone(record.content.engine);
+    rejects(() => append(archive, reseal(clone(regenerated))), 'history-original-or-closing-conflict');
+    // Only genuinely identical legacy content retries as the v1 revision.
+    // v1 contentKey is unchanged; derived v2 labels remain excluded.
+    regenerated.content.publication = legacyPublication;
     const retry = append(archive, reseal(regenerated));
     assert.deepEqual([retry.status, retry.revisionId, retry.schema], ['duplicate', V1[0].revisionId, 'atlas-private-period-history/v1']);
     // A genuine v2 revision chains after the legacy head without rewriting it.
