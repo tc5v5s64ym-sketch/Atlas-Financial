@@ -224,10 +224,27 @@ regression suites pass. The original full-suite failure remains qualified
 above; no current full-suite PASS or new Systems PASS is claimed.
 
 Earlier receipts above are historical relative to this production repair.
-Fresh cutoff browser and full-output comparison receipts will bind the new
-clean code head. The comparison includes the prior 28 controls and the new
-38 cutoff ledgers, permitting only Saved fields and named allocation reason/
-status changes. It requires all cash, native funding/payment, cap, payday,
-card, debt, pending, schedule and top-up outputs to agree with pre-repair head.
+Fresh [cutoff browser](savings-latest-known/browser-cutoff-coherence.json) and
+[full-output comparison](savings-latest-known/coherence-comparison.json)
+receipts bind clean code head `2a4ef02779ac92a756ca186eba08c61706e3ad5e`,
+with exact Git blob bytes and no normalization. The comparison passes the
+prior 28 controls and new 38 cutoff ledgers: 66 cases, 5,451 equal subtrees,
+zero unexpected changes. Only Saved fields and named allocation reason/status
+changes differ. All cash, native funding/payment, cap, payday, card, debt,
+pending, schedule and top-up outputs agree with pre-repair head `27f6ce0c`.
+The original reports remain untouched, including reported 200 in the rejected
+counterexample. The numerical receipt binds 12 source/fixture/proof files.
+
+The real App.boot/browser proof passes seven new cutoff cases on installed
+Edge 154.0.4258.62: asynchronous and inverse, both-before and both-after,
+unrelated mixed, zero and duplicate. All 65 bound sources match committed
+bytes; all 30 served-source hashes agree. Saved stamps/bars, Info reason,
+known Needed, keyboard focus restoration and no overflow are verified.
+There are no page errors, external requests or writes. The
+[uncertain capture](savings-latest-known/cutoff-double-count-390-light.png)
+and [coherent refreshed capture](savings-latest-known/cutoff-both-after-390-light.png)
+were visually inspected. These are synthetic desktop-browser proofs at 390px,
+not an actual iPhone or bank-reconciliation claim. A following evidence-only
+commit preserves every exercised production/test blob.
 Draft #595 remains open pending required checks and a new exact-head Systems
 review. Release sequencing with #596 remains the coordinator's responsibility.
