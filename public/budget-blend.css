@@ -1649,6 +1649,15 @@ body:has([data-budget-bento]) .sitenav {
   content: "Planned ";
   font-weight: 500;
 }
+/* Keep the existing accessible lead-ins; only the Household face hides them. */
+.blend-house-totals [data-budget-ratio-actual]::before,
+.blend-house-totals [data-budget-ratio-plan]::before {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+.blend-house-totals > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 0; }
+.blend-house-totals [data-budget-household-delta] { white-space: nowrap; }
+.blend-house-totals [data-budget-delta-direction="over"] { color: var(--critical); }
 .blend-house-facts [data-budget-browse-remaining] {
   color: var(--blend-ink);
   font-size: 13px;

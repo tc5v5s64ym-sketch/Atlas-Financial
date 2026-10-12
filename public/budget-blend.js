@@ -1821,6 +1821,15 @@
       };
       renderTotalSide('[data-budget-ratio-actual]', 'data-budget-actual-amount');
       renderTotalSide('[data-budget-ratio-plan]', 'data-budget-planned-amount');
+      const delta = facts.querySelector('[data-budget-household-delta]');
+      if (delta) {
+        const value = stampedAmount(delta.getAttribute('data-budget-delta-amount'));
+        const printed = delta.querySelector('[data-budget-delta-value]');
+        if (printed && value != null) printed.childNodes.forEach(child => {
+          if (child.nodeType === 3) child.nodeValue = replacePrintedAmount(child.nodeValue, value);
+        });
+        delta.hidden = false;
+      }
       section.appendChild(facts);
     }
     // Only a complete, connected bridge may replace its source row on the
