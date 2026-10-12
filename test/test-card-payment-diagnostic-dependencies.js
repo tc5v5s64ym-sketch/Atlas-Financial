@@ -3,6 +3,7 @@
 // through the provider pipeline; no amount/date matching or policy is added.
 const assert = require('node:assert/strict');
 const F = require('../public/forecast');
+const View = require('../public/budget-card-movements');
 const Live = require('../scripts/live-plan');
 const fixture = require('./fixtures/card-purchase-coverage-data');
 function sharedDebit() {
@@ -28,6 +29,48 @@ function parentReversal() {
   x.data.plan.cardPurchaseCoverage.reversals.push({ confirmed: true, paymentId: 'invented-parent-payment',
     cardDebitRef: fixture.ref(x, 'invented-dependent-card-reversal'), cashCreditRef: fixture.ref(x, 'invented-dependent-cash-reversal'),
     allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: 10 }], otherAmount: 0 });
+  return x;
+}
+function reversalLegs(mode) {
+  const x = parentReversal(); x.data.plan.cardPurchaseCoverage.payments.pop();
+  const original = x.data.plan.cardPurchaseCoverage.reversals[0], second = structuredClone(original);
+  if (mode !== 'shared-card' && mode !== 'shared-both') {
+    x.payload.transactions.push({ ...x.payload.transactions.find(tx => tx.id === 'invented-dependent-card-reversal'), id: 'invented-second-card-reversal' });
+    second.cardDebitRef = fixture.ref(x, 'invented-second-card-reversal');
+    x.payload.accounts[3].balance = 420;
+  }
+  if (mode !== 'shared-cash' && mode !== 'shared-both') {
+    x.payload.transactions.push({ ...x.payload.transactions.find(tx => tx.id === 'invented-dependent-cash-reversal'), id: 'invented-second-cash-reversal' });
+    second.cashCreditRef = fixture.ref(x, 'invented-second-cash-reversal');
+    x.payload.accounts[0].balance = 490;
+  }
+  x.data.plan.cardPurchaseCoverage.reversals.push(second);
+  return x;
+}
+function purchaseOverAllocation() {
+  const x = sharedDebit();
+  x.payload.transactions = x.payload.transactions.filter(tx => tx.id !== 'invented-second-purchase');
+  x.payload.transactions.push({ ...x.payload.transactions.find(tx => tx.id === 80002), id: 'invented-independent-debit' });
+  x.data.plan.cardPurchaseCoverage.payments[1].debitRef = fixture.ref(x, 'invented-independent-debit');
+  x.data.plan.cardPurchaseCoverage.payments[1].allocations = [{ purchaseRef: fixture.ref(x, 80001), amount: 30 }];
+  x.payload.accounts[0].balance = 440; x.payload.accounts[3].balance = 370;
+  return x;
+}
+function allocationOverReversal() {
+  const x = reversalLegs('unique');
+  for (const tx of x.payload.transactions) if (String(tx.id).includes('reversal')) tx.amount = tx.amount > 0 ? 20 : -20;
+  x.data.plan.cardPurchaseCoverage.reversals.forEach(row => { row.allocations[0].amount = 20; });
+  x.payload.accounts[0].balance = 510; x.payload.accounts[3].balance = 440;
+  return x;
+}
+function otherAllocationReversal(amount) {
+  const x = reversalLegs('unique');
+  x.payload.transactions.find(tx => tx.id === 80002).amount = 50;
+  x.payload.transactions.find(tx => tx.id === 80003).amount = -50;
+  Object.assign(x.data.plan.cardPurchaseCoverage.payments[0], { otherAmount: 20, otherPurpose: 'prior-debt' });
+  for (const tx of x.payload.transactions) if (String(tx.id).includes('reversal')) tx.amount = tx.amount > 0 ? amount : -amount;
+  x.data.plan.cardPurchaseCoverage.reversals.forEach(row => { row.allocations = []; row.otherAmount = amount; });
+  x.payload.accounts[0].balance = 450 + 2 * amount; x.payload.accounts[3].balance = 380 + 2 * amount;
   return x;
 }
 function project(x) {
@@ -84,6 +127,57 @@ test('two unique payment pairs can partially cover one purchase', () => {
   assert.deepEqual(payments.map(row => row.paymentAllocation.status), ['reconciled', 'reconciled']);
   assert.deepEqual(payments.map(row => row.paymentAllocation.backfill), [15, 15]);
 });
+for (const mode of ['shared-cash', 'shared-card', 'shared-both', 'unique']) {
+  for (const reverse of [false, true]) test(mode + ' reversal legs, ' + (reverse ? 'reversed' : 'original') + ' record order', () => {
+    const x = reversalLegs(mode); if (reverse) x.data.plan.cardPurchaseCoverage.reversals.reverse();
+    const reversals = project(x).filter(row => row.amount === 10);
+    assert.equal(reversals.length, mode === 'shared-card' || mode === 'shared-both' ? 1 : 2);
+    assert.equal(reversals.every(row => row.paymentAllocation.status === (mode === 'unique' ? 'reconciled' : 'unreconciled')), true);
+    assert.equal(reversals.every(row => row.paymentAllocation.backfill === (mode === 'unique' ? 10 : null)), true);
+  });
+  test(mode + ' reversal certainty is independent of record order', () => {
+    const x = reversalLegs(mode), reverse = structuredClone(x); reverse.data.plan.cardPurchaseCoverage.reversals.reverse();
+    const facts = rows => rows.filter(row => row.amount === 10).map(row => row.paymentAllocation);
+    assert.deepEqual(facts(project(x)), facts(project(reverse)));
+  });
+}
+for (const [label, build, amount, collection] of [
+  ['purchase over-allocation', purchaseOverAllocation, -30, 'payments'],
+  ['parent allocation over-reversal', allocationOverReversal, 20, 'reversals'],
+  ['other allocation over-reversal', () => otherAllocationReversal(15), 15, 'reversals'],
+]) {
+  for (const reverse of [false, true]) test(label + ', ' + (reverse ? 'reversed' : 'original') + ' record order', () => {
+    const x = build(); if (reverse) x.data.plan.cardPurchaseCoverage[collection].reverse();
+    const rows = project(x).filter(row => row.amount === amount);
+    assert.equal(rows.length, 2);
+    assert.equal(rows.every(row => row.paymentAllocation.status === 'unreconciled'), true);
+    assert.equal(rows.every(row => row.paymentAllocation.backfill === null), true);
+  });
+  test(label + ' diagnostics are order-independent', () => {
+    const x = build(), reverse = structuredClone(x); reverse.data.plan.cardPurchaseCoverage[collection].reverse();
+    const facts = rows => rows.filter(row => row.amount === amount).map(row => row.paymentAllocation);
+    assert.deepEqual(facts(project(x)), facts(project(reverse)));
+  });
+}
+for (const reverse of [false, true]) test('disjoint partial other-allocation reversals, ' + (reverse ? 'reversed' : 'original') + ' order', () => {
+  const x = otherAllocationReversal(10); if (reverse) x.data.plan.cardPurchaseCoverage.reversals.reverse();
+  const rows = project(x).filter(row => row.amount === 10);
+  assert.deepEqual(rows.map(row => row.paymentAllocation.status), ['reconciled', 'reconciled']);
+  assert.deepEqual(rows.map(row => row.paymentAllocation.cardPayment), [10, 10]);
+  assert.deepEqual(rows.map(row => row.paymentAllocation.backfill), [0, 0]);
+});
+test('allocation copy asserts no unsupported confirmation timing and states reversal direction', () => {
+  const x = reversalLegs('unique'), rows = project(x);
+  const pub = { schema: 'atlas-card-period-movements/v1', source: 'Forecast.cardPeriodMovements', currency: 'CAD',
+    start: '2026-09-18', end: '2026-10-01', through: x.asOf, role: 'current', cards: [{ id: 'travelvisa', label: 'Invented Travel',
+      netChange: { amount: null }, opening: null, closing: null, reportedBalance: null, reasons: [], posted: rows, pending: [],
+      postedCoverage: 'complete-provider-response', pendingCoverage: 'complete-provider-response' }] };
+  const html = View.html(pub, { money: amount => '$' + amount.toFixed(2), date: value => value });
+  assert.doesNotMatch(html, /at posting|purpose at posting/i);
+  assert.match(html, /Confirmed payment allocation: purchase coverage \$30\.00 \/ other allocation \$0\.00/);
+  assert.match(html, /Confirmed allocation reversal: purchase coverage removed \$10\.00 \/ other allocation reversed \$0\.00/);
+  assert.match(html, /Payment and reversal allocations are shown separately\./);
+});
 if (failures) { console.error(failures + ' dependency regressions failed'); process.exitCode = 1; }
 else console.log('PASS ' + checks + ' isolated diagnostic dependency regressions');
-module.exports = { sharedDebit, parentReversal };
+module.exports = { sharedDebit, parentReversal, reversalLegs, purchaseOverAllocation, allocationOverReversal, otherAllocationReversal };

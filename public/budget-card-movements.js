@@ -85,11 +85,14 @@
         'coverage-identity-ambiguous': 'Transaction identity ambiguous; allocation unconfirmed.',
         'coverage-replacement-ambiguous': 'Pending/posted identity unconfirmed; allocation unavailable.',
         'coverage-currency-or-amount-unconfirmed': 'Transaction units or amount unconfirmed.',
+        'coverage-allocation-conflict': 'Allocation claims conflict; purchase coverage unconfirmed.',
+        'coverage-reversal-allocation-conflict': 'Reversal allocation claims conflict; amounts unconfirmed.',
         'credit-type-or-purpose-unconfirmed': 'Credit type and household purpose unconfirmed.'
       };
       const text = confirmed
-        ? (row.kind === 'reversal' ? 'Confirmed reversal: ' : 'Confirmed at posting: ')
-          + 'purchase coverage ' + money(row.backfill) + ' / other allocation ' + money(row.cardPayment)
+        ? row.kind === 'reversal'
+          ? 'Confirmed allocation reversal: purchase coverage removed ' + money(row.backfill) + ' / other allocation reversed ' + money(row.cardPayment)
+          : 'Confirmed payment allocation: purchase coverage ' + money(row.backfill) + ' / other allocation ' + money(row.cardPayment)
         : escape(why[row.reason] || 'Payment match or purchase purpose unconfirmed.');
       const purchases = confirmed ? (Array.isArray(row.purchases) ? row.purchases : []).map(purchase =>
         '<small>' + day(purchase.date) + ' · ' + escape(purchase.categoryLabel || 'Category unavailable')
@@ -98,7 +101,7 @@
         + text + '</small>' + purchases;
     };
     const transaction = tx => `<div class="card-movement-row" data-card-movement-transaction="${escape(tx.id)}" data-card-movement-kind="${escape(tx.kind)}">
-      <time datetime="${escape(tx.date)}">${day(tx.date)}</time><span><b>${escape(tx.payee)}</b><small>${tx.pending ? 'Pending authorization' : allocationConfirmed(tx) ? tx.paymentAllocation.kind === 'reversal' ? 'Posted allocation reversal' : 'Posted payment' : escape(kinds[tx.kind] || 'Movement · type unconfirmed')}</small>${allocation(tx)}</span>
+      <time datetime="${escape(tx.date)}">${day(tx.date)}</time><span><b>${escape(tx.payee)}</b><small>${tx.pending ? 'Pending authorization' : allocationConfirmed(tx) ? tx.paymentAllocation.kind === 'reversal' ? 'Posted allocation reversal' : 'Posted payment' : tx.paymentAllocation?.kind === 'reversal' ? 'Posted movement · reversal allocation unconfirmed' : escape(kinds[tx.kind] || 'Movement · type unconfirmed')}</small>${allocation(tx)}</span>
       <span class="card-movement-amount ${tx.pending ? '' : 'is-' + escape(tx.direction)}">${tx.direction === 'up' ? '+' : tx.direction === 'down' ? '−' : ''}${money(tx.magnitude)}</span></div>`;
     return `<section class="card-movement-strip" data-budget-card-movements data-card-period-start="${escape(pub.start)}" data-card-period-end="${escape(pub.end)}" aria-label="Card movement in selected pay period">
       <div class="card-movement-heading"><h2>Card movement <span class="card-movement-scope">${day(pub.start)} – ${day(pub.end)}</span></h2><p>Posted${pub.through ? ' through ' + day(pub.through) : ' activity not observed'}</p></div>
@@ -111,7 +114,7 @@
         ${card.posted.map(transaction).join('') || `<p class="card-movement-note">${card.postedCoverage === 'complete-provider-response' && pub.role !== 'future' ? 'No posted movements returned in this period.' : 'No qualified posted activity available.'}</p>`}
         <div class="card-movement-pending"><h4 class="card-movement-ledger-heading">Pending · separate from net change</h4>${card.pending.map(transaction).join('') || `<p class="card-movement-note">${card.pendingCoverage === 'complete-provider-response' ? 'No pending authorizations returned.' : card.pendingCoverage === 'not-observed' ? 'Pending activity not observed for this selected period.' : 'Pending coverage unavailable.'}</p>`}</div>
         <p class="card-movement-note">Payments reduce the ${card.id === 'heloc' ? 'HELOC' : 'card'} balance. ${card.id !== 'heloc' && card.posted.some(allocationConfirmed) ? 'Household allocation does not automatically settle scheduled minimums; lender confirmation remains separate.' : 'Purpose unconfirmed: payments do not automatically settle scheduled minimums; lender confirmation remains separate.'}</p>
-        ${card.id !== 'heloc' ? '<p class="card-movement-note">Allocation evidence describes recorded purpose at posting; a later reversal is shown separately. This window does not establish historical coverage or available cash. Issuer minimum satisfaction remains separate.</p>' : ''}
+        ${card.id !== 'heloc' ? '<p class="card-movement-note">Payment and reversal allocations are shown separately. This window does not establish historical coverage or available cash. Issuer minimum satisfaction remains separate.</p>' : ''}
         ${pub.observationAsOf ? `<p class="card-movement-evidence">Provider observation · ${day(pub.observationAsOf)}</p>` : ''}
       </section>`).join('')}</section>`;
   }

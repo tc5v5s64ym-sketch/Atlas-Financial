@@ -27,7 +27,7 @@ function dataFor(state) {
   if (state === 'unknown-opening') data.plan.cardPurchaseCoverage.opening.confirmed = false;
   if (state === 'no-intent') data.plan.cardPurchaseCoverage.payments = [];
   if (state === 'pending') data.liveOverlay.currentPeriodActuals.transactions.find(tx => tx.id === 'payment-a').pending = true;
-  if (state === 'shared-debit') {
+  if (state === 'shared-debit' || state === 'purchase-over-allocation') {
     data.liveOverlay.currentPeriodActuals.transactions.push(
       { id: 'browser-second-purchase', coverageRef: 'invented-browser-second-purchase', atlasAccountId: 'travelvisa', account: 'travelvisa', accountRole: 'revolving-credit',
         date: fx.AS_OF, amount: 100, currency: 'cad', displayedPayee: 'Invented second purchase', categoryLabel: 'Groceries', pending: false },
@@ -36,8 +36,20 @@ function dataFor(state) {
     data.plan.cardPurchaseCoverage.payments.push({ id: 'invented-browser-second-allocation', confirmed: true,
       debitRef: 'invented-cash-leg-a', creditRef: 'invented-browser-second-credit',
       allocations: [{ purchaseRef: 'invented-browser-second-purchase', amount: 100 }], otherAmount: 0, otherPurpose: null });
+    if (state === 'purchase-over-allocation') {
+      const packet = data.liveOverlay.currentPeriodActuals;
+      packet.transactions = packet.transactions.filter(tx => tx.id !== 'browser-second-purchase');
+      packet.transactions.push({ id: 'browser-second-cash', coverageRef: 'invented-browser-second-cash', atlasAccountId: 'chequing-a', account: 'chequing-a', accountRole: 'household-cash',
+        date: fx.AS_OF, amount: 100, currency: 'cad', categoryLabel: 'Credit Card Payment', kindHint: 'payment', pending: false });
+      Object.assign(data.plan.cardPurchaseCoverage.payments[1], { debitRef: 'invented-browser-second-cash', allocations: [{ purchaseRef: 'invented-charge-a', amount: 100 }] });
+      data.debts.find(row => row.id === 'travelvisa').balance = 827.40;
+      data.liveOverlay.cardPeriodBalanceEvidence.cards.find(row => row.id === 'travelvisa').closing.amount = 827.40;
+      data.liveOverlay.overlays.find(row => row.locator === 'debts:travelvisa').proposedValue = 827.40;
+      data.plan.startingCash.breakdown.find(row => row.id === 'chequing-a').value = 765;
+      const cash = data.liveOverlay.observedCash?.accounts?.find(row => row.id === 'chequing-a'); if (cash) cash.value = 765;
+    }
   }
-  if (state === 'reversal' || state === 'ambiguous-parent') {
+  if (['reversal', 'ambiguous-parent', 'shared-reversal-cash', 'shared-reversal-card', 'parent-over-reversal'].includes(state)) {
     const packet = data.liveOverlay.currentPeriodActuals;
     packet.transactions.push({ id: 'browser-card-reversal', coverageRef: 'invented-browser-card-reversal',
       atlasAccountId: 'travelvisa', account: 'travelvisa', accountRole: 'revolving-credit',
@@ -56,6 +68,29 @@ function dataFor(state) {
     const cash = data.liveOverlay.observedCash?.accounts?.find(row => row.id === 'chequing-a');
     if (cash) cash.value = 885;
     if (state === 'ambiguous-parent') data.plan.cardPurchaseCoverage.payments.push(structuredClone(data.plan.cardPurchaseCoverage.payments[0]));
+    if (['shared-reversal-cash', 'shared-reversal-card', 'parent-over-reversal'].includes(state)) {
+      const second = structuredClone(data.plan.cardPurchaseCoverage.reversals[0]);
+      if (state !== 'shared-reversal-card') {
+        packet.transactions.push({ ...packet.transactions.find(tx => tx.id === 'browser-card-reversal'), id: 'browser-second-reversal-card', coverageRef: 'invented-browser-second-reversal-card' });
+        second.cardDebitRef = 'invented-browser-second-reversal-card';
+      }
+      if (state !== 'shared-reversal-cash') {
+        packet.transactions.push({ ...packet.transactions.find(tx => tx.id === 'browser-cash-reversal'), id: 'browser-second-reversal-cash', coverageRef: 'invented-browser-second-reversal-cash' });
+        second.cashCreditRef = 'invented-browser-second-reversal-cash';
+      }
+      data.plan.cardPurchaseCoverage.reversals.push(second);
+      if (state === 'parent-over-reversal') {
+        for (const tx of packet.transactions) if (tx.id.includes('reversal')) tx.amount = tx.amount > 0 ? 60 : -60;
+        data.plan.cardPurchaseCoverage.reversals.forEach(row => { row.allocations[0].amount = 60; });
+      }
+      const debt = state === 'shared-reversal-cash' ? 967.40 : state === 'shared-reversal-card' ? 947.40 : 1047.40;
+      const bills = state === 'shared-reversal-cash' ? 885 : state === 'shared-reversal-card' ? 905 : 985;
+      data.debts.find(row => row.id === 'travelvisa').balance = debt;
+      data.liveOverlay.cardPeriodBalanceEvidence.cards.find(row => row.id === 'travelvisa').closing.amount = debt;
+      data.liveOverlay.overlays.find(row => row.locator === 'debts:travelvisa').proposedValue = debt;
+      data.plan.startingCash.breakdown.find(row => row.id === 'chequing-a').value = bills;
+      if (cash) cash.value = bills;
+    }
   }
   if (state === 'plan-unavailable') data.liveOverlay.operatingPlan = 'unavailable';
   return data;
@@ -65,7 +100,8 @@ function dataFor(state) {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH });
   const runtime = { node: process.version, chromium: await browser.version(), platform: process.platform };
   try {
-    for (const width of [1440, 320]) for (const state of ['confirmed', 'unknown-opening', 'no-intent', 'pending', 'reversal', 'plan-unavailable', 'shared-debit', 'ambiguous-parent']) {
+    for (const width of [1440, 320]) for (const state of ['confirmed', 'unknown-opening', 'no-intent', 'pending', 'reversal', 'plan-unavailable', 'shared-debit', 'ambiguous-parent',
+      'shared-reversal-cash', 'shared-reversal-card', 'purchase-over-allocation', 'parent-over-reversal']) {
       const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/*', route => {
@@ -86,13 +122,17 @@ function dataFor(state) {
       const panel = page.locator('[data-budget-card-panel="travelvisa"]');
       await panel.waitFor({ state: 'visible' });
       const text = await panel.innerText();
-      if (['confirmed', 'unknown-opening', 'plan-unavailable', 'reversal'].includes(state)) {
-        assert.match(text, /Confirmed at posting[\s\S]*\$100\.00/);
+      assert.doesNotMatch(text, /at posting/i);
+      if (['confirmed', 'unknown-opening', 'plan-unavailable', 'reversal', 'shared-reversal-cash', 'shared-reversal-card', 'parent-over-reversal'].includes(state)) {
+        assert.match(text, /Confirmed payment allocation: purchase coverage \$100\.00/);
         assert.match(text, /Example grocer|Groceries/);
-      } else assert.doesNotMatch(text, /Confirmed at posting/);
-      if (state === 'ambiguous-parent') assert.doesNotMatch(text, /Confirmed reversal/);
+      } else assert.doesNotMatch(text, /Confirmed payment allocation:/);
+      if (['ambiguous-parent', 'shared-reversal-cash', 'shared-reversal-card', 'parent-over-reversal'].includes(state)) {
+        assert.doesNotMatch(text, /Confirmed allocation reversal:/);
+        assert.match(text, /Posted movement · reversal allocation unconfirmed/);
+      }
       if (state === 'reversal') {
-        assert.match(text, /Confirmed reversal[\s\S]*\$20\.00/);
+        assert.match(text, /Confirmed allocation reversal: purchase coverage removed \$20\.00 \/ other allocation reversed \$0\.00/);
         assert.match(text, /\$947\.40/);
         assert.doesNotMatch(text, /Balances and posted activity do not reconcile/);
       }
@@ -100,7 +140,7 @@ function dataFor(state) {
       assert.doesNotMatch(text, /invented-(?:cash-leg|payment|charge|browser-allocation)|coverageRef|purchaseRef|pc-/);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no viewport overflow');
       const allocation = panel.locator('[data-card-payment-allocation="reconciled"]');
-      if (['no-intent', 'pending', 'shared-debit', 'ambiguous-parent'].includes(state)) assert.equal(await allocation.count(), 0);
+      if (['no-intent', 'pending', 'shared-debit', 'ambiguous-parent', 'purchase-over-allocation'].includes(state)) assert.equal(await allocation.count(), 0);
       if (width === 320 && state === 'unknown-opening') await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
       const file = state + '-' + width + '.png';
       await page.locator('[data-budget-detail-sheet]').screenshot({ path: path.join(out, file), animations: 'disabled' });
@@ -109,7 +149,7 @@ function dataFor(state) {
       const cashback = page.locator('[data-budget-card-toggle="cashback"]');
       await cashback.click();
       const otherPanel = page.locator('[data-budget-card-panel="cashback"]');
-      assert.doesNotMatch(await otherPanel.innerText(), /Confirmed at posting/, 'another card never inherits the confirmed allocation');
+      assert.doesNotMatch(await otherPanel.innerText(), /Confirmed payment allocation:/, 'another card never inherits the confirmed allocation');
       states.push({ state, width, screenshot: file, sha256: sha(fs.readFileSync(path.join(out, file))) });
       await page.close();
       console.log('PASS card diagnostics ' + state + ' ' + width + 'px');
