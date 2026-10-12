@@ -172,3 +172,13 @@ is installed and no credentials or security setting changes. The original
 full-suite terminal result remains 349/369, with 20 failures; no finished full
 suite is repeated or promoted to PASS. Hosted final-head checks and root
 Systems re-review remain pending.
+
+At root's request for fresh repaired-source bindings, a separate
+[final comparison receipt](savings-latest-known/final-comparison.json) is
+recorded on clean head `b8b573588ddb8fca2e1518fbab4ab198baa7f057` against main
+`007d904937d69862e080d9c4e3725ce41ed40c4a`: 28 synthetic cases, 16,210 equal
+subtrees, zero unexpected changes. All four exercised source hashes equal
+that head's exact Git blob bytes, with no line-ending normalization. This
+supersedes the earlier comparison's source-encoding qualification; no completed
+test suite or old browser matrix is repeated. A following evidence-only commit
+preserves these exercised source blobs.
