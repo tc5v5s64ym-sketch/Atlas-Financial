@@ -50,7 +50,17 @@ const PORT = process.env.PORT || 3000;
 const SESSION_HOURS = 24 * 14;
 const MCP_OAUTH = AssistantOAuth.readConfig(process.env);
 const STANDING_CORRECTIONS = StandingRuntime.fromEnv({ resource: MCP_OAUTH.resource?.href });
-const lunchMoneyAssistant = LunchMoneyAssistant.createService({ standingCorrections: STANDING_CORRECTIONS });
+const lunchMoneyService = LunchMoneyAssistant.createService({ standingCorrections: STANDING_CORRECTIONS });
+const lunchMoneyAssistant = {
+  ...lunchMoneyService,
+  invoke(operation, ...args) {
+    const invoke = () => lunchMoneyService.invoke(operation, ...args);
+    // Existing writer, unchanged authority/arguments/outcome. Invalidate reads
+    // around every attempt, including an ambiguous or rejected provider result.
+    return operation === 'apply' || operation === 'applyStanding'
+      ? ServerLiveRefresh.withProviderWrite(invoke) : invoke();
+  },
+};
 // Tools, metadata and HTTP step-up share one validated default-off capability.
 MCP_OAUTH.standingCorrectionsEnabled = lunchMoneyAssistant.standingEnabled === true;
 const MCP_BEARER_AUTH = MCP_OAUTH.configured

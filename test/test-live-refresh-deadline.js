@@ -28,7 +28,7 @@ async function stalled(mode,fn){
 }
 (async()=>{
  check(Refresh.LIVE_REFRESH_TIMEOUT_MS,150000,'finite compatibility refresh budget');
- check(Refresh.MAX_ACTIVE_LIVE_REFRESHES,2,'worker concurrency is bounded without a data cache');
+ check(Refresh.MAX_ACTIVE_LIVE_REFRESHES,2,'distinct worker concurrency is bounded without a completed data cache');
  await stalled('trickle',async(env,state)=>{
   const controller=new AbortController(),scheduled=[],original=setTimeout;
   global.setTimeout=(fn,ms,...args)=>{scheduled.push(ms);return original(fn,ms,...args);};
@@ -63,9 +63,9 @@ async function stalled(mode,fn){
  await stalled('trickle',async(env,state)=>{
   const controller=new AbortController();
   const first=Refresh.serve(canonical,env,{signal:controller.signal});
-  const second=Refresh.serve(canonical,env,{signal:controller.signal});
+  const second=Refresh.serve({...canonical,meta:{...canonical.meta,syntheticRevision:2}},env,{signal:controller.signal});
   const stopped=Promise.all([assert.rejects(first,error=>error.code==='live-refresh-cancelled'),assert.rejects(second,error=>error.code==='live-refresh-cancelled')]);
-  await assert.rejects(Refresh.serve(canonical,env),error=>error.code==='live-refresh-busy');checks++;
+  await assert.rejects(Refresh.serve({...canonical,meta:{...canonical.meta,syntheticRevision:3}},env),error=>error.code==='live-refresh-busy');checks++;
   controller.abort();await stopped;checks++;
   await pause(150);check(state.active,0,'bounded concurrent cancellation leaves no provider work');
  });
@@ -101,7 +101,11 @@ async function stalled(mode,fn){
  }finally{fs.unlinkSync(credentialFile);}
  const busyProgram=`const R=require(${JSON.stringify(path.join(root,'scripts/server-live-refresh'))});const start=Date.now();R.serve({}, {ATLAS_LIVE_OVERLAY:'live'}, {timeoutMs:300}).then(()=>process.exit(4),e=>{if(e.code!=='live-refresh-timeout'||Date.now()-start>1600)process.exit(5);else console.log('busy terminated');});`;
  const busy=await new Promise((resolve,reject)=>{let output='';const child=cp.spawn(process.execPath,['--require',path.join(__dirname,'fixtures/live-refresh-busy-worker.js'),'-e',busyProgram],{cwd:root,env:baseEnv,stdio:['ignore','pipe','pipe'],windowsHide:true});child.stdout.on('data',chunk=>output+=chunk);child.on('error',reject);child.on('exit',code=>resolve({code,output}));});
- check(busy,{code:0,output:'busy terminated\n'},'deadline interrupts synchronous worker work');
+ check(busy.code,0,'deadline interrupts synchronous worker work');
+ assert.ok(busy.output.includes('busy terminated\n'));checks++;
+ const busyTiming=busy.output.split('\n').filter(line=>line.startsWith('{')).map(JSON.parse);
+ check(busyTiming.length,1,'one sanitized lifecycle timing for the interrupted worker');
+ check(busyTiming[0].outcome,'live-refresh-timeout','busy-worker timing carries only the closed timeout outcome');
  await stalled('trickle',async(env,state)=>{
   const port=await freePort(),shortFixture=path.join(__dirname,'fixtures/live-refresh-short-budget.js').replace(/\\/g,'/'),atlas=await startAtlas({...env,NODE_OPTIONS:'--require "'+shortFixture+'"',PORT:String(port),SITE_PASSWORD:PASS,SESSION_SECRET:SECRET,ATLAS_ASSISTANT_TOKEN:'synthetic-assistant-token-long-enough'}),base='http://127.0.0.1:'+port;
   try{

@@ -582,6 +582,42 @@ const states = [], errors = [], writes = [], external = [];
       states.push({ width, state: 'balance-missing', synthetic: true });
       await page.close(); console.log(`PASS ${width}px balance-missing: state word in the right slot, other rows unchanged`);
     }
+    // Ready-review P2 4251469063: prove the browser's computed button name,
+    // including balance meaning and the unchanged full-label action. DOM
+    // presence alone does not prove this accessible-name contract.
+    for (const width of wanted('accessible-balance') ? [1440, 320] : []) {
+      for (const theme of ['light', 'dark']) for (const [mode, amount, expected] of [
+        ['numeric', 760, '$760.00'], ['unavailable', null, 'Unavailable'],
+        ['zero', 0, '$0.00'], ['negative', -25.50, '\u2212$25.50'],
+      ]) {
+        const data = fx.served();
+        const debt = data.debts.find(row => row.id === 'mbna');
+        if (amount === null) {
+          delete debt.balance;
+          data.liveOverlay.overlays = data.liveOverlay.overlays.filter(o => o.locator !== 'debts:mbna');
+        } else {
+          debt.balance = amount;
+          data.liveOverlay.overlays.find(o => o.locator === 'debts:mbna' && o.field === 'balance').proposedValue = amount;
+        }
+        const page = await boot(data, width, theme);
+        const strip = page.locator('[data-budget-card-movements]');
+        await strip.waitFor();
+        const button = strip.getByRole('button', {
+          name: `Amazon Reported balance ${expected} Show Amazon Mastercard activity`, exact: true,
+        });
+        await button.waitFor();
+        assert.equal(await button.count(), 1, `${width}px ${theme} ${mode}: computed accessible balance name`);
+        assert.equal(await button.getAttribute('data-budget-card-toggle'), 'mbna', 'named button retains canonical identity');
+        assert.equal(await button.locator('.card-movement-balance').textContent(), expected, 'visible balance span stays bare');
+        assert.equal(await strip.getByRole('button', {
+          name: 'Travel Reported balance $927.40 Show Travel activity', exact: true,
+        }).count(), 1, 'other numeric card retains its full-label action and balance meaning');
+        await capture(strip, `accessible-balance-${mode}-strip-${width}-${theme}.png`,
+          { state: 'accessible-balance', mode, width, theme, subject: 'card strip, accessible balance meaning' });
+        states.push({ width, theme, state: 'accessible-balance', mode, synthetic: true });
+        await page.close(); console.log(`PASS ${width}px ${theme} ${mode}: computed accessible balance name`);
+      }
+    }
     assert.deepEqual(errors, []); assert.deepEqual(writes, []); assert.deepEqual(external, []);
     for (const shot of screenshots) shot.sha256 = sha256File(path.join(out, shot.file));
     fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ synthetic: true,

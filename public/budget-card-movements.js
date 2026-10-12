@@ -54,8 +54,8 @@
   const balance = (card, money) => {
     const reported = card.reportedBalance;
     if (!reported || typeof reported.amount !== 'number' || !Number.isFinite(reported.amount))
-      return '<span class="card-movement-balance is-unavailable">Unavailable</span>';
-    return `<span class="card-movement-balance">${money(reported.amount)}</span>`;
+      return '<span class="card-movement-sr">Reported balance </span><span class="card-movement-balance is-unavailable">Unavailable</span>';
+    return `<span class="card-movement-sr">Reported balance </span><span class="card-movement-balance">${money(reported.amount)}</span>`;
   };
   function html(pub, format) {
     if (!pub || pub.schema !== 'atlas-card-period-movements/v1'
