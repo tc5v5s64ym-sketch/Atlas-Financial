@@ -462,3 +462,79 @@ wording, and one neutral Plan sentence. Tests/fixtures/proof sources and
 generated synthetic artifacts are counted separately in the merge card.
 Failed-refresh continuity remains a separate follow-on. This composition
 and evidence publication do not merge, deploy or activate the candidate.
+
+## Window integrity repair after BLOCK 5496573478
+
+Root approved this bounded repair after independent reproduction on exact
+`f793d1998e8227c81750190aa425394a6981fc5f`. Exercised clean code is
+`14d5d4c8cb425d167e0fcdc38d9eea5d0a739bb4`, still incorporating exact main
+`64fdd058e0a3f185c98ad9412c57123acd8c30cb`. The only new production edit is
+`savingsReportedMovementCoherence`. It qualifies the supplied observation
+and window before row allocation: explicit fetch coverage, compatible status,
+valid original check date, ordered window and coverage through that check.
+Missing, impossible, future, mismatched, truncated and unconfirmed provenance
+withhold Saved/backing while original reports and Known Needed remain visible.
+
+The observer's `truncated` status denotes fetch truncation; `incomplete`
+denotes row uncertainty when supported by its card/currency flags or unmapped
+rows. The private Savings guard preserves this distinction. Account-scoped
+Savings uncertainty still holds the affected allocation; unrelated row
+incompleteness does not become a global Savings blocker. Fetch truncation
+always wins. Global cash/card/coverage helpers and the provider are untouched
+by this repair.
+
+The advisory's year-long coverage requirement is not adopted: a hypothetical
+unseen movement is not contradictory Savings evidence. Valid prior-year
+reported balances with a complete current observation allocate 95/24 from
+119, retain 2025-10-05 bank dates and the original 2026-10-05 check, and survive
+evaluation on 2026-10-06. The window need not extend back to the bank dates or
+forward to the new evaluation day after midnight. No fresh bank reconciliation
+is claimed.
+
+- [Window RED/GREEN receipt](savings-latest-known/window-red-green.json):
+  82 synthetic controls; eight passed and 74 failed on exact f793d199, all 82
+  pass on committed code. Empty, unrelated-only and zero-only lists cannot
+  bypass metadata checks. Ten raw-provider cases cover prior-year and current
+  reports; three actual row-incompleteness positives prove account isolation.
+  Six prior-year positive paths also retain their dates and Saved through
+  midnight. Returned real packets remain unchanged. The original 12 observer
+  controls are freshly verified against exact 1afefc28 too.
+- [Exact-main comparison](savings-latest-known/window-main-comparison.json):
+  222 synthetic ledgers, 373,959 equal subtrees, 47 incumbent held-backing
+  controls and zero unexpected differences. This is synthetic comparison only;
+  the owner's separate private 600-row comparison was not repeated or uploaded.
+- [Acceptance and five-suite repair](savings-latest-known/window-suite-repair.json):
+  18 registered suites pass with 102 exact bound source/static/fixture files.
+  The five formerly failing hosted suites all pass on exact main and fail on
+  f793d199; current committed repairs pass all five. Annual's positive supplies
+  its existing evidence options. Budget's positive consumes the real observer's
+  complete invented zero-balance packet and still asserts 250/350 contributions
+  and one 600 payment. Missing/invalid evidence negatives withhold top-ups and
+  retain Needed 600 in Savings.
+- [Assertion preservation](savings-latest-known/window-assertion-preservation.json):
+  original assertion-containing lines are retained byte-for-byte; all three
+  salary suite source blobs are unchanged. Their shared historical adapter adds
+  exactly the empty provenance field only after asserting no canonical Savings
+  accounts in these ledgers. Existing historical financial comparisons execute
+  unchanged. The 130 latest-known and 112 observer/window tests pass; annual
+  passes all 12 tests.
+- [Browser receipt](savings-latest-known/browser-window-qualified.json):
+  seven source-bound App.boot/Edge cases pass: prior-year, malformed/truncated
+  windows, unrelated card/unmapped uncertainty and midnight at 320px dark.
+  Saved/Needed, existing bands, detail evidence, focus and overflow checks pass;
+  no page error, external request or write occurs. Screenshot hashes verify.
+
+The initial scoped run caught a new negative test reading Needed from the
+wrong publication; the assertion now reads the Savings Needed field. No
+existing assertion or financial amount was changed. Fresh committed-source
+acceptance above passes. Earlier Windows storage limitations and historical
+full-suite failures remain qualified; the two exact-f793d199 hosted runs
+38312854355 and 38312859767 failed standard 367/372 and passed isolation 1/1.
+They are not relabelled PASS. Fresh hosted full CI and exact-head Systems Review
+remain gates. BLOCK 5496573478 controls until superseded by a fresh review.
+
+Net implementation is four files / 191 changed lines versus integrated main;
+new production work in this repair is one private Forecast function (22 added,
+five replaced lines). Tests and generated receipts are counted separately.
+Failed-refresh continuity stays deferred. No merge, deployment or activation
+occurs in this lane.
