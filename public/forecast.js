@@ -964,11 +964,12 @@
       trust: 'unknown', evidenceTrust: 'unknown', accountIds: [], pendingState: 'unknown',
       reason: 'Current observations for both distinct savings accounts are required.' };
     if (reported) Object.assign(result, { basis: 'reported-savings-stock',
-      balanceFrom: null, balanceThrough: null, balanceDates: [], freshness: 'unknown',
+      balanceFrom: null, balanceThrough: null, balanceDates: [], checkedAsOf: null, freshness: 'unknown',
       reason: 'Valid dated reported balances for both distinct savings accounts are required.' });
     if (config.status !== 'ready' || !savingsDate(asOf) || !observation
         || typeof observation !== 'object' || Array.isArray(observation)
-        || observation.asOf !== asOf || !Array.isArray(observation.accounts)
+        || (reported ? !savingsDate(observation.asOf) || observation.asOf > asOf : observation.asOf !== asOf)
+        || !Array.isArray(observation.accounts)
         || !Array.isArray(config.pools) || config.pools.length !== 2) return result;
     const accounts = new Set();
     let totalCents = 0, pendingClear = true;
@@ -982,19 +983,19 @@
       const cents = savingsCents(cash && cash.value, true);
       if (!cash || typeof cash !== 'object' || Array.isArray(cash)
           || cash.source !== 'provider-observe:lunchmoney' || cash.currency !== config.currency
-          || !(reported ? savingsDate(cash.evidenceDate) && cash.evidenceDate <= asOf : cash.evidenceDate === asOf)
+          || !(reported ? savingsDate(cash.evidenceDate) && cash.evidenceDate <= observation.asOf : cash.evidenceDate === asOf)
           || cents == null || !reported && config.latest && config.latest.confirmedAt > cash.evidenceDate) return result;
       balanceDates.push({ accountId: pool.accountId, date: cash.evidenceDate });
       totalCents += cents;
       if (!Number.isSafeInteger(totalCents)) return result;
       pendingClear = pendingClear && cash.pendingState === 'clear';
     }
-    // Latest reported stock is dated context, never evidence that today's
-    // allocations or operating funding are available. Keep the incumbent
-    // same-day observedStock and pool/backing gates unchanged.
+    // Owner policy: dated reported stock may support calculated goal allocation.
+    // Its actual check/balance dates do not earn current payment backing.
     const dates = balanceDates.map(row => row.date).sort();
     return { ...result, ...(reported ? { balanceFrom: dates[0], balanceThrough: dates.at(-1),
-      balanceDates, freshness: dates.every(date => date === asOf) ? 'current' : 'dated' } : {}),
+      balanceDates, checkedAsOf: observation.asOf,
+      freshness: dates.every(date => date === asOf) ? 'current' : 'dated' } : {}),
       status: 'ready', amount: totalCents / 100, trust: 'calculated',
       evidenceTrust: reported ? 'provider-reported' : 'verified', accountIds: Array.from(accounts),
       pendingState: pendingClear ? 'clear' : 'unresolved', reason: null };
@@ -18945,6 +18946,10 @@
       evidenceTrust: stockKnown ? 'verified' : 'unknown', basis: 'observed-savings-stock', nonAdditive: true,
       accountIds: ['savings', 'savings-dont-touch'], pendingState: pendingMovement ? 'unresolved' : 'clear',
       reportedStock: inventory.reportedStock || null };
+    const reported = inventory.reportedStock;
+    const reportedKnown = config.status === 'ready' && config.pools.every(p => p.role === 'purpose-reserve')
+      && observations?.accounts?.length === 2 && reported?.status === 'ready'
+      && savingsCents(reported.amount, true) != null;
     // Requirement knowledge can extend beyond permission to project payroll.
     // Reuse native recurrence and funding rows; do not import a PDF scenario.
     let end = knowledgeHorizon(plan, day, opts).end;
@@ -19007,8 +19012,16 @@
       :inventory.pools.some(p=>p.observedCash<0)?'Negative savings stock remains a protected deficit.'
       :pendingMovement?'Pending savings movement withholds backing and contributions; known posted stock is retained.'
       :unresolved.length?'Unresolved protected requirements withhold allocation and contributions; no date or priority is invented.':null;
-    const ready=!reason; let left=ready?stockCents:null;
-    for(const item of items) if(ready){const take=Math.min(left,item.needCents); item.savedCents=take; item.saved=take/100; left-=take;}
+    const allocationReason = config.status !== 'ready' ? config.reason : !reportedKnown
+      ? 'Both savings accounts require valid dated reported CAD cents evidence.'
+      : observations.accounts.some(row => row.value < 0) ? 'Negative savings stock remains a protected deficit.'
+      : pendingMovement ? 'Pending savings movement withholds goal allocation; reported balances remain known.'
+      : unresolved.length ? 'Unresolved protected requirements withhold allocation; no date or priority is invented.' : null;
+    const allocationReady = !allocationReason;
+    // One chronological allocator serves the Saved publication. Payment seeds
+    // still require the incumbent same-day readiness below, before any cash walk.
+    const ready=!reason; let left=allocationReady?savingsCents(reported.amount,true):null;
+    for(const item of items) if(allocationReady){const take=Math.min(left,item.needCents); item.savedCents=take; item.saved=take/100; left-=take;}
     const rows=[], groups=new Map();
     for(const item of [...items,...unresolved]) {
       const key=item.group?'group:'+item.group:(item.source==='yearly-card-paid-bill'?'yearly-bill:'
@@ -19035,7 +19048,10 @@
       requirement:i.needed,backed:i.saved,parts:[{poolId:'combined-savings',accountId:null,
         goalKey:rows.find(r=>r.members.includes(i.key))?.key,amount:i.saved,location:'combined-observed-reserves'}]})):[];
     return {status:ready?'ready':'unavailable',reason,stock,items,unresolved,rows,pools:packetPools,
-      unallocated:left==null?null:left/100,basis:'policy-derived-combined-observed-backing',trust:ready?'calculated':'unknown',
+      unallocated:ready&&left!=null?left/100:null,basis:'policy-derived-combined-observed-backing',trust:ready?'calculated':'unknown',
+      goalAllocation: { status: allocationReady ? 'ready' : 'unavailable', reason: allocationReason,
+        basis: 'latest-validated-provider-reported-balances', evidenceTrust: reportedKnown ? 'provider-reported' : 'unknown',
+        checkedAsOf: reported?.checkedAsOf || null, balanceDates: reported?.balanceDates || [] },
       funding:{status:paymentReason?'unavailable':'ready',asOf:day,reason:paymentReason,revision:null,source:'Forecast.savingsDailyFunding',payments}};
   }
   function savingsDailyPolicy(policy, day) {
@@ -19218,8 +19234,13 @@
       backing: { status: derived.status, reason: derived.reason, basis: derived.basis, trust: derived.trust,
         actualTransferred: null, pools: derived.pools,
         items: derived.items.map(({ needCents, savedCents, event, rank, ...item }) => item), unallocated: derived.unallocated ?? null },
-      allocationDescription: derived.basis === 'policy-derived-combined-observed-backing'
-        ? 'Current observed stock allocated chronologically from one combined savings pot.'
+      ...(derived.goalAllocation ? { goalAllocation: derived.goalAllocation } : {}),
+      allocationDescription: derived.goalAllocation?.status === 'ready'
+        ? 'Latest reported balances checked ' + derived.goalAllocation.checkedAsOf + ', with balance dates '
+          + [...new Set(derived.goalAllocation.balanceDates.map(row => row.date))].sort().join(' / ')
+          + ', allocated by due date. Payment backing is qualified separately.'
+        : derived.basis === 'policy-derived-combined-observed-backing'
+        ? 'Goal allocation requires validated reported Savings balances and clear pending evidence.'
         : 'Historical allocation policy applies to the dated pool evidence.',
       unresolved: (derived.unresolved || []).map(({ needCents, savedCents, event, rank, ...item }) => item), rows: derived.rows };
     const unknown = reason => ({ ...shell, status: 'unavailable', reason,

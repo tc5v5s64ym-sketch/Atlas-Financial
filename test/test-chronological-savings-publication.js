@@ -171,7 +171,7 @@ test('missing one savings account does not publish a partial pool or zero backin
   assert.ok(items(p).every(r => r.saved === null));
 });
 
-test('stale or pending observation cannot become current backed allocation', () => {
+test('dated Saved allocation does not earn current backing; unsafe evidence stays unknown', () => {
   for (const mode of ['stale', 'pending', 'currency', 'duplicate', 'fractional']) {
     const input = fixture(), rows = input.plan.savingsPoolObservation.accounts;
     if (mode === 'stale') rows[1].evidenceDate = '2026-10-06';
@@ -182,7 +182,12 @@ test('stale or pending observation cannot become current backed allocation', () 
     const p = publish(input);
     assert.equal(p.backing.status, 'unavailable', mode);
     assert.equal(items(p).length, 3, mode + ': known requirement roster survives');
-    assert.ok(items(p).every(r => r.saved === null), mode);
+    assert.equal(p.period.proposal, null, mode + ': payment/top-up readiness is unchanged');
+    assert.equal(p.timeline.status, 'unavailable', mode);
+    if (mode === 'stale') {
+      assert.equal(p.goalAllocation.status, 'ready');
+      assert.deepEqual(items(p).map(r => r.saved), [60, 24, 35], 'latest dated 119 dollars allocate once');
+    } else assert.ok(items(p).every(r => r.saved === null), mode);
   }
 });
 

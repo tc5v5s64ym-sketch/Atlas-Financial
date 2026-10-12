@@ -1,0 +1,175 @@
+'use strict';
+// Independent invented cents and real provider/consumer paths. No household data.
+const assert = require('node:assert/strict'), test = require('node:test');
+const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const F = require('../public/forecast'), O = require('../scripts/provider-observe');
+const Inventory = require('../public/savings-inventory');
+const fx = require('./fixtures/savings-daily-allocation-contract');
+const provider = require('./fixtures/savings-v2-observation-data');
+const clone = x => JSON.parse(JSON.stringify(x));
+function fixture() {
+  const input = fx.advance(fx.fixture(), '2026-10-07');
+  input.plan.savingsEarmarks.allocationPolicy = { order: 'due-date-first-combined-pool',
+    effectiveFrom: '2026-10-05', source: 'Independent invented Savings policy' };
+  input.plan.savingsPoolObservation.accounts[0].evidenceDate = '2026-10-06';
+  input.plan.savingsPoolObservation.accounts[1].evidenceDate = '2026-10-04';
+  return input;
+}
+function publish(input) {
+  const before = JSON.stringify(input);
+  const advice = F.recommend(input.plan, input.asOf, { ...input.opts, debts: [] });
+  assert.equal(JSON.stringify(input), before, 'the source evidence and plan are immutable');
+  return advice;
+}
+function saved(packet) { return packet.backing.items.map(row => [row.id, row.saved]); }
+function fundingHeld(advice) {
+  const packet = advice.savingsFunding;
+  assert.equal(packet.stock.amount, null, 'same-day observed stock gate survives');
+  assert.equal(packet.backing.status, 'unavailable');
+  assert.equal(packet.backing.unallocated, null);
+  assert.equal(packet.period.proposal, null);
+  assert.equal(packet.backing.actualTransferred, null);
+  assert.equal(packet.period.actualSaved, null);
+  assert.equal(packet.schedule.status, 'unavailable');
+  assert.deepEqual(packet.schedule.paydays, []);
+  assert.equal(packet.timeline.status, 'unavailable');
+  assert.equal(packet.actionPermission, 'not-granted');
+  assert.equal(packet.moneyMovementPermission, 'not-granted');
+  for (const sim of [advice.sim, advice.sim?.knowledge, advice.zero].filter(Boolean)) {
+    assert.ok(sim.events.every(row => !row.reserveFunding), 'no dated Saved value seeds a reserve payment');
+  }
+}
+test('older/mixed dates allocate 119 as 60 + 24 + 35 without native reserve backing', () => {
+  const input = fixture(), advice = publish(input), packet = advice.savingsFunding;
+  assert.equal(packet.goalAllocation.status, 'ready');
+  assert.deepEqual(saved(packet), [['near', 60], ['home-cost', 24], ['far', 35]]);
+  assert.deepEqual(packet.rows.map(row => [row.key, row.saved, row.needed]),
+    [['group:club', 95, 230], ['yearly-bill:home-cost', 24, 24]]);
+  assert.equal(6000 + 2400 + 3500, 11900, 'independent whole-cent conservation');
+  assert.equal(packet.goalAllocation.evidenceTrust, 'provider-reported');
+  assert.equal(packet.goalAllocation.checkedAsOf, '2026-10-07');
+  assert.deepEqual(packet.goalAllocation.balanceDates, [
+    { accountId: 'savings', date: '2026-10-06' }, { accountId: 'savings-dont-touch', date: '2026-10-04' }]);
+  assert.equal(advice.savingsInventory.reportedStock.amount, 119);
+  fundingHeld(advice);
+  const cashExpense = advice.sim.events.find(row => row.id === 'near');
+  assert.equal(cashExpense.amount, -60, 'full incumbent expense remains protected');
+});
+test('new observations replace the one allocation for increases, decreases, zero and full stock', () => {
+  const input = fixture();
+  for (const [a, b, expected] of [
+    [95, 24, [60, 24, 35]], [105, 24, [60, 24, 45]], [15.02, 24, [39.02, 0, 0]],
+    [0, 0, [0, 0, 0]], [60, 24, [60, 24, 0]], [230, 24, [60, 24, 170]],
+    [240, 24, [60, 24, 170]], [31.37, 89, [60, 24, 36.37]],
+  ]) {
+    input.plan.savingsPoolObservation.accounts[0].value = a;
+    input.plan.savingsPoolObservation.accounts[1].value = b;
+    const advice = publish(input), packet = advice.savingsFunding;
+    assert.deepEqual(packet.backing.items.map(row => row.saved), expected);
+    assert.deepEqual(publish(input).savingsFunding, packet, 'replay cannot accrue another allocation');
+    assert.equal(input.plan.savingsEarmarks.history.length, 0);
+    fundingHeld(advice);
+  }
+});
+test('a zero requirement is known zero; group sums and settled-member filtering remain native', () => {
+  const input = fixture(); input.plan.commitments[0].amount = 0;
+  let packet = publish(input).savingsFunding;
+  assert.deepEqual(saved(packet), [['near', 0], ['home-cost', 24], ['far', 95]]);
+  assert.equal(packet.rows.find(row => row.key === 'group:club').saved, 95);
+  input.plan.commitments[0].settledOn = '2026-10-06';
+  packet = publish(input).savingsFunding;
+  assert.deepEqual(saved(packet), [['home-cost', 24], ['far', 95]]);
+  assert.deepEqual(packet.rows.find(row => row.key === 'group:club').members, ['far@2026-10-28']);
+});
+test('Vancouver midnight does not erase the last checked packet or rewrite its dates', () => {
+  const input = fixture();
+  input.plan.savingsPoolObservation.asOf = '2026-10-06';
+  input.asOf = F.financialDate('2026-10-07T06:59:59Z');
+  input.plan.opening.asOf = input.asOf;
+  const before = publish(input).savingsFunding;
+  input.asOf = F.financialDate('2026-10-07T07:00:00Z');
+  input.plan.opening.asOf = input.asOf;
+  const after = publish(input).savingsFunding;
+  assert.equal(before.asOf, '2026-10-06'); assert.equal(after.asOf, '2026-10-07');
+  assert.deepEqual(saved(before), saved(after));
+  assert.deepEqual(after.goalAllocation.balanceDates, before.goalAllocation.balanceDates);
+  assert.equal(after.goalAllocation.checkedAsOf, '2026-10-06');
+  assert.equal(after.period.proposal, null);
+});
+for (const [name, mutate] of Object.entries({
+  missing: p => { p.savingsPoolObservation.accounts.pop(); },
+  duplicate: p => { p.savingsPoolObservation.accounts.push({ ...p.savingsPoolObservation.accounts[0] }); },
+  wrongIdentity: p => { p.savingsPoolObservation.accounts[0].accountId = 'chequing-a'; },
+  wrongCurrency: p => { p.savingsPoolObservation.accounts[0].currency = 'USD'; },
+  wrongSource: p => { p.savingsPoolObservation.accounts[0].source = 'opening'; },
+  absentDate: p => { delete p.savingsPoolObservation.accounts[0].evidenceDate; },
+  impossibleDate: p => { p.savingsPoolObservation.accounts[0].evidenceDate = '2026-02-30'; },
+  futureBalance: p => { p.savingsPoolObservation.accounts[0].evidenceDate = '2026-10-08'; },
+  futureCheck: p => { p.savingsPoolObservation.asOf = '2026-10-08'; },
+  balanceAfterCheck: p => { p.savingsPoolObservation.asOf = '2026-10-05'; },
+  malformedCheck: p => { p.savingsPoolObservation.asOf = 'not-a-date'; },
+  nullAmount: p => { p.savingsPoolObservation.accounts[0].value = null; },
+  stringAmount: p => { p.savingsPoolObservation.accounts[0].value = '95'; },
+  fractional: p => { p.savingsPoolObservation.accounts[0].value = 95.001; },
+  nonfinite: p => { p.savingsPoolObservation.accounts[0].value = NaN; },
+  infinite: p => { p.savingsPoolObservation.accounts[0].value = Infinity; },
+  unsafeSum: p => { p.savingsPoolObservation.accounts.forEach(row => { row.value = 50000000000000; }); },
+  negativeAccount: p => { p.savingsPoolObservation.accounts[0].value = -1; },
+  pending: p => { p.savingsPoolObservation.accounts[0].pendingState = 'pending'; },
+  unknownPending: p => { delete p.savingsPoolObservation.accounts[0].pendingState; },
+  undatedGoal: p => { delete p.commitments[0].date; },
+  rangedGoal: p => { delete p.commitments[0].amount; p.commitments[0].amountMin = 50; p.commitments[0].amountMax = 70; },
+})) test(name + ' still withholds Saved and funding without fallback', () => {
+  const input = fixture(); mutate(input.plan);
+  const advice = publish(input), packet = advice.savingsFunding;
+  assert.equal(packet.goalAllocation.status, 'unavailable');
+  assert.ok(packet.backing.items.every(row => row.saved === null));
+  assert.equal(packet.period.proposal, null);
+});
+for (const failure of ['global-cash', 'card-coverage', 'pending-cash', 'pending-reserve'])
+  test('known Savings retains the ' + failure + ' gate', () => {
+    const input = fixture();
+    if (failure === 'global-cash') { delete input.plan.startingCash.breakdown[0].value; input.opts.operatingPlan = 'unavailable'; }
+    if (failure === 'card-coverage') input.opts.currentPeriodActuals.cardCoverageRequired = true;
+    if (failure.startsWith('pending-')) input.opts.currentPeriodActuals.transactions.push({
+      id: 'invented-pending', date: input.asOf, amount: 7, currency: 'CAD', pending: true,
+      atlasAccountId: failure === 'pending-reserve' ? 'savings' : 'chequing-a',
+      accountRole: failure === 'pending-reserve' ? 'household-reserve' : 'household-cash' });
+    const advice = publish(input), packet = advice.savingsFunding;
+    assert.equal(packet.goalAllocation.status, failure === 'pending-reserve' ? 'unavailable' : 'ready');
+    if (failure !== 'pending-reserve') assert.deepEqual(saved(packet), [['near', 60], ['home-cost', 24], ['far', 35]]);
+    fundingHeld(advice);
+  });
+
+const stub = () => ({ innerHTML: '', value: '', dataset: {}, style: {},
+  classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {},
+  querySelector() { return null; }, querySelectorAll() { return []; }, appendChild() {}, replaceChildren() {} });
+const page = vm.createContext({ Forecast: F, console, setTimeout, clearTimeout, addEventListener() {},
+  document: { getElementById: stub, querySelectorAll() { return []; }, addEventListener() {},
+    documentElement: { dataset: {}, style: {} } }, localStorage: { getItem() { return null; }, setItem() {} },
+  location: { pathname: '/', search: '' } });
+page.window = page; page.matchMedia = () => ({ matches: false, addEventListener() {} });
+for (const name of ['app', 'bill-detail', 'savings-inventory', 'budget-surface', 'plan']) {
+  if (name === 'bill-detail') vm.runInContext('App.boot=()=>{};', page);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/' + name + '.js'), 'utf8'), page);
+}
+vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];', page);
+test('actual v2 observer and Plan print known dated Saved stamps with truthful evidence', () => {
+  for (const mode of ['stale-date', 'stale-both', 'prior-year', 'prior-household-day', 'blocked-prior-day', 'withdrawal-stale', 'zero-stale']) {
+    const { data, report } = provider.served(mode, O), original = clone(data);
+    const advice = F.recommend(data.plan, data.meta.asOf, { weeklyVariable: 40, ...data.liveOverlay });
+    page.src = { plan: data.plan, debts: [], asOf: data.meta.asOf, advice, liveOverlay: data.liveOverlay };
+    const html = vm.runInContext('budgetSurfaceHtml(src)', page);
+    const club = mode === 'withdrawal-stale' ? 39.02 : mode === 'zero-stale' ? 0 : 95;
+    const home = mode === 'withdrawal-stale' || mode === 'zero-stale' ? 0 : 24;
+    assert.match(html, new RegExp('data-budget-savings-goal="group:club" data-budget-goal-saved-amount="' + club + '"'));
+    assert.match(html, new RegExp('data-budget-savings-goal="yearly-bill:home-cost" data-budget-goal-saved-amount="' + home + '"'));
+    const packet = F.savingsFundingPublication(advice.savingsFunding, { asOf: data.meta.asOf, advice });
+    assert.equal(packet.goalAllocation.evidenceTrust, 'provider-reported');
+    assert.deepEqual(packet.goalAllocation.balanceDates, report.savingsPools.accounts.map(row => ({ accountId: row.accountId, date: row.evidenceDate })));
+    assert.match(Inventory.html(packet, { asOf: data.meta.asOf, advice }), /Saved allocation/);
+    assert.match(html, /Latest reported balances checked/);
+    assert.equal(packet.period.proposal, null);
+    assert.deepEqual(data, original);
+  }
+});
