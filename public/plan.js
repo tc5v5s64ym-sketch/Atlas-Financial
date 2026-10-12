@@ -7016,12 +7016,20 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
     const listed = budgetDailySavingsRows(daily, ctx.advice?.savingsInventory, roster);
     const annualBillNote = budgetSavingsAnnualBillNoteHtml(listed);
     const named = listed.map(row => {
+      // Canonical typed amounts stamped on the goal <li> under exactly the
+      // predicates that print them (funding-bar bands): the blend tile reads
+      // these typed values instead of re-parsing printed text. Unknown or
+      // ranged sides omit the attribute. Printed strings are byte-identical.
+      const savedStamp = budgetV3Known(row.saved, row.savedTrust)
+        ? ` data-budget-goal-saved-amount="${row.saved}"` : '';
+      const requiredStamp = !row.neededRange && budgetV3Known(row.needed, row.neededTrust ?? row.trust)
+        ? ` data-budget-goal-required-amount="${row.needed}"` : '';
       const group = budgetSavingsRowMembers(daily, row);
       const members = group ? `<div class="budget-goal-members">${group.members.map(member => {
         const figures = budgetSavingsMemberFigures(member, row.thisPeriodTrust, group.historical);
         return `<div class="budget-goal-member" data-budget-savings-member="${budgetV3Escape(member.key)}"><span>${budgetV3Escape(figures.name)}${figures.date ? ` <small>${budgetV3Escape(fmtDate(figures.date))}</small>` : ''}</span><span><span data-budget-savings-member-saved>${figures.saved}</span> / <span data-budget-savings-member-needed>${figures.needed}</span><small>Saved / needed</small></span><span><span data-budget-savings-member-proposed>${figures.proposed}</span><small>This period</small></span></div>`;
       }).join('')}</div>` : '';
-      return `<li data-budget-savings-goal="${budgetV3Escape(row.key)}"><button type="button" class="budget-goal-row" data-budget-goal-open="${budgetV3Escape(row.key)}" aria-haspopup="dialog">
+      return `<li data-budget-savings-goal="${budgetV3Escape(row.key)}"${savedStamp}${requiredStamp}><button type="button" class="budget-goal-row" data-budget-goal-open="${budgetV3Escape(row.key)}" aria-haspopup="dialog">
       <div class="budget-goal-heading"><strong>${budgetV3Escape(group ? group.title : row.label)}</strong></div>
       <div class="budget-goal-amounts"><span><span class="budget-goal-amount">${budgetV3Money(row.saved, row.savedTrust)}</span><small>Saved</small></span><span aria-hidden="true">/</span><span><span class="budget-goal-amount">${budgetDailyNeededHtml(row)}</span><small>Needed</small></span></div>
       <p class="budget-goal-context">${daily.period?.kind === 'projected' ? 'Projected top-up: ' : ''}${budgetV3Money(row.thisPeriod, row.thisPeriodTrust)} this period<span class="budget-goal-evidence">Info <span aria-hidden="true">></span></span></p>${members}
@@ -7056,7 +7064,12 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
     const fulfilled = budgetGoalContributionKnown(goal?.fulfilled);
     const remaining = budgetProgressAmountKnown(goal?.remaining) && goal.remaining.completeness === 'complete';
     const unknown = '<span class="budget-v3-unknown">Unknown</span>';
-    return `<li data-budget-savings-goal="${budgetV3Escape(row.id)}"><button type="button" class="budget-goal-row is-${state.kind}" data-budget-goal-open="${budgetV3Escape(row.id)}" aria-haspopup="dialog">
+    // Same typed stamps as the current branch, under this branch's exact
+    // print predicates (budgetGoalContributionKnown, as the booleans above):
+    // fulfilled is the saved side, required the total requirement side.
+    const savedStamp = fulfilled ? ` data-budget-goal-saved-amount="${goal.fulfilled.amount}"` : '';
+    const requiredStamp = required ? ` data-budget-goal-required-amount="${goal.required.amount}"` : '';
+    return `<li data-budget-savings-goal="${budgetV3Escape(row.id)}"${savedStamp}${requiredStamp}><button type="button" class="budget-goal-row is-${state.kind}" data-budget-goal-open="${budgetV3Escape(row.id)}" aria-haspopup="dialog">
       <div class="budget-goal-heading"><strong>${budgetV3Escape(goal?.label || label)}</strong><span class="budget-goal-state">${state.label}</span></div>
       <div class="budget-goal-amounts"><span><span class="budget-goal-amount" data-budget-goal-fulfilled>${fulfilled ? budgetV3Money(goal.fulfilled.amount, goal.fulfilled.trust) : unknown}</span><small>Fulfilled</small></span><span aria-hidden="true">/</span><span><span class="budget-goal-amount" data-budget-goal-required>${required ? budgetV3Money(goal.required.amount, goal.required.trust) : unknown}</span><small>Required this period</small></span></div>
       <p class="budget-goal-context">${remaining ? `${budgetV3Money(goal.remaining.amount, goal.remaining.trust)} remaining` : required ? 'Current Forecast requirement' : proposal ? `${budgetV3Money(goal.proposal.amount, goal.proposal.trust)} proposed; requirement unavailable` : 'Required contribution unavailable'}<span class="budget-goal-evidence">Evidence <span aria-hidden="true">></span></span></p>
