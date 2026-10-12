@@ -13,7 +13,9 @@ top-ups. Successful invalid evidence never falls back to an older balance.
 ## Boundary
 
 `Forecast.savingsObservedStock` qualifies reported balances and retains the
-observation's actual check date. `savingsCombinedBacking` computes one goal
+observation's actual check date. Its same-run, non-serialized integer cents
+reach the allocator directly; no dollars round trip or new cache is involved.
+`savingsCombinedBacking` computes one goal
 allocation from that stock, separately from its existing same-day funding
 status and payments. `savingsDailyFunding` retains the allocation even when its
 funding period is unavailable. `recommend` still seeds only `backing.funding`
@@ -74,7 +76,7 @@ allowing only Saved fields and named provenance additions; cash, card coverage,
 pending protection, cap, payday, debt, reserve-payment, top-up and schedule
 outputs must match. It has no historical-object dependency in the normal suite.
 
-On code head `0f895387718ac53e61730de3c030ce5fb5fa9f38`, all 13 focused
+On initial code head `0f895387718ac53e61730de3c030ce5fb5fa9f38`, all 13 focused
 numerical/provider/render suites pass. The 26-case comparison reports 15,086
 equal subtrees and zero unexpected output changes. Its source-bound synthetic
 receipt is [comparison.json](savings-latest-known/comparison.json).
@@ -96,3 +98,27 @@ gates. A following evidence-only commit preserves every exercised production
 and test source blob; it does not claim a new runtime or Systems PASS. All
 new proof inputs are synthetic; no household figures, private evidence or
 local full-suite logs are uploaded.
+
+## Bounded exact-cent repair
+
+A new large-valid-input control exposed a collateral cents change in the
+initial implementation: converting the validated combined cents to dollars
+and back could alter the native unallocated figure. The repair retains the
+validator's private integer on its same-run stock object and passes that
+integer to the one allocator. It is not serialized, retained across reads,
+cached as an allocation, or calculated by another path.
+
+Independent control: 8,000,000,000,000,001 input cents minus 25,401 requirement
+cents leaves 7,999,999,999,974,600 cents. The native remainder must stay
+79,999,999,999,746 dollars. A second control combines 100,000,000 dollars
+and 29 cents; its remainder after 254.01 is 99,999,746.28. The new acceptance
+has 32 passing cases, and the expanded 28-case complete-output comparison
+has zero unexpected changes. Fresh source-bound browser/receipt recording is
+pending for this repaired code; the earlier receipts remain explicitly bound
+to the initial code until replaced.
+
+The original full local `npm test` run reached a terminal result: 349 passed,
+20 failed out of 369 suites (exit 1). It exercised the initial code; only
+documentation/evidence changed while it ran. The failures are not a PASS and
+their local logs are not published. Exact final-head hosted tests and Systems
+Review remain gates; the full-suite result is recorded on the Draft.

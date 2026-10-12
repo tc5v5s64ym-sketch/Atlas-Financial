@@ -958,6 +958,7 @@
   // Observed stock is context, never another operating balance or assignment.
   // Independently verify account identities even though configuration also
   // rejects aliases. No partial sum, opening fallback or inferred allocation.
+  const savingsReportedCents = Symbol('validated-reported-savings-cents');
   function savingsObservedStock(config, observation, asOf, reported = false) {
     const result = { status: 'unavailable', asOf, currency: config.currency || 'CAD',
       basis: 'observed-savings-stock', nonAdditive: true, amount: null,
@@ -993,12 +994,17 @@
     // Owner policy: dated reported stock may support calculated goal allocation.
     // Its actual check/balance dates do not earn current payment backing.
     const dates = balanceDates.map(row => row.date).sort();
-    return { ...result, ...(reported ? { balanceFrom: dates[0], balanceThrough: dates.at(-1),
+    const stock = { ...result, ...(reported ? { balanceFrom: dates[0], balanceThrough: dates.at(-1),
       balanceDates, checkedAsOf: observation.asOf,
       freshness: dates.every(date => date === asOf) ? 'current' : 'dated' } : {}),
       status: 'ready', amount: totalCents / 100, trust: 'calculated',
       evidenceTrust: reported ? 'provider-reported' : 'verified', accountIds: Array.from(accounts),
       pendingState: pendingClear ? 'clear' : 'unresolved', reason: null };
+    // Keep the validator's exact integer for the same-run allocator. A dollars
+    // round trip can change a cent; this private scalar is neither serialized
+    // nor an observation/allocation cache or a second stock calculation.
+    if (reported) Object.defineProperty(stock, savingsReportedCents, { value: totalCents });
+    return stock;
   }
   function savingsInventory(plan, asOf) {
     const config = savingsEarmarksState(plan, asOf);
@@ -18949,7 +18955,7 @@
     const reported = inventory.reportedStock;
     const reportedKnown = config.status === 'ready' && config.pools.every(p => p.role === 'purpose-reserve')
       && observations?.accounts?.length === 2 && reported?.status === 'ready'
-      && savingsCents(reported.amount, true) != null;
+      && Number.isSafeInteger(reported[savingsReportedCents]);
     // Requirement knowledge can extend beyond permission to project payroll.
     // Reuse native recurrence and funding rows; do not import a PDF scenario.
     let end = knowledgeHorizon(plan, day, opts).end;
@@ -19020,7 +19026,7 @@
     const allocationReady = !allocationReason;
     // One chronological allocator serves the Saved publication. Payment seeds
     // still require the incumbent same-day readiness below, before any cash walk.
-    const ready=!reason; let left=allocationReady?savingsCents(reported.amount,true):null;
+    const ready=!reason; let left=allocationReady?reported[savingsReportedCents]:null;
     for(const item of items) if(allocationReady){const take=Math.min(left,item.needCents); item.savedCents=take; item.saved=take/100; left-=take;}
     const rows=[], groups=new Map();
     for(const item of [...items,...unresolved]) {

@@ -50,6 +50,12 @@ for (const mode of ['ready', 'partial', 'full', 'returned', 'pending', 'unmatche
 for (const mode of ['valid-v2', 'stale-date', 'stale-both', 'prior-year', 'prior-household-day', 'blocked-prior-day',
   'withdrawal-stale', 'negative-stale', 'zero-stale', 'pending-movement', 'future-date', 'malformed-date',
   'foreign-currency', 'missing-account', 'duplicate-account']) compare('provider:' + mode, provider.served(mode, O).data);
+for (const [a, b] of [[40000000000000.01, 40000000000000], [100000000, 0.29]]) {
+  const data = fx('ready'); data.plan.commitments[0].amount = 60.01;
+  data.plan.savingsPoolObservation.accounts[0].value = a;
+  data.plan.savingsPoolObservation.accounts[1].value = b;
+  compare('exact-cent-boundary:' + a + '+' + b, data);
+}
 const sourceFiles = ['public/forecast.js', 'public/savings-inventory.js', 'public/plan.js', 'public/budget-blend.js'];
 const fs = require('node:fs');
 const sourceBinding = Object.fromEntries(sourceFiles.map(file => [file, crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex')]));

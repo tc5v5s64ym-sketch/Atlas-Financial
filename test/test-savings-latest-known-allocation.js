@@ -81,6 +81,21 @@ test('a zero requirement is known zero; group sums and settled-member filtering 
   assert.deepEqual(saved(packet), [['home-cost', 24], ['far', 95]]);
   assert.deepEqual(packet.rows.find(row => row.key === 'group:club').members, ['far@2026-10-28']);
 });
+test('the validator\'s integer cents reach the allocator without a dollars round trip', () => {
+  for (const [a, b, residual] of [[40000000000000.01, 40000000000000, 79999999999746],
+    [100000000, 0.29, 99999746.28]]) {
+    const input = fixture(); input.plan.commitments[0].amount = 60.01;
+    input.plan.savingsPoolObservation.accounts[0].value = a;
+    input.plan.savingsPoolObservation.accounts[1].value = b;
+    input.plan.savingsPoolObservation.accounts.forEach(row => { row.evidenceDate = input.asOf; });
+    const packet = publish(input).savingsFunding;
+    assert.equal(packet.backing.status, 'ready');
+    assert.deepEqual(saved(packet), [['near', 60.01], ['home-cost', 24], ['far', 170]]);
+    assert.equal(packet.backing.unallocated, residual, 'independent input cents minus 25401, matching native backing');
+    assert.equal(JSON.parse(JSON.stringify(packet.stock.reportedStock)).amount, packet.stock.reportedStock.amount,
+      'private integer plumbing does not add a serialized financial field');
+  }
+});
 test('Vancouver midnight does not erase the last checked packet or rewrite its dates', () => {
   const input = fixture();
   input.plan.savingsPoolObservation.asOf = '2026-10-06';
