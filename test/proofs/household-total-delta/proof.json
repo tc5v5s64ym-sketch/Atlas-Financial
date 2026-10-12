@@ -1,0 +1,570 @@
+{
+  "schema": "atlas-household-total-delta-proof/v1",
+  "syntheticOnly": true,
+  "base": "c1d8c155552d87bc93aa0425147f1a00570146a9",
+  "productionSourceCommit": "9c7ad7f8582454124010230c905eed2cb6952cd8",
+  "qualifications": [
+    "36 primary cases prove pair, accessibility, rings and native sheets; original Savings selector was not a meaningful preservation assertion.",
+    "4 additional populated-neighbour cases use corrected Savings selector and explicit populated-card/goal presence assertions.",
+    "Only the incumbent decorative per-page wave clock is normalized; ring fractions, values, labels and paths are compared.",
+    "Future/history use the existing hidden native handler; no navigation proof is claimed.",
+    "Synthetic screenshot PNGs remain local; hashes are recorded without uploading the images."
+  ],
+  "results": [
+    {
+      "state": "under",
+      "width": 1440,
+      "theme": "light",
+      "pair": "$248 / $925",
+      "delta": "· $678 left",
+      "sheetSha256": "6c0b5b1413fa9f1ca45ed73730b621283c2edc149fe3e2fe8b4740b1cfec5c7e",
+      "ringsSha256": "2ffe09f2069953d6f87f1eb4a947182aa9be633a875b49f24e2c8de03e602bc1"
+    },
+    {
+      "state": "zero",
+      "width": 1440,
+      "theme": "light",
+      "pair": "$925 / $925",
+      "delta": "· $0 left",
+      "sheetSha256": "f18995049922dde56bb966438f00ef8674ffdc4687565a7651856c7b80fb7a7b",
+      "ringsSha256": "ddc6b47623264e4027e8547ad341999cf959371d7194d95702f81fa8fcf2c2d5"
+    },
+    {
+      "state": "over",
+      "width": 1440,
+      "theme": "light",
+      "pair": "$1,145 / $925",
+      "delta": "· $220 over",
+      "sheetSha256": "0b6275d468441a050866e9a1a49a37316cd530edf82c47c591b177f02e716129",
+      "ringsSha256": "9c7bb62cd8b1fbea77a066d5221d619bb12a832dd9ef21b8740b4d05bb2b6168"
+    },
+    {
+      "state": "cent-over",
+      "width": 1440,
+      "theme": "light",
+      "pair": "$926 / $926",
+      "delta": "· $1 over",
+      "sheetSha256": "f978cf32aed688893753380c938355f16a6814eb2226283ed445b1d96213234a",
+      "ringsSha256": "c2498bb841bd2cdc2036cc1df0ec813b0f7cdf47b0b6a4cbb339e56452a1063a"
+    },
+    {
+      "state": "missing",
+      "width": 1440,
+      "theme": "light",
+      "pair": "Unknown / $925",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "a62b77885b780573eb0ef69d0338f50406823eb6be23183e391e929f7b480b23",
+      "ringsSha256": "472d371e3917d12f4aac1814c954899b5bff35632d1ccdedfafb08fe4cfa75bf"
+    },
+    {
+      "state": "pending-gap",
+      "width": 1440,
+      "theme": "light",
+      "pair": "$248* / $925",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "0e5a155d26a450d685a91888267033a074c3c6fe6b406c74c61b3d9353f901f4",
+      "ringsSha256": "43fad194e69807081ed63174b430a9a2c620cf9749fb3baf8c67f122b68a9f7e"
+    },
+    {
+      "state": "estimated-pending",
+      "width": 1440,
+      "theme": "light",
+      "pair": "≈ $266 / $925",
+      "delta": "· ≈ $660 left",
+      "sheetSha256": "7aad1e9abc04eb272302e9b46ce2663384c11159ec8a895d92f3400c0ff9e1d5",
+      "ringsSha256": "b3afa1d8a0920825ad6348f8cc964c4909d580703f1fa3c374b0d53d76b66521"
+    },
+    {
+      "state": "future",
+      "width": 1440,
+      "theme": "light",
+      "pair": "Unknown / ≈ $925",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "43198e5a182535c9ad9699b8f34c3bbba526d5e1c7c42f611ac86dd224583f15",
+      "ringsSha256": "33895f14eeb2cff0bd087695d25a73f067f991c288e50eebb99aa6ebb12ced9e"
+    },
+    {
+      "state": "history",
+      "width": 1440,
+      "theme": "light",
+      "pair": "$248 / Unknown",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "2e89bdff1c92f9b6c6a1d5393604f9a4ed1087e1d6ea906bd87679d886b9e08d",
+      "ringsSha256": "6e7e209c3df45034fc4c07b518c0dca5f8c97dd96a40eff48123218591c793f0"
+    },
+    {
+      "state": "under",
+      "width": 1440,
+      "theme": "dark",
+      "pair": "$248 / $925",
+      "delta": "· $678 left",
+      "sheetSha256": "6c0b5b1413fa9f1ca45ed73730b621283c2edc149fe3e2fe8b4740b1cfec5c7e",
+      "ringsSha256": "2ffe09f2069953d6f87f1eb4a947182aa9be633a875b49f24e2c8de03e602bc1"
+    },
+    {
+      "state": "zero",
+      "width": 1440,
+      "theme": "dark",
+      "pair": "$925 / $925",
+      "delta": "· $0 left",
+      "sheetSha256": "f18995049922dde56bb966438f00ef8674ffdc4687565a7651856c7b80fb7a7b",
+      "ringsSha256": "ddc6b47623264e4027e8547ad341999cf959371d7194d95702f81fa8fcf2c2d5"
+    },
+    {
+      "state": "over",
+      "width": 1440,
+      "theme": "dark",
+      "pair": "$1,145 / $925",
+      "delta": "· $220 over",
+      "sheetSha256": "0b6275d468441a050866e9a1a49a37316cd530edf82c47c591b177f02e716129",
+      "ringsSha256": "9c7bb62cd8b1fbea77a066d5221d619bb12a832dd9ef21b8740b4d05bb2b6168"
+    },
+    {
+      "state": "cent-over",
+      "width": 1440,
+      "theme": "dark",
+      "pair": "$926 / $926",
+      "delta": "· $1 over",
+      "sheetSha256": "f978cf32aed688893753380c938355f16a6814eb2226283ed445b1d96213234a",
+      "ringsSha256": "c2498bb841bd2cdc2036cc1df0ec813b0f7cdf47b0b6a4cbb339e56452a1063a"
+    },
+    {
+      "state": "missing",
+      "width": 1440,
+      "theme": "dark",
+      "pair": "Unknown / $925",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "a62b77885b780573eb0ef69d0338f50406823eb6be23183e391e929f7b480b23",
+      "ringsSha256": "472d371e3917d12f4aac1814c954899b5bff35632d1ccdedfafb08fe4cfa75bf"
+    },
+    {
+      "state": "pending-gap",
+      "width": 1440,
+      "theme": "dark",
+      "pair": "$248* / $925",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "0e5a155d26a450d685a91888267033a074c3c6fe6b406c74c61b3d9353f901f4",
+      "ringsSha256": "43fad194e69807081ed63174b430a9a2c620cf9749fb3baf8c67f122b68a9f7e"
+    },
+    {
+      "state": "estimated-pending",
+      "width": 1440,
+      "theme": "dark",
+      "pair": "≈ $266 / $925",
+      "delta": "· ≈ $660 left",
+      "sheetSha256": "7aad1e9abc04eb272302e9b46ce2663384c11159ec8a895d92f3400c0ff9e1d5",
+      "ringsSha256": "b3afa1d8a0920825ad6348f8cc964c4909d580703f1fa3c374b0d53d76b66521"
+    },
+    {
+      "state": "future",
+      "width": 1440,
+      "theme": "dark",
+      "pair": "Unknown / ≈ $925",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "43198e5a182535c9ad9699b8f34c3bbba526d5e1c7c42f611ac86dd224583f15",
+      "ringsSha256": "33895f14eeb2cff0bd087695d25a73f067f991c288e50eebb99aa6ebb12ced9e"
+    },
+    {
+      "state": "history",
+      "width": 1440,
+      "theme": "dark",
+      "pair": "$248 / Unknown",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "2e89bdff1c92f9b6c6a1d5393604f9a4ed1087e1d6ea906bd87679d886b9e08d",
+      "ringsSha256": "6e7e209c3df45034fc4c07b518c0dca5f8c97dd96a40eff48123218591c793f0"
+    },
+    {
+      "state": "under",
+      "width": 320,
+      "theme": "light",
+      "pair": "$248 / $925",
+      "delta": "· $678 left",
+      "sheetSha256": "6c0b5b1413fa9f1ca45ed73730b621283c2edc149fe3e2fe8b4740b1cfec5c7e",
+      "ringsSha256": "2ffe09f2069953d6f87f1eb4a947182aa9be633a875b49f24e2c8de03e602bc1"
+    },
+    {
+      "state": "zero",
+      "width": 320,
+      "theme": "light",
+      "pair": "$925 / $925",
+      "delta": "· $0 left",
+      "sheetSha256": "f18995049922dde56bb966438f00ef8674ffdc4687565a7651856c7b80fb7a7b",
+      "ringsSha256": "ddc6b47623264e4027e8547ad341999cf959371d7194d95702f81fa8fcf2c2d5"
+    },
+    {
+      "state": "over",
+      "width": 320,
+      "theme": "light",
+      "pair": "$1,145 / $925",
+      "delta": "· $220 over",
+      "sheetSha256": "0b6275d468441a050866e9a1a49a37316cd530edf82c47c591b177f02e716129",
+      "ringsSha256": "9c7bb62cd8b1fbea77a066d5221d619bb12a832dd9ef21b8740b4d05bb2b6168"
+    },
+    {
+      "state": "cent-over",
+      "width": 320,
+      "theme": "light",
+      "pair": "$926 / $926",
+      "delta": "· $1 over",
+      "sheetSha256": "f978cf32aed688893753380c938355f16a6814eb2226283ed445b1d96213234a",
+      "ringsSha256": "c2498bb841bd2cdc2036cc1df0ec813b0f7cdf47b0b6a4cbb339e56452a1063a"
+    },
+    {
+      "state": "missing",
+      "width": 320,
+      "theme": "light",
+      "pair": "Unknown / $925",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "a62b77885b780573eb0ef69d0338f50406823eb6be23183e391e929f7b480b23",
+      "ringsSha256": "472d371e3917d12f4aac1814c954899b5bff35632d1ccdedfafb08fe4cfa75bf"
+    },
+    {
+      "state": "pending-gap",
+      "width": 320,
+      "theme": "light",
+      "pair": "$248* / $925",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "0e5a155d26a450d685a91888267033a074c3c6fe6b406c74c61b3d9353f901f4",
+      "ringsSha256": "43fad194e69807081ed63174b430a9a2c620cf9749fb3baf8c67f122b68a9f7e"
+    },
+    {
+      "state": "estimated-pending",
+      "width": 320,
+      "theme": "light",
+      "pair": "≈ $266 / $925",
+      "delta": "· ≈ $660 left",
+      "sheetSha256": "7aad1e9abc04eb272302e9b46ce2663384c11159ec8a895d92f3400c0ff9e1d5",
+      "ringsSha256": "b3afa1d8a0920825ad6348f8cc964c4909d580703f1fa3c374b0d53d76b66521"
+    },
+    {
+      "state": "future",
+      "width": 320,
+      "theme": "light",
+      "pair": "Unknown / ≈ $925",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "43198e5a182535c9ad9699b8f34c3bbba526d5e1c7c42f611ac86dd224583f15",
+      "ringsSha256": "33895f14eeb2cff0bd087695d25a73f067f991c288e50eebb99aa6ebb12ced9e"
+    },
+    {
+      "state": "history",
+      "width": 320,
+      "theme": "light",
+      "pair": "$248 / Unknown",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "2e89bdff1c92f9b6c6a1d5393604f9a4ed1087e1d6ea906bd87679d886b9e08d",
+      "ringsSha256": "6e7e209c3df45034fc4c07b518c0dca5f8c97dd96a40eff48123218591c793f0"
+    },
+    {
+      "state": "under",
+      "width": 320,
+      "theme": "dark",
+      "pair": "$248 / $925",
+      "delta": "· $678 left",
+      "sheetSha256": "6c0b5b1413fa9f1ca45ed73730b621283c2edc149fe3e2fe8b4740b1cfec5c7e",
+      "ringsSha256": "2ffe09f2069953d6f87f1eb4a947182aa9be633a875b49f24e2c8de03e602bc1"
+    },
+    {
+      "state": "zero",
+      "width": 320,
+      "theme": "dark",
+      "pair": "$925 / $925",
+      "delta": "· $0 left",
+      "sheetSha256": "f18995049922dde56bb966438f00ef8674ffdc4687565a7651856c7b80fb7a7b",
+      "ringsSha256": "ddc6b47623264e4027e8547ad341999cf959371d7194d95702f81fa8fcf2c2d5"
+    },
+    {
+      "state": "over",
+      "width": 320,
+      "theme": "dark",
+      "pair": "$1,145 / $925",
+      "delta": "· $220 over",
+      "sheetSha256": "0b6275d468441a050866e9a1a49a37316cd530edf82c47c591b177f02e716129",
+      "ringsSha256": "9c7bb62cd8b1fbea77a066d5221d619bb12a832dd9ef21b8740b4d05bb2b6168"
+    },
+    {
+      "state": "cent-over",
+      "width": 320,
+      "theme": "dark",
+      "pair": "$926 / $926",
+      "delta": "· $1 over",
+      "sheetSha256": "f978cf32aed688893753380c938355f16a6814eb2226283ed445b1d96213234a",
+      "ringsSha256": "c2498bb841bd2cdc2036cc1df0ec813b0f7cdf47b0b6a4cbb339e56452a1063a"
+    },
+    {
+      "state": "missing",
+      "width": 320,
+      "theme": "dark",
+      "pair": "Unknown / $925",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "a62b77885b780573eb0ef69d0338f50406823eb6be23183e391e929f7b480b23",
+      "ringsSha256": "472d371e3917d12f4aac1814c954899b5bff35632d1ccdedfafb08fe4cfa75bf"
+    },
+    {
+      "state": "pending-gap",
+      "width": 320,
+      "theme": "dark",
+      "pair": "$248* / $925",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "0e5a155d26a450d685a91888267033a074c3c6fe6b406c74c61b3d9353f901f4",
+      "ringsSha256": "43fad194e69807081ed63174b430a9a2c620cf9749fb3baf8c67f122b68a9f7e"
+    },
+    {
+      "state": "estimated-pending",
+      "width": 320,
+      "theme": "dark",
+      "pair": "≈ $266 / $925",
+      "delta": "· ≈ $660 left",
+      "sheetSha256": "7aad1e9abc04eb272302e9b46ce2663384c11159ec8a895d92f3400c0ff9e1d5",
+      "ringsSha256": "b3afa1d8a0920825ad6348f8cc964c4909d580703f1fa3c374b0d53d76b66521"
+    },
+    {
+      "state": "future",
+      "width": 320,
+      "theme": "dark",
+      "pair": "Unknown / ≈ $925",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "43198e5a182535c9ad9699b8f34c3bbba526d5e1c7c42f611ac86dd224583f15",
+      "ringsSha256": "33895f14eeb2cff0bd087695d25a73f067f991c288e50eebb99aa6ebb12ced9e"
+    },
+    {
+      "state": "history",
+      "width": 320,
+      "theme": "dark",
+      "pair": "$248 / Unknown",
+      "delta": "· Remaining unavailable",
+      "sheetSha256": "2e89bdff1c92f9b6c6a1d5393604f9a4ed1087e1d6ea906bd87679d886b9e08d",
+      "ringsSha256": "6e7e209c3df45034fc4c07b518c0dca5f8c97dd96a40eff48123218591c793f0"
+    },
+    {
+      "state": "populated-neighbours",
+      "width": 1440,
+      "theme": "light",
+      "pair": "$445 / $730",
+      "delta": "· $286 left",
+      "sheetSha256": "29c3041932c7c60eec14320c003399308ad4e48b514176ec82af522f881bd2d8",
+      "ringsSha256": "546329efc41679f44de9886e545cf3bc74562d2063ed12a3c5e9e3f47fbe9d44"
+    },
+    {
+      "state": "populated-neighbours",
+      "width": 1440,
+      "theme": "dark",
+      "pair": "$445 / $730",
+      "delta": "· $286 left",
+      "sheetSha256": "29c3041932c7c60eec14320c003399308ad4e48b514176ec82af522f881bd2d8",
+      "ringsSha256": "546329efc41679f44de9886e545cf3bc74562d2063ed12a3c5e9e3f47fbe9d44"
+    },
+    {
+      "state": "populated-neighbours",
+      "width": 320,
+      "theme": "light",
+      "pair": "$445 / $730",
+      "delta": "· $286 left",
+      "sheetSha256": "29c3041932c7c60eec14320c003399308ad4e48b514176ec82af522f881bd2d8",
+      "ringsSha256": "546329efc41679f44de9886e545cf3bc74562d2063ed12a3c5e9e3f47fbe9d44"
+    },
+    {
+      "state": "populated-neighbours",
+      "width": 320,
+      "theme": "dark",
+      "pair": "$445 / $730",
+      "delta": "· $286 left",
+      "sheetSha256": "29c3041932c7c60eec14320c003399308ad4e48b514176ec82af522f881bd2d8",
+      "ringsSha256": "546329efc41679f44de9886e545cf3bc74562d2063ed12a3c5e9e3f47fbe9d44"
+    }
+  ],
+  "servedSources": {
+    "before:public/index.html": "817c7918b8b52251eb5c85e0cc9385996af53eac861aeab7ebb6a31be4947dd5",
+    "before:public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
+    "before:public/fonts.css": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
+    "before:public/styles.css": "ca789bfd31ab1f4dc38980e6052cb479e26dfb545f2e626ad66204c7028c174e",
+    "before:public/household-view.css": "e5cb08cfe7d5663fab76da2eb51f68d4890b1c4b550cf80eb1f61930a749620e",
+    "before:public/budget-polish.css": "29be9b313c3c7b4d402ff730abe76dfd09e07f38df4dfd04a26a12fa479d16fe",
+    "before:public/bill-detail.css": "df5e707892d09bded4516822edd1c8a056b472e092c353062a645d7a79ef69c0",
+    "before:public/savings-inventory.css": "39591b0f8fbb0c8109f5f2fe71dd707067dbaf54e85d467989ed96342e4e1a58",
+    "before:public/running-build.css": "1121433390812139a1c0fc810a882a7b97903e17a6d42f19dcc93fa05a5327d5",
+    "before:public/budget-surface.css": "69611d57c8ec3b692af7e18e775137d2a6823561eef3faa5ee31fead07bfdc73",
+    "before:public/budget-blend.css": "55a49890ce5e3507c6c95c29377512ecb2543e5cece3390d10700eb08139f8f1",
+    "before:public/budget-gface.css": "4382441e1a6c4e305f43ea12adf0b8a1cf7e12b80cb18c3f6f62973d42c9030b",
+    "before:public/budget-sheet-motion.css": "31fbea5e07e133925d3f357c62ddf6d7f38d84e7bc0b654d8473070e5d1ed2c4",
+    "before:public/app.js": "93244321102856d589ec5a0f2787a705e4c2f70cbe4351ee13b7b98bc143cb27",
+    "before:public/forecast-card-period.js": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20",
+    "before:public/forecast.js": "2e638d55da0f922d57b6de5c2f436fe6c48254a4cda035b7f4e6a7cedfeca73b",
+    "before:public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
+    "before:public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
+    "before:public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
+    "before:public/savings-inventory.js": "49a38dd1b246456ba057f1861891020337d650b474b209d0c8a332539d007ea3",
+    "before:public/budget-surface.js": "af32d9e29d1487496365a1025a0bfb65d2dc062f2534392b8095675857f9552b",
+    "before:public/budget-card-movements.js": "44edfb4c428e59eeb8abab2606d9d66208a20fada5b871a96f67b9cc8874e189",
+    "before:public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
+    "before:public/plan.js": "e5474d4a9720df5a56ee478435080df2ff640be4565b6469b2c6290b95e3196d",
+    "before:public/household-view.js": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
+    "before:public/budget-polish.js": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
+    "before:public/aurora.js": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
+    "before:public/budget-river.js": "dbff4d71770e510d65a1f79f8a3eaf489a42885dc286e66630b375b661818418",
+    "before:public/budget-blend.js": "78c59b3df24d1ce63bf5a4d390e72a6d8ba8f9e5a0514799e6d638de7c4ecf01",
+    "before:public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010",
+    "after:public/index.html": "817c7918b8b52251eb5c85e0cc9385996af53eac861aeab7ebb6a31be4947dd5",
+    "after:public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
+    "after:public/fonts.css": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
+    "after:public/styles.css": "ca789bfd31ab1f4dc38980e6052cb479e26dfb545f2e626ad66204c7028c174e",
+    "after:public/household-view.css": "e5cb08cfe7d5663fab76da2eb51f68d4890b1c4b550cf80eb1f61930a749620e",
+    "after:public/budget-polish.css": "29be9b313c3c7b4d402ff730abe76dfd09e07f38df4dfd04a26a12fa479d16fe",
+    "after:public/bill-detail.css": "df5e707892d09bded4516822edd1c8a056b472e092c353062a645d7a79ef69c0",
+    "after:public/savings-inventory.css": "39591b0f8fbb0c8109f5f2fe71dd707067dbaf54e85d467989ed96342e4e1a58",
+    "after:public/running-build.css": "1121433390812139a1c0fc810a882a7b97903e17a6d42f19dcc93fa05a5327d5",
+    "after:public/budget-surface.css": "69611d57c8ec3b692af7e18e775137d2a6823561eef3faa5ee31fead07bfdc73",
+    "after:public/budget-blend.css": "515d59ac6a05e8a3e264b4088e50541666dcb188c939a9f1860a1a763806d7b4",
+    "after:public/budget-gface.css": "603b898221703dee43d55a38ef1c8d58f9114b1770c2ff62fba29f45c81e2f00",
+    "after:public/budget-sheet-motion.css": "31fbea5e07e133925d3f357c62ddf6d7f38d84e7bc0b654d8473070e5d1ed2c4",
+    "after:public/app.js": "93244321102856d589ec5a0f2787a705e4c2f70cbe4351ee13b7b98bc143cb27",
+    "after:public/forecast-card-period.js": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20",
+    "after:public/forecast.js": "3c8539d74d5de763a1bae464d2d29f06e2fe75b281efd8b7faa67bce88c44915",
+    "after:public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
+    "after:public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
+    "after:public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
+    "after:public/savings-inventory.js": "49a38dd1b246456ba057f1861891020337d650b474b209d0c8a332539d007ea3",
+    "after:public/budget-surface.js": "af32d9e29d1487496365a1025a0bfb65d2dc062f2534392b8095675857f9552b",
+    "after:public/budget-card-movements.js": "44edfb4c428e59eeb8abab2606d9d66208a20fada5b871a96f67b9cc8874e189",
+    "after:public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
+    "after:public/plan.js": "b9516a6bea4743d6736cbbbe32f014b2b726bdcd78ae210efffa87f0ad4884b8",
+    "after:public/household-view.js": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
+    "after:public/budget-polish.js": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
+    "after:public/aurora.js": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
+    "after:public/budget-river.js": "dbff4d71770e510d65a1f79f8a3eaf489a42885dc286e66630b375b661818418",
+    "after:public/budget-blend.js": "7b3c0e09ffcb5ec0390551de7ff4f69e743e5a79990254006dc30e9aa7f81e51",
+    "after:public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010"
+  },
+  "nodeSources": [
+    {
+      "path": "test/browser-household-total-delta.js",
+      "sha256": "aa8b334d87c80b961a10f757c7a7cc2942bfca1d840252f66ee45326edf4db24"
+    },
+    {
+      "path": "test/fixtures/other-period-target.js",
+      "sha256": "37caf54bef867de5190bc4fdb184c4f17374a284a2c7ba0e12c3c2e28d7e8949"
+    },
+    {
+      "path": "scripts/provider-observe.js",
+      "sha256": "8c81980207b6e027dbc1224838257d7efe2b153784be8654053ea9c06706f615"
+    },
+    {
+      "path": "scripts/reconcile.js",
+      "sha256": "6386ce0ec5716db3048dbc4d4c7d1502449d47968a4926a3b95da5079e8859ee"
+    },
+    {
+      "path": "public/forecast.js",
+      "sha256": "3c8539d74d5de763a1bae464d2d29f06e2fe75b281efd8b7faa67bce88c44915"
+    },
+    {
+      "path": "public/forecast-card-period.js",
+      "sha256": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20"
+    },
+    {
+      "path": "scripts/local-credentials.js",
+      "sha256": "6b802c88673fcb1ba528fc1ba63e1b5381577f38d86367764f878e5827501237"
+    },
+    {
+      "path": "scripts/salary-match-diagnostic.js",
+      "sha256": "359a3673cfa14d96e74b98f3efd59ce5823a9bebc4cebca834b2bacf950de922"
+    },
+    {
+      "path": "scripts/card-minimum-category.js",
+      "sha256": "62a5cbbbfe0d61c5787ae5dbaf2795cbfe941a7c090a897acde39fb209b4faec"
+    },
+    {
+      "path": "test/fixtures/budget-surface-data.js",
+      "sha256": "f6a3c46fb037c41f7371aaaef08ffaab5256bda97cb9bc5f994e4ee54e5fac0b"
+    },
+    {
+      "path": "scripts/live-plan.js",
+      "sha256": "8ac1729e7b17ba94bb2e93032339e60623698dec783d263d7be63e6305afcece"
+    },
+    {
+      "path": "scripts/canonical-refresh.js",
+      "sha256": "74aa9ba212178bafe9c1b744ebc1d6caa57639ededa783d9e442fa85450f2e7f"
+    },
+    {
+      "path": "scripts/operating-answer.js",
+      "sha256": "e93d7f81e614034371c4f2aa59ad97fc741a6e82908297cf953e8b59beca459c"
+    },
+    {
+      "path": "scripts/snapshot-balances.js",
+      "sha256": "1c07c152efdf306389082aa9b21f95ae72b63b2c46160c63828c82fc04740f9a"
+    },
+    {
+      "path": "scripts/positions-summary.js",
+      "sha256": "165d6345bbc916fe83851ee991553da074cdd619922e3dfada9a6b4f0acdaf53"
+    },
+    {
+      "path": "scripts/opening-household-rows.js",
+      "sha256": "e0ef955367ecbc1648a11060aa76e4546e375f599d55d46e0fc99a04ee60fd87"
+    },
+    {
+      "path": "scripts/refresh-trust.js",
+      "sha256": "170a0c57908febd51baa886ebe34730710e799b04c98247ed91b4b770c9fb876"
+    },
+    {
+      "path": "test/fixtures/card-coverage-opening.js",
+      "sha256": "70fed5621e6c62caf551f7136fb107b70c31d843a6473179a7253065092fa5d7"
+    }
+  ],
+  "testSources": [
+    {
+      "path": "test/browser-household-total-delta.js",
+      "sha256": "aa8b334d87c80b961a10f757c7a7cc2942bfca1d840252f66ee45326edf4db24"
+    },
+    {
+      "path": "test/test-budget-period-progress.js",
+      "sha256": "c518ecff7153c77e775436533a60bb1c1106963c718bc57751a53e65a93f8741"
+    },
+    {
+      "path": "test/bills-period-end-legacy-comparison.js",
+      "sha256": "8cd2f624d0d43a415ff0ba9d7b5d15bc769297cbf5c7e5b36fba81bd732916c2"
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "household-under-320-light.png",
+      "sha256": "5b7cc5c9fe191c81a316238e6b4ef12f0f7a7db079232067fa99d347d4ecde6e"
+    },
+    {
+      "name": "household-zero-320-light.png",
+      "sha256": "bb9061990d094509583d3aad8a12f8a5230dc1bb4191228692ec91d914a280d1"
+    },
+    {
+      "name": "household-cent-over-320-light.png",
+      "sha256": "de08e39e57f80561170088b4325ced2c058c068bd20d457ba591af5e0839f926"
+    },
+    {
+      "name": "household-missing-320-light.png",
+      "sha256": "7123519abc6e121f5083b0b805c58ab58ae4cfba7174480c99fb8974953c62fa"
+    },
+    {
+      "name": "household-estimated-pending-320-light.png",
+      "sha256": "d503412432234c0631bcbd4361e1660315cd7afa7ff8b928589f1aec9a5d9ac7"
+    },
+    {
+      "name": "household-under-320-dark.png",
+      "sha256": "c814b5f5093945173c1b81ac4286ad0f1a80526a1717dcd5e0d403db2d41ac67"
+    },
+    {
+      "name": "household-zero-320-dark.png",
+      "sha256": "d1d20129054123790cdfa9927810a0d44131aaa8c443fc0caba9ff75419817df"
+    },
+    {
+      "name": "household-cent-over-320-dark.png",
+      "sha256": "172f5ff696f1d1a9ea63c9638e974c23649d1ea4d6c3a0f0f1287e6d11d14066"
+    },
+    {
+      "name": "household-missing-320-dark.png",
+      "sha256": "6ae95f500e6c846621a5e03b0bcb7d7de7fdd13a45253489b9f01bb3fe50a9d5"
+    },
+    {
+      "name": "household-estimated-pending-320-dark.png",
+      "sha256": "8fd2c3e0568a9444e8595f0b7e2791acb2fc7b757d33ca1c3d0f75d4ca3d19a5"
+    }
+  ],
+  "errors": [],
+  "external": [],
+  "writes": []
+}

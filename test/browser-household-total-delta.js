@@ -18,6 +18,7 @@ const cases = [
   ['estimated-pending', 137.26, { pendingOther: 17.43 }, '≈ $266 / $925', '≈ $660 left'],
   ['future', 137.26, {}, 'Unknown / ≈ $925', 'Remaining unavailable'],
   ['history', 137.26, {}, '$248 / Unknown', 'Remaining unavailable'],
+  ['populated-neighbours', 0, {}, '$445 / $730', '$286 left'],
 ];
 const cache = new Map();
 function asset(relative, variant) {
@@ -46,14 +47,17 @@ async function snapshot(page) {
       actualPrefix: pseudo('[data-budget-ratio-actual]'), planPrefix: pseudo('[data-budget-ratio-plan]'),
       rings, overflow: document.documentElement.scrollWidth > innerWidth,
       cards: document.querySelector('[data-budget-card-movements]')?.outerHTML,
-      savings: document.querySelector('[data-budget-browse="savings"]')?.outerHTML };
+      savings: document.querySelector('[data-budget-savings-goals]')?.outerHTML };
   });
 }
 async function main() {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
   try {
-    for (const width of [1440, 320]) for (const theme of ['light', 'dark']) for (const [state, other, opts, expectedPair, expectedDelta] of cases) {
-      const f = fx.build(other, state === 'history' ? '2026-10-18' : fx.asOf, opts);
+    const selected = process.env.ATLAS_HOUSEHOLD_DELTA_ONLY ? cases.filter(row => row[0] === process.env.ATLAS_HOUSEHOLD_DELTA_ONLY) : cases;
+    assert.ok(selected.length, 'selected proof case exists');
+    for (const width of [1440, 320]) for (const theme of ['light', 'dark']) for (const [state, other, opts, expectedPair, expectedDelta] of selected) {
+      const f = state === 'populated-neighbours' ? { data: require('./fixtures/budget-surface-data').served() }
+        : fx.build(other, state === 'history' ? '2026-10-18' : fx.asOf, opts);
       if (state === 'cent-over') f.plan.budget.categories.find(row => row.id === 'groceries').plannedPayday = 220.99;
       if (state === 'missing') f.packet.transactionCoverage = 'truncated';
       const input = JSON.stringify(f), readings = {};
@@ -79,6 +83,12 @@ async function main() {
         await page.locator('.blend-house-totals').waitFor(); await page.evaluate(() => document.fonts.ready);
         await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         const data = await snapshot(page);
+        assert.ok(data.savings, 'Savings region is present, not an undefined equality');
+        assert.ok(data.cards, 'Cards region is present, not an undefined equality');
+        if (state === 'populated-neighbours') {
+          assert.match(data.cards, /data-budget-card-toggle="travelvisa"/);
+          assert.match(data.savings, /data-budget-savings-goal="/);
+        }
         data.accessiblePair = await page.locator('.blend-house-totals [data-budget-browse-hold]').ariaSnapshot();
         const trigger = page.locator('[data-operating-question="06"] > details > summary');
         await trigger.focus(); await page.keyboard.press('Enter');
@@ -107,7 +117,10 @@ async function main() {
       console.log('PASS ' + [state, width, theme].join(' '));
     }
     assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(writes, []);
-    const receipt = { base, source: 'synthetic App.boot before/after', results, sources, screenshots, errors, external, writes };
+    const nodeSources = Object.values(require.cache).filter(mod => path.relative(root, mod.filename).split(path.sep)[0] !== '..'
+      && fs.existsSync(mod.filename) && /\.(?:js|json)$/.test(mod.filename))
+      .map(mod => ({ path: path.relative(root, mod.filename).split(path.sep).join('/'), sha256: sha(fs.readFileSync(mod.filename, 'utf8').replace(/\r\n/g, '\n')) }));
+    const receipt = { base, source: 'synthetic App.boot before/after', results, sources, nodeSources, screenshots, errors, external, writes };
     fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify(receipt, null, 2));
     console.log('PASS Household total delta: ' + results.length + ' cases; proof ' + path.join(out, 'proof.json'));
   } finally { await browser.close(); }
