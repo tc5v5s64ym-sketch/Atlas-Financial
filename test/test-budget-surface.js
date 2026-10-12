@@ -1075,6 +1075,17 @@ console.log('\n=== outgoing e-transfer review section (browse + unavailable path
   ok(etSection(gatePage.rerender(
     '__ctx.advice.operatingPlanUnavailable = true; __ctx.planPayPeriodId = null')).includes("can't be confirmed"),
     'plan unavailable + current period selected: the notice renders again');
+
+  // Repair (Atlas BLOCK 5494607988, 2026-10-12): the unavailable card is
+  // rendered under either granularity, so the period gate alone leaks the
+  // notice into the month view when a current-period selection is
+  // retained. The notice belongs to the current pay-period view only.
+  const monthGateHtml = gatePage.rerender(
+    "__ctx.advice.operatingPlanUnavailable = true; __ctx.planPayPeriodId = null; budgetGranularity = 'month'");
+  ok(/data-budget-surface="unavailable"/.test(monthGateHtml) && !etSection(monthGateHtml),
+    'plan unavailable + month view + retained current period: no e-transfer notice (the unavailable card itself still renders)');
+  ok(etSection(gatePage.rerender("budgetGranularity = 'pay-period'")).includes("can't be confirmed"),
+    'plan unavailable + back in the pay-period view: the notice renders again');
 }
 
 console.log('\n=== the layout module stays a layout module ===');

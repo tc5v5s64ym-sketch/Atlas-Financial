@@ -7056,7 +7056,11 @@ function budgetOutgoingETransfersHtml(period, ctx) {
 // Same current-period gate as budgetOutgoingETransfersHtml: the publication
 // always describes the current period, so when the selected period is a
 // past or future one the notice must not render under that selection.
+// Pay-period view only: BudgetSurface renders the unavailable card under
+// either granularity, so the period gate alone would leak this notice
+// into the month view whenever a current-period selection is retained.
 function budgetOutgoingETransfersUnavailableHtml(ctx) {
+  if (budgetGranularity !== 'pay-period') return '';
   const period = payPeriodSelection(ctx && ctx.advice || {}, ctx && ctx.planPayPeriodId).period;
   if (!period || period.timelineRole !== 'current') return '';
   const pub = ctx && ctx.advice && ctx.advice.currentPeriodAction
