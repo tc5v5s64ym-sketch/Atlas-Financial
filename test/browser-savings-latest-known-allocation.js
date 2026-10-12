@@ -5,17 +5,27 @@ const cp = require('node:child_process'), crypto = require('node:crypto');
 const { chromium } = require('playwright');
 const O = require('../scripts/provider-observe'), provider = require('./fixtures/savings-v2-observation-data');
 const consumer = require('./fixtures/savings-daily-consumer-data');
+const transferCutoffs = require('./fixtures/savings-transfer-cutoffs');
 const { captureSourceBinding, verifySourceBinding } = require('./proof-source-binding');
 const root = path.resolve(__dirname, '..'), assets = path.join(root, 'public');
 const output = process.env.ATLAS_LATEST_SAVINGS_PROOF || path.join(require('node:os').tmpdir(), 'atlas-latest-savings-browser');
 const files = cp.execFileSync('git', ['ls-files', '-z', '--', 'public', 'scripts/provider-observe.js',
   'test/fixtures/savings-v2-observation-data.js', 'test/fixtures/savings-daily-consumer-data.js',
   'test/fixtures/savings-daily-allocation-contract.js', 'test/fixtures/budget-funding-data.js',
+  'test/fixtures/savings-transfer-cutoffs.js',
   'test/browser-savings-latest-known-allocation.js', 'test/proof-source-binding.js'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean);
 const binding = captureSourceBinding(root, files, process.env.PROOF_BASE_SHA || null);
 fs.mkdirSync(output, { recursive: true });
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function input(mode) {
+  if (mode.startsWith('cutoff-')) {
+    const input = transferCutoffs(mode.slice('cutoff-'.length)), data = consumer('ready');
+    data.meta.asOf = input.asOf; data.plan = input.plan;
+    data.liveOverlay = { applied: true, operatingPlan: 'live', currentPeriodActuals: input.opts.currentPeriodActuals,
+      observedCash: { asOf: input.asOf, complete: true, accounts: input.plan.startingCash.breakdown
+        .filter(row => row.id.startsWith('chequing')).map(row => ({ ...row, evidenceDate: input.asOf })) } };
+    return data;
+  }
   if (mode === 'prior-check-day') {
     const data = provider.served('prior-household-day', O).data;
     data.meta.asOf = data.plan.opening.asOf = '2026-10-07';
@@ -38,6 +48,13 @@ function input(mode) {
       ['stale-both', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['prior-household-day', 320, 'dark', [95, 24], ['is-amber', 'is-full']],
       ['prior-check-day', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['cutoff-double-count', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['cutoff-inverse', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['cutoff-both-before', 390, 'light', [76, 24], ['is-amber', 'is-full']],
+      ['cutoff-both-after', 390, 'light', [76, 24], ['is-amber', 'is-full']],
+      ['cutoff-unrelated-mixed', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['cutoff-zero', 390, 'light', [0, 0], ['is-red', 'is-red']],
+      ['cutoff-duplicate', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
       ['blocked-prior-day', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['withdrawal-stale', 390, 'light', [39.02, 0], ['is-red', 'is-red']],
       ['zero-stale', 390, 'light', [0, 0], ['is-red', 'is-red']],
@@ -91,7 +108,13 @@ function input(mode) {
       await summary.focus(); await page.keyboard.press('Enter');
       const body = page.locator('[data-budget-detail-body]');
       await page.locator('[data-budget-detail-sheet]').waitFor({ state: 'visible' });
-      assert.match(await body.locator('[data-budget-daily-proposal]').innerText(), /Unavailable/);
+      if (mode !== 'cutoff-both-after') assert.match(await body.locator('[data-budget-daily-proposal]').innerText(), /Unavailable/);
+      if (mode.startsWith('cutoff-') && expected[0] == null) {
+        await body.locator('[data-budget-savings-info] > summary').click();
+        assert.match(await body.innerText(), /Saved allocation is withheld/);
+        assert.match(await body.locator('[data-budget-savings-total-needed]').first().innerText(), /230\.00/);
+        assert.match(await body.locator('[data-budget-savings-total-saved]').first().innerText(), /Unavailable/);
+      }
       if (expected[0] != null) {
         await body.locator('[data-budget-savings-info] > summary').click();
         assert.match(await body.innerText(), /Latest reported balances checked/);
@@ -107,7 +130,7 @@ function input(mode) {
       await page.keyboard.press('Escape');
       assert.equal(await summary.evaluate(el => el === document.activeElement), true);
       cases.push({ mode, width, theme, rows: result.rows, bars: result.bars, noOverflow: true,
-        topUpHeld: true, focusRestored: true, inputSha256: inputHash,
+        topUpHeld: mode !== 'cutoff-both-after', focusRestored: true, inputSha256: inputHash,
         screenshot: filename, screenshotSha256: hash(fs.readFileSync(path.join(output, filename))) });
       await page.close(); console.log('PASS latest Saved browser: ' + mode + ' ' + width + 'px');
     }

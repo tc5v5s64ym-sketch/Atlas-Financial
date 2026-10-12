@@ -182,3 +182,52 @@ that head's exact Git blob bytes, with no line-ending normalization. This
 supersedes the earlier comparison's source-encoding qualification; no completed
 test suite or old browser matrix is repeated. A following evidence-only commit
 preserves these exercised source blobs.
+
+## Posted-transfer cutoff coherence repair
+
+Root's new Systems BLOCK on exact `27f6ce0c483bc0b615df82990914e2bb8506f11b`
+supersedes PASS 5493933061. [Advisory 4250998004](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/595#discussion_r4250998004)
+identified a conservation defect: independently invented A=100/B=0, posted
+A-to-B transfer 100 on October 7, A reported 100 dated October 6, B reported
+100 dated October 8, checked October 8. The pre-repair Saved rows allocate
+176/24 from reported 200 although the independent ledger conserves 100.
+The failing-before assertion reproduced this defect on that exact source.
+
+The bounded Forecast guard retains both reports and their actual dates. It
+uses the incumbent proven internal-movement identity and separately qualifies
+unique IDs, exact cents, debit/credit signs, CAD, explicit posted status,
+account role and noncontradictory aliases, real dates, explicit complete
+transaction coverage and observation bounds. For each proven move between
+configured Savings accounts, both reports must be strictly before their own
+posted leg dates or strictly after. Opposite inclusion and same-day equality
+withhold Saved: date-only reports cannot establish intraday ordering.
+Recognized but unmatched, ambiguous or unqualified reserve-transfer evidence
+also fails closed. No transfer amount is subtracted or added to a report.
+Proven operating/reserve movements remain under their incumbent gates.
+
+The same chronological allocator runs once when this coherence condition and
+the other existing allocation conditions pass. The guard adds no cash,
+coverage, pending or top-up permission. Same-day native backing also fails
+closed on unqualified transfer evidence; the guard cannot grant readiness.
+No provider/server/store change, new cache, durable retention or calculator
+is introduced. Needed remains 230/24 while Saved and its grouped members are
+unknown across all publication lenses, Plan stamps/detail and shared Inventory.
+
+The acceptance suite now passes 73 cases. New controls include asynchronous
+and inverse cutoffs, reverse direction, same-day ambiguity, coherent before/
+after and separately posted leg dates, exact 100.01 cents, later coherent
+replacement and next-day stability, unrelated mixed 95/24 and genuine zero,
+unknown stock/pending/coverage and malformed currency, amounts, dates, roles,
+aliases, IDs, duplicate reference/ID and unmatched evidence. The nine focused
+chronological/provider/consumer/group/internal-movement/Forecast/authority
+regression suites pass. The original full-suite failure remains qualified
+above; no current full-suite PASS or new Systems PASS is claimed.
+
+Earlier receipts above are historical relative to this production repair.
+Fresh cutoff browser and full-output comparison receipts will bind the new
+clean code head. The comparison includes the prior 28 controls and the new
+38 cutoff ledgers, permitting only Saved fields and named allocation reason/
+status changes. It requires all cash, native funding/payment, cap, payday,
+card, debt, pending, schedule and top-up outputs to agree with pre-repair head.
+Draft #595 remains open pending required checks and a new exact-head Systems
+review. Release sequencing with #596 remains the coordinator's responsibility.

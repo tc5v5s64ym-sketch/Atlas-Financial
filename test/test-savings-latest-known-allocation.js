@@ -6,6 +6,7 @@ const F = require('../public/forecast'), O = require('../scripts/provider-observ
 const Inventory = require('../public/savings-inventory');
 const fx = require('./fixtures/savings-daily-allocation-contract');
 const provider = require('./fixtures/savings-v2-observation-data');
+const transferCutoffs = require('./fixtures/savings-transfer-cutoffs');
 const clone = x => JSON.parse(JSON.stringify(x));
 function fixture() {
   const input = fx.advance(fx.fixture(), '2026-10-07');
@@ -39,6 +40,64 @@ function fundingHeld(advice) {
     assert.ok(sim.events.every(row => !row.reserveFunding), 'no dated Saved value seeds a reserve payment');
   }
 }
+test('paired reserve transfer across opposite cutoffs cannot allocate the same 100 twice', () => {
+  const input = transferCutoffs(), advice = publish(input), packet = advice.savingsFunding;
+  assert.equal(F.householdInternalMovements(input.plan, input.opts).length, 1, 'existing identity authority proves the pair');
+  assert.equal(advice.savingsInventory.reportedStock.amount, 200, 'original dated reports stay intact');
+  assert.equal(10000 - 10000 + 10000, 10000, 'independent source debit/destination credit conserve 100');
+  assert.equal(packet.goalAllocation.status, 'unavailable');
+  assert.ok(packet.backing.items.every(row => row.saved === null));
+  assert.deepEqual(packet.rows.map(row => row.needed), [230, 24]);
+  assert.equal(packet.period.proposal, null);
+});
+for (const mode of ['inverse', 'opposite-direction', 'same-day', 'same-day-one', 'unknown-stock', 'pending',
+  'missing-pending', 'currency', 'missing-currency', 'fractional', 'string-amount', 'null-amount', 'date',
+  'impossible-date', 'future-date', 'alias', 'alias-outside', 'missing-id', 'malformed-id', 'role', 'duplicate', 'ambiguous-reference', 'duplicate-id-elsewhere', 'unmatched',
+  'unknown-coverage', 'missing-coverage', 'coverage-gap', 'unknown-observation', 'packet-currency', 'split-posting-dates'])
+  test('reserve-cutoff ' + mode + ' cannot authorize Saved or reconciliation', () => {
+    const input = transferCutoffs(mode), advice = publish(input), packet = advice.savingsFunding;
+    assert.equal(packet.goalAllocation.status, 'unavailable');
+    assert.ok(packet.backing.items.every(row => row.saved === null));
+    assert.ok(packet.rows.every(row => row.saved === null && row.savedTrust === 'unknown'));
+    assert.ok(packet.lenses.every(lens => lens.items.every(row => row.saved === null && row.savedTrust === 'unknown')));
+    assert.deepEqual(packet.rows.map(row => row.needed), [230, 24], 'requirements remain independently known');
+    assert.equal(packet.period.proposal, null);
+    assert.equal(packet.timeline.status, 'unavailable');
+    assert.equal(packet.moneyMovementPermission, 'not-granted');
+    assert.ok(advice.sim.events.every(row => !row.reserveFunding), 'no uncertain transfer seeds a reserve payment');
+  });
+test('a later coherent observation replaces the withheld transfer allocation and survives midnight', () => {
+  const input = transferCutoffs(), before = publish(input).savingsFunding;
+  assert.equal(before.goalAllocation.status, 'unavailable');
+  input.plan.savingsPoolObservation.accounts[0].value = 0;
+  input.plan.savingsPoolObservation.accounts[0].evidenceDate = '2026-10-08';
+  const coherent = publish(input).savingsFunding;
+  assert.equal(coherent.goalAllocation.status, 'ready');
+  assert.deepEqual(saved(coherent), [['near', 60], ['home-cost', 24], ['far', 16]]);
+  input.asOf = input.plan.opening.asOf = '2026-10-09';
+  const midnight = publish(input).savingsFunding;
+  assert.deepEqual(saved(midnight), saved(coherent));
+  assert.deepEqual(midnight.goalAllocation.balanceDates, coherent.goalAllocation.balanceDates);
+  assert.equal(midnight.goalAllocation.checkedAsOf, '2026-10-08');
+  fundingHeld(publish(input));
+});
+for (const mode of ['both-before', 'both-after', 'coherent-split-dates', 'exact-cents'])
+  test('reserve-cutoff ' + mode + ' uses the coherent reported stock once', () => {
+    const input = transferCutoffs(mode), packet = publish(input).savingsFunding;
+    const cents = mode === 'exact-cents' ? 10001 : 10000;
+    assert.equal(packet.goalAllocation.status, 'ready');
+    assert.deepEqual(saved(packet), [['near', 60], ['home-cost', 24], ['far', mode === 'exact-cents' ? 16.01 : 16]]);
+    assert.equal(packet.backing.items.reduce((sum, row) => sum + Math.round(row.saved * 100), 0), cents,
+      'independent 10000 - 10000 + 10000, or 10001 - 10001 + 10001, is allocated once');
+    assert.equal(packet.rows.find(row => row.key === 'group:club').saved, mode === 'exact-cents' ? 76.01 : 76);
+  });
+for (const mode of ['unrelated-mixed', 'zero', 'zero-movement'])
+  test('reserve-cutoff ' + mode + ' keeps ordinary mixed-date and genuine zero behavior', () => {
+    const input = transferCutoffs(mode), packet = publish(input).savingsFunding;
+    assert.equal(packet.goalAllocation.status, 'ready');
+    assert.deepEqual(saved(packet), mode === 'zero' ? [['near', 0], ['home-cost', 0], ['far', 0]]
+      : [['near', 60], ['home-cost', 24], ['far', 35]]);
+  });
 test('older/mixed dates allocate 119 as 60 + 24 + 35 without native reserve backing', () => {
   const input = fixture(), advice = publish(input), packet = advice.savingsFunding;
   assert.equal(packet.goalAllocation.status, 'ready');
@@ -169,6 +228,28 @@ for (const name of ['app', 'bill-detail', 'savings-inventory', 'budget-surface',
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/' + name + '.js'), 'utf8'), page);
 }
 vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];', page);
+
+test('uncertain transfer Saved stays unknown in Plan, shared Inventory and grouped members', () => {
+  for (const mode of ['double-count', 'inverse', 'duplicate', 'unmatched']) {
+    const input = transferCutoffs(mode), advice = publish(input);
+    const packet = F.savingsFundingPublication(advice.savingsFunding, { asOf: input.asOf, advice });
+    assert.ok(packet, 'the shared Forecast publication remains accepted');
+    page.src = { plan: input.plan, debts: [], asOf: input.asOf, advice };
+    const html = vm.runInContext('budgetSurfaceHtml(src)', page);
+    const savedStamps = [...html.matchAll(/data-budget-goal-saved-amount="([^"]*)"/g)];
+    assert.equal(savedStamps.length, 0);
+    const printed = [...html.matchAll(/data-budget-savings-(?:total|member)-saved>([\s\S]*?)<\/span>/g)];
+    assert.ok(printed.length >= 4);
+    assert.ok(printed.every(match => /Unavailable/.test(match[1])));
+    assert.match(html, /data-budget-goal-required-amount="230"/);
+    assert.match(html, /data-budget-goal-required-amount="24"/);
+    const inventory = Inventory.html(packet, { asOf: input.asOf, advice });
+    const inventorySaved = [...inventory.matchAll(/data-savings-(?:member-)?backed><dt>[^<]*<\/dt><dd>([^<]*)/g)];
+    assert.ok(inventorySaved.length >= 4);
+    assert.ok(inventorySaved.every(match => match[1].trim() === 'Unknown'));
+    assert.match(inventory, /data-savings-needed><dt>Needed<\/dt><dd>\$230\.00/);
+  }
+});
 test('prior-check-day compact Savings evidence does not claim today was checked', () => {
   const { data } = provider.served('prior-household-day', O);
   data.meta.asOf = data.plan.opening.asOf = '2026-10-07';
