@@ -34,8 +34,8 @@ const tests = sourceText(fs.readFileSync(path.join(__dirname, '..', '.github/wor
 const runner = require('./test');
 ok(require('../package.json').scripts.test === 'node test/test.js',
   'npm test retains the complete serial reference');
-ok(/^        run: node test\/test.js --group standard$/m.test(tests)
-  && /^        run: node test\/test.js --group refresh-isolation$/m.test(tests),
+ok(/^        run: bash scripts\/ci-test.sh standard$/m.test(tests)
+  && /^        run: bash scripts\/ci-test.sh refresh-isolation$/m.test(tests),
   'normal CI runs both explicit correctness groups');
 const combined = [...runner.selectSuites('standard'), ...runner.selectSuites('refresh-isolation')]
   .map(([, file]) => file);

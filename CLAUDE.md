@@ -311,6 +311,10 @@ primary label is a projection of that row, not a second judgement.
 - **`figures-moved`** — the owner sees the figures diff before the merge. That
   is a *look*, not a sign-off ritual: reconcile the bot's list against the card,
   and if they disagree, one of them is wrong.
+  Public counts do not satisfy that look. Changed or missing-baseline reports
+  withhold acceptance pending private exact-base/head figure-level reconciliation;
+  [`docs/PRIVATE_FIGURES_REVIEW.md`](docs/PRIVATE_FIGURES_REVIEW.md) describes
+  local evidence preparation without a public artifact or a new approval gate.
 - **`owner-decision`** — blocked on a person, not on code.
 - **`blocked`** — not mergeable as it stands.
 

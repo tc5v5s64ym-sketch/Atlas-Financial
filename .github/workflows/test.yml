@@ -34,10 +34,10 @@ jobs:
       # express is the production server runtime. The production-boundary
       # suite starts server.js locally with synthetic secrets.
       - name: Install runtime dependencies
-        run: node scripts/ci-output.js --identity install-runtime -- npm ci --omit=dev
+        run: bash scripts/ci-test.sh install-runtime
 
       - name: Run the correctness suite
-        run: node test/test.js --group standard
+        run: bash scripts/ci-test.sh standard
 
       # Local commits run .githooks/pre-commit, which delegates to
       # scripts/privacy-guard.js. GitHub API commits never run that hook.
@@ -61,10 +61,10 @@ jobs:
           node-version: '20'
 
       - name: Install runtime dependencies
-        run: node scripts/ci-output.js --identity install-runtime -- npm ci --omit=dev
+        run: bash scripts/ci-test.sh install-runtime
 
       - name: Run the refresh-isolation suite
-        run: node test/test.js --group refresh-isolation
+        run: bash scripts/ci-test.sh refresh-isolation
 
       - name: Confirm the privacy-guard engine is still present
         run: test -f .githooks/pre-commit && test -f scripts/privacy-guard.js

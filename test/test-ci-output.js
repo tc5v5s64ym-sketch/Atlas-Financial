@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const vm = require('vm');
-const { spawnSync } = require('child_process');
+const { spawnSync, execFileSync } = require('child_process');
 const Capture = require('../scripts/ci-output');
 const Figures = require('../scripts/figures-comment');
 const ROOT = path.join(__dirname, '..');
@@ -27,7 +27,7 @@ function outcome(result, exit, identity = 'figures-comment') {
   assert.deepStrictEqual(record.counts, { total: 1, passed: exit === 0 ? 1 : 0, failed: exit === 0 ? 0 : 1 });
   return record;
 }
-async function posting(body, apiError, sourceBase, sourceHead, existing = false) {
+async function posting(body, apiError, sourceBase, sourceHead, existing = false, moved = false) {
   const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/figures-review.yml'), 'utf8');
   const script = workflow.slice(workflow.indexOf('          script: |') + '          script: |'.length)
     .trimStart().split(/\r?\n/).map(line => line.replace(/^            /, '')).join('\n');
@@ -35,13 +35,16 @@ async function posting(body, apiError, sourceBase, sourceHead, existing = false)
   const fixtureFs = { readFileSync: file => file.endsWith('/base.json') ? JSON.stringify(sourceBase)
     : file.endsWith('/head.json') ? JSON.stringify(sourceHead) : body,
     writeFileSync: (...args) => privateWrites.push(args) };
-  const github = { paginate: async () => existing ? [{ id: 42, body: Figures.MARKER }] : [], rest: { issues: {
+  const github = { paginate: async () => existing ? [{ id: 42, body: Figures.MARKER }] : [], rest: {
+    pulls: { get: async () => ({ data: { head: { sha: (moved === 'head' ? 'c' : 'b').repeat(40) },
+      base: { sha: (moved === 'base' ? 'c' : 'a').repeat(40) } } }) }, issues: {
     listComments() {}, updateComment: async args => { if (apiError) throw new Error(CANARY); posted.push(args.body); },
     createComment: async args => { if (apiError) throw new Error(CANARY); posted.push(args.body); },
   } } };
   const ctx = { require: name => { assert.strictEqual(name, 'fs'); return fixtureFs; },
     process: { env: { RUNNER_TEMP: dir } }, github,
-    context: { repo: { owner: 'synthetic', repo: 'fixture' }, payload: { pull_request: { number: 42 } } },
+    context: { repo: { owner: 'synthetic', repo: 'fixture' }, payload: { pull_request: { number: 42,
+      head: { sha: 'b'.repeat(40) }, base: { sha: 'a'.repeat(40) } } } },
     core: { setFailed: text => annotations.push(text) } };
   await vm.runInNewContext('(async () => {' + script + '\n})()', ctx);
   assert.ok(!annotations.join('\n').includes(CANARY), 'annotations never interpolate error text');
@@ -174,9 +177,10 @@ async function posting(body, apiError, sourceBase, sourceHead, existing = false)
     assert.strictEqual(outcome(run(streams + 'process.exit(78);', {}, identity), 78, identity).category,
       'private-artifact-blocked');
   assert.strictEqual(outcome(run('process.exit(78);'), 78).category, 'process-failed');
-  for (const file of ['test.yml', 'standing-correction-test.yml'])
-    assert.ok(fs.readFileSync(path.join(ROOT, '.github/workflows', file), 'utf8')
-      .includes('--identity install-runtime -- npm ci --omit=dev'));
+  assert.strictEqual(fs.readFileSync(path.join(ROOT, '.github/workflows/test.yml'), 'utf8')
+    .split('run: bash scripts/ci-test.sh install-runtime').length - 1, 2);
+  assert.ok(fs.readFileSync(path.join(ROOT, '.github/workflows/standing-correction-test.yml'), 'utf8')
+    .includes('--identity install-runtime -- npm ci --omit=dev'));
   assert.ok(fs.readFileSync(path.join(ROOT, '.github/workflows/privacy-guard.yml'), 'utf8')
     .includes('--identity privacy-guard -- node trusted/scripts/privacy-guard.js'));
 
@@ -196,7 +200,15 @@ async function posting(body, apiError, sourceBase, sourceHead, existing = false)
   assert.ok(safe.includes('Total: 6 compared; 4 changed.'));
   assert.ok(!/CANARY_HOUSEHOLD|947\.31|960\.31|2041-|\$|\+13/.test(safe));
   const posted = await posting(safe, false, base, head);
-  assert.strictEqual(posted.posted.length, 1); assert.strictEqual(posted.annotations.length, 0);
+  assert.strictEqual(posted.posted.length, 1); assert.strictEqual(posted.annotations.length, 1);
+  assert.ok(posted.annotations[0].includes('acceptance withheld'));
+  assert.ok(posted.posted[0].includes('head `' + 'b'.repeat(40) + '`'));
+  for (const moved of ['head', 'base']) {
+    const stale = await posting(safe, false, base, head, false, moved);
+    assert.strictEqual(stale.posted.length, 0); assert.strictEqual(stale.annotations.length, 1);
+  }
+  assert.strictEqual((await posting(safe, false, undefined, head)).posted.length, 0,
+    'missing snapshots cannot produce figures acceptance');
   for (const body of [safe + CANARY, safe.replace('| Plan | 1 | 0 |', '| Plan | 1 | 2 |'),
     safe.replace('Total: 6 compared; 4 changed.', 'Total: 6 compared; 3 changed.'),
     Figures.formatFiguresComment(base, head, CANARY)]) {
@@ -206,7 +218,7 @@ async function posting(body, apiError, sourceBase, sourceHead, existing = false)
   }
   for (const [a, b] of [[base, base], [null, head], [null, {}]]) {
     const result = await posting(Figures.formatPublicFiguresComment(a, b), false, a, b);
-    assert.strictEqual(result.posted.length, 1); assert.strictEqual(result.annotations.length, 0);
+    assert.strictEqual(result.posted.length, 1); assert.strictEqual(result.annotations.length, a === null ? 1 : 0);
   }
   const forgedCounts = safe.replace('| Plan | 1 | 0 |', '| Plan | 947 | 0 |')
     .replace('Total: 6 compared; 4 changed.', 'Total: 952 compared; 4 changed.');
@@ -226,6 +238,78 @@ async function posting(body, apiError, sourceBase, sourceHead, existing = false)
     baseFile, headFile, CANARY, '--public-summary'], { identity: 'figures-comment', env });
   assert.strictEqual(formatted.exitCode, 0);
   assert.strictEqual(fs.readFileSync(formatted.stdoutFile, 'utf8'), safe);
+  // Exercise the shipped workflow's actual --public-summary CLI arguments,
+  // independently specified additions/removals/types and the tolerance boundary.
+  const cases = [
+    [base, base, false, 'Total: 5 compared; 0 changed.'],
+    [null, head, true, 'Total: 6 compared; 6 changed.'],
+    [null, {}, true, 'Total: 0 compared; 0 changed.'],
+    [{ 'cash.synthetic': 100 }, { 'cash.synthetic': 100.004 }, false, 'Total: 1 compared; 0 changed.'],
+    [{ 'cash.synthetic': 100 }, { 'cash.synthetic': 100.006 }, true, 'Total: 1 compared; 1 changed.'],
+    [{ 'cash.removed': 3, 'credit.synthetic.rate': 9, 'bills.openCount': 1,
+      'planning.date': '2041-07-09', 'planning.null': null },
+    { 'cash.added': 4, 'credit.synthetic.rate': 10, 'bills.openCount': 2,
+      'planning.date': '2041-07-10', 'planning.null': 0 }, true, 'Total: 6 compared; 6 changed.'],
+  ];
+  for (const [a, b, withheld, total] of cases) {
+    fs.writeFileSync(baseFile, JSON.stringify(a)); fs.writeFileSync(headFile, JSON.stringify(b));
+    const cli = Capture.runCaptured(process.execPath, [path.join(ROOT, 'scripts/figures-comment.js'),
+      baseFile, headFile, 'main', '--public-summary'], { identity: 'figures-comment', env });
+    assert.strictEqual(cli.exitCode, 0);
+    const body = fs.readFileSync(cli.stdoutFile, 'utf8');
+    assert.ok(body.includes(total));
+    assert.strictEqual(body.includes('acceptance: WITHHELD'), withheld);
+    const actual = await posting(body, false, a, b);
+    assert.strictEqual(actual.posted.length, 1);
+    assert.strictEqual(actual.annotations.length, withheld ? 1 : 0);
+    assert.strictEqual((await posting(body.replace(/Figures acceptance:.*\n/, ''), false, a, b)).posted.length, 0,
+      'missing acceptance disposition cannot post');
+  }
+  const evidence = require('../scripts/figures-private-diff');
+  const repo = path.join(dir, 'private-comparison-fixture'); fs.mkdirSync(repo);
+  const git = args => execFileSync('git', args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  git(['init']); git(['config', 'user.name', 'Synthetic CI']); git(['config', 'user.email', 'synthetic@example.test']);
+  git(['config', 'core.autocrlf', 'false']);
+  fs.mkdirSync(path.join(repo, 'scripts'));
+  const snapshot = value => 'if(process.env.GITHUB_TOKEN||process.env.GH_TOKEN)process.exit(9);\n'
+    + 'console.log(' + JSON.stringify(JSON.stringify(value)) + ');';
+  const a = { 'cash.synthetic': 100, 'credit.synthetic.rate': 9, 'bills.openCount': 1,
+    'planning.date': '2041-07-09', 'planning.null': null, 'cash.removed': 3 };
+  const b = { 'cash.synthetic': 113, 'credit.synthetic.rate': 10, 'bills.openCount': 2,
+    'planning.date': '2041-07-10', 'planning.null': 0, 'cash.added': 4 };
+  fs.writeFileSync(path.join(repo, 'scripts/figures-snapshot.js'), snapshot(a));
+  git(['add', '.']); git(['commit', '-m', 'Synthetic base']); const baseSha = git(['rev-parse', 'HEAD']);
+  fs.writeFileSync(path.join(repo, 'scripts/figures-snapshot.js'), snapshot(b));
+  git(['add', '.']); git(['commit', '-m', 'Synthetic head']); const headSha = git(['rev-parse', 'HEAD']);
+  const privateDir = path.join(dir, 'private-exact-evidence');
+  const receipt = evidence.prepare(privateDir, baseSha, headSha, repo);
+  assert.strictEqual(receipt.acceptance, 'withheld'); assert.strictEqual(receipt.ownerReconciliationPerformed, false);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(privateDir, 'base.json'))), a);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(privateDir, 'head.json'))), b);
+  const detail = fs.readFileSync(path.join(privateDir, 'figures.md'), 'utf8');
+  for (const expected of [baseSha, headSha, '`cash.synthetic`', '$100.00', '$113.00', '+$13.00',
+    '`cash.added`', '`cash.removed`', 'new', 'removed', '2041-07-09', '2041-07-10', '9%', '10%', '+1', '`null`'])
+    assert.ok(detail.includes(expected), 'private detail retains identifiers, revisions, before/after and deltas');
+  assert.strictEqual(evidence.verify(privateDir, baseSha, headSha).headSha, headSha);
+  assert.throws(() => evidence.verify(privateDir, headSha, baseSha), /stale/);
+  assert.throws(() => evidence.prepare(path.join(dir, 'stale-evidence'), headSha, baseSha, repo), /stale/);
+  assert.throws(() => evidence.prepare(privateDir, baseSha, headSha, repo));
+  fs.appendFileSync(path.join(privateDir, 'figures.md'), 'modified');
+  assert.throws(() => evidence.verify(privateDir, baseSha, headSha), /stale/);
+  fs.unlinkSync(path.join(privateDir, 'figures.md'));
+  assert.throws(() => evidence.verify(privateDir, baseSha, headSha));
+  fs.unlinkSync(path.join(repo, 'scripts/figures-snapshot.js'));
+  git(['add', '-A']); git(['commit', '-m', 'Synthetic missing snapshot']); const missingSha = git(['rev-parse', 'HEAD']);
+  const missingDir = path.join(dir, 'missing-snapshot-evidence');
+  assert.throws(() => evidence.prepare(missingDir, baseSha, missingSha, repo));
+  assert.ok(!fs.existsSync(path.join(missingDir, 'receipt.json')), 'missing snapshot never prepares acceptance evidence');
+  assert.strictEqual(git(['worktree', 'list', '--porcelain']).split('worktree ').length - 1, 1, 'private worktrees cleaned synchronously');
+  const blockedDir = path.join(dir, 'storage-blocked'); fs.writeFileSync(blockedDir, 'synthetic');
+  assert.throws(() => evidence.prepare(path.join(blockedDir, 'child'), baseSha, missingSha, repo));
+  const cliMissing = spawnSync(process.execPath, [path.join(ROOT, 'scripts/figures-private-diff.js'),
+    'verify', baseSha, headSha, privateDir], { encoding: 'utf8' });
+  assert.strictEqual(cliMissing.status, 78);
+  assert.strictEqual(JSON.parse(cliMissing.stdout).acceptance, 'withheld'); assert.strictEqual(cliMissing.stderr, '');
   fs.writeFileSync(headFile, CANARY);
   const malformed = Capture.runCaptured(process.execPath, [path.join(ROOT, 'scripts/figures-comment.js'),
     baseFile, headFile, CANARY, '--public-summary'], { identity: 'figures-comment', env });

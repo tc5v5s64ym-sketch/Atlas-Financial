@@ -151,9 +151,9 @@ function workflowContract(src) {
     assert.equal((job.match(/uses: actions\/checkout@v4/g) || []).length, 1);
     assert.match(job, /^          fetch-depth: 0$/m);
     assert.match(job, /uses: actions\/setup-node@v4\n        with:\n          node-version: '20'/);
-    assert.match(job, /^        run: node scripts\/ci-output\.js --identity install-runtime -- npm ci --omit=dev$/m);
+    assert.match(job, /^        run: bash scripts\/ci-test.sh install-runtime$/m);
     const commands = [...job.matchAll(/^        run: (.+)$/gm)].map(match => match[1]);
-    assert.deepEqual(commands, ['node scripts/ci-output.js --identity install-runtime -- npm ci --omit=dev', `node test/test.js --group ${group}`,
+    assert.deepEqual(commands, ['bash scripts/ci-test.sh install-runtime', `bash scripts/ci-test.sh ${group}`,
       'test -f .githooks/pre-commit && test -f scripts/privacy-guard.js']);
   }
   const gate = jobs.test;
@@ -183,12 +183,14 @@ check('workflow contract rejects omissions, skips, shallow history, changed refs
     ['  standard:\n', '  standard:\n    if: false\n'],
     ['fetch-depth: 0', 'fetch-depth: 1'],
     ["node-version: '20'", "node-version: '24'"],
-    ['run: node test/test.js --group standard', 'run: node test/test.js --group refresh-isolation'],
+    ['run: bash scripts/ci-test.sh standard', 'run: bash scripts/ci-test.sh refresh-isolation'],
+    ['run: bash scripts/ci-test.sh standard', 'run: node test/test.js --group standard'],
+    ['run: bash scripts/ci-test.sh refresh-isolation', 'run: node test/test.js --group refresh-isolation'],
     ['    branches: [\'**\']\n  pull_request:\n', '    branches: [\'**\']\n'],
     ['  standard:\n', '  standard:\n    continue-on-error: true\n'],
     ['fetch-depth: 0', 'fetch-depth: 0\n          ref: main'],
     ['jobs:\n', 'concurrency: tests\njobs:\n'],
-    ['run: node scripts/ci-output.js --identity install-runtime -- npm ci --omit=dev', 'run: npm ci --omit=dev'],
+    ['run: bash scripts/ci-test.sh install-runtime', 'run: npm ci --omit=dev'],
   ];
   for (const [from, to] of mutations) {
     assert(workflow.includes(from), `negative-control anchor: ${from}`);
@@ -291,7 +293,124 @@ check('both selected groups keep real child streams and runner errors private wi
     assert(retained.some(text => text.includes(canary)), 'diagnostics remain available only in private files');
     const isolationJob = workflow.slice(workflow.indexOf('  refresh-isolation:'), workflow.indexOf('  test:\n'));
     assert.throws(() => workflowContract(workflow.replace(isolationJob, isolationJob.replace(
-      'node scripts/ci-output.js --identity install-runtime -- npm ci --omit=dev', 'npm ci --omit=dev'))), assert.AssertionError);
+      'bash scripts/ci-test.sh install-runtime', 'npm ci --omit=dev'))), assert.AssertionError);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+check('exact worker entrypoints capture parse/load/launcher failures before Node starts and preserve progress', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-ci-startup-'));
+  assert(dir.startsWith(path.resolve(os.tmpdir()) + path.sep));
+  try {
+    const root = path.join(dir, 'fixture'), diagnostics = path.join(dir, 'private');
+    fs.mkdirSync(path.join(root, 'test'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'scripts'));
+    const originals = Object.fromEntries(['ci-output.js', 'ci-test.js', 'ci-test-records.js', 'ci-test.sh']
+      .map(file => [file, sourceText(fs.readFileSync(path.join(ROOT, 'scripts', file), 'utf8'))]));
+    const runner = sourceText(fs.readFileSync(path.join(__dirname, 'test.js'), 'utf8'));
+    const rows = [['synthetic standard', 'test-fixture-pass.js'], ['synthetic isolation', 'test-refresh-isolation.js']];
+    const tiny = runner.replace(/const suites = (\[[\s\S]*?\]);/, 'const suites = ' + JSON.stringify(rows) + ';');
+    const canary = 'SYNTHETIC_STARTUP_PRIVATE_2041_947_31';
+    const channels = ['GITHUB_STEP_SUMMARY', 'GITHUB_ENV', 'GITHUB_OUTPUT', 'GITHUB_PATH', 'GITHUB_STATE'];
+    const env = { ...process.env, ATLAS_CI_DIAGNOSTICS_DIR: diagnostics.replace(/\\/g, '/'), GITHUB_ACTIONS: 'true' };
+    for (const key of channels) env[key] = path.join(dir, 'official-' + key);
+    const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
+    function reset() {
+      for (const [file, source] of Object.entries(originals)) fs.writeFileSync(path.join(root, 'scripts', file), source);
+      fs.writeFileSync(path.join(root, 'test/test.js'), tiny);
+      for (const [, file] of rows) fs.writeFileSync(path.join(root, 'test', file), 'console.log(' + JSON.stringify(canary) + ');');
+    }
+    function run(group, extra = {}) {
+      const command = workflow.match(new RegExp('        run: (bash scripts/ci-test\\.sh ' + group + ')\\n'))[1];
+      const child = spawnSync(bash, ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', command],
+        { cwd: root, env: { ...env, ...extra }, encoding: 'utf8', timeout: 15000 });
+      assert.ifError(child.error);
+      assert.equal(child.stderr, '', 'no raw bootstrap, runner or suite error reaches the public stream');
+      assert(!child.stdout.includes(canary) && !/SyntaxError|Error:|at .*\.js|::error::/.test(child.stdout));
+      const records = child.stdout.trim().split('\n').map(line => JSON.parse(line));
+      assert.deepEqual(records[0], { type: 'ci-worker-start', identity: group });
+      for (const key of channels) assert(!fs.existsSync(env[key]), 'official file channels stay untouched');
+      return { child, records };
+    }
+    for (const group of GROUPS) {
+      reset();
+      let result = run(group);
+      assert.equal(result.child.status, 0);
+      assert.equal(result.records.find(row => row.type === 'ci-worker-outcome').status, 'pass');
+      assert.deepEqual(result.records.filter(row => row.type === 'ci-suite-start').map(row => row.identity),
+        [group === 'standard' ? rows[0][1] : rows[1][1]]);
+      assert.equal(result.records.filter(row => row.type === 'ci-suite-summary').length, 1);
+      for (const fault of ['parse', 'pre-handler', 'missing-runner', 'capture-helper', 'launcher-parse', 'launcher-pre-handler', 'missing-launcher', 'launcher-exit']) {
+        reset();
+        if (fault === 'parse') fs.writeFileSync(path.join(root, 'test/test.js'), tiny.replace(
+          'const suites = [', 'const suites = [ [' + JSON.stringify(canary) + ', );'));
+        if (fault === 'pre-handler') fs.writeFileSync(path.join(root, 'test/test.js'), 'throw new Error(' + JSON.stringify(canary) + ');\n' + tiny);
+        if (fault === 'missing-runner') fs.unlinkSync(path.join(root, 'test/test.js'));
+        if (fault === 'capture-helper') fs.writeFileSync(path.join(root, 'scripts/ci-output.js'), 'const broken = [' + JSON.stringify(canary) + ', );');
+        if (fault === 'launcher-parse') fs.writeFileSync(path.join(root, 'scripts/ci-test.js'), 'const broken = [' + JSON.stringify(canary) + ', );');
+        if (fault === 'launcher-pre-handler') fs.writeFileSync(path.join(root, 'scripts/ci-test.js'),
+          'console.log(' + JSON.stringify(canary) + ');console.error(' + JSON.stringify(canary) + ');'
+          + 'for(const key of ' + JSON.stringify(channels) + ')require("fs").writeFileSync(process.env[key],'
+          + JSON.stringify(canary) + ');throw new Error(' + JSON.stringify(canary) + ');');
+        if (fault === 'missing-launcher') fs.unlinkSync(path.join(root, 'scripts/ci-test.js'));
+        if (fault === 'launcher-exit') fs.writeFileSync(path.join(root, 'scripts/ci-test.js'), 'process.exit(126);');
+        result = run(group);
+        assert.equal(result.child.status, fault === 'launcher-exit' ? 126 : 1, fault);
+        assert.equal(result.records.filter(row => row.type === 'ci-suite-start').length, 0, fault);
+      }
+      reset();
+      fs.writeFileSync(path.join(root, 'test/test.js'), 'console.log(' + JSON.stringify(canary) + ');process.exit(7);');
+      result = run(group);
+      assert.equal(result.child.status, 7, 'invalid raw progress cannot mask the original failure');
+      fs.writeFileSync(path.join(root, 'test/test.js'), 'console.log(' + JSON.stringify(canary) + ');');
+      assert.equal(run(group).child.status, 1, 'invalid raw progress cannot turn a protocol failure green');
+      for (const fault of ['relay-parse', 'relay-pre-handler', 'missing-relay']) {
+        reset();
+        const relay = path.join(root, 'scripts/ci-test-records.js');
+        if (fault === 'relay-parse') fs.writeFileSync(relay, 'const broken = [' + JSON.stringify(canary) + ', );');
+        if (fault === 'relay-pre-handler') fs.writeFileSync(relay, 'throw new Error(' + JSON.stringify(canary) + ');');
+        if (fault === 'missing-relay') fs.unlinkSync(relay);
+        assert.notEqual(run(group).child.status, 0, 'a failed safe-record sink stays red');
+      }
+      reset();
+      const preload = path.join(root, 'preload.js');
+      fs.writeFileSync(preload, 'console.log(' + JSON.stringify(canary) + ');throw new Error(' + JSON.stringify(canary) + ');');
+      assert.equal(run(group, { NODE_OPTIONS: '--require="' + preload + '"' }).child.status, 0, 'bootstrap clears optional preloads');
+      if (process.platform !== 'win32') {
+        reset(); fs.writeFileSync(path.join(root, 'test/test.js'), 'process.kill(process.pid,"SIGTERM");');
+        result = run(group); assert.equal(result.child.status, 143);
+        assert.equal(result.records.find(row => row.type === 'ci-worker-outcome').signal, 'SIGTERM');
+      }
+    }
+    const retained = [];
+    for (const exitCode of [0, 7, 126]) {
+      reset();
+      const outcome = { type: 'ci-outcome', identity: 'install-runtime', status: exitCode ? 'fail' : 'pass',
+        category: exitCode ? 'process-failed' : 'none', exitCode, signal: null, executed: true,
+        counts: { total: 1, passed: exitCode ? 0 : 1, failed: exitCode ? 1 : 0 } };
+      fs.writeFileSync(path.join(root, 'scripts/ci-output.js'),
+        'console.log(' + JSON.stringify(JSON.stringify(outcome)) + ');process.exit(' + exitCode + ');');
+      assert.equal(run('install-runtime').child.status, exitCode, 'installation preserves original status');
+    }
+    reset();
+    fs.writeFileSync(path.join(root, 'scripts/ci-output.js'), 'const broken = [' + JSON.stringify(canary) + ', );');
+    assert.equal(run('install-runtime').child.status, 1, 'installation captures helper bootstrap diagnostics');
+    const launcher = originals['ci-test.js'];
+    assert(launcher.includes("'--identity', 'install-runtime', '--', 'npm', 'ci', '--omit=dev'"));
+    function readPrivate(folder) {
+      for (const name of fs.readdirSync(folder)) {
+        const file = path.join(folder, name);
+        if (fs.statSync(file).isDirectory()) readPrivate(file);
+        else if (name.endsWith('.log')) retained.push(fs.readFileSync(file, 'utf8'));
+      }
+    }
+    readPrivate(diagnostics);
+    assert(retained.some(text => text.includes(canary)), 'raw synthetic faults stay only in private logs');
+    reset();
+    const blocked = path.join(dir, 'blocked'); fs.writeFileSync(blocked, 'synthetic');
+    const failure = spawnSync(bash, ['scripts/ci-test.sh', 'standard'], { cwd: root,
+      env: { ...env, ATLAS_CI_DIAGNOSTICS_DIR: blocked.replace(/\\/g, '/') }, encoding: 'utf8' });
+    assert.equal(failure.status, 1); assert.equal(failure.stderr, '');
+    assert.equal(JSON.parse(failure.stdout).category, 'capture-failed');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -74,7 +74,10 @@ function formatPublicFiguresComment(base, head) {
     + '.\n\n| Publication family | Compared fields | Changed fields |\n|---|---|---|\n'
     + families.map(row => '| ' + row.name + ' | ' + row.compared + ' | ' + row.changed + ' |').join('\n')
     + '\n\nTotal: ' + keys.length + ' compared; ' + moved.length + ' changed.\n'
-    + 'Financial values and raw diagnostics are withheld.\n';
+    + 'Financial values and raw diagnostics are withheld.\n'
+    + (base === null || moved.length
+      ? 'Figures acceptance: WITHHELD until the owner privately reconciles the exact-base/head figure-level diff with the merge card.\n'
+      : 'Figures acceptance: no snapshot figures moved.\n');
 }
 
 function formatFiguresComment(base, head, baseRef) {
