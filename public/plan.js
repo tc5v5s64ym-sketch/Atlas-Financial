@@ -7021,8 +7021,8 @@ function budgetOutgoingETransfersSectionHtml(pub) {
   let note = '';
   if (status === 'available-complete') {
     note = items.length
-      ? `<p class="budget-browse-note">${items.length} outgoing e-transfer${items.length === 1 ? '' : 's'} observed this period. Purpose not yet confirmed.</p>`
-      : '<p class="budget-browse-note">No outgoing e-transfers were observed this period.</p>';
+      ? `<p class="budget-browse-note">${items.length} unresolved outgoing e-transfer${items.length === 1 ? '' : 's'} from household cash accounts ${items.length === 1 ? 'is' : 'are'} listed for review this period. Purpose not yet confirmed.</p>`
+      : '<p class="budget-browse-note">No unresolved outgoing e-transfers from household cash accounts are listed for review this period.</p>';
   } else if (status === 'available-posted-only') {
     note = `<p class="budget-browse-note">${items.length ? `Showing ${items.length} observed outgoing e-transfer${items.length === 1 ? '' : 's'}. ` : 'None observed yet. '}Pending coverage is incomplete, so additional outgoing e-transfers may exist.</p>`;
   } else if (status === 'available-incomplete') {

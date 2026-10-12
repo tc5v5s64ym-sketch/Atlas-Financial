@@ -1034,14 +1034,49 @@ console.log('\n=== outgoing e-transfer review section (browse + unavailable path
   ok(sec.includes('may be missing items') && !sec.includes('$75.00') && !/data-etransfer-item/.test(sec),
     'incomplete with nothing collected: notice only, no list, no amount, no zero');
   sec = etSection(setPub({ status: 'available-complete', coverage: { ...cov, pendingStatus: 'complete' }, count: 0, items: [] }));
-  ok(sec.includes('No outgoing e-transfers were observed this period.'),
-    'available-complete with zero items is the only rendered all-clear');
+  ok(sec.includes('No unresolved outgoing e-transfers from household cash accounts are listed for review this period.'),
+    'available-complete with zero items is the only rendered all-clear, scoped to the review list');
   sec = etSection(setPub({ status: 'unavailable-stale', coverage: { ...cov, status: 'stale' }, count: null, items: null }));
   ok(sec.includes("can't be confirmed") && !/data-etransfer-item/.test(sec) && !sec.includes('$'),
     'stale: no list, no count, no money figure — a stale-evidence notice only');
   sec = etSection(setPub({ status: 'unavailable-missing', coverage: null, count: null, items: null }));
   ok(sec.includes("can't be confirmed") && !/data-etransfer-item/.test(sec) && !sec.includes('$'),
     'missing: no list, no count, no money figure — an unavailable notice only');
+
+  // Repair (Atlas, P1 4253142082, 2026-10-12): the complete-state copy
+  // describes the filtered review list, not all observed outgoing
+  // transfers. Excluded-only evidence — complete coverage whose one
+  // observed outgoing transfer was sent from a revolving-credit account
+  // (the §ET ex-revolving exclusion) — publishes an empty list; the copy
+  // must scope the all-clear to the review list and must never claim no
+  // outgoing e-transfers were observed.
+  const etExcludedRow = { id: 'et-excluded-revolving', date: '2026-08-19', amount: 120,
+    pending: false, categoryLabel: 'Transfer', accountRole: 'revolving-credit',
+    atlasAccountId: 'travelvisa', outgoingETransferIdentity: true,
+    displayedPayee: 'Synthetic recipient' };
+  const exclData = fx.served({});
+  exclData.liveOverlay.currentPeriodActuals.transactions.push({ ...etExcludedRow });
+  const exclPage = page();
+  const exclSec = etSection(exclPage.render(exclData));
+  ok(exclPage.context.__ctx.advice.currentPeriodAction.outgoingETransfers.count === 0
+    && /data-etransfer-state="available-complete"/.test(exclSec)
+    && !/data-etransfer-item/.test(exclSec),
+    'excluded-only: complete evidence with only an excluded transfer publishes an empty review list');
+  ok(exclSec.includes('No unresolved outgoing e-transfers from household cash accounts are listed for review this period.')
+    && !exclSec.includes('No outgoing e-transfers were observed'),
+    'excluded-only: the all-clear is scoped to the review list and never claims no transfers were observed');
+
+  // Mixed eligible + excluded: the count names eligible review items
+  // only, in the same scoped wording; the excluded transfer is not
+  // listed and does not inflate the count.
+  const mixedData = fx.served({ etransfer: true });
+  mixedData.liveOverlay.currentPeriodActuals.transactions.push({ ...etExcludedRow });
+  const mixedPage = page();
+  const mixedSec = etSection(mixedPage.render(mixedData));
+  ok(mixedPage.context.__ctx.advice.currentPeriodAction.outgoingETransfers.count === 1
+    && mixedSec.includes('1 unresolved outgoing e-transfer from household cash accounts is listed for review this period.')
+    && mixedSec.includes('$75.00') && !mixedSec.includes('$120.00'),
+    'mixed eligible/excluded: the count is scoped to the one eligible review item; the excluded transfer is not listed');
 
   // Plan-unavailable path: BudgetSurface skips browseHtml there, so the
   // section must arrive through the unavailableHtml contribution as a

@@ -81,7 +81,7 @@ function servedFor(state) {
           assert.equal(await items.count(), 1, 'complete: the one flagged row is listed');
           assert.match(text, /Outgoing e-transfer/); assert.match(text, /\$75\.00/);
           assert.match(text, /chequing-b/); assert.match(text, /Aug 19/);
-          assert.match(text, /1 outgoing e-transfer observed this period/);
+          assert.match(text, /1 unresolved outgoing e-transfer from household cash accounts is listed for review this period/);
         } else if (state === 'posted-only') {
           assert.equal(await section.getAttribute('data-etransfer-state'), 'available-posted-only');
           assert.equal(await items.count(), 1, 'posted-only: observed items still shown');
