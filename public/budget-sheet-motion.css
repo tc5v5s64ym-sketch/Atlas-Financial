@@ -202,6 +202,11 @@ dialog.blend-detail-sheet[open] {
 .blend-detail-sheet .budget-bill-period-evidence > summary { cursor: pointer; color: var(--blend-ink-2); }
 .blend-detail-sheet [data-budget-bill-roster] .budget-bill-group { margin-top: 0; }
 .blend-detail-sheet [data-budget-bill-roster] .budget-bill-group > h3 { display: none; }
+/* Systems Review 5484047605: the Upcoming annual bills bucket is a labelled
+   subsection, not a native roster group — its heading carries the
+   qualification and must stay rendered. Scoped to this bucket only; every
+   other roster group heading keeps the native hidden behaviour above. */
+.blend-detail-sheet [data-budget-bill-roster] .budget-bill-group[data-budget-bill-bucket="upcoming"] > h3 { display: flex; }
 .blend-detail-sheet [data-budget-bill-roster] .budget-bill-row { min-height: 56px; padding: 8px 16px; grid-template-columns: minmax(0, 1fr) auto 8px; gap: 12px; }
 .blend-detail-sheet [data-budget-bill-roster] .budget-bill-row > .blend-bill-symbol { display: none; }
 .blend-detail-sheet [data-budget-bill-roster] .budget-bill-row[hidden] { display: none; }
