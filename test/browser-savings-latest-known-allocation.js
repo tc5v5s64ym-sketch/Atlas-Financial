@@ -22,6 +22,16 @@ const binding = captureSourceBinding(root, [...files, ...runtimeFiles], process.
 fs.mkdirSync(output, { recursive: true });
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function input(mode) {
+  if (mode === 'window-midnight') {
+    const x = observed.windowObservation('complete');
+    x.data.meta.asOf = x.data.plan.opening.asOf = '2026-10-06';
+    return x.data;
+  }
+  if (mode.startsWith('window-')) {
+    const name = mode.slice('window-'.length), x = observed.windowObservation(name);
+    x.data.liveOverlay.currentPeriodActuals = x.packet;
+    return x.data;
+  }
   if (mode.startsWith('pipeline-')) return observed(mode.slice('pipeline-'.length)).data;
   if (mode.startsWith('cutoff-')) {
     const input = transferCutoffs(mode.slice('cutoff-'.length)), data = consumer('ready');
@@ -49,6 +59,13 @@ function input(mode) {
   try {
     const selected = process.env.ATLAS_LATEST_SAVINGS_CASES?.split(',');
     for (const [mode, width, theme, expected, bands, topUpHeld = true] of [
+      ['window-complete', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['window-truncated', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['window-impossibleObservation', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['window-raw-incomplete-end', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['window-unrelated-card', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['window-unrelated-unmapped', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['window-midnight', 320, 'dark', [95, 24], ['is-amber', 'is-full']],
       ['pipeline-valid', 390, 'light', [95, 24], ['is-amber', 'is-full'], false],
       ['pipeline-valid-transfer', 390, 'light', [105, 24], ['is-amber', 'is-full'], false],
       ['pipeline-undated', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],

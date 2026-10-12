@@ -178,12 +178,14 @@ test('the validator\'s integer cents reach the allocator without a dollars round
 test('Vancouver midnight does not erase the last checked packet or rewrite its dates', () => {
   const input = fixture();
   input.plan.savingsPoolObservation.asOf = '2026-10-06';
+  input.opts.currentPeriodActuals.observationAsOf = input.opts.currentPeriodActuals.coverageThrough = '2026-10-06';
   input.asOf = F.financialDate('2026-10-07T06:59:59Z');
   input.plan.opening.asOf = input.asOf;
   const before = publish(input).savingsFunding;
   input.asOf = F.financialDate('2026-10-07T07:00:00Z');
   input.plan.opening.asOf = input.asOf;
   const after = publish(input).savingsFunding;
+  assert.equal(before.goalAllocation.status, 'ready'); assert.equal(after.goalAllocation.status, 'ready');
   assert.equal(before.asOf, '2026-10-06'); assert.equal(after.asOf, '2026-10-07');
   assert.deepEqual(saved(before), saved(after));
   assert.deepEqual(after.goalAllocation.balanceDates, before.goalAllocation.balanceDates);

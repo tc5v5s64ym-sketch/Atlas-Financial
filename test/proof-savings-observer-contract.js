@@ -5,16 +5,18 @@ const assert = require('node:assert/strict'), cp = require('node:child_process')
 const Module = require('node:module'), path = require('node:path'), crypto = require('node:crypto');
 const observed = require('./fixtures/savings-observer-contract-data');
 const { captureSourceBinding, verifySourceBinding } = require('./proof-source-binding');
-const root = path.resolve(__dirname, '..'), base = process.argv[2], cache = new Map();
+const root = path.resolve(__dirname, '..'), base = process.argv[2], windowBase = process.argv[3], cache = new Map();
 assert.match(base || '', /^[0-9a-f]{40}$/, 'explicit full pre-repair SHA is required');
-function baseline(file) {
-  if (cache.has(file)) return cache.get(file).exports;
-  const m = new Module(path.join(root, file), module); cache.set(file, m);
+assert.match(windowBase || '', /^[0-9a-f]{40}$/, 'explicit full window pre-repair SHA is required');
+function baseline(file, sha = base) {
+  const key = sha + ':' + file;
+  if (cache.has(key)) return cache.get(key).exports;
+  const m = new Module(path.join(root, file), module); cache.set(key, m);
   m.filename = path.join(root, file); m.paths = Module._nodeModulePaths(path.dirname(m.filename));
   const native = m.require.bind(m);
   m.require = id => id.startsWith('.') ? baseline(path.posix.normalize(path.posix.join(path.posix.dirname(file), id))
-    + (path.posix.extname(id) ? '' : '.js')) : native(id);
-  m._compile(cp.execFileSync('git', ['show', base + ':' + file], { cwd: root, encoding: 'utf8', maxBuffer: 10000000 }), m.filename);
+    + (path.posix.extname(id) ? '' : '.js'), sha) : native(id);
+  m._compile(cp.execFileSync('git', ['show', sha + ':' + file], { cwd: root, encoding: 'utf8', maxBuffer: 10000000 }), m.filename);
   return m.exports;
 }
 const files = Object.keys(require.cache).filter(file => file.startsWith(root + path.sep))
@@ -47,7 +49,46 @@ const cases = modes.map(mode => {
 });
 assert.deepEqual(cases.filter(row => !row.beforePass).map(row => row.mode),
   ['valid', 'valid-transfer', 'undated', 'null-amount', 'malformed-amount', 'undated-pending']);
+const WindowBefore = baseline('public/forecast.js', windowBase), Current = require('../public/forecast');
+const windowCases = [];
+function windowControl(mode, list = 'empty', bank = 'prior-year') {
+  const x = observed.windowObservation(mode, list, bank), inputHash = hash(x.data), packetHash = hash(x.packet);
+  const opts = { weeklyVariable: 40, debts: x.data.debts, ...x.data.liveOverlay, currentPeriodActuals: x.packet };
+  const before = WindowBefore.recommend(x.data.plan, x.data.meta.asOf, opts);
+  const after = Current.recommend(x.data.plan, x.data.meta.asOf, opts);
+  const ready = ['complete', 'unrelatedFlag', 'unrelated-card', 'unrelated-unmapped', 'card-with-savings-fee'].includes(mode);
+  const expected = ready ? [95, 24] : [null, null];
+  const beforeSaved = before.savingsFunding.rows.map(row => row.saved), afterSaved = after.savingsFunding.rows.map(row => row.saved);
+  assert.deepEqual(afterSaved, expected); assert.deepEqual(after.savingsFunding.rows.map(row => row.needed), [230, 24]);
+  assert.equal(after.savingsInventory.reportedStock.amount, 119); assert.equal(after.savingsFunding.period.proposal, null);
+  if (!ready) assert.ok(after.sim.events.every(row => !row.reserveFunding));
+  assert.equal(after.savingsFunding.moneyMovementPermission, 'not-granted');
+  assert.equal(hash(x.data), inputHash); assert.equal(hash(x.packet), packetHash);
+  assert.equal(JSON.stringify(x.report), x.originalReport);
+  let midnight = null;
+  if (['complete', 'unrelatedFlag'].includes(mode)) {
+    x.data.meta.asOf = x.data.plan.opening.asOf = '2026-10-06';
+    const next = Current.recommend(x.data.plan, x.data.meta.asOf, opts).savingsFunding;
+    assert.deepEqual(next.rows.map(row => row.saved), expected); assert.equal(next.goalAllocation.status, 'ready');
+    assert.equal(next.goalAllocation.checkedAsOf, after.savingsFunding.goalAllocation.checkedAsOf);
+    assert.deepEqual(next.goalAllocation.balanceDates, after.savingsFunding.goalAllocation.balanceDates);
+    midnight = { ready: true, saved: expected, checkedAsOf: next.goalAllocation.checkedAsOf, datesUnchanged: true };
+  }
+  windowCases.push({ mode, list, bank, inputSha256: inputHash, actualsSha256: packetHash, expected,
+    beforeSaved, afterSaved, beforePass: JSON.stringify(beforeSaved) === JSON.stringify(expected), afterPass: true,
+    reportedStock: 119, knownNeeded: [230, 24], check: after.savingsFunding.goalAllocation.checkedAsOf,
+    bankDates: after.savingsFunding.goalAllocation.balanceDates, returnedPacketsUnchanged: true,
+    ...(midnight ? { midnight } : {}) });
+}
+for (const list of ['empty', 'unrelated', 'zero']) for (const mode of observed.windowModes) windowControl(mode, list);
+for (const mode of observed.rawWindowModes) for (const bank of ['prior-year', 'valid-v2']) windowControl(mode, 'empty', bank);
+for (const mode of ['unrelated-card', 'unrelated-unmapped', 'card-with-savings-fee'])
+  windowControl(mode, 'empty', mode === 'card-with-savings-fee' ? 'valid-v2' : 'prior-year');
+const windowFailures = windowCases.filter(row => !row.beforePass).length;
+assert.equal(windowCases.length, 82); assert.equal(windowFailures, 74);
 verifySourceBinding(root, binding);
 console.log(JSON.stringify({ outcome: 'PASS', base, executionBinding: binding,
   before: { controls: 12, pass: 6, fail: 6, aggregate: 'FAIL' },
-  after: { controls: 12, pass: 12, fail: 0, aggregate: 'PASS' }, cases }, null, 2));
+  after: { controls: 12, pass: 12, fail: 0, aggregate: 'PASS' }, cases,
+  windowRepair: { base: windowBase, before: { controls: 82, pass: 8, fail: windowFailures, aggregate: 'FAIL' },
+    after: { controls: 82, pass: 82, fail: 0, aggregate: 'PASS' }, cases: windowCases } }, null, 2));

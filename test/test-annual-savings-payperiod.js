@@ -76,7 +76,7 @@ test('unfunded premium is still a real dated shortage, never erased or financed 
   const row = a.savingsFunding.backing.items.find(row => row.id === 'annual');
   assert.equal(row.needed, 200);
   assert.equal(row.saved, 59, '119 stock less earlier 60 club cost');
-  const e = F.expandEvents(i.plan, i.asOf, '2026-11-05').find(e => e.id === 'annual');
+  const e = F.expandEvents(i.plan, i.asOf, '2026-11-05', i.opts).find(e => e.id === 'annual');
   assert.equal(e.amount, -200);
   assert.equal(e.reserveFunding.amount, 59);
   const sim = F.simulate(i.plan, i.asOf, { ...i.opts, weeklyVariable: 0 });
@@ -84,6 +84,9 @@ test('unfunded premium is still a real dated shortage, never erased or financed 
     '80 operating less 141 unfunded premium; November receipt cannot fund October');
   assert.equal(a.savingsFunding.schedule.status, 'funding-gap');
   assert.equal(a.savingsFunding.actionPermission, 'not-granted');
+  const unconfirmed = F.expandEvents(i.plan, i.asOf, '2026-11-05').find(e => e.id === 'annual');
+  assert.equal(unconfirmed.reserveFunding, undefined, 'missing movement evidence cannot seed a Savings payment');
+  assert.equal(unconfirmed.amount, -200, 'the real obligation remains without backing evidence');
 });
 
 test('missing savings or unknown premium retains requirement and fails funding closed', () => {

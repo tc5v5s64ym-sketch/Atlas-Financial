@@ -110,6 +110,17 @@ if (process.env.ATLAS_SAVINGS_COHERENCE_PROOF === '1') {
     const ready = ['valid', 'valid-transfer', 'collapsed-valid', 'unrelated-undated'].includes(mode);
     compare('real-pipeline:' + mode, data, true, { saved: ready ? [60, 24, mode === 'valid-transfer' ? 45 : 35] : null });
   }
+  const windows = require('./fixtures/savings-observer-contract-data');
+  const windowCompare = (mode, list = 'empty', bank = 'prior-year') => {
+    const x = windows.windowObservation(mode, list, bank);
+    const ready = ['complete', 'unrelatedFlag', 'unrelated-card', 'unrelated-unmapped', 'card-with-savings-fee'].includes(mode);
+    x.data.liveOverlay.currentPeriodActuals = x.packet;
+    compare('window:' + mode + ':' + list + ':' + bank, x.data, true, { saved: ready ? [60, 24, 35] : null });
+  };
+  for (const list of ['empty', 'unrelated', 'zero']) for (const mode of windows.windowModes) windowCompare(mode, list);
+  for (const mode of windows.rawWindowModes) for (const bank of ['prior-year', 'valid-v2']) windowCompare(mode, 'empty', bank);
+  for (const mode of ['unrelated-card', 'unrelated-unmapped', 'card-with-savings-fee'])
+    windowCompare(mode, 'empty', mode === 'card-with-savings-fee' ? 'valid-v2' : 'prior-year');
 }
 const sourceFiles = ['public/forecast.js', 'public/savings-inventory.js', 'public/plan.js', 'public/budget-blend.js'];
 const fs = require('node:fs');

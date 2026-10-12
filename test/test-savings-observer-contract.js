@@ -93,3 +93,48 @@ test('failed overlay keeps original Savings reports but missing movement evidenc
   held(F.recommend(data.plan, data.meta.asOf, { weeklyVariable: 40, ...data.liveOverlay }));
   assert.equal(JSON.stringify(report), before);
 });
+
+const windowPublish = x => F.recommend(x.data.plan, x.data.meta.asOf,
+  { weeklyVariable: 40, debts: x.data.debts, ...x.data.liveOverlay, currentPeriodActuals: x.packet });
+for (const list of ['empty', 'unrelated', 'zero']) for (const mode of observed.windowModes)
+  test('observation/window ' + mode + ' is qualified before ' + list + ' iteration', () => {
+    const x = observed.windowObservation(mode, list), advice = windowPublish(x), s = advice.savingsFunding;
+    const ready = ['complete', 'unrelatedFlag'].includes(mode);
+    assert.equal(s.goalAllocation.status, ready ? 'ready' : 'unavailable');
+    assert.deepEqual(s.rows.map(row => row.saved), ready ? [95, 24] : [null, null]);
+    assert.deepEqual(s.rows.map(row => row.needed), [230, 24]);
+    assert.equal(advice.savingsInventory.reportedStock.amount, 119);
+    assert.equal(s.goalAllocation.checkedAsOf, '2026-10-05');
+    assert.ok(s.goalAllocation.balanceDates.every(row => row.date === '2025-10-05'));
+    assert.equal(s.period.proposal, null); assert.ok(advice.sim.events.every(row => !row.reserveFunding));
+    assert.equal(JSON.stringify(x.report), x.originalReport);
+    if (ready) {
+      x.data.meta.asOf = x.data.plan.opening.asOf = '2026-10-06';
+      const after = windowPublish(x).savingsFunding;
+      assert.equal(after.goalAllocation.status, 'ready');
+      assert.deepEqual(after.rows.map(row => row.saved), [95, 24]);
+      assert.equal(after.goalAllocation.checkedAsOf, '2026-10-05');
+      assert.deepEqual(after.goalAllocation.balanceDates, s.goalAllocation.balanceDates);
+    }
+  });
+for (const mode of observed.rawWindowModes) for (const bank of ['prior-year', 'valid-v2'])
+  test('actual observer ' + mode + ' holds ' + bank + ' funding without adjusting stock', () => {
+    const x = observed.windowObservation(mode, 'empty', bank), advice = windowPublish(x);
+    assert.strictEqual(x.packet, x.report.currentPeriodActuals, 'real producer packet is consumed unchanged');
+    held(advice); assert.deepEqual(advice.savingsFunding.rows.map(row => row.needed), [230, 24]);
+    assert.equal(JSON.stringify(x.report), x.originalReport);
+  });
+for (const mode of ['unrelated-card', 'unrelated-unmapped', 'card-with-savings-fee'])
+  test('actual row incompleteness remains account scoped: ' + mode, () => {
+    const x = observed.windowObservation(mode, 'empty', mode === 'card-with-savings-fee' ? 'valid-v2' : 'prior-year');
+    assert.equal(x.packet.transactionCoverage, 'incomplete');
+    assert.deepEqual(x.packet.savingsMovementUnconfirmed, []);
+    assert.ok(x.packet.cardCoverageUnconfirmed.length || x.packet.transactions.some(row => row.accountRole === 'unmapped'));
+    const advice = windowPublish(x), s = advice.savingsFunding;
+    assert.equal(s.goalAllocation.status, 'ready'); assert.deepEqual(s.rows.map(row => row.saved), [95, 24]);
+    assert.deepEqual(s.rows.map(row => row.needed), [230, 24]); assert.equal(s.period.proposal, null);
+    assert.equal(s.moneyMovementPermission, 'not-granted'); assert.equal(JSON.stringify(x.report), x.originalReport);
+    // Fetch truncation takes precedence over unrelated row uncertainty.
+    const truncated = { ...x, packet: { ...x.packet, transactionCoverage: 'truncated' } };
+    held(windowPublish(truncated));
+  });

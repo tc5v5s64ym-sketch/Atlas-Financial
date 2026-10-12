@@ -18974,19 +18974,36 @@
       || !['savings', 'savings-dont-touch', ...HOUSEHOLD_CHEQUING_IDS].includes(row.accountId)
       || !reasons.includes(row.reason)) || flags.some(row => accounts.has(row.accountId))
       || Object.hasOwn(packet, 'currency') && (typeof packet.currency !== 'string' || packet.currency.toUpperCase() !== 'CAD')) return unknown;
+    // The observer distinguishes fetch truncation from row-level uncertainty.
+    // Savings uncertainty remains account-scoped; unrelated card/unmapped rows
+    // do not invalidate a complete fetch. An unexplained incomplete packet does.
+    const coverage = packet.transactionCoverage;
+    const rowIncomplete = coverage === 'incomplete' && (
+      Array.isArray(packet.cardCoverageUnconfirmed) && packet.cardCoverageUnconfirmed.length > 0
+      || Array.isArray(packet.currencyUnconfirmed) && packet.currencyUnconfirmed.length > 0
+      || transactions.some(row => row?.accountRole === 'unmapped'));
+    const fetchComplete = (coverage === 'complete' || coverage?.complete === true)
+      && transactionCoverageStatus(packet) === 'complete' || rowIncomplete;
+    if (packet.schema !== 'atlas-current-period-actuals/v1' || !fetchComplete
+      || coverage?.status != null && coverage.status !== 'complete'
+      || pendingCoverageStatus(packet) !== 'complete'
+      || packet.pendingCoverage?.status != null && packet.pendingCoverage.status !== 'complete'
+      || !savingsDate(packet.observationAsOf) || packet.observationAsOf > day
+      || packet.observationAsOf !== reported.checkedAsOf
+      || !savingsDate(packet.coverageStart) || !savingsDate(packet.coverageThrough)
+      || packet.coverageStart > packet.coverageThrough || packet.coverageThrough !== packet.observationAsOf) {
+      return 'Savings observation or transaction-window provenance is unconfirmed. Saved allocation is withheld.';
+    }
     for (const tx of transactions) if (tx?.id != null) {
       const id = String(tx.id), rows = byId.get(id) || []; rows.push(tx); byId.set(id, rows);
     }
     const uncertain = 'Reported balance cutoffs cannot establish inclusion of the savings movement. Saved allocation is withheld.';
-    const complete = packet.transactionCoverage === 'complete' || packet.transactionCoverage?.complete === true;
     const validId = id => typeof id === 'string' && !!id.trim() && id === id.trim()
       || typeof id === 'number' && Number.isSafeInteger(id) && id >= 0;
     const unconfirmed = row => packet.currencyUnconfirmed != null && (!Array.isArray(packet.currencyUnconfirmed)
       || packet.currencyUnconfirmed.some(flag => !flag || !validId(flag.id) || String(flag.id) === String(row.id)));
-    const covered = row => complete && transactionCoverageStatus(packet) === 'complete'
-      && savingsDate(packet.observationAsOf) && packet.observationAsOf <= day
-      && savingsDate(packet.coverageStart) && savingsDate(packet.coverageThrough)
-      && row.date >= packet.coverageStart && row.date <= packet.coverageThrough && row.date <= packet.observationAsOf;
+    const covered = row => row.date >= packet.coverageStart && row.date <= packet.coverageThrough
+      && row.date <= packet.observationAsOf;
     const qualified = (row, accountId) => {
       const id = row?.id, cents = savingsCents(row?.amount, true), ids = [row?.atlasAccountId, row?.accountId, row?.account];
       const role = accounts.has(accountId) || !HOUSEHOLD_CHEQUING_IDS.includes(accountId) ? 'household-reserve' : 'household-cash';

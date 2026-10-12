@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 
 // These salary-only ledgers have no category IDs. Extend the immutable
-// pre-protocol expected report with exactly the two declared schema additions;
+// pre-protocol expected report with exactly the declared schema additions;
 // never delete actual fields or relax comparison of any historical value.
 module.exports = function minimumCategoryExpectation(report, input, historicalObserver) {
   assert.ok(!Object.hasOwn(report, 'cardMinimumCategoryEvidence'),
@@ -21,5 +21,10 @@ module.exports = function minimumCategoryExpectation(report, input, historicalOb
     asOf: historicalObserver.householdFinancialDate(input, report.observations),
     payments: [],
   };
+  assert.ok(!input.accountMap.mappings.some(row => ['savings', 'savings-dont-touch'].includes(row.canonical?.id)),
+    'these salary-only ledgers have no canonical Savings accounts');
+  assert.ok(!Object.hasOwn(expected.currentPeriodActuals, 'savingsMovementUnconfirmed'),
+    'historical actuals predate the account-scoped Savings provenance leaf');
+  expected.currentPeriodActuals.savingsMovementUnconfirmed = [];
   return expected;
 };
