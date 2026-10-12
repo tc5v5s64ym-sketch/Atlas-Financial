@@ -10075,6 +10075,32 @@
     return reconcileCardPurchases(transactions, opts).publication;
   }
 
+  // Private foundation adapter. Existing reconciler and sealed movement gates
+  // decide qualification; this adds no matching, allocation or money calculation.
+  // Caller resolves references privately. Only sanitized preview facts return.
+  function validateCardPaymentDecision(input) {
+    const unavailable = { status: 'unavailable' };
+    try {
+      const { plan, debts, asOf, packet, record, retainedRecords = [] } = input;
+      if (!record || record.confirmed !== true || !Array.isArray(packet?.transactions)
+        || !Array.isArray(retainedRecords)) return unavailable;
+      const rows = packet.transactions.filter(tx => tx?.coverageRef === record.creditRef);
+      if (rows.length !== 1) return unavailable;
+      const credit = rows[0], selected = JSON.parse(JSON.stringify(plan));
+      const policy = selected.cardPurchaseCoverage || { payments: [], refunds: [], reversals: [] };
+      // Retained explicit intent participates in the incumbent's complete claim
+      // bounds even when a leg/purchase is absent or materially changed today.
+      policy.payments = [...(policy.payments || []), ...retainedRecords, record]; selected.cardPurchaseCoverage = policy;
+      const window = spendingCycle(selected, credit.date);
+      const publication = cardPeriodMovements(selected, debts, asOf, window, { currentPeriodActuals: packet });
+      const card = publication?.cards.find(row => row.id === credit.atlasAccountId);
+      const matches = card?.posted.filter(row => row.id === String(credit.id));
+      const allocation = matches?.length === 1 && matches[0].paymentAllocation;
+      return allocation?.status === 'reconciled' && allocation.kind === 'payment'
+        ? { status: 'ready', allocation } : unavailable;
+    } catch { return unavailable; }
+  }
+
   // The private identity bridge never leaves Forecast. No merchant, amount,
   // date or page-side comparison is allowed to assign coverage to a purchase.
   function cardCoverageAnnotation(tx, coverage) {
@@ -21775,7 +21801,7 @@
     payoffDebts, payoffModel, hypotheticalExtraPayment, hypotheticalExtraPaymentComparison,
     paymentForMonths, startingCashAmount, postedHouseholdChequingCash, resolveFundingSources, resolveActions, EPSILON, STEP,
     householdBills, householdSubscriptions, billIsSubscription,
-    visaPaymentReconciliation, visaPaymentPublication };
+    visaPaymentReconciliation, visaPaymentPublication, validateCardPaymentDecision };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 
