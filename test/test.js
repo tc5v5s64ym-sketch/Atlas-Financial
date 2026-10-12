@@ -67,6 +67,8 @@ const suites = [
   ['Bills native unknown amounts and account-specific future cash', 'test-bills-period-end-native-requirements.js'],
   ['card minimum repair stock, proof and identity conservation', 'test-card-minimum-repair-conservation.js'],
   ['selected Seaspan card movement endpoints, coverage and conservation', 'test-card-period-movements.js'],
+  ['card-window allocation diagnostics through synthetic provider evidence', 'test-card-payment-diagnostics.js'],
+  ['card allocation diagnostic identity and parent dependency regressions', 'test-card-payment-diagnostic-dependencies.js'],
   ['card statement cycle replacement and sender-only minimum evidence', 'test-card-minimum-cycle-contract.js'],
   ['bounded strict card-minimum date validation', 'test-card-minimum-date-cache.js'],
   ['card minimum issuer confirmation across advancing live refreshes', 'test-card-minimum-issuer-lifecycle.js'],
