@@ -85,6 +85,7 @@ const suites = [
   ['one household actual/planned total and Other remaining display', 'test-budget-household-total-display.js'],
   ['print-only Balance After Deductions terms close to the cent or print Unavailable', 'test-bad-terms-print.js'],
   ['Budget river withholds historical BAD and preserves native selection', 'test-bad-timeline-river.js'],
+  ['Household tile whole-dollar face rounds each published token once', 'test-household-whole-dollars.js'],
   ['clean browser proof source binding and immutable publication', 'test-proof-source-binding.js'],
   ['Budget detail sheet preserves original nodes, nested focus and remount identity', 'test-budget-detail-sheet-controller.js'],
   ['positions reporting evaluates the disclosed owner-target date', 'test-positions-owner-target-date.js'],
