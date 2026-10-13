@@ -46,6 +46,7 @@ const financialSurface=page=>page.locator('#operating-surface-body').evaluate(el
  const copy=el.cloneNode(true),transfer=copy.querySelector('[data-budget-browse="e-transfers"]');
  const transfers=text(transfer);transfer?.remove();
  copy.querySelector('[data-budget-detail-sheet]')?.remove();
+ copy.querySelector('[data-blend-river-today]')?.remove(); // header/river navigation chrome, not a financial publication
  return{financialText:text(copy),transfers};
 });
 async function closed(page){
@@ -62,7 +63,21 @@ async function main(){
  const toolbar=page.locator('[data-atlas-toolbar]');
  assert.equal(await toolbar.count(),1,'the real page has one compact toolbar');
  const before=await figures(page);
- if(baseRoot){const base=await openPage(browser,width,theme,state,baseRoot);assert.deepEqual(await financialSurface(base.page),await financialSurface(page),'base/head labelled financial and transfer publications are identical');await base.page.close();}
+ if(baseRoot){const base=await openPage(browser,width,theme,state,baseRoot);const actual=await financialSurface(base.page),expected=await financialSurface(page);
+ if(JSON.stringify(actual)!==JSON.stringify(expected))fs.writeFileSync(path.join(out,'financial-parity-failure.json'),JSON.stringify({actual,expected},null,2));
+ assert.deepEqual(actual,expected,'base/head labelled financial and transfer publications are identical');await base.page.close();}
+ if(width===320&&theme==='light'&&state==='complete'){
+ const original=await financialSurface(page);
+ await page.evaluate(()=>{
+   const walker=document.createTreeWalker(document.querySelector('#operating-surface-body'),NodeFilter.SHOW_TEXT);
+   let node;while((node=walker.nextNode())&&(!node.data.includes('$')||node.parentElement.closest('[data-budget-detail-sheet]'))){}
+   if(!node)throw new Error('financial negative-control target missing');
+   window.reviewProofText={node,value:node.data};node.data=node.data.replace('$','$999 ');
+ });
+ assert.notDeepEqual(await financialSurface(page),original,'labelled publication proof catches a changed financial value');
+ await page.evaluate(()=>{window.reviewProofText.node.data=window.reviewProofText.value;delete window.reviewProofText;});
+ assert.deepEqual(await financialSurface(page),original);
+ }
  const g=await toolbar.evaluate(el=>({buttons:[...el.querySelectorAll('button')].map(b=>{const r=b.getBoundingClientRect();return{width:r.width,height:r.height,top:r.top,left:r.left,right:r.right,name:b.getAttribute('aria-label')};}),
  headerHeight:el.closest('.site-head').getBoundingClientRect().height,overflow:document.documentElement.scrollWidth>innerWidth}));
  assert.equal(g.buttons.length,3);assert.ok(g.buttons.every(b=>b.width>=44&&b.height>=44&&b.name),'named 44px targets');
