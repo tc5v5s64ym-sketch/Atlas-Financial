@@ -81,8 +81,9 @@ test('same-day deposit/report has unknown inclusion without intraday evidence', 
   const input = fx.transfer(fixture(), 10, 'DD404', 'savings', '2026-10-07'), p = publish(input);
   assert.equal(F.householdInternalMovements(input.plan, input.opts).length, 1);
   assert.equal(p.stock.reportedStock.amount, 129);
-  assert.equal(p.goalAllocation.status, 'unavailable');
-  assert.ok(p.backing.items.every(item => item.saved === null));
+  assert.equal(p.goalAllocation.status, 'ready', 'reported earmarking does not assert intraday deposit inclusion');
+  assert.deepEqual(p.backing.items.map(item => item.saved), [60, 24, 45]);
+  assert.equal(p.backing.status, 'unavailable', 'payment backing still requires inclusion evidence');
   assert.deepEqual(p.rows.map(row => row.needed), [230, 24]);
   assert.equal(p.period.proposal, null);
 });
@@ -194,7 +195,7 @@ test('dated Saved allocation does not earn current backing; unsafe evidence stay
     assert.equal(items(p).length, 3, mode + ': known requirement roster survives');
     assert.equal(p.period.proposal, null, mode + ': payment/top-up readiness is unchanged');
     assert.equal(p.timeline.status, 'unavailable', mode);
-    if (mode === 'stale') {
+    if (mode === 'stale' || mode === 'pending') {
       assert.equal(p.goalAllocation.status, 'ready');
       assert.deepEqual(items(p).map(r => r.saved), [60, 24, 35], 'latest dated 119 dollars allocate once');
     } else assert.ok(items(p).every(r => r.saved === null), mode);

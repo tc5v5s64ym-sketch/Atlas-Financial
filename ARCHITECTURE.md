@@ -810,6 +810,40 @@ assignments are not zero saved. Displayed funding alone is never subtracted to
 claim feasibility. Proposals never become actual saved. Legacy configurations
 without explicit purpose roles retain their existing withholding and ACR rules.
 
+**Present reported savings earmarks — owner directions 2026-10-07 and
+2026-10-12.** The two reserve locations are one combined reported pot. Dale's
+October 7 directions (`Sentinel_93de0961f58c8191ac98162a7b6ea3bc` and
+`Sentinel_167168c4776481918bb76489464de7a7`) allocate it to unpaid planned
+requirements in chronological order until exhausted; later increases grow the
+next item. His October 12 confirmations
+(`Sentinel_9c2c91baaecc8191864198c3239a701c` and
+`Sentinel_36ee0e8c765c8191abc9691e180abfec`) make the latest known Lunch Money
+reports the source between checks. A report becoming older does not erase its
+calculated earmarks. Forecast replaces that allocation when the reports change;
+it does not accumulate another contribution or subtract old transactions from
+an already reported balance.
+
+`recommend.savingsFunding.goalAllocation` is this dated present earmarking,
+not historical transfer reconciliation, verified payment backing, money moved,
+paid status or a promise of new Bills cash. Both distinct reserve identities,
+native CAD cents, valid source/check/balance dates and uniquely dated/priced
+requirements remain required. Missing or malformed account evidence remains
+unknown; negative stock and unresolved protected requirements retain their
+holds. A uniquely qualified native-CAD posted inter-reserve pair that is
+demonstrably present in both reported account snapshots retains a narrow
+account-cohort contradiction hold until a coherent report arrives. Amount,
+nearby date or merchant similarity never establishes that pair. Historical
+transaction-window/posting uncertainty, unpaired old savings
+debits, pending movement and unknown card payment purpose do not blank valid
+reported earmarks. They still qualify current payment backing, new operating
+contributions and the future funding walk through the incumbent independent
+gates. The source check and balance dates stay visible and separate. This
+supersedes earlier use of movement reconciliation as a present Saved gate;
+there is still one Forecast chronological allocator and no new policy/input
+store. Dale's October 12 transaction-view direction
+(`Sentinel_60223df7f05481918e81b31b1d972fe8`) does not require obtaining card
+statements again and does not establish an empty card-coverage opening.
+
 **Every concept has one owner.** A new piece of work either consumes an existing
 owner or explicitly replaces it; it never quietly becomes a second one.
 
