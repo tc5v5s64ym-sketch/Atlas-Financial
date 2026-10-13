@@ -1768,7 +1768,7 @@ function requiredCashMissingFrom(identities) {
   return REQUIRED_LIVE_CASH_IDS.filter(id => !have.has(id));
 }
 
-function datedRequiredCash(observations) {
+function datedRequiredCash(observations, savingsPools) {
   const dated = [];
   for (const id of REQUIRED_LIVE_CASH_IDS) {
     const obs = (observations || []).find(o =>
@@ -1779,7 +1779,21 @@ function datedRequiredCash(observations) {
       && (o.evidenceDate || o.observedAsOf)
       && o.evidenceValue != null
       && isFinite(Number(o.evidenceValue)));
-    if (obs) dated.push(id);
+    // Purpose reserves deliberately do not emit operating-cash observations.
+    // Consume their incumbent semantic balance evidence for this dated-source
+    // receipt only; it grants neither current backing nor spendable cash.
+    const reserves = (savingsPools && Array.isArray(savingsPools.accounts) ? savingsPools.accounts : [])
+      .filter(row => row && row.accountId === id);
+    const reserve = id === 'savings' && reserves.length === 1 ? reserves[0] : null;
+    const cents = reserve && typeof reserve.value === 'number' ? Math.round(reserve.value * 100) : null;
+    const date = reserve && reserve.evidenceDate;
+    const reserveDated = reserve && Number.isSafeInteger(cents) && reserve.value === cents / 100
+      && reserve.currency === 'CAD' && reserve.source === 'provider-observe:lunchmoney'
+      && typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      && Number.isFinite(Date.parse(date + 'T00:00:00Z'))
+      && new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) === date
+      && dateOnly(savingsPools.asOf) && date <= dateOnly(savingsPools.asOf);
+    if (obs || reserveDated) dated.push(id);
   }
   return dated;
 }
@@ -1862,7 +1876,7 @@ function observationReceipt(report, opts) {
   const missingExpected = expected.filter(id => mappedIds.indexOf(id) === -1);
   const unmappedCount = ((report && report.unmapped) || []).length;
   const cashMissing = requiredCashMissingFrom(mappedIds);
-  const cashDated = datedRequiredCash(report && report.observations);
+  const cashDated = datedRequiredCash(report && report.observations, report && report.savingsPools);
   const cashDatedMissing = REQUIRED_LIVE_CASH_IDS.filter(id => cashDated.indexOf(id) === -1);
   const cashBalanceMissing = cashDatedMissing.filter(id => cashMissing.indexOf(id) === -1);
   const postedComplete = postedWindowIsComplete(window);

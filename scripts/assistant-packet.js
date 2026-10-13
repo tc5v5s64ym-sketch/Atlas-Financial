@@ -481,6 +481,117 @@ function projectDebtsFromAdvice(data, asOf, advice) {
     }));
 }
 
+// Bounded source-check receipt (metadata.sourceCheck). Projects only the
+// serve lifecycle result the server captured for this read: whether the
+// provider check behind the packet qualified, when its evidence was
+// originally fetched, and when the serve completed. It never derives
+// qualification from generatedAt, transport success, or the freshness block,
+// and it never republishes raw overlay reason/error text — outcomes, sources
+// and reasons come from the closed sets below, and any malformed or
+// contradictory capture fails closed to the unavailable form.
+const SOURCE_CHECK_SOURCES = new Set(['provider', 'memory']);
+const SOURCE_CHECK_CACHE_NOTE =
+  'Source evidence is process-local warm reuse; it can disappear on restart, sleep or deploy.';
+
+function sourceCheckTimestamp(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})$/.exec(value);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second, fraction, zone] = match;
+  let offsetMs = 0;
+  if (zone !== 'Z') {
+    const sign = zone.startsWith('-') ? -1 : 1;
+    const digits = zone.slice(1).replace(':', '');
+    const offsetHour = Number(digits.slice(0, 2));
+    const offsetMinute = Number(digits.slice(2, 4));
+    if (offsetHour > 23 || offsetMinute > 59) return null;
+    offsetMs = sign * (offsetHour * 60 + offsetMinute) * 60000;
+  }
+  // Date.parse/Date.UTC normalize impossible calendar dates (2026-02-29
+  // becomes March 1), so validity is proven by a component round-trip:
+  // rebuild the instant and read every field back in the stated offset.
+  const utcMs = Date.UTC(
+    Number(year), Number(month) - 1, Number(day),
+    Number(hour), Number(minute), Number(second),
+    fraction ? Number((fraction + '000').slice(0, 3)) : 0) - offsetMs;
+  if (!Number.isFinite(utcMs)) return null;
+  const back = new Date(utcMs + offsetMs);
+  const coherent =
+    back.getUTCFullYear() === Number(year)
+    && back.getUTCMonth() === Number(month) - 1
+    && back.getUTCDate() === Number(day)
+    && back.getUTCHours() === Number(hour)
+    && back.getUTCMinutes() === Number(minute)
+    && back.getUTCSeconds() === Number(second);
+  return coherent ? value : null;
+}
+
+function projectSourceCheck(input) {
+  const raw = input && typeof input === 'object' ? input : null;
+  const attemptedAt = sourceCheckTimestamp(raw && raw.attemptedAt);
+  const unavailable = reason => ({
+    outcome: 'unavailable',
+    source: null,
+    qualified: false,
+    evidenceCheckedAt: null,
+    attemptedAt,
+    reason,
+    cacheNote: null,
+  });
+  // No captured check means no provider check was attempted by this serve
+  // (off/fixture/canonical modes): attemptedAt stays null and the packet's
+  // generatedAt remains the serve time. A captured check — coherent or not —
+  // keeps the serve-completion stamp, so an attempt is never confused with
+  // evidence and a non-attempt is never dressed up as one.
+  if (!raw || raw.check == null) {
+    return {
+      outcome: 'unavailable',
+      source: null,
+      qualified: false,
+      evidenceCheckedAt: null,
+      attemptedAt: null,
+      reason: 'no-provider-check',
+      cacheNote: null,
+    };
+  }
+  const check = raw.check;
+  if (typeof check !== 'object') return unavailable('invalid-source-check');
+  const source = SOURCE_CHECK_SOURCES.has(check.source) ? check.source : null;
+  const evidenceCheckedAt = sourceCheckTimestamp(check.checkedAt);
+  const cacheNote = source === 'memory' ? SOURCE_CHECK_CACHE_NOTE : null;
+  if (check.qualified === true) {
+    // Qualified requires a coherent capture: an allowed source AND the
+    // check's valid original evidence timestamp AND the strict flag.
+    if (source && evidenceCheckedAt) {
+      return {
+        outcome: 'qualified', source, qualified: true,
+        evidenceCheckedAt, attemptedAt, reason: null, cacheNote,
+      };
+    }
+    return unavailable('invalid-source-check');
+  }
+  if (check.qualified === false) {
+    // The negative outcomes also require a coherent capture: an unlisted
+    // source means no legitimate check ran, so fail closed like the
+    // qualified branch instead of claiming unqualified/failed.
+    if (!source) return unavailable('invalid-source-check');
+    if (evidenceCheckedAt) {
+      return {
+        outcome: 'unqualified', source, qualified: false,
+        evidenceCheckedAt, attemptedAt, reason: 'reconciliation-not-ready', cacheNote,
+      };
+    }
+    if (check.checkedAt === null) {
+      return {
+        outcome: 'failed', source, qualified: false,
+        evidenceCheckedAt: null, attemptedAt, reason: 'provider-check-failed', cacheNote,
+      };
+    }
+    return unavailable('invalid-source-check');
+  }
+  return unavailable('invalid-source-check');
+}
+
 function metadataBlock(data, opts, advice) {
   const salaryMatcherDiagnostic = SalaryDiagnostic.project(
     data?.liveOverlay?.observationReceipt?.salaryMatcherDiagnostic);
@@ -506,6 +617,7 @@ function metadataBlock(data, opts, advice) {
     effectiveAsOf: effectiveAsOf(data),
     version: versionIdentifier(opts.env),
     ...(salaryMatcherDiagnostic ? { observationReceipt: { salaryMatcherDiagnostic } } : {}),
+    sourceCheck: projectSourceCheck(opts.sourceCheck),
     freshness: {
       liveOverlayApplied: applied,
       liveOverlayReason: overlay && overlay.reason ? overlay.reason : null,
@@ -1006,6 +1118,7 @@ function buildPacket(opts) {
     metadata: metadataBlock(data, {
       now: opts.now || new Date().toISOString(),
       env: opts.env || process.env,
+      sourceCheck: opts.sourceCheck,
     }, advice),
     current: currentBlock(data, asOf, advice, used),
     forecast: forecastBlock(data, asOf, advice, debtProj, periods),

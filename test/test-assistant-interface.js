@@ -1851,6 +1851,257 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     }
   }
 
+  console.log('\n=== source-check receipt: projection is bounded, closed and fail-closed ===');
+  {
+    const T_EVIDENCE = '2026-08-24T10:00:00.000Z';
+    const T_ATTEMPT = '2026-08-24T12:00:00.000Z';
+    const CACHE_NOTE = 'Source evidence is process-local warm reuse; it can disappear on restart, sleep or deploy.';
+    const receiptOf = (sourceCheck, now) => Assistant.buildPacket({
+      data: syntheticObligationData({}),
+      periods: null,
+      questionsMarkdown: '',
+      now: now || T_ATTEMPT,
+      env: {},
+      ...(sourceCheck === undefined ? {} : { sourceCheck }),
+    }).metadata.sourceCheck;
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+    ok(same(receiptOf(undefined), {
+      outcome: 'unavailable', source: null, qualified: false,
+      evidenceCheckedAt: null, attemptedAt: null, reason: 'no-provider-check', cacheNote: null,
+    }), 'no captured check projects the explicit unavailable form');
+    ok(same(receiptOf({ check: null, attemptedAt: T_ATTEMPT }), {
+      outcome: 'unavailable', source: null, qualified: false,
+      evidenceCheckedAt: null, attemptedAt: null, reason: 'no-provider-check', cacheNote: null,
+    }), 'off/fixture serve (no check fired) is unavailable with a null attempt time, never a success form');
+    ok(same(receiptOf({ check: { source: 'provider', qualified: true, checkedAt: T_EVIDENCE }, attemptedAt: T_ATTEMPT }), {
+      outcome: 'qualified', source: 'provider', qualified: true,
+      evidenceCheckedAt: T_EVIDENCE, attemptedAt: T_ATTEMPT, reason: null, cacheNote: null,
+    }), 'coherent qualified provider check projects qualified with its original evidence time');
+    const memory = receiptOf({ check: { source: 'memory', qualified: true, checkedAt: T_EVIDENCE }, attemptedAt: T_ATTEMPT });
+    ok(memory && memory.outcome === 'qualified' && memory.source === 'memory'
+      && memory.evidenceCheckedAt === T_EVIDENCE && memory.attemptedAt === T_ATTEMPT
+      && memory.cacheNote === CACHE_NOTE,
+      'memory replay keeps the original evidence time, a separate attempt time, and the fixed cache disclosure');
+    ok(same(receiptOf({ check: { source: 'provider', qualified: false, checkedAt: T_EVIDENCE }, attemptedAt: T_ATTEMPT }), {
+      outcome: 'unqualified', source: 'provider', qualified: false,
+      evidenceCheckedAt: T_EVIDENCE, attemptedAt: T_ATTEMPT, reason: 'reconciliation-not-ready', cacheNote: null,
+    }), 'a check that ran but did not qualify is unqualified, with its evidence time');
+    ok(same(receiptOf({ check: { source: 'provider', qualified: false, checkedAt: null }, attemptedAt: T_ATTEMPT }), {
+      outcome: 'failed', source: 'provider', qualified: false,
+      evidenceCheckedAt: null, attemptedAt: T_ATTEMPT, reason: 'provider-check-failed', cacheNote: null,
+    }), 'a captured failure with no evidence time is failed, distinct from never-checked');
+
+    // Validation amendment: nothing malformed or contradictory may qualify.
+    const invalid = {
+      outcome: 'unavailable', source: null, qualified: false,
+      evidenceCheckedAt: null, attemptedAt: T_ATTEMPT, reason: 'invalid-source-check', cacheNote: null,
+    };
+    for (const [label, check] of [
+      ['qualified without evidence time', { source: 'provider', qualified: true, checkedAt: null }],
+      ['qualified from an unlisted source', { source: 'cache', qualified: true, checkedAt: T_EVIDENCE }],
+      ['qualified without a source', { source: null, qualified: true, checkedAt: T_EVIDENCE }],
+      ['qualified with a non-timestamp evidence time', { source: 'provider', qualified: true, checkedAt: 'yesterday' }],
+      ['qualified with an impossible evidence date', { source: 'provider', qualified: true, checkedAt: '2026-13-40T99:99:99.000Z' }],
+      ['string qualified flag', { source: 'provider', qualified: 'true', checkedAt: T_EVIDENCE }],
+      ['numeric qualified flag', { source: 'provider', qualified: 1, checkedAt: T_EVIDENCE }],
+      ['unqualified with a malformed evidence time', { source: 'provider', qualified: false, checkedAt: 'garbage' }],
+      ['non-object check', 'provider'],
+      // Codex advisory on f511fc46: Date.parse normalizes impossible
+      // calendar dates, and a negative outcome from an unlisted source is
+      // a malformed capture too.
+      ['qualified with a non-leap-year Feb 29 evidence time', { source: 'provider', qualified: true, checkedAt: '2026-02-29T10:00:00.000Z' }],
+      ['qualified with an April 31 evidence time', { source: 'provider', qualified: true, checkedAt: '2026-04-31T10:00:00.000Z' }],
+      ['unqualified from an unlisted source', { source: 'cache', qualified: false, checkedAt: T_EVIDENCE }],
+      ['failed-shaped capture from an unlisted source', { source: 'cache', qualified: false, checkedAt: null }],
+    ]) {
+      ok(same(receiptOf({ check, attemptedAt: T_ATTEMPT }), invalid),
+        `malformed capture fails closed: ${label}`);
+    }
+    const raw = receiptOf({
+      check: { source: 'provider', qualified: false, checkedAt: T_EVIDENCE, reason: 'RAW-PROVIDER-ERROR-TEXT', note: 'SYNTHETIC-RAW-NOTE' },
+      attemptedAt: T_ATTEMPT,
+    });
+    ok(raw && raw.reason === 'reconciliation-not-ready'
+      && !JSON.stringify(raw).includes('RAW-PROVIDER-ERROR-TEXT')
+      && !JSON.stringify(raw).includes('SYNTHETIC-RAW-NOTE'),
+      'receipt never forwards raw overlay/error text or arbitrary check fields');
+    const outcomeA = receiptOf({ check: { source: 'provider', qualified: false, checkedAt: T_EVIDENCE }, attemptedAt: T_ATTEMPT },
+      '2026-08-24T12:00:00.000Z');
+    const outcomeB = receiptOf({ check: { source: 'provider', qualified: false, checkedAt: T_EVIDENCE }, attemptedAt: T_ATTEMPT },
+      '2026-09-01T00:00:00.000Z');
+    ok(outcomeA && outcomeB && outcomeA.outcome === 'unqualified' && outcomeB.outcome === 'unqualified',
+      'receipt outcome keys off the captured check, never off generatedAt');
+
+    // The receipt is the only change: the rest of the packet is untouched.
+    const plain = Assistant.buildPacket({
+      data: syntheticObligationData({}), periods: null, questionsMarkdown: '', now: T_ATTEMPT, env: {},
+    });
+    const withReceipt = Assistant.buildPacket({
+      data: syntheticObligationData({}), periods: null, questionsMarkdown: '', now: T_ATTEMPT, env: {},
+      sourceCheck: { check: { source: 'provider', qualified: true, checkedAt: T_EVIDENCE }, attemptedAt: T_ATTEMPT },
+    });
+    const strip = packet => { const c = clone(packet); delete c.metadata.sourceCheck; return JSON.stringify(c); };
+    ok(strip(plain) === strip(withReceipt),
+      'adding the receipt changes nothing else in the packet');
+    ok(JSON.stringify(plain.uncertainty) === JSON.stringify(withReceipt.uncertainty),
+      'uncertainty block is byte-identical with and without a receipt');
+    ok(Assistant.looksSanitized(withReceipt) && !forbiddenBlob(withReceipt),
+      'packet with a receipt still passes the sanitization gate');
+    // Control for the calendar round-trip: a genuine leap day stays valid.
+    ok(same(receiptOf({ check: { source: 'provider', qualified: true, checkedAt: '2024-02-29T10:00:00.000Z' }, attemptedAt: T_ATTEMPT }),
+      { outcome: 'qualified', source: 'provider', qualified: true,
+        evidenceCheckedAt: '2024-02-29T10:00:00.000Z', attemptedAt: T_ATTEMPT,
+        reason: null, cacheNote: null }),
+      'a genuine leap-day evidence time still projects qualified');
+  }
+
+  console.log('\n=== source-check receipt over HTTP: unavailable and failed are distinct ===');
+  await withAtlas({ ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN }, async ({ base }) => {
+    const res = await fetch(`${base}/assistant/current`, {
+      headers: { authorization: `Bearer ${ASSISTANT_TOKEN}` },
+    });
+    const packet = await res.json();
+    const receipt = packet.metadata && packet.metadata.sourceCheck;
+    ok(res.status === 200 && receipt && receipt.outcome === 'unavailable'
+      && receipt.reason === 'no-provider-check' && receipt.source === null
+      && receipt.evidenceCheckedAt === null && receipt.attemptedAt === null,
+      'canonical-mode packet carries the explicit unavailable receipt with a null attempt time, not a success form');
+    const authed = await login(base);
+    const talkRes = await fetch(`${base}/talk/context`, { headers: { cookie: authed.cookie } });
+    const talkPacket = await talkRes.json();
+    ok(talkRes.status === 200 && talkPacket.metadata.sourceCheck
+      && talkPacket.metadata.sourceCheck.outcome === 'unavailable',
+      'talk context packet carries the same receipt block');
+    const anon = await fetch(`${base}/assistant/current`, { redirect: 'manual' });
+    ok(anon.status === 401, 'receipt is only served behind the existing Bearer gate');
+  });
+  await withAtlas({
+    ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN,
+    ATLAS_LIVE_OVERLAY: 'live',
+  }, async ({ base }) => {
+    const res = await fetch(`${base}/assistant/current`, {
+      headers: { authorization: `Bearer ${ASSISTANT_TOKEN}` },
+    });
+    const packet = await res.json();
+    const receipt = packet.metadata && packet.metadata.sourceCheck;
+    ok(res.status === 200 && receipt && receipt.outcome === 'failed'
+      && receipt.reason === 'provider-check-failed' && receipt.evidenceCheckedAt === null
+      && typeof receipt.attemptedAt === 'string',
+      'a failed provider check is a failed receipt with an attempt time and no evidence time');
+  });
+  await withAtlas({}, async ({ base }) => {
+    const res = await fetch(`${base}/assistant/current`, {
+      headers: { authorization: `Bearer ${ASSISTANT_TOKEN}` },
+    });
+    const body = await res.json().catch(() => null);
+    ok(res.status === 503 && body && !body.metadata,
+      'unconfigured assistant token still refuses with 503 and no packet');
+  });
+
+  console.log('\n=== source-check receipt reaches the MCP consumer unchanged ===');
+  await withOAuthAtlas(async ({ resource, oauth }) => {
+    const token = await oauth.sign(resource);
+    await withOfficialMcp(resource, token, async (client) => {
+      const called = await client.callTool({ name: AssistantMcp.TOOL_NAME, arguments: {} });
+      const receipt = called.structuredContent && called.structuredContent.metadata.sourceCheck;
+      ok(called.isError === false && receipt && receipt.outcome === 'unavailable'
+        && receipt.reason === 'no-provider-check' && receipt.qualified === false,
+        'MCP get_atlas_current packet carries the same receipt projector output');
+    });
+  });
+
+  console.log('\n=== source-check receipt reaches the Talk ask packet (live fixture) ===');
+  {
+    const ObsHarness = require('./test-server-observation-memory.js');
+    const mock = await ObsHarness.provider();
+    const captured = [];
+    const geminiServer = http.createServer((req, res) => {
+      let rawBody = '';
+      req.on('data', chunk => { rawBody += chunk; });
+      req.on('end', () => {
+        captured.push(rawBody);
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({
+          candidates: [{
+            content: {
+              parts: [{ text: JSON.stringify({
+                status: 'explained',
+                claims: [{ path: 'authority.planner', equals: 'Forecast' }],
+              }) }],
+              role: 'model',
+            },
+            finishReason: 'STOP',
+          }],
+        }));
+      });
+    });
+    await new Promise(resolve => geminiServer.listen(0, '127.0.0.1', resolve));
+    const geminiUrl = `http://127.0.0.1:${geminiServer.address().port}`;
+    const port = await freePort();
+    const child = spawn(process.execPath, [
+      '--require', path.join(ROOT, 'test', 'test-server-observation-memory.js'),
+      path.join(ROOT, 'server.js'),
+    ], {
+      cwd: ROOT,
+      env: {
+        ...ObsHarness.environment(mock.base),
+        PORT: String(port),
+        SITE_PASSWORD: ObsHarness.PASS,
+        SESSION_SECRET: SECRET,
+        ATLAS_ASSISTANT_TOKEN: ObsHarness.TOKEN,
+        ATLAS_SYNTHETIC_OBSERVATION_PRELOAD: '1',
+        ATLAS_TALK_GEMINI_API_KEY: 'synthetic-talk-gemini-key-32chars!!',
+        ATLAS_TALK_GEMINI_BASE_URL: geminiUrl,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child.stderr.on('data', () => {});
+    try {
+      await new Promise((resolve, reject) => {
+        let out = '';
+        const timer = setTimeout(() => reject(new Error('talk fixture server start timeout')), 20000);
+        child.stdout.on('data', chunk => {
+          out += chunk;
+          if (/listening/.test(out)) { clearTimeout(timer); resolve(); }
+        });
+        child.on('exit', code => { clearTimeout(timer); reject(new Error(`talk fixture server exited ${code}`)); });
+      });
+      const base = `http://127.0.0.1:${port}`;
+      const loginRes = await fetch(`${base}/login`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: `password=${encodeURIComponent(ObsHarness.PASS)}`,
+      });
+      const cookie = (loginRes.headers.get('set-cookie') || '').split(';')[0];
+      ok(/^hfd_session=/.test(cookie), 'talk fixture login issues a session');
+      const ask = await fetch(`${base}/talk/ask`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({ question: 'What should I know today?' }),
+      });
+      ok(ask.status === 200, 'talk ask succeeds against the live fixture', `status ${ask.status}`);
+      const match = /sourceCheck\\":(\{[^{}]*\})/.exec(captured.join('\n'));
+      const talkReceipt = match ? JSON.parse(match[1].replace(/\\"/g, '"')) : null;
+      ok(talkReceipt && talkReceipt.outcome === 'qualified' && talkReceipt.source === 'provider'
+        && talkReceipt.qualified === true && talkReceipt.evidenceCheckedAt === ObsHarness.CLOCK,
+        'the packet Gemini receives carries the qualified provider receipt with the original evidence time');
+      const current = await fetch(`${base}/assistant/current`, {
+        headers: { authorization: `Bearer ${ObsHarness.TOKEN}` },
+      });
+      const currentPacket = await current.json();
+      ok(currentPacket.metadata.sourceCheck
+        && currentPacket.metadata.sourceCheck.outcome === 'qualified'
+        && currentPacket.metadata.sourceCheck.evidenceCheckedAt === ObsHarness.CLOCK,
+        'assistant/current on the same server agrees with the Talk packet receipt');
+    } finally {
+      child.kill('SIGTERM');
+      await new Promise(done => geminiServer.close(() => done()));
+      await mock.close();
+    }
+  }
+
   filesUnchanged('end of suite');
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
   process.exit(failures === 0 ? 0 : 1);

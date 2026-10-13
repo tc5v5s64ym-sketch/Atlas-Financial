@@ -103,4 +103,36 @@ for (const mode of ['null-object-update', 'null-legacy-fetch', 'null-v2-sync', '
   eq(JSON.stringify(original), before, mode + ': Forecast and renderer leave source unchanged');
 }
 dateBoundaryChecks();
+// Source qualification consumes the incumbent reserve observation without
+// treating purpose savings as spendable cash or granting funding permission.
+for (const mode of ['valid-v2', 'stale-both', 'pending-movement']) {
+  const input = fx.input(mode), before = JSON.stringify(input);
+  const report = O.observe({ provider: 'lunchmoney', ...input });
+  eq(report.observationReceipt.readyForReconciliation, true,
+    mode + ': mapped, dated purpose reserve satisfies the dated-balance receipt');
+  eq(report.observationReceipt.balanceCoverage.requiredCashMissingDatedBalance, [],
+    mode + ': reserve evidence is not mistaken for a missing cash balance');
+  eq(report.observations.some(row => row.canonical?.id === 'savings'), false,
+    mode + ': purpose reserve remains outside the operating-cash observation list');
+  eq(report.spendableCash, 200, mode + ': only the invented 200 + 0 operating cash is spendable');
+  eq(JSON.stringify(input), before, mode + ': source qualification leaves all inputs unchanged');
+}
+for (const mutate of [
+  report => { report.savingsPools.accounts[0].value = null; },
+  report => { report.savingsPools.accounts[0].value = '95'; },
+  report => { report.savingsPools.accounts[0].value = 95.001; },
+  report => { report.savingsPools.accounts[0].evidenceDate = null; },
+  report => { report.savingsPools.accounts[0].evidenceDate = '2026-02-30'; },
+  report => { report.savingsPools.accounts[0].evidenceDate = '2026-10-06'; },
+  report => { report.savingsPools.accounts[0].currency = 'USD'; },
+  report => { report.savingsPools.accounts[0].source = 'unknown'; },
+  report => { report.savingsPools.accounts.push({ ...report.savingsPools.accounts[0] }); },
+  report => { report.savingsPools = null; },
+]) {
+  const input = fx.input(), report = O.observe({ provider: 'lunchmoney', ...input });
+  mutate(report);
+  const receipt = O.observationReceipt(report, { accountMap: input.accountMap });
+  eq(receipt.readyForReconciliation, false, 'invalid or ambiguous reserve evidence keeps qualification withheld');
+  eq(receipt.failClosedReasons, ['required-cash-balance-unproven'], 'the precise balance gap remains visible');
+}
 console.log('PASS v2 observer -> Forecast -> active Budget stock: ' + checks + ' independent checks; semantic/legacy dates, unknown cash, pending, stale/future/malformed and identity/currency holds');

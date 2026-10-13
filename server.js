@@ -207,11 +207,21 @@ function assistantHttpGuard(req, res) {
   return false;
 }
 async function buildCurrentAssistantPacket(req, res) {
-  const served = await servedAtlasData(req, res);
+  // Capture the serve lifecycle result so the packet can publish its bounded
+  // source-check receipt (metadata.sourceCheck). attemptedAt is the serve
+  // COMPLETION time — when this read's serve settled — never the provider
+  // fetch start; the check's own checkedAt carries the evidence time. In
+  // off/fixture modes no check ever fires and the receipt projects its
+  // explicit unavailable form.
+  let capturedCheck = null;
+  const served = await servedAtlasData(req, res, {
+    onCheck(check) { capturedCheck = check; },
+  });
   return Assistant.buildPacket({
     data: served,
     env: process.env,
     now: new Date().toISOString(),
+    sourceCheck: { check: capturedCheck, attemptedAt: new Date().toISOString() },
   });
 }
 // Secure is mandatory in production (Render is always HTTPS) but must be
@@ -516,11 +526,17 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase, req, res) {
   phase('understanding');
   phase('checking-atlas-context');
   const priorTurns = talkSessions.turns(sessionKey);
-  const served = await servedAtlasData(req, res);
+  // Identical capture to buildCurrentAssistantPacket: every packet consumer
+  // shares the one receipt projector, Talk included.
+  let capturedCheck = null;
+  const served = await servedAtlasData(req, res, {
+    onCheck(check) { capturedCheck = check; },
+  });
   const packet = Assistant.buildPacket({
     data: served,
     env: process.env,
     now: new Date().toISOString(),
+    sourceCheck: { check: capturedCheck, attemptedAt: new Date().toISOString() },
   });
   const atlas = {
     plan: served && served.plan,
