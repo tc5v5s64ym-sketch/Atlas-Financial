@@ -83,7 +83,10 @@ function rendered(x, advice, rowSaved = [95, 24], pot = 119) {
   return { budget, inventory };
 }
 test('latest reported 95 + 24 funds dated costs 60, 24, 170 as 60 + 24 + 35 despite an old unpaired debit', () => {
-  const x = input(), advice = publish(x), s = reported(advice);
+  const x = input(), advice = publish(x);
+  assert.equal(advice.savingsInventory.reportedStock.status, 'ready');
+  assert.equal(advice.savingsInventory.reportedStock.amount, 119, 'source reports are known even before Saved publication');
+  const s = reported(advice);
   assert.equal(6000 + 2400 + 3500, 9500 + 2400, 'independent cents conservation; old debit is not subtracted again');
   assert.deepEqual(s.rows.map(row => row.saved), [95, 24]); futureHeld(advice);
   assert.equal(s.goalAllocation.checkedAsOf, '2026-10-07');
@@ -185,6 +188,17 @@ test('settled exclusion does not subtract another payment from the reported pot 
     assert.equal(s.rows.find(row => row.key === 'group:club').needed, 170);
     assert.ok(!s.backing.items.some(row => row.id === 'near')); futureHeld(advice);
   }
+});
+test('a 2027 protected goal stays chronological and cannot become a current-period contribution', () => {
+  const x = input(); x.plan.commitments.push({ id: 'next-year', label: 'Invented next-year cost',
+    date: '2027-01-04', amount: 30, confidence: 'confirmed', adjustable: false, sinkingFund: true });
+  const advice = publish(x), s = advice.savingsFunding;
+  assert.deepEqual(s.backing.items.map(row => [row.id,row.saved]),
+    [['near',60],['home-cost',24],['far',35],['next-year',0]]);
+  assert.ok(!(s.period.allocations || []).some(row => row.requirementId === 'next-year'));
+  assert.ok(!(s.period.cycleAllocations || []).some(row => row.requirementId === 'next-year'));
+  assert.equal(s.rows.find(row => row.key === 'commitment:next-year').saved, 0, 'known exhausted-pot zero is distinct from unavailable');
+  futureHeld(advice); rendered(x, advice, [95,24,0]);
 });
 for (const [name, mutate] of Object.entries({
   missing: p => p.savingsPoolObservation.accounts.pop(),
