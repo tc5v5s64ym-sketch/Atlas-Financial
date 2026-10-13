@@ -86,13 +86,18 @@ async function main(){
  if(state==='complete'){
  const tb=page.locator('[data-blend-theme]');await tb.click();assert.equal(await page.locator('html').getAttribute('data-theme'),theme==='light'?'dark':'light');
  assert.equal(await figures(page),before);await tb.click();assert.equal(await page.locator('html').getAttribute('data-theme'),theme);
- await page.locator('[data-manual-refresh]').click();await page.locator('[data-budget-surface]').waitFor();assert.equal(refreshes(),1);
+ await Promise.all([page.waitForEvent('load'),page.locator('[data-manual-refresh]').click()]);
+ await page.locator('[data-budget-surface]').waitFor();
+ await page.waitForFunction(()=>!document.querySelector('.site-head').inert);
+ assert.equal(refreshes(),1);
  }
  if(width===390&&theme==='light'&&state==='complete'){
  const river=page.locator('.g-river-wrap .river'),selected=await page.locator('[data-pay-period-swipe]').getAttribute('data-selected-pay-period');
  await river.focus();await page.keyboard.press('ArrowRight');await page.waitForFunction(id=>document.querySelector('[data-pay-period-swipe]')?.getAttribute('data-selected-pay-period')!==id,selected);
+ await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  await bell.click();assert.equal(await dialog.locator('[data-review-item]').count(),0);await page.keyboard.press('Escape');
  await river.focus();await page.keyboard.press('ArrowLeft');await page.waitForFunction(id=>document.querySelector('[data-pay-period-swipe]')?.getAttribute('data-selected-pay-period')===id,selected);
+ await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  await bell.click();assert.equal(await dialog.locator('[data-review-item]').count(),1);await page.keyboard.press('Escape');
  }
  records.push({browser:name,version:browser.version(),width,theme,state,geometry:g,count});await page.close();
