@@ -2,8 +2,8 @@
   "outcome": "PASS",
   "browser": "154.0.4258.62",
   "sourceBinding": {
-    "sourceCommit": "43b047b6a3731704b3ba1e31b6f0064f326572e0",
-    "sourceTree": "dc8dd8e50398fb6d7ad221717ecc49c35360f35c",
+    "sourceCommit": "c940030c336d09665de21a7ae726a80512eda9fe",
+    "sourceTree": "d4653f06611aa0dcb51844741b0258428537e556",
     "baseCommit": "e29adebc5811ccbe108f4213441dd0fdb9de386b",
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -164,9 +164,9 @@
         "bytes": 4420
       },
       "public/forecast.js": {
-        "gitBlob": "56dc7fb8441730c9c96a441e66ee09f13a969d7b",
-        "sha256": "8fa2010f048349e606e922b88c5b97a9866ece3dbc841f5ab55f8d8d0268d904",
-        "bytes": 1111102
+        "gitBlob": "6ead288b548b9367a6df74f03b28222df25986b6",
+        "sha256": "e27ced856230344a452958317d2fb5af34c40bd6315d061d3fedbe1e0637a3f1",
+        "bytes": 1112134
       },
       "public/household-view.css": {
         "gitBlob": "0322e266247f9595f9ed9289585d9b20a7118378",
@@ -249,9 +249,9 @@
         "bytes": 1456
       },
       "public/savings-inventory.js": {
-        "gitBlob": "012906ee209d5f8dbe78f65cc627b03178596321",
-        "sha256": "0316adc1d5671cf0f64c87bcd971a3fc056c75b9af517b02f0be519d0d107dd5",
-        "bytes": 13779
+        "gitBlob": "a710399467361e6a36d979a612c17ac9feaa9df5",
+        "sha256": "dc2cd49b36b1c299eebc7282a0711f554793cdd586617c445ef496fb79e13444",
+        "bytes": 14099
       },
       "public/styles.css": {
         "gitBlob": "7a26931b8d5742160146bc14c066dc108ad4aa23",
@@ -427,11 +427,11 @@
     "public/transaction-review.css": "d9ea9e8b896400cf7284d7f48739bde6ae968c3fbfce5f7e5b929f9dda42431a",
     "public/app.js": "87cbf944b3b2b95e86b9d98e3821937381ae6e7dabb6e0e2483ba42422c76888",
     "public/forecast-card-period.js": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20",
-    "public/forecast.js": "8fa2010f048349e606e922b88c5b97a9866ece3dbc841f5ab55f8d8d0268d904",
+    "public/forecast.js": "e27ced856230344a452958317d2fb5af34c40bd6315d061d3fedbe1e0637a3f1",
     "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
     "public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
     "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
-    "public/savings-inventory.js": "0316adc1d5671cf0f64c87bcd971a3fc056c75b9af517b02f0be519d0d107dd5",
+    "public/savings-inventory.js": "dc2cd49b36b1c299eebc7282a0711f554793cdd586617c445ef496fb79e13444",
     "public/budget-surface.js": "af32d9e29d1487496365a1025a0bfb65d2dc062f2534392b8095675857f9552b",
     "public/budget-card-movements.js": "d1d9f97c636779ce45658c6ffb7b05b694cb8fa9c52bbed32306bd2542219505",
     "public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
