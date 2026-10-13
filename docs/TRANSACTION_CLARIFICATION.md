@@ -16,6 +16,13 @@ Refresh button/handler, and a review opener. The existing Today control moves
 beside the period navigator. The same native Budget detail controller owns
 the review sheet, focus, Escape and dismissal.
 
+Responsive and OS-theme rerenders restore this header-owned source/opener through
+two fixed native-controller presentation identities. Unchanged projected markup
+retains its existing read-only row nodes and transient navigation; changed facts
+or periods rebuild them. The native controller restores a still-enabled review
+control's focus, with its close control as the fallback, and dismissal returns
+to the toolbar opener. This is not transaction identity or decision persistence.
+
 The review displays only Forecast.currentPeriodAction.outgoingETransfers facts.
 Date, amount, account and posting state are explicitly projected. No descriptor,
 payee, note, provider ID or coverage reference is placed in the DOM. Current

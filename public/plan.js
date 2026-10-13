@@ -5460,7 +5460,13 @@ function budgetDetailSheetController(mount) {
   const parents = [];
   let held = null;
   let pendingRestore = null;
+  // Fixed presentation identities only. The review source and its opener
+  // live in the header while closed; no transaction reference is resolved here.
+  const headerIdentities = ['[data-transaction-review]', '[data-transaction-review-open]'];
+  const reviewFocusSelectors = ['[data-review-previous]', '[data-review-next]', '[data-review-return]', '[data-budget-detail-close]'];
   const identity = (node, source) => {
+    if (node.hasAttribute(source ? 'data-transaction-review' : 'data-transaction-review-open'))
+      return headerIdentities[source ? 0 : 1];
     if (!source && node.matches('.blend-income')) return '.blend-income';
     for (const key of source ? [] : ['data-blend-cat', 'data-blend-bill']) {
       if (node.hasAttribute(key)) return '[' + key + '="' + CSS.escape(node.getAttribute(key)) + '"]';
@@ -5631,6 +5637,7 @@ function budgetDetailSheetController(mount) {
     scrollTop: Number.isFinite(item.scrollTop) && item.scrollTop >= 0 ? item.scrollTop : 0,
     billsFilter: ['all', 'check', 'due', 'paid', 'pending', 'unknown'].includes(item.billsFilter) ? item.billsFilter : null,
     billsDay: typeof item.billsDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item.billsDay) ? item.billsDay : null,
+    ...(reviewFocusSelectors.includes(item.reviewFocusSelector) ? { reviewFocusSelector: item.reviewFocusSelector } : {}),
   });
   const copyState = state => {
     const frames = (state?.frames || (state ? [state] : [])).map(descriptor);
@@ -5641,12 +5648,20 @@ function budgetDetailSheetController(mount) {
     if (!held) return null;
     const frames = [...parents, { ...held, scrollTop: body.scrollTop }].map(item => ({ ...item,
       billsFilter: item.source.hasAttribute('data-blend-bills-panel') ? readBillsFilter(item.source) : null,
-      billsDay: item.source.hasAttribute('data-blend-bills-panel') ? item.source.getAttribute('data-budget-bill-day') : null }));
+      billsDay: item.source.hasAttribute('data-blend-bills-panel') ? item.source.getAttribute('data-budget-bill-day') : null,
+      reviewFocusSelector: item.source.hasAttribute('data-transaction-review') && dialog.contains?.(mount.ownerDocument?.activeElement)
+        ? reviewFocusSelectors.find(selector => mount.ownerDocument?.activeElement?.matches?.(selector)) : null }));
     return frames.every(item => item.sourceSelector && item.triggerSelector)
       ? copyState({ frames }) : null;
   };
-  const matches = selector => typeof selector === 'string' && selector
-    ? [...mount.querySelectorAll(selector)] : [];
+  const matches = selector => {
+    if (typeof selector !== 'string' || !selector) return [];
+    const nodes = [...mount.querySelectorAll(selector)];
+    if (headerIdentities.includes(selector)) {
+      nodes.push(...(mount.ownerDocument?.querySelectorAll?.('.site-head ' + selector) || []));
+    }
+    return [...new Set(nodes)];
+  };
   const unique = selector => {
     const nodes = matches(selector);
     return nodes.length === 1 ? nodes[0] : null;
@@ -5694,6 +5709,10 @@ function budgetDetailSheetController(mount) {
         restoreBillsFilter(item.source, item.billsFilter);
       }
       body.scrollTop = item.scrollTop;
+      if (item.source.hasAttribute('data-transaction-review') && item.reviewFocusSelector) {
+        const control = dialog.querySelector(item.reviewFocusSelector);
+        if (control && !control.disabled) focus(control);
+      }
     }
     if (parents.length !== frames.length - 1) { close(false); return false; }
     return true;

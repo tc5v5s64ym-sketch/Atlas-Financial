@@ -54,12 +54,19 @@
     const content = source?.querySelector('[data-review-content]');
     const dialog = mount.querySelector('[data-budget-detail-sheet]');
     if (!source || !trigger || !content || !dialog) return;
-    content.innerHTML = html(input.publication, input);
+    const markup = html(input.publication, input);
+    // Retain the same read-only display nodes across a presentation rerender.
+    // Changed projected facts/period replace them. This markup is not saved
+    // identity, a decision, or a cached provider/financial packet.
+    if (content.reviewMarkup !== markup) {
+      content.innerHTML = markup;
+      content.reviewMarkup = markup;
+    }
     trigger.setAttribute('aria-controls', dialog.id);
     trigger.setAttribute('aria-expanded', 'false');
     trigger.setAttribute('aria-label', 'Review transactions: total unavailable');
     const items = [...content.querySelectorAll('[data-review-item]')];
-    let selected = 0;
+    let selected = Math.max(0, items.findIndex(item => !item.hidden));
     const select = next => {
       selected = Math.max(0, Math.min(items.length - 1, next));
       items.forEach((item, i) => { item.hidden = i !== selected; });

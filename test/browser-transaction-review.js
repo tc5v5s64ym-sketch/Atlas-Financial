@@ -109,4 +109,5 @@ async function main(){
  physicalSafariAcceptance:'not performed',referencePixelsViewedByBuilder:false,sourceSha256:Object.fromEntries(files.map(f=>[f,crypto.createHash('sha256').update(fs.readFileSync(path.join(root,f))).digest('hex')])),records,errors,writes,external},null,2)+'\n');
  console.log('PASS transaction review: 72 Chromium/WebKit state/theme/width views; native dismissal, navigation, status, theme, refresh and unchanged figures');
 }
-main().catch(e=>{console.error(e);process.exitCode=1;});
+module.exports={openPage,figures,closed,errors,writes,external};
+if(require.main===module)main().catch(e=>{console.error(e);process.exitCode=1;});
