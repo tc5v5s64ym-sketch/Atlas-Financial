@@ -78,8 +78,8 @@ function input(mode = 'valid-v2') {
 function served(mode, observer) {
   const x = input(mode);
   const report = observer.observe({ provider: 'lunchmoney', ...x });
-  // Consume the real observer's stock packet, not hand-written normalized dates.
-  const data = { ...x.data, plan: { ...x.data.plan, savingsPoolObservation: report.savingsPools } };
+  // Both packets cross the actual overlay boundary without fixture replacement.
+  const data = require('../../scripts/live-plan').overlayLiveState({ data: x.data, report }).data;
   return { ...x, data, report };
 }
 

@@ -162,7 +162,7 @@ for (const afterPayday of [false, true]) for (const destination of [null, 'savin
       input.plan.commitments[1].date = '2026-10-29'; input.plan.commitments[2].date = '2026-11-03';
     }
     const offset = destination ? 1111 : 0;
-    if (destination) transfer(input, 11.11, destination === 'savings' ? 'AA201' : 'AA202', destination);
+    if (destination) transfer(input, 11.11, destination === 'savings' ? 'AA201' : 'AA202', destination, '2026-10-06');
     const before = JSON.stringify(input);
     const packet = F.recommend(input.plan, input.asOf, { ...input.opts, weeklyVariable: 0, debts: [] }).savingsFunding;
     assert.equal(JSON.stringify(input), before);
