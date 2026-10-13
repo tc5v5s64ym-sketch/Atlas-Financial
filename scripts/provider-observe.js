@@ -4271,10 +4271,18 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   const currencyUnconfirmed = [];
   const cardCoverageUnconfirmed = [];
   const postingByProviderId = new Map();
-  for (const tx of report && report.transactions || []) if (tx?.providerTransactionId != null) {
+  const sourceTransactions = report && report.transactions || [];
+  const provenPostingTransitions = new Set((report && report.identityEvidence || []).filter(row => {
+    const members = sourceTransactions.filter(tx => String(tx?.providerTransactionId) === String(row?.providerTransactionId));
+    return row?.transition === 'pending-to-posted' && row.postedCount === 1 && row.pendingCount > 0
+      && row.ghostPending === false && row.doubleCounted === false && members.length > 0
+      && members.every(tx => tx.providerAccountId === members[0].providerAccountId && tx.currency === 'cad');
+  }).map(row => String(row.providerTransactionId)));
+  for (const tx of sourceTransactions) if (tx?.providerTransactionId != null) {
     const id = String(tx.providerTransactionId), evidence = ['posted', 'pending'].includes(tx.savingsPostingEvidence)
       ? tx.savingsPostingEvidence : 'unknown', prior = postingByProviderId.get(id);
-    postingByProviderId.set(id, prior == null || prior === evidence ? evidence : 'unknown');
+    postingByProviderId.set(id, evidence === 'unknown' || prior === 'unknown' ? 'unknown'
+      : prior == null || prior === evidence ? evidence : provenPostingTransitions.has(id) ? 'transition' : 'unknown');
   }
   // Only canonical Savings account identity and fixed reasons may cross this
   // boundary. A discarded provider row is not evidence of no movement.
@@ -4392,7 +4400,9 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       currency: tx.currency || null,
       coverageCurrencyConflict: tx.coverageCurrencyConflict === true,
       pending: tx.pending === true,
-      savingsPostingEvidence: postingByProviderId.get(String(tx.providerTransactionId)) || 'unknown',
+      savingsPostingEvidence: postingByProviderId.get(String(tx.providerTransactionId)) === 'transition'
+        ? tx.pending === false && tx.savingsPostingEvidence === 'posted' ? 'posted' : 'unknown'
+        : postingByProviderId.get(String(tx.providerTransactionId)) || 'unknown',
       currency: tx.currency || null,
       pendingTreatment: treatment.treatment,
       categoryLabel: tx.categoryLabel || null,

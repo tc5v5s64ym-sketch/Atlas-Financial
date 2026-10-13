@@ -128,6 +128,10 @@ if (process.env.ATLAS_SAVINGS_COHERENCE_PROOF === '1') {
     const ready = shape === 'unrelated' || shape === 'collapsed' && mode === 'pending' || mode === 'posted' && shape !== 'dropped';
     compare('posting:' + shape + ':' + mode, x.data, true, { saved: ready ? [95, 24] : null });
   }
+  for (const row of [...windows.sameIdCases, ...windows.sameIdGuards]) {
+    const x = windows.sameIdObservation(row);
+    compare('same-ID:' + row.name, x.data, true, { saved: row.ready ? [95, 24] : null });
+  }
 }
 const sourceFiles = ['public/forecast.js', 'public/savings-inventory.js', 'public/plan.js', 'public/budget-blend.js'];
 const fs = require('node:fs');

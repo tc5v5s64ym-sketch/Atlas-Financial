@@ -22,6 +22,11 @@ const binding = captureSourceBinding(root, [...files, ...runtimeFiles], process.
 fs.mkdirSync(output, { recursive: true });
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function input(mode) {
+  if (mode.startsWith('sameid-')) {
+    const row = [...observed.sameIdCases, ...observed.sameIdGuards].find(row => row.name === mode.slice('sameid-'.length));
+    assert.ok(row, 'declared same-ID fixture is required');
+    return observed.sameIdObservation(row).data;
+  }
   if (mode.startsWith('posting-')) {
     const [shape, ...status] = mode.slice('posting-'.length).split(':');
     return observed.postingObservation(shape, status.join(':')).data;
@@ -63,6 +68,11 @@ function input(mode) {
   try {
     const selected = process.env.ATLAS_LATEST_SAVINGS_CASES?.split(',');
     for (const [mode, width, theme, expected, bands, topUpHeld = true] of [
+      ...[...observed.sameIdCases.filter(row => row.ready),
+        ...observed.sameIdCases.filter(row => ['counterparty:posted-first:predecessor:string-false', 'direct:pending-first:successor:null'].includes(row.name)),
+        ...observed.sameIdGuards.filter(row => row.shape === 'counterparty' && row.order === 'pending-first' && row.fault !== 'ambiguous-posted')]
+        .map(row => ['sameid-' + row.name, 390, 'light', row.ready ? [95, 24] : [null, null],
+          row.ready ? ['is-amber', 'is-full'] : ['is-unknown', 'is-unknown'], !row.ready]),
       ['posting-direct:absent', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
       ['posting-counterparty:string-false', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
       ['posting-savings-leg:null', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
@@ -160,7 +170,7 @@ function input(mode) {
       const body = page.locator('[data-budget-detail-body]');
       await page.locator('[data-budget-detail-sheet]').waitFor({ state: 'visible' });
       if (topUpHeld) assert.match(await body.locator('[data-budget-daily-proposal]').innerText(), /Unavailable/);
-      if ((mode.startsWith('cutoff-') || mode.startsWith('window-') || mode.startsWith('posting-')) && expected[0] == null) {
+      if ((mode.startsWith('cutoff-') || mode.startsWith('window-') || mode.startsWith('posting-') || mode.startsWith('sameid-')) && expected[0] == null) {
         await body.locator('[data-budget-savings-info] > summary').click();
         assert.match(await body.innerText(), /Saved allocation is withheld/);
         assert.match(await body.locator('[data-budget-savings-total-needed]').first().innerText(), /230\.00/);

@@ -148,7 +148,7 @@ module.exports.windowModes = Object.keys(windowMutations);
 module.exports.rawWindowModes = rawWindowModes;
 module.exports.sourceWindowModes = sourceWindowModes;
 const postingModes = ['absent', 'null', 'string-false', 'string-true', 'zero', 'one', 'object', 'posted', 'pending'];
-function postingObservation(shape = 'direct', mode = 'posted') {
+function postingObservation(shape = 'direct', mode = 'posted', inputOnly = false) {
   const x = fx.input('valid-v2'); delete x.data.liveOverlay;
   const debit = { id: 'invented-posting-debit', account_id: '9001', date: '2026-10-03', amount: '10',
     currency: 'cad', is_pending: false, kind: 'transfer', original_name: 'DD404 TFR-TO Invented reserve' };
@@ -166,6 +166,7 @@ function postingObservation(shape = 'direct', mode = 'posted') {
   const values = { null: null, 'string-false': 'false', 'string-true': 'true', zero: 0, one: 1, object: {}, posted: false, pending: true };
   if (mode === 'absent') delete target.is_pending; else target.is_pending = values[mode];
   if (shape === 'dropped') delete target.date;
+  if (inputOnly) return x;
   const inputBytes = JSON.stringify(x), report = O.observe({ provider: 'lunchmoney', ...x });
   assert.equal(JSON.stringify(x), inputBytes);
   const originalReport = JSON.stringify(report), data = L.overlayLiveState({ data: x.data, report }).data;
@@ -175,3 +176,39 @@ function postingObservation(shape = 'direct', mode = 'posted') {
 }
 module.exports.postingModes = postingModes;
 module.exports.postingObservation = postingObservation;
+const sameIdCases = [];
+for (const shape of ['direct', 'counterparty', 'savings-leg']) for (const order of ['pending-first', 'posted-first'])
+  for (const location of ['predecessor', 'successor']) for (const mode of ['valid', ...postingModes.slice(0, 7)]) {
+    if (mode === 'valid' && location === 'successor') continue; // One unique positive input per shape/order.
+    sameIdCases.push({ shape, order, location, mode, name: [shape, order, location, mode].join(':'), ready: mode === 'valid' });
+  }
+const sameIdGuards = [];
+for (const shape of ['direct', 'counterparty', 'savings-leg']) for (const order of ['pending-first', 'posted-first'])
+  for (const fault of ['account', 'currency', 'ambiguous-posted'])
+    sameIdGuards.push({ shape, order, location: 'predecessor', mode: 'valid', fault,
+      name: [shape, order, fault].join(':'), ready: false });
+function sameIdObservation(row) {
+  const x = postingObservation(row.shape, 'posted', true);
+  const target = x.payload.transactions.find(tx => row.shape === 'direct' ? tx.id === 'invented-posting-fee'
+    : row.shape === 'counterparty' ? tx.id === 'invented-posting-debit' : tx.id === 'invented-posting-credit');
+  const pending = { ...target, is_pending: true, payee: 'Invented pending predecessor' };
+  const posted = { ...target, is_pending: false, payee: 'Invented posted successor' };
+  const mutate = row.location === 'predecessor' ? pending : posted;
+  const values = { null: null, 'string-false': 'false', 'string-true': 'true', zero: 0, one: 1, object: {} };
+  if (row.mode === 'absent') delete mutate.is_pending;
+  else if (row.mode !== 'valid') mutate.is_pending = values[row.mode];
+  if (row.fault === 'account') pending.account_id = row.shape === 'counterparty' ? '9002' : '9004';
+  if (row.fault === 'currency') pending.currency = 'usd';
+  const pair = row.order === 'pending-first' ? [pending, posted] : [posted, pending];
+  if (row.fault === 'ambiguous-posted') pair.push({ ...posted, amount: '2.50' });
+  x.payload.transactions = x.payload.transactions.flatMap(tx => tx === target ? pair : [tx]);
+  const inputBytes = JSON.stringify(x), report = O.observe({ provider: 'lunchmoney', ...x });
+  assert.equal(JSON.stringify(x), inputBytes);
+  const originalReport = JSON.stringify(report), data = L.overlayLiveState({ data: x.data, report }).data;
+  assert.deepEqual(data.liveOverlay.currentPeriodActuals, report.currentPeriodActuals);
+  assert.deepEqual(data.plan.savingsPoolObservation, report.savingsPools);
+  return { input: x, data, report, packet: report.currentPeriodActuals, originalReport, rawId: target.id };
+}
+module.exports.sameIdCases = sameIdCases;
+module.exports.sameIdGuards = sameIdGuards;
+module.exports.sameIdObservation = sameIdObservation;

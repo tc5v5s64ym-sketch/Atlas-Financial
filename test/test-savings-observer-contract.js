@@ -202,3 +202,24 @@ for (const shape of ['direct', 'counterparty', 'savings-leg', 'unrelated', 'drop
     }
     assert.equal(JSON.stringify(x.report), x.originalReport, 'real returned packets stay unchanged');
   });
+assert.equal(observed.sameIdCases.length, 90);
+assert.equal(new Set(observed.sameIdCases.map(row => row.name)).size, 90);
+for (const row of [...observed.sameIdCases, ...observed.sameIdGuards]) test('actual same-ID posting provenance ' + row.name, () => {
+  const x = observed.sameIdObservation(row), advice = windowPublish(x), s = advice.savingsFunding;
+  assert.equal(s.goalAllocation.status, row.ready ? 'ready' : 'unavailable');
+  assert.deepEqual(s.rows.map(item => item.saved), row.ready ? [95, 24] : [null, null]);
+  assert.deepEqual(s.rows.map(item => item.needed), [230, 24]); assert.equal(advice.savingsInventory.reportedStock.amount, 119);
+  if (row.ready) {
+    const transition = x.report.identityEvidence.find(item => item.providerTransactionId === x.rawId);
+    assert.deepEqual(transition, { providerTransactionId: x.rawId, transition: 'pending-to-posted', pendingCount: 1,
+      postedCount: 1, ghostPending: false, doubleCounted: false });
+    const survivor = x.report.collapsedTransactions.find(item => item.providerTransactionId === x.rawId);
+    assert.equal(survivor.pending, false); assert.equal(survivor.savingsPostingEvidence, 'posted');
+    const emitted = x.packet.transactions.find(item => item.atlasAccountId === (row.shape === 'counterparty' ? 'chequing-a' : 'savings'));
+    assert.equal(emitted.savingsPostingEvidence, 'posted');
+  } else {
+    assert.equal(s.period.proposal, null); assert.ok(advice.sim.events.every(item => !item.reserveFunding));
+  }
+  assert.ok(x.packet.transactions.every(item => ['posted', 'pending', 'unknown'].includes(item.savingsPostingEvidence)));
+  assert.equal(JSON.stringify(x.report), x.originalReport);
+});

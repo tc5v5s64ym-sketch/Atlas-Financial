@@ -5,11 +5,12 @@ const assert = require('node:assert/strict'), cp = require('node:child_process')
 const Module = require('node:module'), path = require('node:path'), crypto = require('node:crypto');
 const observed = require('./fixtures/savings-observer-contract-data');
 const { captureSourceBinding, verifySourceBinding } = require('./proof-source-binding');
-const root = path.resolve(__dirname, '..'), base = process.argv[2], windowBase = process.argv[3], fetchBase = process.argv[4], postingBase = process.argv[5], cache = new Map();
+const root = path.resolve(__dirname, '..'), base = process.argv[2], windowBase = process.argv[3], fetchBase = process.argv[4], postingBase = process.argv[5], sameIdBase = process.argv[6], cache = new Map();
 assert.match(base || '', /^[0-9a-f]{40}$/, 'explicit full pre-repair SHA is required');
 assert.match(windowBase || '', /^[0-9a-f]{40}$/, 'explicit full window pre-repair SHA is required');
 assert.match(fetchBase || '', /^[0-9a-f]{40}$/, 'explicit full fetch pre-repair SHA is required');
 assert.match(postingBase || '', /^[0-9a-f]{40}$/, 'explicit full posting pre-repair SHA is required');
+assert.match(sameIdBase || '', /^[0-9a-f]{40}$/, 'explicit full same-ID pre-repair SHA is required');
 function baseline(file, sha = base) {
   const key = sha + ':' + file;
   if (cache.has(key)) return cache.get(key).exports;
@@ -137,6 +138,30 @@ for (const shape of ['direct', 'counterparty', 'savings-leg', 'unrelated', 'drop
     returnedPacketsUnchanged: true, knownNeeded: [230, 24], reportedStock: 119 });
 }
 assert.equal(postingCases.length, 54); assert.equal(postingCases.filter(row => !row.beforePass).length, 28);
+const SameIdBefore = baseline('public/forecast.js', sameIdBase), SameIdObserver = baseline('scripts/provider-observe.js', sameIdBase);
+const SameIdOverlay = baseline('scripts/live-plan.js', sameIdBase), sameIdCases = [], sameIdGuards = [];
+for (const row of [...observed.sameIdCases, ...observed.sameIdGuards]) {
+  const x = observed.sameIdObservation(row), inputHash = hash(x.input);
+  const original = SameIdObserver.observe({ provider: 'lunchmoney', ...x.input }), originalHash = hash(original);
+  const data = SameIdOverlay.overlayLiveState({ data: x.input.data, report: original }).data;
+  const before = SameIdBefore.recommend(data.plan, data.meta.asOf, { weeklyVariable: 40, debts: data.debts, ...data.liveOverlay });
+  const after = Current.recommend(x.data.plan, x.data.meta.asOf, { weeklyVariable: 40, debts: x.data.debts, ...x.data.liveOverlay });
+  const expected = row.ready ? [95, 24] : [null, null], beforeSaved = before.savingsFunding.rows.map(item => item.saved);
+  const afterSaved = after.savingsFunding.rows.map(item => item.saved);
+  assert.deepEqual(afterSaved, expected); assert.deepEqual(after.savingsFunding.rows.map(item => item.needed), [230, 24]);
+  assert.equal(after.savingsInventory.reportedStock.amount, 119);
+  if (!row.ready) { assert.equal(after.savingsFunding.period.proposal, null); assert.ok(after.sim.events.every(item => !item.reserveFunding)); }
+  assert.deepEqual(x.report.identityEvidence, original.identityEvidence, 'incumbent identity proof is unchanged');
+  assert.deepEqual(x.report.collapsedTransactions, original.collapsedTransactions, 'incumbent survivor selection is unchanged');
+  assert.deepEqual(x.report.savingsPools, original.savingsPools, 'observed balance/date/pending facts are unchanged');
+  assert.equal(hash(x.input), inputHash); assert.equal(hash(original), originalHash); assert.equal(JSON.stringify(x.report), x.originalReport);
+  const receipt = { ...row, inputSha256: inputHash, expected, beforeSaved, afterSaved,
+    beforePass: JSON.stringify(beforeSaved) === JSON.stringify(expected), afterPass: true,
+    incumbentCollapseAndObservationsUnchanged: true, returnedPacketsUnchanged: true, reportedStock: 119, knownNeeded: [230, 24] };
+  (row.fault ? sameIdGuards : sameIdCases).push(receipt);
+}
+assert.equal(sameIdCases.length, 90); assert.equal(sameIdCases.filter(row => !row.beforePass).length, 6);
+assert.equal(sameIdGuards.length, 18); assert.ok(sameIdGuards.every(row => row.beforePass));
 verifySourceBinding(root, binding);
 console.log(JSON.stringify({ outcome: 'PASS', base, executionBinding: binding,
   before: { controls: 12, pass: 6, fail: 6, aggregate: 'FAIL' },
@@ -146,4 +171,7 @@ console.log(JSON.stringify({ outcome: 'PASS', base, executionBinding: binding,
   fetchRepair: { base: fetchBase, before: { controls: 60, pass: 22, fail: 38, aggregate: 'FAIL' },
     after: { controls: 60, pass: 60, fail: 0, aggregate: 'PASS' }, cases: fetchCases },
   postingRepair: { base: postingBase, before: { controls: 54, pass: 26, fail: 28, aggregate: 'FAIL' },
-    after: { controls: 54, pass: 54, fail: 0, aggregate: 'PASS' }, cases: postingCases } }, null, 2));
+    after: { controls: 54, pass: 54, fail: 0, aggregate: 'PASS' }, cases: postingCases },
+  sameIdRepair: { base: sameIdBase, before: { controls: 90, pass: 84, fail: 6, aggregate: 'FAIL' },
+    after: { controls: 90, pass: 90, fail: 0, aggregate: 'PASS' }, cases: sameIdCases,
+    guards: { controls: 18, beforePass: 18, afterPass: 18, cases: sameIdGuards } } }, null, 2));
