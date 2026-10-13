@@ -19148,11 +19148,11 @@
   function savingsReportedMovementCoherence(plan, day, opts, reported) {
     const packet = currentPeriodActualsPacket(opts), transactions = packet?.transactions;
     const accounts = new Set(reported.accountIds), byId = new Map();
-    const unknown = 'A savings movement lacks unique, qualified posted evidence. Balance-cutoff inclusion is unproven; Saved allocation is withheld.';
+    const unknown = 'A savings movement lacks unique, qualified posted evidence. Balance-cutoff inclusion is unproven; bank backing and new contributions are withheld.';
     // Legacy v1 packets did not retain account-scoped dropped-row provenance.
     // They remain readable elsewhere, but cannot prove this Savings boundary.
     if (!packet || !Object.hasOwn(packet, 'savingsMovementUnconfirmed')) {
-      return 'Savings movement provenance is unavailable in this legacy or missing observation packet. Saved allocation is withheld.';
+      return 'Savings movement provenance is unavailable in this legacy or missing observation packet. Bank backing and new contributions are withheld.';
     }
     const flags = packet.savingsMovementUnconfirmed;
     const reasons = ['transaction-amount-or-date-unconfirmed', 'native-plan-currency-unconfirmed',
@@ -19184,12 +19184,12 @@
       || packet.observationAsOf !== reported.checkedAsOf
       || !savingsDate(packet.coverageStart) || !savingsDate(packet.coverageThrough)
       || packet.coverageStart > packet.coverageThrough || packet.coverageThrough !== packet.observationAsOf) {
-      return 'Savings observation or transaction-window provenance is unconfirmed. Saved allocation is withheld.';
+      return 'Savings observation or transaction-window provenance is unconfirmed. Bank backing and new contributions are withheld.';
     }
     for (const tx of transactions) if (tx?.id != null) {
       const id = String(tx.id), rows = byId.get(id) || []; rows.push(tx); byId.set(id, rows);
     }
-    const uncertain = 'Reported balance cutoffs cannot establish inclusion of the savings movement. Saved allocation is withheld.';
+    const uncertain = 'Reported balance cutoffs cannot establish inclusion of the savings movement. Bank backing and new contributions are withheld.';
     const validId = id => typeof id === 'string' && !!id.trim() && id === id.trim()
       || typeof id === 'number' && Number.isSafeInteger(id) && id >= 0;
     const unconfirmed = row => packet.currencyUnconfirmed != null && (!Array.isArray(packet.currencyUnconfirmed)

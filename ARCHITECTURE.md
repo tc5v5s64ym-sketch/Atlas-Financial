@@ -838,6 +838,16 @@ debits, pending movement and unknown card payment purpose do not blank valid
 reported earmarks. They still qualify current payment backing, new operating
 contributions and the future funding walk through the incumbent independent
 gates. The source check and balance dates stay visible and separate. This
+includes same-day paired reserve movements: date-only equality does not prove
+that a transfer is included in both reports, so current earmarks retain the
+reported sum without adjusting it. Pending movements, account-scoped
+`savingsMovementUnconfirmed` flags and truncated transaction coverage likewise
+cannot erase independently valid dated account reports. Their native backing
+and contribution holds remain explicit; explanatory copy must not say that
+visible reported Saved is withheld. Only the positively proven opposite-cutoff
+duplicate described above withholds the present allocation. This is the
+latest-reported-balance contract, not a claim that the reports are current bank
+backing or that a same-day movement has been reconciled. This
 supersedes earlier use of movement reconciliation as a present Saved gate;
 there is still one Forecast chronological allocator and no new policy/input
 store. Dale's October 12 transaction-view direction

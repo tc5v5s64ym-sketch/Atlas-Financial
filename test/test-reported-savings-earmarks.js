@@ -1,15 +1,18 @@
 'use strict';
 // Owner's current reported-earmark contract; every amount is invented.
 const assert = require('node:assert/strict'), test = require('node:test');
-const path = require('node:path');
-const F = require(path.join(process.env.ATLAS_TEST_APP_ROOT || path.join(__dirname, '..'), 'public/forecast'));
+const path = require('node:path'), fs = require('node:fs'), vm = require('node:vm');
+const APP_ROOT = process.env.ATLAS_TEST_APP_ROOT || path.join(__dirname, '..');
+const F = require(path.join(APP_ROOT, 'public/forecast'));
+const Inventory = require(path.join(APP_ROOT, 'public/savings-inventory'));
 const fx = require('./fixtures/savings-daily-allocation-contract');
 const clone = x => JSON.parse(JSON.stringify(x));
 function input() {
-  const x = fx.advance(fx.fixture(), '2026-10-08');
+  const x = fx.advance(fx.fixture(), '2026-10-07');
   x.plan.savingsEarmarks.allocationPolicy = { order: 'due-date-first-combined-pool',
     effectiveFrom: '2026-10-05', source: 'Invented owner latest-report policy' };
-  x.plan.savingsPoolObservation.accounts.forEach(row => { row.evidenceDate = '2026-10-06'; });
+  x.plan.savingsPoolObservation.accounts[0].evidenceDate = '2026-10-06';
+  x.plan.savingsPoolObservation.accounts[1].evidenceDate = '2026-10-04';
   // An old savings-to-card debit is movement evidence, not a new stock input.
   x.opts.currentPeriodActuals.transactions.push({ id: 'invented-old-withdrawal', date: '2026-10-03',
     amount: 17.43, currency: 'CAD', pending: false, savingsPostingEvidence: 'posted',
@@ -40,12 +43,97 @@ function futureHeld(advice) {
   for (const sim of [advice.sim, advice.zero, advice.sim?.knowledge].filter(Boolean))
     assert.ok(sim.events.every(row => !row.reserveFunding), 'reported earmarks cannot seed a payment');
 }
+// Exercise the real publication and both renderers, with an invented DOM seam.
+const stub = () => ({ innerHTML: '', value: '', dataset: {}, style: {},
+  classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {},
+  querySelector() { return null; }, querySelectorAll() { return []; }, appendChild() {}, replaceChildren() {} });
+const page = vm.createContext({ Forecast: F, console, setTimeout, clearTimeout, addEventListener() {},
+  document: { getElementById: stub, querySelectorAll() { return []; }, addEventListener() {},
+    documentElement: { dataset: {}, style: {} } }, localStorage: { getItem() { return null; }, setItem() {} },
+  location: { pathname: '/', search: '' } });
+page.window = page; page.matchMedia = () => ({ matches: false, addEventListener() {} });
+for (const name of ['app', 'bill-detail', 'savings-inventory', 'budget-surface', 'plan']) {
+  if (name === 'bill-detail') vm.runInContext('App.boot=()=>{};', page);
+  vm.runInContext(fs.readFileSync(path.join(APP_ROOT, 'public/' + name + '.js'), 'utf8'), page);
+}
+vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];', page);
+function rendered(x, advice, rowSaved = [95, 24], pot = 119) {
+  const packet = F.savingsFundingPublication(advice.savingsFunding, { asOf: x.asOf, advice });
+  assert.ok(packet, 'real Forecast publication accepts its own result');
+  page.src = { plan: x.plan, debts: [], asOf: x.asOf, advice, liveOverlay: x.opts };
+  const budget = vm.runInContext('budgetSurfaceHtml(src)', page);
+  const inventory = Inventory.html(packet, { asOf: x.asOf, advice });
+  const stamps = [...budget.matchAll(/data-budget-goal-saved-amount="([^"]*)"/g)];
+  const budgetSaved = [...budget.matchAll(/data-budget-savings-(?:total|member)-saved>([\s\S]*?)<\/span>/g)];
+  const inventorySaved = [...inventory.matchAll(/data-savings-(?:member-)?backed><dt>[^<]*<\/dt><dd>([^<]*)/g)];
+  assert.ok(budgetSaved.length >= 4 && inventorySaved.length >= 4);
+  if (rowSaved) {
+    assert.deepEqual(stamps.map(row => Number(row[1])), rowSaved);
+    assert.ok(budgetSaved.every(row => !/Unavailable/.test(row[1])));
+    assert.ok(inventorySaved.every(row => row[1].trim() !== 'Unknown'));
+    assert.match(inventory, /Saved allocation/);
+    assert.doesNotMatch(inventory, /Saved allocation is withheld/, 'backing reason cannot contradict visible earmarks');
+  } else {
+    assert.equal(stamps.length, 0, 'no fake zero progress stamp');
+    assert.ok(budgetSaved.every(row => /Unavailable/.test(row[1]) && !/\$0\.00/.test(row[1])));
+    assert.ok(inventorySaved.every(row => row[1].trim() === 'Unknown'));
+  }
+  if (pot != null) assert.match(inventory, new RegExp('Reported combined savings: \\$' + pot.toFixed(2).replace('.', '\\.') + '\\.'));
+  assert.equal(packet.period.proposal, null, 'rendering cannot recover a contribution');
+  return { budget, inventory };
+}
 test('latest reported 95 + 24 funds dated costs 60, 24, 170 as 60 + 24 + 35 despite an old unpaired debit', () => {
-  const advice = publish(input()), s = reported(advice);
+  const x = input(), advice = publish(x), s = reported(advice);
   assert.equal(6000 + 2400 + 3500, 9500 + 2400, 'independent cents conservation; old debit is not subtracted again');
   assert.deepEqual(s.rows.map(row => row.saved), [95, 24]); futureHeld(advice);
-  assert.ok(s.goalAllocation.balanceDates.every(row => row.date === '2026-10-06'));
+  assert.equal(s.goalAllocation.checkedAsOf, '2026-10-07');
+  assert.deepEqual(s.goalAllocation.balanceDates, [{ accountId: 'savings', date: '2026-10-06' },
+    { accountId: 'savings-dont-touch', date: '2026-10-04' }]);
+  const html = rendered(x, advice);
+  assert.match(html.inventory, /Balance dates 2026-10-04 - 2026-10-06/);
 });
+for (const accountId of ['savings', 'savings-dont-touch'])
+  for (const direction of ['TO', 'FR']) for (const boundary of ['before-window', 'before-reports', 'on-balance', 'after-reports'])
+    test('D1 ' + accountId + ' unpaired ' + direction + ' ' + boundary + ' preserves reports and renderer earmarks', () => {
+      const x = input(), row = x.opts.currentPeriodActuals.transactions.at(-1);
+      row.atlasAccountId = accountId; row.tfrDirection = direction; row.amount = direction === 'TO' ? 17.43 : -17.43;
+      row.date = { 'before-window': '2026-10-01', 'before-reports': '2026-10-03',
+        'on-balance': x.plan.savingsPoolObservation.accounts.find(a => a.accountId === accountId).evidenceDate,
+        'after-reports': '2026-10-07' }[boundary];
+      assert.equal(F.householdInternalMovements(x.plan, x.opts).length, 0, 'a one-leg transfer is not fabricated into a pair');
+      const advice = publish(x); reported(advice); futureHeld(advice); rendered(x, advice);
+      assert.equal(advice.savingsInventory.reportedStock.amount, 119);
+    });
+for (const control of ['plain-posted', 'proven-household-pair', 'chequing-only'])
+  test('D1 ' + control + ' control retains the exact reported 119', () => {
+    const x = input(), row = x.opts.currentPeriodActuals.transactions.at(-1);
+    if (control === 'plain-posted') for (const key of ['internalTransferIdentity', 'tfrReference', 'tfrDirection']) delete row[key];
+    if (control === 'chequing-only') { row.atlasAccountId = 'chequing-a'; row.accountRole = 'household-cash'; }
+    if (control === 'proven-household-pair') x.opts.currentPeriodActuals.transactions.push({ ...row,
+      id: 'invented-household-counter-leg', atlasAccountId: 'chequing-a', accountRole: 'household-cash',
+      amount: -17.43, tfrDirection: 'FR' });
+    if (control === 'proven-household-pair') assert.equal(F.householdInternalMovements(x.plan, x.opts).length, 1);
+    const advice = publish(x); reported(advice); futureHeld(advice); rendered(x, advice);
+  });
+for (const mode of ['pending-movement', 'flag-savings', 'flag-other-reserve', 'truncated-fetch', 'truncated-packet'])
+  test(mode + ' qualifies backing separately and cannot erase valid dated reports', () => {
+    const x = input(), packet = x.opts.currentPeriodActuals;
+    if (mode === 'pending-movement') packet.transactions.at(-1).pending = true;
+    if (mode.startsWith('flag-')) packet.savingsMovementUnconfirmed = [{
+      accountId: mode === 'flag-savings' ? 'savings' : 'savings-dont-touch',
+      reason: 'transaction-amount-or-date-unconfirmed' }];
+    if (mode === 'truncated-fetch') packet.savingsFetchCoverage.complete = false;
+    if (mode === 'truncated-packet') packet.transactionCoverage = { complete: false, status: 'truncated' };
+    const advice = publish(x); reported(advice); futureHeld(advice); rendered(x, advice);
+    assert.equal(advice.savingsInventory.reportedStock.amount, 119);
+  });
+for (const [mode, pot, items, rows] of [['same-day', 100, [60,24,16], [76,24]],
+  ['same-day-one', 200, [60,24,116], [176,24]]]) test(mode + ' pair prints reports sum; date equality does not prove duplicate cash', () => {
+    const x = require('./fixtures/savings-transfer-cutoffs')(mode), advice = publish(x);
+    assert.equal(F.householdInternalMovements(x.plan, x.opts).length, 1);
+    reported(advice, items); futureHeld(advice); rendered(x, advice, rows, pot);
+    assert.equal(advice.savingsInventory.reportedStock.amount, pot, 'reported stock is never reconstructed from the pair');
+  });
 for (const mode of ['absent-history', 'truncated-history', 'missing-provenance', 'unconfirmed-card-opening',
   'unknown-operating-cash', 'pending-reserve']) test(mode + ' cannot erase valid reported earmarks or grant future funding', () => {
   const x = input();
@@ -82,9 +170,21 @@ test('a proven inter-reserve transfer counted in both snapshots is a genuine acc
   assert.equal(10000 - 10000 + 10000, 10000, 'the invented paired transfer conserves one 100, not two');
   assert.equal(before.goalAllocation.status, 'unavailable');
   assert.match(before.goalAllocation.reason, /same proven reserve transfer/);
+  assert.equal(publish(x).savingsInventory.reportedStock.amount, 200, 'proven duplicate hold leaves source reports unadjusted');
+  rendered(x, publish(x), null, 200);
   x.plan.savingsPoolObservation.accounts[0].value = 0;
   x.plan.savingsPoolObservation.accounts[0].evidenceDate = '2026-10-08';
   reported(publish(x), [60, 24, 16]);
+});
+test('settled exclusion does not subtract another payment from the reported pot on replay', () => {
+  const x = input(); x.plan.commitments[0].settledOn = '2026-10-06';
+  for (let n = 0; n < 2; n++) {
+    const advice = publish(x), s = advice.savingsFunding;
+    assert.deepEqual(s.backing.items.map(row => [row.id,row.saved]), [['home-cost',24],['far',95]]);
+    assert.equal(advice.savingsInventory.reportedStock.amount, 119);
+    assert.equal(s.rows.find(row => row.key === 'group:club').needed, 170);
+    assert.ok(!s.backing.items.some(row => row.id === 'near')); futureHeld(advice);
+  }
 });
 for (const [name, mutate] of Object.entries({
   missing: p => p.savingsPoolObservation.accounts.pop(),
@@ -101,8 +201,11 @@ for (const [name, mutate] of Object.entries({
   negative: p => { p.savingsPoolObservation.accounts[0].value = -1; },
   unknownRequirementDate: p => { delete p.commitments[0].date; },
   unknownRequirementAmount: p => { delete p.commitments[0].amount; },
+  noObservation: p => { delete p.savingsPoolObservation; },
+  rangedRequirement: p => { delete p.commitments[0].amount; p.commitments[0].amountMin = 50; p.commitments[0].amountMax = 70; },
 })) test(name + ' remains unknown, never a partial sum or invented zero', () => {
-  const x = input(); mutate(x.plan); const s = publish(x).savingsFunding;
+  const x = input(); mutate(x.plan); const advice = publish(x), s = advice.savingsFunding;
   assert.equal(s.goalAllocation.status, 'unavailable');
   assert.ok(s.rows.every(row => row.saved === null)); assert.equal(s.period.proposal, null);
+  rendered(x, advice, null, null);
 });
