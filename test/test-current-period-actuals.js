@@ -1684,10 +1684,10 @@ console.log('\n=== ET2. unprocessable e-transfer candidates: producer to publica
     payee: 'Interac recipient', originalName: 'SEND E-TFR J SMITH', currency: 'cad',
     providerAccountId: '1001', providerTransactionId: id,
   }, extra || {});
-  const produce = txs => O.sanitizedCurrentPeriodActuals({
+  const produce = (txs, pending) => O.sanitizedCurrentPeriodActuals({
     fetchedAt: MID + 'T18:00:00.000Z',
     transactionWindow: { startDate: PAYDAY, endDate: MID, complete: true, hasMore: false, truncated: false },
-    pendingCoverage: { complete: true },
+    pendingCoverage: pending || { complete: true },
     transactions: txs, collapsedTransactions: txs,
     representedEventCandidates: [],
   }, { asOf: MID, accountMap: et2Map, plan: et2Plan() });
@@ -1754,6 +1754,44 @@ console.log('\n=== ET2. unprocessable e-transfer candidates: producer to publica
     && earlyAction.outgoingETransfers.count === 0,
     'candidate dated before the period origin: all-clear stands',
     earlyAction.outgoingETransfers.status);
+
+  // Posted-only branch (Atlas BLOCK 5498435733): pending coverage unknown
+  // alone earns available-posted-only, whose claim is that pending is the
+  // SOLE gap. An in-period unprocessable candidate means posted evidence
+  // is also lost, so the same guard must withhold posted-only too.
+  const unknownPending = {};
+  const poInvalid = F.currentPeriodAction(et2Plan(), MID, opts({
+    currentPeriodActuals: produce([rawRow('et2-po-invalid', { amount: 'unavailable' })], unknownPending),
+  }));
+  ok(poInvalid.outgoingETransfers.status === 'available-incomplete'
+    && poInvalid.outgoingETransfers.count === 0,
+    'invalid-only + unknown pending: available-incomplete — posted-only must not claim pending is the sole gap',
+    poInvalid.outgoingETransfers.status);
+  const poMixed = F.currentPeriodAction(et2Plan(), MID, opts({
+    currentPeriodActuals: produce([
+      rawRow('et2-po-valid'),
+      rawRow('et2-po-mixed-invalid', { amount: 'unavailable', date: '2026-09-04' }),
+    ], unknownPending),
+  }));
+  ok(poMixed.outgoingETransfers.status === 'available-incomplete'
+    && poMixed.outgoingETransfers.count === 1
+    && poMixed.outgoingETransfers.items.length === 1,
+    'mixed + unknown pending: available-incomplete with the observed item still listed',
+    poMixed.outgoingETransfers.status);
+  const poValid = F.currentPeriodAction(et2Plan(), MID, opts({
+    currentPeriodActuals: produce([rawRow('et2-po-control')], unknownPending),
+  }));
+  ok(poValid.outgoingETransfers.status === 'available-posted-only'
+    && poValid.outgoingETransfers.count === 1,
+    'control — valid flagged row + unknown pending, no candidate: available-posted-only stands',
+    poValid.outgoingETransfers.status);
+  const poFee = F.currentPeriodAction(et2Plan(), MID, opts({
+    currentPeriodActuals: produce([rawRow('et2-po-fee', { originalName: 'SEND E-TFR FEE', amount: 'unavailable' })], unknownPending),
+  }));
+  ok(poFee.outgoingETransfers.status === 'available-posted-only'
+    && poFee.outgoingETransfers.count === 0,
+    'control — unqualified FEE row + unknown pending: no entry, available-posted-only stands',
+    poFee.outgoingETransfers.status);
 }
 
 if (failures) {

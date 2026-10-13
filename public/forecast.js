@@ -5686,7 +5686,7 @@
       return { status: 'available-complete', coverage: cov, count: items ? items.length : 0, items: items || [] };
     }
     if (coverage.status === 'current' && coverage.remainingClaim === 'posted-only'
-      && explicitBounds && provenanceOk) {
+      && explicitBounds && provenanceOk && !unconfirmedInPeriod) {
       // posted-only is produced only when pending coverage is the sole
       // failing check, so the observed items are a truthful subset whose
       // only known gap is pending evidence.
