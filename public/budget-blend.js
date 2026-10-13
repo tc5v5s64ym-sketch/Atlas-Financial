@@ -2440,6 +2440,7 @@
     else record.controller = globalThis.BudgetRiver.create(options);
     updateLabel(index);
     const today = document.querySelector('[data-blend-river-today]');
+    if (today && document.querySelector('[data-atlas-toolbar]')) wrap.appendChild(today);
     if (today) {
       const away = enabled && cur >= 0 && index !== cur;
       today.classList.toggle('on', away); today.setAttribute('aria-hidden', String(!away)); today.tabIndex = away ? 0 : -1;
@@ -2568,11 +2569,19 @@
 
   function themeCycle() {
     const current = document.documentElement.getAttribute('data-theme');
-    const next = current === 'dark' ? 'light' : current === 'light' ? 'auto' : 'dark';
-    try { localStorage.setItem('hfd-theme', next === 'auto' ? 'auto' : next); } catch (e) {}
-    if (next === 'auto') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', next);
+    const dark = current === 'dark' || (!current && matchMedia('(prefers-color-scheme: dark)').matches);
+    const next = dark ? 'light' : 'dark';
+    try { localStorage.setItem('hfd-theme', next); } catch (e) {}
+    document.documentElement.setAttribute('data-theme', next);
     if (window.App && typeof App.rerender === 'function') App.rerender();
+    updateThemeName();
+  }
+
+  function updateThemeName() {
+    const current = document.documentElement.getAttribute('data-theme');
+    const dark = current === 'dark' || (!current && matchMedia('(prefers-color-scheme: dark)').matches);
+    const button = document.querySelector('[data-blend-theme]');
+    button?.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
   }
 
   function boot() {
@@ -2603,6 +2612,8 @@
     document.addEventListener('pointermove', tilt);
     document.addEventListener('pointerleave', untilt, true);
     document.querySelector('[data-blend-theme]')?.addEventListener('click', themeCycle);
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateThemeName);
+    updateThemeName();
   }
 
   if (typeof module !== 'undefined' && module.exports) {
