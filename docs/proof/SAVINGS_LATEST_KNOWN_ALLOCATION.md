@@ -609,7 +609,12 @@ Review remain required. BLOCK 5496573478 controls until a fresh completed review
 Failed-refresh continuity stays deferred; no merge, deployment or activation
 is performed here.
 
-## Serialized-window compatibility correction
+## Historical serialized-window attempt — superseded
+
+The internal-property approach below was published in intermediate `61d5261d`
+and is fully superseded by the approved repair below. Root correctly required
+enumerable original-query provenance to remain protected by History contentKey.
+Its memory-key receipt is historical and does not qualify the current design.
 
 Exact-head 7ec5347e hosted runs 38321231312 and 38321226805 failed standard
 372/373, passed isolation 1/1 and failed aggregate. The sole failed suite was
@@ -637,3 +642,68 @@ exercise clean bf1798a6 source, with 21/25/116/77 exact bindings. All 318 focuse
 tests and original financial assertions still pass. Earlier 7ec5347e receipts
 and failed full runs remain historical. Root's exact-head Systems decision and
 fresh full hosted checks remain required. No merge or activation occurred.
+
+## Explicit posting provenance and test-only History compatibility repair
+
+Root [BLOCK 5497173772](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/595#pullrequestreview-5497173772)
+superseded PASS 5497062799 on exact 7ec5347e after advisory P1 4253324003.
+The subsequent explicit dispatch approved only the bounded posting-source repair
+and synthetic History compatibility correction. Clean exercised source is
+`604492c76bb96dde87e31d06239ff3fcf8633127`, based on reviewed main
+`a773a950c1927e450fea7dafd3bef6b35ed0b8a6`.
+
+Every production difference since 7ec5347e is recorded in
+[static preservation and complete production diff](savings-latest-known/posting-preservation.json):
+`provider-observe.js::normalizeLunchMoneyTransaction` captures explicit raw
+Boolean status as posted/pending/unknown before collapse, preserving incumbent
+`pending = is_pending === true`; `savingsPoolObservations` retains unknown
+status for the mapped Savings account; `sanitizedCurrentPeriodActuals` preserves
+full-report per-ID status and canonical account uncertainty, including dropped
+rows. `Forecast.savingsReportedMovementCoherence` requires affirmative posted
+source evidence on every qualified relevant leg, including the cash counterparty,
+and recognizes the fixed unknown-status reason. Unrelated accounts stay isolated.
+The normalizer's window is restored to 7ec5347e's enumerable source fact. No other
+production path has changed since 7ec5347e, and no production History/contentKey
+code changed anywhere in this repair.
+
+The synthetic History test now proves publication-only and provenance-only
+conflicts separately. It asserts the exact new fetch leaf and every original
+window field, then removes only that leaf from a cloned legacy projection before
+frozen dedup. All 458 original assertion-containing lines in the six checked
+financial/history files remain; all three salary suite blobs remain main's exact
+blobs. Production History and both frozen archives remain exact main blobs, with
+their recorded hashes. The intermediate hidden-property implementation is gone.
+
+- [Actual producer RED/GREEN](savings-latest-known/posting-red-green.json):
+  54 posting controls; exact 61d5261d has 28 unsafe failures and 26 passes, repaired
+  source passes all 54. Absent/null/string/numeric/object statuses cover direct,
+  each transfer leg, dropped and collapsed predecessors, and unrelated accounts.
+  Explicit true/false controls preserve legitimate pending-to-posted collapse.
+  Global pending normalization is identical and returned packets remain unchanged.
+  Earlier 12 observer, 82 window and 60 fetch controls all freshly pass.
+- [Exact-main financial comparison](savings-latest-known/posting-main-comparison.json):
+  336 invented ledgers, 692,219 equal subtrees, 94 incumbent held-backing controls,
+  zero unexpected differences. The held controls preserve the original packet
+  and compare external financial outputs to the incumbent pending-unknown entry
+  path; that conservative-control qualification is not exhaustive Savings equality.
+- [Focused acceptance](savings-latest-known/posting-suite-repair.json): all 20
+  registered suites pass, binding 120 exact source/static/fixture files including
+  production History, its test, and frozen archives. Separate focused run passes
+  372 tests (130 latest-known, 230 observer/window/source/posting, 12 annual).
+- [App.boot browser proof](savings-latest-known/browser-posting-qualified.json):
+  16 Edge cases pass, including three malformed relevant-status negatives, explicit
+  posted direct/pair positives, unrelated isolation, all ten earlier fetch cases,
+  prior-year balances and midnight. Info holds, Known Needed, bands, top-up gates,
+  focus and overflow are checked. Screenshot hashes bind delivered images; no
+  page error, external request or write occurs. This is synthetic browser evidence.
+- The same preservation receipt confirms all 12 reviewed #598 paths and its
+  registry entry remain exact; #594 remains untouched. No household/private
+  comparison was repeated or promoted to this new SHA.
+
+The actual local Windows History suite remains FAIL with `history-io-failed`
+at the incumbent engine-conflict append assertion, before new compatibility
+assertions. No storage shim, fixture rewrite, new runtime or key relaxation is
+used. Actual append-suite PASS in complete hosted Linux CI is still required;
+the forthcoming terminal result must be recorded separately in the PR card.
+Failed-refresh retention remains a separate follow-on. Root exact-head Systems
+PASS and the required checks remain release gates. No merge/deploy/activation.
