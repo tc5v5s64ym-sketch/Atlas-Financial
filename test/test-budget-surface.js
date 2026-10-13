@@ -995,8 +995,11 @@ console.log('\n=== outgoing e-transfer review section (browse + unavailable path
   const etHtml = etPage.render(fx.served({ etransfer: true }));
   const etSec = etSection(etHtml);
   ok(/data-etransfer-state="available-complete"/.test(etHtml) && etSec.includes('Outgoing e-transfer')
-    && etSec.includes('$75.00') && etSec.includes('chequing-b') && etSec.includes('Aug 19'),
-    'current period: the flagged outgoing e-transfer renders with generic label, date, amount and canonical account only');
+    && etSec.includes('$75.00') && etSec.includes('Weekly spending account') && etSec.includes('Aug 19'),
+    'current period: the flagged outgoing e-transfer renders with generic label, date, amount and canonical account display label only');
+  ok((etSec.match(/Purpose not yet confirmed/g) || []).length === 1
+    && etSec.includes('<details class="budget-etransfers-review">') && !etSec.includes('chequing-b'),
+    'transfer review is a native closed disclosure with one purpose note and a household account label');
   ok(!etHtml.includes('SEND E-TFR') && !etSec.includes('Synthetic recipient'),
     'no raw descriptor or payee text reaches the rendered surface');
   ok(etPage.context.__ctx.advice.currentPeriodAction.outgoingETransfers.count === 1,

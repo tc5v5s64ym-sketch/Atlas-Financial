@@ -3,7 +3,7 @@
 // DOM, after budget-blend.js has run. Fixtures are the invented Budget
 // surface household (test/fixtures/budget-surface-data) plus one invented
 // SEND E-TFR provider row; every request is intercepted, no server or
-// credentials are used. States: complete / posted-only /
+// credentials are used. States: complete / multi-row pending / posted-only /
 // incomplete-observed (legacy-missing transactionCoverage) /
 // incomplete-truncated / stale / plan-unavailable.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'),
@@ -20,6 +20,14 @@ function servedFor(state) {
   if (state === 'unavailable') return fx.served({ unavailablePlan: true });
   const data = fx.served({ etransfer: true });
   const packet = data.liveOverlay.currentPeriodActuals;
+  if (state === 'multi-row') {
+    // A second invented, independently identified row exercises both
+    // household account labels and pending without adding a purpose.
+    const row = packet.transactions.find(item => item.outgoingETransferIdentity);
+    packet.transactions.push({ ...row, id: 'synthetic-transfer-pending', coverageRef: 'synthetic-transfer-pending',
+      date: '2026-08-20', amount: 28.50, atlasAccountId: 'chequing-a', account: 'chequing-a',
+      pending: true, savingsPostingEvidence: 'pending', pendingTreatment: 'pending-unproven' });
+  }
   if (state === 'posted-only') packet.pendingCoverage = 'unknown';
   if (state === 'incomplete-observed') delete packet.transactionCoverage;
   if (state === 'incomplete-truncated') packet.transactionCoverage = 'truncated';
@@ -34,8 +42,8 @@ function servedFor(state) {
   });
   const errors = [], external = [], writes = [];
   try {
-    for (const width of [1440, 390, 320]) for (const theme of ['light', 'dark'])
-      for (const state of ['complete', 'posted-only', 'incomplete-observed', 'incomplete-truncated', 'stale', 'unavailable']) {
+    for (const width of [320, 390, 1440]) for (const theme of ['light', 'dark'])
+      for (const state of ['complete', 'multi-row', 'posted-only', 'incomplete-observed', 'incomplete-truncated', 'stale', 'unavailable']) {
         const servedData = servedFor(state);
         const page = await browser.newPage({
           viewport: { width, height: 1000 }, isMobile: width < 400, hasTouch: width < 400,
@@ -70,18 +78,50 @@ function servedFor(state) {
         const box = await section.boundingBox();
         assert.ok(box && box.width > 0 && box.height > 0, `${state}: section is actually visible post-blend (real bounding box)`);
         assert.equal(await section.isVisible(), true, `${state}: section isVisible post-blend`);
+        const layout = await section.evaluate(el => {
+          const river = document.querySelector('.g-river-wrap');
+          const board = document.querySelector('.blend-board');
+          const review = el.querySelector('details');
+          const summary = review?.querySelector('summary');
+          const row = el.querySelector('[data-etransfer-item]');
+          return { afterRiver: !river || el.getBoundingClientRect().top >= river.getBoundingClientRect().bottom,
+            afterBoard: !board || el.getBoundingClientRect().top >= board.getBoundingClientRect().bottom,
+            hasDisclosure: !!review, closed: review?.open === false,
+            compactHeight: el.getBoundingClientRect().height,
+            tapHeight: summary?.getBoundingClientRect().height || 0,
+            rowDisplay: row ? getComputedStyle(row).display : null };
+        });
+        const layoutFailures = [];
+        if (!layout.afterRiver || !layout.afterBoard) layoutFailures.push('review must follow the river and financial cards');
+        if (!layout.hasDisclosure || !layout.closed) layoutFailures.push('review must start as a closed disclosure');
+        if (layout.compactHeight > 120) layoutFailures.push('closed review must remain at most 120px tall');
+        if (layout.tapHeight < 44) layoutFailures.push('review needs a 44px disclosure target');
+        if (layout.rowDisplay && layout.rowDisplay !== 'grid') layoutFailures.push('review rows need a defined grid layout');
+        if (layoutFailures.length) await page.screenshot({ path: path.join(out, `${state}-${theme}-${width}-failed.png`), fullPage: true, animations: 'disabled' });
+        assert.deepEqual(layoutFailures, [], `${width}/${theme}/${state}: compact review layout (${JSON.stringify(layout)})`);
+        const disclosure = section.locator('details');
+        const summary = disclosure.locator('summary');
+        await summary.focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await disclosure.evaluate(el => el.open), true, 'keyboard opens review');
+        assert.equal(await summary.evaluate(el => el === document.activeElement), true, 'disclosure retains focus');
         const text = await section.innerText();
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true,
           `${state}: no horizontal overflow at ${width}px`);
         assert.doesNotMatch(await page.evaluate(() => document.body.innerText), /SEND E-TFR|Synthetic recipient/,
           `${state}: no descriptor or payee text anywhere on the page`);
         const items = section.locator('[data-etransfer-item]');
-        if (state === 'complete') {
+        if (state === 'complete' || state === 'multi-row') {
           assert.equal(await section.getAttribute('data-etransfer-state'), 'available-complete');
-          assert.equal(await items.count(), 1, 'complete: the one flagged row is listed');
+          assert.equal(await items.count(), state === 'multi-row' ? 2 : 1, 'complete: every flagged row is listed');
           assert.match(text, /Outgoing e-transfer/); assert.match(text, /\$75\.00/);
-          assert.match(text, /chequing-b/); assert.match(text, /Aug 19/);
-          assert.match(text, /1 unresolved outgoing e-transfer from household cash accounts is listed for review this period/);
+          assert.match(text, /Weekly spending account/); assert.match(text, /Aug 19/);
+          if (state === 'multi-row') {
+            assert.match(text, /2 unresolved outgoing e-transfers from household cash accounts are listed for review this period/);
+            assert.match(text, /\$28\.50/); assert.match(text, /Bills account/); assert.match(text, /Aug 20/); assert.match(text, /Pending/);
+            const first = await items.nth(0).boundingBox(), second = await items.nth(1).boundingBox();
+            assert.ok(second.y >= first.y + first.height, 'separate transfer rows never overlap');
+          } else assert.match(text, /1 unresolved outgoing e-transfer from household cash accounts is listed for review this period/);
         } else if (state === 'posted-only') {
           assert.equal(await section.getAttribute('data-etransfer-state'), 'available-posted-only');
           assert.equal(await items.count(), 1, 'posted-only: observed items still shown');
@@ -106,8 +146,29 @@ function servedFor(state) {
           assert.equal(await items.count(), 0, 'unavailable: notice only, no items');
           assert.match(text, /can't be confirmed/); assert.doesNotMatch(text, /\$/);
         }
+        assert.doesNotMatch(text, /chequing-[ab]/, 'canonical IDs are formatted as the established household account labels');
+        assert.equal((text.match(/Purpose not yet confirmed/g) || []).length, 1, 'purpose disclaimer is printed once');
+        for (const item of await items.all()) {
+          assert.equal(await item.isVisible(), true, 'opening review exposes every qualified row');
+          const rowLayout = await item.evaluate(el => {
+            const row = el.getBoundingClientRect();
+            return [...el.children].every(child => {
+              const box = child.getBoundingClientRect();
+              return box.left >= row.left - 1 && box.right <= row.right + 1;
+            });
+          });
+          assert.equal(rowLayout, true, 'row fields fit within the review without clipping');
+        }
+        // Complete the interaction before capture: the desktop capture
+        // was observed replacing the open disclosure with a fresh mount.
+        await summary.press('Space');
+        await page.waitForFunction(() => document.querySelector('.budget-etransfers-review')?.open === false);
+        assert.equal(await disclosure.evaluate(el => el.open), false, 'keyboard closes review');
+        await summary.click();
+        assert.equal(await disclosure.evaluate(el => el.open), true, 'tap opens review');
+        await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
         await page.screenshot({ path: path.join(out, `${state}-${theme}-${width}.png`), fullPage: true, animations: 'disabled' });
-        journeys.push({ width, theme, state, sectionState: await section.getAttribute('data-etransfer-state'), items: await items.count() });
+        journeys.push({ width, theme, state, sectionState: await section.getAttribute('data-etransfer-state'), items: await items.count(), layout });
         await page.close();
         console.log(`PASS ${width}px ${theme} ${state}: post-blend visibility, whitelist fields, truthful state consequence, no overflow`);
       }
@@ -175,10 +236,12 @@ function servedFor(state) {
     }
     assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(writes, []);
     fs.writeFileSync(path.join(out, 'etransfer-proof.json'), JSON.stringify({
-      synthetic: true, executionHead,
+      synthetic: true, executionHead, browserVersion: browser.version(),
+      sourceSha256: Object.fromEntries(['public/plan.js', 'public/budget-blend.js', 'public/budget-blend.css'].map(file =>
+        [file, crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex')])),
       browserCompanionSha256: crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),
       journeys,
     }, null, 2) + '\n');
-    console.log('PASS browser proof: 36 state × theme × width views + navigation journey, post-blend visibility and field whitelist hold');
+    console.log('PASS browser proof: 42 state x theme x width views + navigation journey, compact layout, keyboard review and field whitelist hold');
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

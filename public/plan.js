@@ -7010,18 +7010,20 @@ function budgetOutgoingETransfersSectionHtml(pub) {
   const rows = items.map(item => {
     const dateLabel = isValidIsoCalendarDate(item && item.date) ? fmtDate(item.date) : 'Date unavailable';
     const amount = Number(item && item.amount);
-    return `<div class="budget-browse-row" data-etransfer-item>
-      <span>Outgoing e-transfer</span>
-      <span>${budgetBrowseEscape(dateLabel)}</span>
-      <span>${Number.isFinite(amount) ? money2(amount) : 'Unavailable'}</span>
-      <span>${budgetBrowseEscape((item && item.account) || 'Account unavailable')}</span>
-      ${item && item.pending ? '<span>Pending</span>' : ''}
+    // Existing household account names are display labels only. The
+    // Forecast publication still owns the account identity and all values.
+    const account = item && item.account;
+    const accountLabel = account === 'chequing-a' ? 'Bills account' : account === 'chequing-b' ? 'Weekly spending account' : account === 'savings' ? 'Savings' : 'Account unavailable';
+    return `<div class="budget-etransfer-row" data-etransfer-item>
+      <span class="budget-etransfer-label">Outgoing e-transfer</span>
+      <span class="budget-etransfer-amount">${Number.isFinite(amount) ? money2(amount) : 'Unavailable'}</span>
+      <span class="budget-etransfer-meta">${budgetBrowseEscape(dateLabel)} &middot; ${budgetBrowseEscape(accountLabel)}${item && item.pending ? ' &middot; Pending' : ''}</span>
     </div>`;
   }).join('');
   let note = '';
   if (status === 'available-complete') {
     note = items.length
-      ? `<p class="budget-browse-note">${items.length} unresolved outgoing e-transfer${items.length === 1 ? '' : 's'} from household cash accounts ${items.length === 1 ? 'is' : 'are'} listed for review this period. Purpose not yet confirmed.</p>`
+      ? `<p class="budget-browse-note">${items.length} unresolved outgoing e-transfer${items.length === 1 ? '' : 's'} from household cash accounts ${items.length === 1 ? 'is' : 'are'} listed for review this period.</p>`
       : '<p class="budget-browse-note">No unresolved outgoing e-transfers from household cash accounts are listed for review this period.</p>';
   } else if (status === 'available-posted-only') {
     note = `<p class="budget-browse-note">${items.length ? `Showing ${items.length} observed outgoing e-transfer${items.length === 1 ? '' : 's'}. ` : 'None observed yet. '}Pending coverage is incomplete, so additional outgoing e-transfers may exist.</p>`;
@@ -7032,11 +7034,13 @@ function budgetOutgoingETransfersSectionHtml(pub) {
   } else {
     note = `<p class="budget-browse-note">Outgoing e-transfer evidence is unavailable, so outgoing e-transfers can't be confirmed for this period.</p>`;
   }
+  const summary = status === 'available-complete' ? (items.length ? `${items.length} to review` : 'None listed')
+    : status === 'available-posted-only' || status === 'available-incomplete' ? `${items.length ? `${items.length} observed · ` : ''}Coverage incomplete`
+    : status === 'unavailable-stale' ? 'Evidence not current' : 'Evidence unavailable';
   return `<section class="budget-browse-card budget-browse-etransfers" data-budget-browse="e-transfers" data-etransfer-state="${budgetBrowseEscape(status)}" aria-labelledby="budget-etransfers-heading">
-    <header><div><p class="budget-browse-eyebrow">Current pay period</p><h2 id="budget-etransfers-heading">Outgoing e-transfers</h2>
-    <p class="budget-browse-sub">Purpose not yet confirmed</p></div></header>
-    ${rows}
-    ${note}
+    <details class="budget-etransfers-review"><summary><span id="budget-etransfers-heading">Outgoing e-transfers</span><span class="budget-etransfers-status">${budgetBrowseEscape(summary)}</span></summary>
+      <div class="budget-etransfers-content"><p class="budget-browse-sub">Current pay period · Purpose not yet confirmed</p>${note}${rows}</div>
+    </details>
   </section>`;
 }
 

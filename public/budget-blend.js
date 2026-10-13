@@ -215,6 +215,10 @@
     if (header) bento.appendChild(header);
     if (river) moveWidget(bento, river);
     stackBoard(bento);
+    // Keep the current-period review after the financial cards. It is a
+    // disclosure of Forecast's existing rows, not another face tile.
+    const transfers = bento.querySelector('[data-budget-browse="e-transfers"]');
+    if (transfers) bento.appendChild(transfers);
     if (quiet) bento.appendChild(quiet);
     const cards = bento.querySelector('.budget-blend-card-movements');
     const browse = bento.querySelector(':scope > .budget-browse-grid');
