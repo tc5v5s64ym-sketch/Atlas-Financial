@@ -21,8 +21,8 @@ function harness(label = 'Running commit 1111111') {
   const clock = class extends Date { static now() { return now; } };
   const context = vm.createContext({ document: doc, Intl, Date: clock, AbortController,
     addEventListener: (k, fn) => { windowEvents[k] = fn; },
-    setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout: () => {},
-    fetch: async (url, options) => { requests.push({ url, options }); return typeof response === 'function' ? response() : response; },
+    setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout: () => {},
+    fetch: async (url, options) => { requests.push({ url, options }); return typeof response === 'function' ? response(options) : response; },
     DOMParser: class { parseFromString(text) { return { querySelector: () => ({ textContent: text }) }; } },
     confirm: () => confirmed, location: { reload: () => { reloads++; } },
   });
@@ -49,6 +49,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(h.requests[0].options.cache, 'no-store');
   assert.equal(h.requests[0].options.redirect, 'error');
   assert.equal(h.requests[0].options.credentials, 'same-origin');
+  assert.equal(h.timers[0].ms, 60000, 'allow the incumbent free instance to wake');
   h.setLabel('Running PR #604 \u00b7 2222222'); h.advance();
   h.resume(); h.resume(); await flush();
   assert.equal(h.requests.length, 2, 'overlapping checks coalesce');
@@ -71,6 +72,14 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   h.resume(); await flush(); assert.equal(h.requests.length, count, 'hidden documents do not probe');
   const unknown = harness('Running build unavailable'); unknown.resume(); await flush();
   assert.equal(unknown.requests.length, 0, 'no response-bound identity means no comparison');
+  const timeout = harness();
+  timeout.setResponse(options => new Promise((_resolve, reject) => {
+    options.signal.addEventListener('abort', () => reject(Error('deadline')));
+  }));
+  timeout.resume(); timeout.timers.at(-1).fn(); await flush();
+  assert.equal(timeout.notices.length, 0, 'timeout keeps the current document');
+  timeout.setLabel('Running commit 2222222'); timeout.advance(); timeout.resume(); await flush();
+  assert.equal(timeout.notices.length, 1, 'next resume can retry after a timeout');
   assert.equal(h.requests.some(r => r.url.includes('data.json')), false, 'no financial/provider path');
   console.log('PASS release resume: cold, visibility, restore, quiet same/unknown, coalescing, confirmed reload, rollback, offline/error, no provider path');
 })().catch(e => { console.error(e); process.exitCode = 1; });

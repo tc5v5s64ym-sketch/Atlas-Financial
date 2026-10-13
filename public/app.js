@@ -346,7 +346,9 @@ function watchBudgetRelease() {
     inFlight = true;
     lastCheck = Date.now();
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    // Render's free instance may need about a minute to wake. Keep the open
+    // document usable while waiting; a missed deadline is still non-destructive.
+    const timeout = setTimeout(() => controller.abort(), 60000);
     try {
       // HTML only: no /data.json request and no provider observation. A login
       // redirect, timeout, offline/error or unknown identity leaves this page.
