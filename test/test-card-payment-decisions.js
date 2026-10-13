@@ -171,7 +171,72 @@ async function retainedLifecycle() {
     eq((await s.store.snapshot()).decisions.length, 3, 'aggregate rejection withholds qualification without erasing intent');
   }
 }
+async function purchasePostingContracts() {
+  const cases = [
+    ['posted', true], ['pending', false], ['raw-missing', false], ['raw-null', false],
+    ['raw-string-false', false], ['raw-string-true', false], ['raw-zero', false], ['raw-one', false], ['raw-object', false],
+    ['dto-missing', false], ['dto-null', false], ['dto-string-false', false], ['dto-zero', false], ['dto-object', false],
+    ['dto-source-unknown', false], ['dto-source-null', false], ['dto-source-pending', false],
+    ['pending-confirmed-treatment', false], ['pending-presumed-treatment', false], ['legacy-posted', true],
+  ];
+  for (const [mode, ready] of cases) for (const allocated of [80, 40]) {
+    const x = seed(), raw = x.payload.transactions[0];
+    if (mode.startsWith('pending')) { raw.is_pending = true; x.payload.accounts[3].balance = 320; }
+    if (mode === 'raw-missing') delete raw.is_pending;
+    const rawValues = { 'raw-null': null, 'raw-string-false': 'false', 'raw-string-true': 'true',
+      'raw-zero': 0, 'raw-one': 1, 'raw-object': {} };
+    if (Object.hasOwn(rawValues, mode)) raw.is_pending = rawValues[mode];
+    const e = observed(x), original = JSON.stringify(e), packet = structuredClone(e.packet);
+    const purchase = packet.transactions.find(tx => tx.atlasAccountId === x.cardId && tx.amount === 80);
+    if (mode === 'dto-missing') delete purchase.pending;
+    const dtoValues = { 'dto-null': null, 'dto-string-false': 'false', 'dto-zero': 0, 'dto-object': {} };
+    if (Object.hasOwn(dtoValues, mode)) purchase.pending = dtoValues[mode];
+    if (mode === 'dto-source-unknown') purchase.savingsPostingEvidence = 'unknown';
+    if (mode === 'dto-source-null') purchase.savingsPostingEvidence = null;
+    if (mode === 'dto-source-pending') purchase.savingsPostingEvidence = 'pending';
+    if (mode === 'legacy-posted') delete purchase.savingsPostingEvidence;
+    if (mode === 'pending-confirmed-treatment') purchase.pendingTreatment = 'confirmed-settled';
+    if (mode === 'pending-presumed-treatment') purchase.pendingTreatment = 'presumed-settled-for-current-forecast';
+    const proposed = record(x, allocated, 80 - allocated), outcome = F.validateCardPaymentDecision({ ...e, packet, record: proposed });
+    eq(outcome.status, ready ? 'ready' : 'unavailable', mode + ': only qualified posted purchases receive confirmed allocation');
+    if (ready) eq([outcome.allocation.backfill, outcome.allocation.cardPayment], [allocated, 80 - allocated],
+      'independent cents: allocated ' + allocated * 100 + ' plus remaining purpose equals 8000');
+    const plan = structuredClone(e.plan); plan.cardPurchaseCoverage.payments.push(proposed);
+    const advice = F.recommend(plan, e.asOf, { debts: e.debts, currentPeriodActuals: packet });
+    const rows = advice.cardPurchaseCoverage.purchases;
+    eq(rows.length, 1, 'posting qualification never removes the counted purchase');
+    eq([rows[0].amount, rows[0].covered, rows[0].remaining], [80, ready ? allocated : 0, ready ? 80 - allocated : 80],
+      '8000 purchase cents remain counted; unqualified allocation covers no cents');
+    eq([F.startingCashAmount(plan), e.debts[0].balance, e.debts[0].pending],
+      [420, mode.startsWith('pending') ? 320 : 400, mode.startsWith('pending') ? 80 : 0],
+      'cash 50000-8000; posted debt 40000+posted purchase-8000; pending authorization separate');
+    eq(JSON.stringify(e), original, 'qualifier leaves real producer-shaped input immutable');
+  }
+  // The older schema already supplies an explicitly confirmed opening liability.
+  // It is not an unqualified current row with its posting field omitted.
+  const opening = seed(); opening.payload.transactions = opening.payload.transactions.slice(1);
+  opening.payload.accounts[3].balance = 320;
+  opening.data.plan.cardPurchaseCoverage.opening = { asOf: '2026-09-18', confirmed: true,
+    currency: 'cad', fundingAccountId: 'chequing-a', purchases: [{ ref: 'invented-opening-purchase',
+      accountId: opening.cardId, date: '2026-09-17', amount: 80, covered: 0, categoryLabel: 'Groceries' }] };
+  const old = observed(opening), carry = { ...record(seed()),
+    allocations: [{ purchaseRef: 'invented-opening-purchase', amount: 80 }] };
+  eq(F.validateCardPaymentDecision({ ...old, record: carry }).status, 'ready', 'confirmed legacy opening retains its posted qualification');
+
+  const retained = setup(); await save(retained, record(retained.x));
+  const pending = seed(); pending.payload.transactions[0].is_pending = true; pending.payload.accounts[3].balance = 320;
+  retained.change(pending);
+  eq((await retained.controller.input()).plan.cardPurchaseCoverage.payments.map(p => p.confirmed), [false],
+    'pending purchase withholds current qualification of the retained intent');
+  eq((await retained.store.snapshot()).decisions[0].record.allocations[0].amount, 80, 'original 8000-cent claim stays retained');
+  eq((await prepare(retained, record(pending))).status, 'unavailable', 'unqualified purchase cannot gain another confirmed claim');
+  retained.change(seed());
+  eq((await retained.controller.input()).plan.cardPurchaseCoverage.payments.map(p => p.confirmed), [true],
+    'the same retained intent requalifies when explicit posted evidence returns');
+  eq((await retained.store.snapshot()).decisions.length, 1, 'requalification never appends or activates another choice');
+}
 async function main() {
+  await purchasePostingContracts();
   const s = setup(), before = JSON.stringify(s.x), e = observed(s.x);
   eq((await s.controller.input()).plan, e.plan, 'empty store leaves the complete effective plan unchanged');
   const valid = F.validateCardPaymentDecision({ ...e, record: record(s.x) });
