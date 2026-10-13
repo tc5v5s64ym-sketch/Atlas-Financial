@@ -389,8 +389,23 @@ function resolveRawTags(raw, tagsById) {
   });
 }
 
+// A provider transaction ID is trustworthy only as a safe-integer number,
+// or as a nonempty string exactly equal to its own trim() — trustworthy
+// strings are opaque identities preserved verbatim (case and leading zeros
+// are identity; identity remains the String() form, so number 123 and
+// string '123' stay the same identity). Everything else — booleans,
+// non-finite / non-integer / unsafe numbers, empty or whitespace-padded
+// strings, arrays, objects, null/undefined — is untrustworthy:
+// unmergeable at fetch (mergeTransactionsById) and rejected at
+// normalization through the existing missing-id failure path.
+function isTrustworthyTransactionId(value) {
+  if (typeof value === 'number') return Number.isSafeInteger(value);
+  if (typeof value === 'string') return value.length > 0 && value === value.trim();
+  return false;
+}
+
 function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {
-  if (!raw || raw.id == null) fail('Lunch Money transaction is missing a stable id.');
+  if (!raw || !isTrustworthyTransactionId(raw.id)) fail('Lunch Money transaction is missing a stable id.');
   const accountId = raw.account_id != null ? raw.account_id
     : raw.plaid_account_id != null ? raw.plaid_account_id
     : raw.manual_account_id;
@@ -682,7 +697,7 @@ function mergeTransactionsById(primary, extra) {
   const out = [];
   const seen = new Set();
   for (const tx of [].concat(primary || [], extra || [])) {
-    if (!tx || tx.id == null) {
+    if (!tx || !isTrustworthyTransactionId(tx.id)) {
       out.push(tx);
       continue;
     }
