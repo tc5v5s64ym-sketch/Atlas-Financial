@@ -62,6 +62,7 @@ const suites = [
   ['equivalent in-flight refresh sharing, caller isolation and sanitized timings', 'test-live-refresh-coalescing.js'],
   ['private qualified observation reuse, Manual Refresh, context and restart', 'test-server-observation-memory.js'],
   ['bounded shared browser data load and truthful retry', 'test-browser-data-deadline.js'],
+  ['source check metadata and independent financial coverage status', 'test-source-check-status.js'],
   ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
