@@ -19248,14 +19248,27 @@
   // after credit. It is an account-cohort contradiction, not payment permission.
   function savingsReportedStockOverlap(opts, reported, day) {
     const packet = currentPeriodActualsPacket(opts), transactions = packet?.transactions;
+    // A positive contradiction needs explicit proof. The incumbent generic
+    // coverage helpers tolerate legacy omissions elsewhere; that fallback is
+    // not evidence for this narrow reported-stock overlap hold.
+    const complete = coverage => coverage === 'complete' || coverage != null
+      && typeof coverage === 'object' && !Array.isArray(coverage)
+      && Object.hasOwn(coverage, 'complete') && coverage.complete === true
+      && (!Object.hasOwn(coverage, 'status') || coverage.status === 'complete')
+      && ['truncated', 'hasMore', 'has_more'].every(key => !Object.hasOwn(coverage, key) || coverage[key] === false);
     if (!Array.isArray(transactions) || !Object.hasOwn(packet, 'transactionCoverage')
-        || !Object.hasOwn(packet, 'pendingCoverage') || transactionCoverageStatus(packet) !== 'complete'
-        || pendingCoverageStatus(packet) !== 'complete'
+        || !Object.hasOwn(packet, 'pendingCoverage') || !complete(packet.transactionCoverage)
+        || !complete(packet.pendingCoverage)
         || packet.currency != null && (typeof packet.currency !== 'string' || packet.currency.toUpperCase() !== 'CAD')) return null;
     const window = packet.savingsFetchCoverage;
-    if (packet.schema !== 'atlas-current-period-actuals/v1' || window?.complete !== true
+    if (packet.schema !== 'atlas-current-period-actuals/v1' || !complete(window)
         || !savingsDate(window.startDate) || !savingsDate(window.endDate)
-        || window.startDate !== packet.coverageStart || window.endDate !== packet.coverageThrough) return null;
+        || window.startDate !== packet.coverageStart || window.endDate !== packet.coverageThrough
+        || packet.coverageThrough !== packet.observationAsOf
+        || ['startDate', 'endDate'].some(key => Object.hasOwn(packet.transactionCoverage, key)
+          && packet.transactionCoverage[key] !== window[key])
+        || packet.transactionWindow != null && (!complete(packet.transactionWindow)
+          || packet.transactionWindow.startDate !== window.startDate || packet.transactionWindow.endDate !== window.endDate)) return null;
     const accounts = new Set(reported.accountIds), byId = new Map();
     for (const tx of transactions) if (tx?.id != null) {
       const rows = byId.get(String(tx.id)) || []; rows.push(tx); byId.set(String(tx.id), rows);

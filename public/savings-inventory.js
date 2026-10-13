@@ -98,7 +98,10 @@
       const publishedRows = packet.rows || [];
       const annualBillExcluded = publishedRows.some(row => row?.key === annualBillRow);
       const reported = packet.stock?.reportedStock;
-      const reportedKnown = reported?.status === 'ready' && reported.basis === 'reported-savings-stock'
+      // Current packets omit kind; selected historical/projected packets
+      // retain source evidence but explicitly withhold actual stock.
+      const currentStock = packet.period?.kind == null || packet.period.kind === 'current';
+      const reportedKnown = currentStock && reported?.status === 'ready' && reported.basis === 'reported-savings-stock'
         && reported.evidenceTrust === 'provider-reported' && reported.trust === 'calculated'
         && reported.currency === 'CAD' && reported.nonAdditive === true && reported.asOf === packet.asOf
         && typeof reported.amount === 'number' && Number.isFinite(reported.amount)
@@ -107,7 +110,8 @@
       const stockCopy = reportedKnown
         ? 'Reported combined savings: ' + money(reported.amount) + '. Balance dates '
           + escape(reported.balanceFrom) + (reported.balanceFrom === reported.balanceThrough ? '' : ' - ' + escape(reported.balanceThrough)) + '.'
-        : 'Observed stock as of ' + escape(packet.asOf) + ': ' + money(packet.stock?.amount) + '.';
+        : currentStock ? 'Observed stock as of ' + escape(packet.asOf) + ': ' + money(packet.stock?.amount) + '.'
+        : 'Stock for this selected period: Unknown.';
       const savedLabel = packet.goalAllocation?.status === 'ready' && packet.backing?.status !== 'ready'
         ? 'Saved allocation' : 'Currently backed';
       const rows = publishedRows.filter(row => row?.key !== annualBillRow).map(row => { const members = memberHtml(packet, row); return `<article data-savings-goal="${escape(row.key)}"><h3>${escape(members.title)}</h3><dl>${amount(savedLabel, row.saved, row.savedTrust, 'backed')}${amount('Needed', row.needed, row.neededTrust, 'needed')}${amount('Projected this period', row.thisPeriod, row.thisPeriodTrust)}</dl>${members.html}</article>`; }).join('');

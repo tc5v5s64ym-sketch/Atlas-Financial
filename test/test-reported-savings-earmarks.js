@@ -95,6 +95,82 @@ test('latest reported 95 + 24 funds dated costs 60, 24, 170 as 60 + 24 + 35 desp
   const html = rendered(x, advice);
   assert.match(html.inventory, /Balance dates 2026-10-04 - 2026-10-06/);
 });
+for (const role of ['current', 'past', 'next', 'future'])
+  test('selected-period Inventory ' + role + ' respects actual-stock qualification through Budget Accounts & evidence', () => {
+    const x = require('./fixtures/savings-transfer-cutoffs')('unrelated-mixed'), advice = publish(x);
+    const period = advice.payPeriodViews.find(row => row.timelineRole === role);
+    assert.ok(period, 'the native selected period exists');
+    const context = { asOf: x.asOf, advice, periodId: period.id };
+    const packet = F.savingsFundingPublication(advice.savingsFunding, context);
+    assert.ok(packet, 'Forecast accepts its native selected-period publication');
+    assert.equal(packet.stock.reportedStock.status, 'ready', 'current source report is retained as evidence');
+    assert.equal(packet.stock.reportedStock.amount, 119, 'known current report makes the leak observable');
+    const before = JSON.stringify(advice);
+    page.src = { plan: x.plan, debts: [], asOf: x.asOf, advice, liveOverlay: x.opts };
+    page.selectedPeriod = period;
+    // Actual tile includes a hidden Inventory payload; its Accounts & evidence
+    // button opens this payload through the incumbent Budget modal consumer.
+    const tile = vm.runInContext('budgetSavingsGoalsHtml(src, selectedPeriod, null)', page);
+    assert.match(tile, /data-budget-funding-inventory/);
+    assert.match(tile, /data-budget-funding-savings hidden/);
+    const standalone = Inventory.html(advice.savingsFunding, context);
+    for (const [surface, html] of [['Inventory', standalone], ['Budget Accounts & evidence', tile]]) {
+      if (role === 'current') {
+        assert.match(html, /Reported combined savings: \$119\.00\./, surface + ' preserves qualified current reports');
+        assert.match(html, /Balance dates 2026-10-06 - 2026-10-08/);
+      } else {
+        assert.equal(packet.period.kind, role === 'past' ? 'historical' : 'projected');
+        assert.equal(packet.stock.amount, null, 'Forecast withholds selected-period actual stock');
+        assert.ok(packet.rows.every(row => row.saved === null), 'selected-period Saved is unknown');
+        assert.doesNotMatch(html, /Reported combined savings|\$119\.00|Balance dates 2026-10-06 - 2026-10-08/,
+          surface + ' cannot promote the retained current report into selected-period stock');
+        assert.match(html, /Stock for this selected period: Unknown\./);
+      }
+    }
+    assert.equal(JSON.stringify(advice), before, 'rendering cannot change current or selected-period publications');
+  });
+for (const field of ['transactionCoverage', 'pendingCoverage'])
+  for (const [name, coverage] of [['null', null], ['unknown', 'unknown'], ['empty', {}],
+    ['truncated-status', { complete: true, status: 'truncated' }],
+    ['unknown-status', { complete: true, status: 'unknown' }],
+    ['has-more', { complete: true, hasMore: true }], ['truncated-flag', { complete: true, truncated: true }],
+    ['array', []], ['boolean', true]])
+    test('overlap evidence ' + field + ' ' + name + ' cannot prove duplicate reported cash', () => {
+      const x = require('./fixtures/savings-transfer-cutoffs')('double-count');
+      x.opts.currentPeriodActuals[field] = clone(coverage);
+      const advice = publish(x);
+      assert.equal(advice.savingsInventory.reportedStock.amount, 200);
+      reported(advice, [60, 24, 116]); futureHeld(advice); rendered(x, advice, [176,24], 200);
+    });
+for (const [name, mutate] of Object.entries({
+  'window-truncated-status': p => { p.savingsFetchCoverage.status = 'truncated'; },
+  'window-has-more': p => { p.savingsFetchCoverage.hasMore = true; },
+  'window-bound-mismatch': p => { p.savingsFetchCoverage.startDate = '2026-10-03'; },
+  'coverage-through-before-observation': p => { p.coverageThrough = p.savingsFetchCoverage.endDate = '2026-10-07'; },
+  'transaction-window-contradiction': p => { p.transactionWindow = { ...p.savingsFetchCoverage, truncated: true }; },
+  'transaction-coverage-start-mismatch': p => { p.transactionCoverage = { complete: true, startDate: '2026-10-03' }; },
+  'transaction-coverage-end-mismatch': p => { p.transactionCoverage = { complete: true, endDate: '2026-10-07' }; },
+  'missing-transaction-coverage': p => { delete p.transactionCoverage; },
+  'missing-pending-coverage': p => { delete p.pendingCoverage; },
+})) test('overlap evidence ' + name + ' cannot prove duplicate reported cash', () => {
+  const x = require('./fixtures/savings-transfer-cutoffs')('double-count');
+  mutate(x.opts.currentPeriodActuals);
+  const advice = publish(x); reported(advice, [60,24,116]); futureHeld(advice);
+  assert.equal(advice.savingsInventory.reportedStock.amount, 200);
+});
+for (const coverage of ['complete', { complete: true }, { complete: true, status: 'complete', truncated: false, hasMore: false }])
+  test('overlap evidence explicit complete control ' + JSON.stringify(coverage) + ' still withholds proven duplicate', () => {
+    const x = require('./fixtures/savings-transfer-cutoffs')('double-count');
+    x.opts.currentPeriodActuals.transactionCoverage = clone(coverage);
+    x.opts.currentPeriodActuals.pendingCoverage = clone(coverage);
+    x.opts.currentPeriodActuals.transactionWindow = { ...x.opts.currentPeriodActuals.savingsFetchCoverage,
+      status: 'complete', truncated: false, hasMore: false };
+    const advice = publish(x);
+    assert.equal(advice.savingsFunding.goalAllocation.status, 'unavailable');
+    assert.match(advice.savingsFunding.goalAllocation.reason, /same proven reserve transfer/);
+    assert.equal(advice.savingsInventory.reportedStock.amount, 200);
+    futureHeld(advice); rendered(x, advice, null, 200);
+  });
 for (const accountId of ['savings', 'savings-dont-touch'])
   for (const direction of ['TO', 'FR']) for (const boundary of ['before-window', 'before-reports', 'on-balance', 'after-reports'])
     test('D1 ' + accountId + ' unpaired ' + direction + ' ' + boundary + ' preserves reports and renderer earmarks', () => {
