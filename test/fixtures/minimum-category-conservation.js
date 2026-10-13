@@ -48,6 +48,12 @@ module.exports = function minimumCategoryExpectation(report, input, historicalOb
     hasMore: w.hasMore === true ? true : w.hasMore === false ? false : null,
     truncated: w.truncated === true,
   };
+  // P1 4253396900 addition: the packet also carries the dates-only
+  // unprocessable-candidate list. These ledgers contain no SEND E-TFR
+  // descriptor at all, so the exact expectation is the empty list.
+  assert.ok(!Object.hasOwn(packet, 'outgoingETransferUnconfirmed'),
+    'historical packet predates the outgoing e-transfer unconfirmed leaf');
+  packet.outgoingETransferUnconfirmed = [];
   assert.ok(!input.accountMap.mappings.some(row => ['savings', 'savings-dont-touch'].includes(row.canonical?.id)),
     'these salary-only ledgers have no canonical Savings accounts');
   assert.ok(!Object.hasOwn(expected.currentPeriodActuals, 'savingsMovementUnconfirmed'),
