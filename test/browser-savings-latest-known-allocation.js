@@ -124,6 +124,7 @@ function input(mode) {
       ['future-date', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
     ].filter(row => !selected || selected.includes(row[0]))) {
       const data = input(mode), inputHash = hash(JSON.stringify(data));
+      let servedData = data;
       const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
       page.setDefaultTimeout(20000);
       await page.addInitScript(({ theme }) => {
@@ -135,7 +136,7 @@ function input(mode) {
         const request = route.request(), url = new URL(request.url());
         if (request.method() !== 'GET') { writes.push(request.method()); return route.abort(); }
         if (url.origin !== 'http://latest-savings.test') { external.push(url.origin); return route.abort(); }
-        if (url.pathname === '/data.json') return route.fulfill({ json: data });
+        if (url.pathname === '/data.json') return route.fulfill({ json: servedData });
         if (['/periods.json', '/balance-history.json', '/running-build.json'].includes(url.pathname)) return route.fulfill({ json: null });
         const file = path.resolve(assets, '.' + (url.pathname === '/' ? '/index.html' : url.pathname));
         if (!file.startsWith(assets + path.sep) || !fs.existsSync(file)) return route.fulfill({ status: 404, body: '' });
@@ -190,9 +191,32 @@ function input(mode) {
       }
       await page.keyboard.press('Escape');
       assert.equal(await summary.evaluate(el => el === document.activeElement), true);
+      let refreshed = null;
+      if (mode === 'stale-both' && width === 390) {
+        servedData = JSON.parse(JSON.stringify(data));
+        servedData.plan.savingsPoolObservation.accounts.find(row => row.accountId === 'savings').value = 105;
+        const refresh = page.getByRole('button', { name: 'Manual Refresh', exact: true });
+        for (let i = 0; i < 2; i++) {
+          await Promise.all([page.waitForResponse(response => new URL(response.url()).pathname === '/data.json'), refresh.click()]);
+          await page.waitForFunction(() => document.querySelector('[data-budget-savings-goal="group:club"]')?.getAttribute('data-budget-goal-saved-amount') === '105');
+          assert.equal(await page.locator('[data-budget-savings-goal="yearly-bill:home-cost"]').getAttribute('data-budget-goal-saved-amount'), '24');
+          assert.match(await summary.innerText(), /129\.00/, 'combined 105 + 24 report replaces 119 without another deposit credit');
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        }
+        assert.equal(hash(await page.evaluate(() => JSON.stringify(App.data))), hash(JSON.stringify(servedData)));
+        await summary.focus(); await page.keyboard.press('Enter');
+        await page.locator('[data-budget-detail-sheet]').waitFor({ state: 'visible' });
+        assert.match(await body.locator('[data-budget-daily-proposal]').innerText(), /Unavailable/, 'refreshing reported earmarks cannot recover a new Bills contribution');
+        await page.keyboard.press('Escape');
+        const refreshFile = 'stale-both-390-refreshed.png';
+        await page.locator('[data-budget-savings-goals]').screenshot({ path: path.join(output, refreshFile), animations: 'disabled' });
+        refreshed = { sourceSum: 129, club: 105, home: 24, repeatedRefreshCount: 2,
+          topUpHeld: true, noOverflow: true, screenshot: refreshFile,
+          screenshotSha256: hash(fs.readFileSync(path.join(output, refreshFile))) };
+      }
       cases.push({ mode, width, theme, rows: result.rows, bars: result.bars, noOverflow: true,
         topUpHeld, focusRestored: true, inputSha256: inputHash,
-        screenshot: filename, screenshotSha256: hash(fs.readFileSync(path.join(output, filename))) });
+        screenshot: filename, screenshotSha256: hash(fs.readFileSync(path.join(output, filename))), refreshed });
       await page.close(); console.log('PASS latest Saved browser: ' + mode + ' ' + width + 'px');
     }
     assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(writes, []);
