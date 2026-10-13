@@ -15,6 +15,7 @@ function fixture(premium = 17.29) {
   i.plan.opening.paydaySnapshot = { periodStart: '2026-10-09', asOf: '2026-10-09', opening: 80 };
   i.plan.opening.representedEvents = [];
   i.opts.currentPeriodActuals.coverageStart = '2026-10-09';
+  i.opts.currentPeriodActuals.savingsFetchCoverage.startDate = '2026-10-09';
   i.plan.bills = [{ id: 'annual', label: 'Invented annual premium', amount: premium,
     frequency: 'yearly', month: 10, day: 25, firstDue: '2026-10-25',
     jointCash: false, confidence: 'estimated' }];
@@ -76,7 +77,7 @@ test('unfunded premium is still a real dated shortage, never erased or financed 
   const row = a.savingsFunding.backing.items.find(row => row.id === 'annual');
   assert.equal(row.needed, 200);
   assert.equal(row.saved, 59, '119 stock less earlier 60 club cost');
-  const e = F.expandEvents(i.plan, i.asOf, '2026-11-05').find(e => e.id === 'annual');
+  const e = F.expandEvents(i.plan, i.asOf, '2026-11-05', i.opts).find(e => e.id === 'annual');
   assert.equal(e.amount, -200);
   assert.equal(e.reserveFunding.amount, 59);
   const sim = F.simulate(i.plan, i.asOf, { ...i.opts, weeklyVariable: 0 });
@@ -84,6 +85,9 @@ test('unfunded premium is still a real dated shortage, never erased or financed 
     '80 operating less 141 unfunded premium; November receipt cannot fund October');
   assert.equal(a.savingsFunding.schedule.status, 'funding-gap');
   assert.equal(a.savingsFunding.actionPermission, 'not-granted');
+  const unconfirmed = F.expandEvents(i.plan, i.asOf, '2026-11-05').find(e => e.id === 'annual');
+  assert.equal(unconfirmed.reserveFunding, undefined, 'missing movement evidence cannot seed a Savings payment');
+  assert.equal(unconfirmed.amount, -200, 'the real obligation remains without backing evidence');
 });
 
 test('missing savings or unknown premium retains requirement and fails funding closed', () => {
@@ -207,6 +211,7 @@ test('same-day represented payment qualifies snapshot carry; already-paid openin
   const i = markedSnapshot();
   i.asOf = i.plan.opening.asOf = '2026-10-10';
   i.opts.currentPeriodActuals.observationAsOf = i.opts.currentPeriodActuals.coverageThrough = i.asOf;
+  if (i.opts.currentPeriodActuals.savingsFetchCoverage) i.opts.currentPeriodActuals.savingsFetchCoverage.endDate = i.asOf;
   assert.equal(period(run(i), '2026-10-23').opening, 100);
   const included = markedSnapshot();
   included.plan.opening.paydaySnapshot = { periodStart: '2026-10-09', asOf: '2026-10-11', opening: 100 };

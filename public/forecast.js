@@ -958,17 +958,19 @@
   // Observed stock is context, never another operating balance or assignment.
   // Independently verify account identities even though configuration also
   // rejects aliases. No partial sum, opening fallback or inferred allocation.
+  const savingsReportedCents = Symbol('validated-reported-savings-cents');
   function savingsObservedStock(config, observation, asOf, reported = false) {
     const result = { status: 'unavailable', asOf, currency: config.currency || 'CAD',
       basis: 'observed-savings-stock', nonAdditive: true, amount: null,
       trust: 'unknown', evidenceTrust: 'unknown', accountIds: [], pendingState: 'unknown',
       reason: 'Current observations for both distinct savings accounts are required.' };
     if (reported) Object.assign(result, { basis: 'reported-savings-stock',
-      balanceFrom: null, balanceThrough: null, balanceDates: [], freshness: 'unknown',
+      balanceFrom: null, balanceThrough: null, balanceDates: [], checkedAsOf: null, freshness: 'unknown',
       reason: 'Valid dated reported balances for both distinct savings accounts are required.' });
     if (config.status !== 'ready' || !savingsDate(asOf) || !observation
         || typeof observation !== 'object' || Array.isArray(observation)
-        || observation.asOf !== asOf || !Array.isArray(observation.accounts)
+        || (reported ? !savingsDate(observation.asOf) || observation.asOf > asOf : observation.asOf !== asOf)
+        || !Array.isArray(observation.accounts)
         || !Array.isArray(config.pools) || config.pools.length !== 2) return result;
     const accounts = new Set();
     let totalCents = 0, pendingClear = true;
@@ -982,22 +984,27 @@
       const cents = savingsCents(cash && cash.value, true);
       if (!cash || typeof cash !== 'object' || Array.isArray(cash)
           || cash.source !== 'provider-observe:lunchmoney' || cash.currency !== config.currency
-          || !(reported ? savingsDate(cash.evidenceDate) && cash.evidenceDate <= asOf : cash.evidenceDate === asOf)
+          || !(reported ? savingsDate(cash.evidenceDate) && cash.evidenceDate <= observation.asOf : cash.evidenceDate === asOf)
           || cents == null || !reported && config.latest && config.latest.confirmedAt > cash.evidenceDate) return result;
       balanceDates.push({ accountId: pool.accountId, date: cash.evidenceDate });
       totalCents += cents;
       if (!Number.isSafeInteger(totalCents)) return result;
       pendingClear = pendingClear && cash.pendingState === 'clear';
     }
-    // Latest reported stock is dated context, never evidence that today's
-    // allocations or operating funding are available. Keep the incumbent
-    // same-day observedStock and pool/backing gates unchanged.
+    // Owner policy: dated reported stock may support calculated goal allocation.
+    // Its actual check/balance dates do not earn current payment backing.
     const dates = balanceDates.map(row => row.date).sort();
-    return { ...result, ...(reported ? { balanceFrom: dates[0], balanceThrough: dates.at(-1),
-      balanceDates, freshness: dates.every(date => date === asOf) ? 'current' : 'dated' } : {}),
+    const stock = { ...result, ...(reported ? { balanceFrom: dates[0], balanceThrough: dates.at(-1),
+      balanceDates, checkedAsOf: observation.asOf,
+      freshness: dates.every(date => date === asOf) ? 'current' : 'dated' } : {}),
       status: 'ready', amount: totalCents / 100, trust: 'calculated',
       evidenceTrust: reported ? 'provider-reported' : 'verified', accountIds: Array.from(accounts),
       pendingState: pendingClear ? 'clear' : 'unresolved', reason: null };
+    // Keep the validator's exact integer for the same-run allocator. A dollars
+    // round trip can change a cent; this private scalar is neither serialized
+    // nor an observation/allocation cache or a second stock calculation.
+    if (reported) Object.defineProperty(stock, savingsReportedCents, { value: totalCents });
+    return stock;
   }
   function savingsInventory(plan, asOf) {
     const config = savingsEarmarksState(plan, asOf);
@@ -18948,6 +18955,105 @@
       && typeof policy.source === 'string' && !!policy.source.trim() && policy.source.length <= 200;
   }
   const savingsDailyBackingContexts = new WeakMap();
+  // One account boundary: qualify posted evidence and compare its own cutoff.
+  // The incumbent owns pair identity; never reconstruct or adjust a report.
+  function savingsReportedMovementCoherence(plan, day, opts, reported) {
+    const packet = currentPeriodActualsPacket(opts), transactions = packet?.transactions;
+    const accounts = new Set(reported.accountIds), byId = new Map();
+    const unknown = 'A savings movement lacks unique, qualified posted evidence. Balance-cutoff inclusion is unproven; Saved allocation is withheld.';
+    // Legacy v1 packets did not retain account-scoped dropped-row provenance.
+    // They remain readable elsewhere, but cannot prove this Savings boundary.
+    if (!packet || !Object.hasOwn(packet, 'savingsMovementUnconfirmed')) {
+      return 'Savings movement provenance is unavailable in this legacy or missing observation packet. Saved allocation is withheld.';
+    }
+    const flags = packet.savingsMovementUnconfirmed;
+    const reasons = ['transaction-amount-or-date-unconfirmed', 'native-plan-currency-unconfirmed',
+      'transaction-evidence-sanitization-failed', 'transaction-posting-status-unconfirmed'];
+    if (!Array.isArray(transactions) || !Array.isArray(flags) || flags.some(row =>
+      !savingsKeys(row, ['accountId', 'reason'])
+      || !['savings', 'savings-dont-touch', ...HOUSEHOLD_CHEQUING_IDS].includes(row.accountId)
+      || !reasons.includes(row.reason)) || flags.some(row => accounts.has(row.accountId))
+      || Object.hasOwn(packet, 'currency') && (typeof packet.currency !== 'string' || packet.currency.toUpperCase() !== 'CAD')) return unknown;
+    // The observer distinguishes fetch truncation from row-level uncertainty.
+    // Savings uncertainty remains account-scoped; unrelated card/unmapped rows
+    // do not invalidate a complete fetch. An unexplained incomplete packet does.
+    const coverage = packet.transactionCoverage;
+    const rowIncomplete = coverage === 'incomplete' && (
+      Array.isArray(packet.cardCoverageUnconfirmed) && packet.cardCoverageUnconfirmed.length > 0
+      || Array.isArray(packet.currencyUnconfirmed) && packet.currencyUnconfirmed.length > 0
+      || transactions.some(row => row?.accountRole === 'unmapped'));
+    const fetchComplete = (coverage === 'complete' || coverage?.complete === true)
+      && transactionCoverageStatus(packet) === 'complete' || rowIncomplete;
+    const sourceWindow = packet.savingsFetchCoverage;
+    if (packet.schema !== 'atlas-current-period-actuals/v1' || !fetchComplete
+      || !savingsKeys(sourceWindow, ['complete', 'startDate', 'endDate']) || sourceWindow.complete !== true
+      || !savingsDate(sourceWindow.startDate) || !savingsDate(sourceWindow.endDate)
+      || sourceWindow.startDate !== packet.coverageStart || sourceWindow.endDate !== packet.coverageThrough
+      || coverage?.status != null && coverage.status !== 'complete'
+      || pendingCoverageStatus(packet) !== 'complete'
+      || packet.pendingCoverage?.status != null && packet.pendingCoverage.status !== 'complete'
+      || !savingsDate(packet.observationAsOf) || packet.observationAsOf > day
+      || packet.observationAsOf !== reported.checkedAsOf
+      || !savingsDate(packet.coverageStart) || !savingsDate(packet.coverageThrough)
+      || packet.coverageStart > packet.coverageThrough || packet.coverageThrough !== packet.observationAsOf) {
+      return 'Savings observation or transaction-window provenance is unconfirmed. Saved allocation is withheld.';
+    }
+    for (const tx of transactions) if (tx?.id != null) {
+      const id = String(tx.id), rows = byId.get(id) || []; rows.push(tx); byId.set(id, rows);
+    }
+    const uncertain = 'Reported balance cutoffs cannot establish inclusion of the savings movement. Saved allocation is withheld.';
+    const validId = id => typeof id === 'string' && !!id.trim() && id === id.trim()
+      || typeof id === 'number' && Number.isSafeInteger(id) && id >= 0;
+    const unconfirmed = row => packet.currencyUnconfirmed != null && (!Array.isArray(packet.currencyUnconfirmed)
+      || packet.currencyUnconfirmed.some(flag => !flag || !validId(flag.id) || String(flag.id) === String(row.id)));
+    const covered = row => row.date >= packet.coverageStart && row.date <= packet.coverageThrough
+      && row.date <= packet.observationAsOf;
+    const qualified = (row, accountId) => {
+      const id = row?.id, cents = savingsCents(row?.amount, true), ids = [row?.atlasAccountId, row?.accountId, row?.account];
+      const role = accounts.has(accountId) || !HOUSEHOLD_CHEQUING_IDS.includes(accountId) ? 'household-reserve' : 'household-cash';
+      return validId(id)
+        && byId.get(String(id))?.length === 1 && row.pending === false && row.savingsPostingEvidence === 'posted'
+        && typeof row.currency === 'string' && row.currency.toUpperCase() === 'CAD' && !unconfirmed(row)
+        && row.accountRole === role && householdCashLocationId(row) === accountId && ids.some(id => id === accountId)
+        && ids.every(id => id == null || id === '' || id === accountId)
+        && cents != null && cents !== 0 && savingsDate(row.date) && row.date <= day && covered(row);
+    };
+    const inclusion = (row, accountId) => {
+      const cutoff = reported.balanceDates.find(item => item.accountId === accountId)?.date;
+      return !savingsDate(cutoff) || cutoff === row.date ? null : cutoff > row.date;
+    };
+    const checked = new Set();
+    for (const tx of transactions) {
+      const aliases = [tx?.atlasAccountId, tx?.accountId, tx?.account];
+      const location = householdCashLocationId(tx);
+      const accountId = aliases.find(id => accounts.has(id)) || (accounts.has(location) ? location : null);
+      if (tx?.amount === 0) continue;
+      if (!accountId) {
+        if (tx?.accountRole === 'household-reserve' && aliases.every(id => id == null || id === '')) return unknown;
+        continue;
+      }
+      if (!qualified(tx, accountId)) return unknown;
+      if (!isInternalHouseholdTransfer(tx)) {
+        if (inclusion(tx, accountId) !== true) return uncertain;
+        continue;
+      }
+      const movement = provenInternalMovementForTx(tx, opts)?.movement;
+      if (!movement) return unknown;
+      if (checked.has(movement)) continue; checked.add(movement);
+      const source = byId.get(movement.sourceTransactionId), destination = byId.get(movement.destinationTransactionId);
+      if (source?.length !== 1 || destination?.length !== 1) return unknown;
+      const debit = source[0], credit = destination[0];
+      if (!qualified(debit, movement.sourceAccountId) || !qualified(credit, movement.destinationAccountId)
+          || savingsCents(debit.amount, true) <= 0 || savingsCents(credit.amount, true) >= 0
+          || savingsCents(debit.amount, true) !== -savingsCents(credit.amount, true)
+          || savingsCents(movement.amount) !== savingsCents(debit.amount, true)) return unknown;
+      const included = [[debit, movement.sourceAccountId], [credit, movement.destinationAccountId]]
+        .filter(([, id]) => accounts.has(id)).map(([row, id]) => inclusion(row, id));
+      if (included.some(value => value == null) || (included.length === 2
+          ? included[0] !== included[1] : included[0] !== true)) return uncertain;
+    }
+    return null;
+  }
   // The existing daily publisher owns this combined branch. Physical account
   // links remain evidence/history, never separate priority or goal eligibility.
   function savingsCombinedBacking(plan, day, opts) {
@@ -18981,6 +19087,11 @@
       evidenceTrust: stockKnown ? 'verified' : 'unknown', basis: 'observed-savings-stock', nonAdditive: true,
       accountIds: ['savings', 'savings-dont-touch'], pendingState: pendingMovement ? 'unresolved' : 'clear',
       reportedStock: inventory.reportedStock || null };
+    const reported = inventory.reportedStock;
+    const reportedKnown = config.status === 'ready' && config.pools.every(p => p.role === 'purpose-reserve')
+      && observations?.accounts?.length === 2 && reported?.status === 'ready'
+      && Number.isSafeInteger(reported[savingsReportedCents]);
+    const coherenceReason = reportedKnown ? savingsReportedMovementCoherence(plan, day, opts, reported) : null;
     // Requirement knowledge can extend beyond permission to project payroll.
     // Reuse native recurrence and funding rows; do not import a PDF scenario.
     let end = knowledgeHorizon(plan, day, opts).end;
@@ -19042,9 +19153,19 @@
     let reason=config.status!=='ready'?config.reason:!stockKnown?'Both savings accounts require current, clear CAD cents evidence.'
       :inventory.pools.some(p=>p.observedCash<0)?'Negative savings stock remains a protected deficit.'
       :pendingMovement?'Pending savings movement withholds backing and contributions; known posted stock is retained.'
+      :coherenceReason ? coherenceReason
       :unresolved.length?'Unresolved protected requirements withhold allocation and contributions; no date or priority is invented.':null;
-    const ready=!reason; let left=ready?stockCents:null;
-    for(const item of items) if(ready){const take=Math.min(left,item.needCents); item.savedCents=take; item.saved=take/100; left-=take;}
+    const allocationReason = config.status !== 'ready' ? config.reason : !reportedKnown
+      ? 'Both savings accounts require valid dated reported CAD cents evidence.'
+      : observations.accounts.some(row => row.value < 0) ? 'Negative savings stock remains a protected deficit.'
+      : pendingMovement ? 'Pending savings movement withholds goal allocation; reported balances remain known.'
+      : coherenceReason ? coherenceReason
+      : unresolved.length ? 'Unresolved protected requirements withhold allocation; no date or priority is invented.' : null;
+    const allocationReady = !allocationReason;
+    // One chronological allocator serves the Saved publication. Payment seeds
+    // still require the incumbent same-day readiness below, before any cash walk.
+    const ready=!reason; let left=allocationReady?reported[savingsReportedCents]:null;
+    for(const item of items) if(allocationReady){const take=Math.min(left,item.needCents); item.savedCents=take; item.saved=take/100; left-=take;}
     const rows=[], groups=new Map();
     for(const item of [...items,...unresolved]) {
       const key=item.group?'group:'+item.group:(item.source==='yearly-card-paid-bill'?'yearly-bill:'
@@ -19071,7 +19192,11 @@
       requirement:i.needed,backed:i.saved,parts:[{poolId:'combined-savings',accountId:null,
         goalKey:rows.find(r=>r.members.includes(i.key))?.key,amount:i.saved,location:'combined-observed-reserves'}]})):[];
     return {status:ready?'ready':'unavailable',reason,stock,items,unresolved,rows,pools:packetPools,
-      unallocated:left==null?null:left/100,basis:'policy-derived-combined-observed-backing',trust:ready?'calculated':'unknown',
+      allocationDescription: coherenceReason,
+      unallocated:ready&&left!=null?left/100:null,basis:'policy-derived-combined-observed-backing',trust:ready?'calculated':'unknown',
+      goalAllocation: { status: allocationReady ? 'ready' : 'unavailable', reason: allocationReason,
+        basis: 'latest-validated-provider-reported-balances', evidenceTrust: reportedKnown ? 'provider-reported' : 'unknown',
+        checkedAsOf: reported?.checkedAsOf || null, balanceDates: reported?.balanceDates || [] },
       funding:{status:paymentReason?'unavailable':'ready',asOf:day,reason:paymentReason,revision:null,source:'Forecast.savingsDailyFunding',payments}};
   }
   function savingsDailyPolicy(policy, day) {
@@ -19254,8 +19379,13 @@
       backing: { status: derived.status, reason: derived.reason, basis: derived.basis, trust: derived.trust,
         actualTransferred: null, pools: derived.pools,
         items: derived.items.map(({ needCents, savedCents, event, rank, ...item }) => item), unallocated: derived.unallocated ?? null },
-      allocationDescription: derived.basis === 'policy-derived-combined-observed-backing'
-        ? 'Current observed stock allocated chronologically from one combined savings pot.'
+      ...(derived.goalAllocation ? { goalAllocation: derived.goalAllocation } : {}),
+      allocationDescription: derived.goalAllocation?.status === 'ready'
+        ? 'Latest reported balances checked ' + derived.goalAllocation.checkedAsOf + ', with balance dates '
+          + [...new Set(derived.goalAllocation.balanceDates.map(row => row.date))].sort().join(' / ')
+          + ', allocated by due date. Payment backing is qualified separately.'
+        : derived.basis === 'policy-derived-combined-observed-backing'
+        ? derived.allocationDescription || 'Goal allocation requires validated reported Savings balances and clear pending evidence.'
         : 'Historical allocation policy applies to the dated pool evidence.',
       unresolved: (derived.unresolved || []).map(({ needCents, savedCents, event, rank, ...item }) => item), rows: derived.rows };
     const unknown = reason => ({ ...shell, status: 'unavailable', reason,

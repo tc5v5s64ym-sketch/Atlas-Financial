@@ -15,23 +15,27 @@ module.exports = function dailyConsumerData(mode = 'ready') {
     input.plan.savingsPoolObservation.accounts[0].value = 230;
     input.plan.startingCash.breakdown[2].value = 230;
   }
-  if (mode === 'partial') fx.transfer(input, 30);
-  if (mode === 'full') fx.transfer(input, 80);
-  if (mode === 'multiple') { fx.transfer(input, 30); fx.transfer(input, 20, 'BB202'); }
+  // These positive balances include the posted moves: October 4 legs precede
+  // October 5 reports. Same-day ambiguity has its own negative controls.
+  const posted = (amount, reference = 'AA101') => fx.transfer(input, amount, reference, 'savings', '2026-10-04');
+  if (mode === 'partial') posted(30);
+  if (mode === 'full') posted(80);
+  if (mode === 'multiple') { posted(30); posted(20, 'BB202'); }
   if (mode === 'returned') {
-    fx.transfer(input, 80); fx.transfer(input, -20, 'CC303');
+    posted(80); posted(-20, 'CC303');
     input.opts.currentPeriodActuals.transactions.at(-2).originalMerchant = 'CC303 TFR-FR Invented reserve';
     input.opts.currentPeriodActuals.transactions.at(-1).originalMerchant = 'CC303 TFR-TO Invented operating';
   }
-  if (mode === 'pending') { fx.transfer(input, 30); input.opts.currentPeriodActuals.transactions.slice(-2).forEach(tx => { tx.pending = true; }); }
-  if (mode === 'unmatched') { fx.transfer(input, 30); input.opts.currentPeriodActuals.transactions.pop(); }
+  if (mode === 'pending') { posted(30); input.opts.currentPeriodActuals.transactions.slice(-2).forEach(tx => { tx.pending = true; }); }
+  if (mode === 'unmatched') { posted(30); input.opts.currentPeriodActuals.transactions.pop(); }
   if (mode === 'missing-stock') input.plan.savingsPoolObservation.accounts.pop();
   if (mode === 'missing-cash') delete input.plan.startingCash.breakdown[0].value;
   if (mode === 'saved-income') {
     input.plan.commitments[1].amount = 500;
     input.plan.startingCash.breakdown[0].value += 500; input.plan.opening.paydaySnapshot.opening += 500;
     input.plan.savingsPoolObservation.accounts[0].value += 80; input.plan.startingCash.breakdown[2].value += 80;
-    input.opts.currentPeriodActuals.transactions.push({ id: 'saved-income', date: input.asOf, amount: -80,
+    input.opts.currentPeriodActuals.transactions.push({ id: 'saved-income', date: '2026-10-04', amount: -80,
+      savingsPostingEvidence: 'posted',
       pending: false, currency: 'CAD', atlasAccountId: 'savings', accountRole: 'household-reserve',
       isIncome: true, displayedPayee: 'Invented saved gift' });
   }

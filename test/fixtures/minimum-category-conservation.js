@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 
 // These salary-only ledgers have no category IDs. Extend the immutable
-// pre-protocol expected report with exactly the two declared schema additions;
+// pre-protocol expected report with exactly the declared schema additions;
 // never delete actual fields or relax comparison of any historical value.
 module.exports = function minimumCategoryExpectation(report, input, historicalObserver) {
   assert.ok(!Object.hasOwn(report, 'cardMinimumCategoryEvidence'),
@@ -14,6 +14,9 @@ module.exports = function minimumCategoryExpectation(report, input, historicalOb
       assert.equal(tx.categoryId, null, 'salary fixture cannot supply a minimum category ID');
       assert.ok(!Object.hasOwn(tx, 'minimumCategoryDebt'), 'historical transaction predates the new leaf');
       tx.minimumCategoryDebt = null;
+      const raw = input.payload.transactions.find(row => String(row.id) === tx.providerTransactionId);
+      assert.ok(raw && typeof raw.is_pending === 'boolean', 'salary fixtures explicitly declare their posting status');
+      tx.savingsPostingEvidence = raw.is_pending ? 'pending' : 'posted';
     }
   }
   expected.cardMinimumCategoryEvidence = {
@@ -21,5 +24,28 @@ module.exports = function minimumCategoryExpectation(report, input, historicalOb
     asOf: historicalObserver.householdFinancialDate(input, report.observations),
     payments: [],
   };
+  assert.ok(!input.accountMap.mappings.some(row => ['savings', 'savings-dont-touch'].includes(row.canonical?.id)),
+    'these salary-only ledgers have no canonical Savings accounts');
+  assert.ok(!Object.hasOwn(expected.currentPeriodActuals, 'savingsMovementUnconfirmed'),
+    'historical actuals predate the account-scoped Savings provenance leaf');
+  expected.currentPeriodActuals.savingsMovementUnconfirmed = [];
+  const rawWindow = input.payload.transactionWindow || input.payload.transaction_window || {};
+  const originalDate = keys => {
+    const values = keys.filter(key => Object.hasOwn(rawWindow, key)).map(key => rawWindow[key]);
+    return values.length && values.every(value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      && value === values[0]) ? values[0] : null;
+  };
+  const sourceWindow = { complete: Object.hasOwn(rawWindow, 'complete') && rawWindow.complete === true
+    && ['hasMore', 'has_more', 'truncated'].every(key => !Object.hasOwn(rawWindow, key)
+      || rawWindow[key] == null || rawWindow[key] === false),
+    startDate: originalDate(['startDate', 'start_date']), endDate: originalDate(['endDate', 'end_date']) };
+  assert.ok(!Object.hasOwn(expected.transactionWindow, 'savingsFetchCoverage'));
+  assert.ok(!Object.hasOwn(expected.currentPeriodActuals, 'savingsFetchCoverage'));
+  expected.currentPeriodActuals.savingsFetchCoverage = sourceWindow;
+  expected.transactionWindow.savingsFetchCoverage = sourceWindow;
+  for (const row of expected.currentPeriodActuals.transactions) {
+    assert.equal(typeof row.pending, 'boolean');
+    row.savingsPostingEvidence = row.pending ? 'pending' : 'posted';
+  }
   return expected;
 };

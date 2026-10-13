@@ -17,7 +17,7 @@ test('one planned draw and future receipt conserve 199 -> 139 -> 216 exactly',()
 });
 test('either settled deposit moves operating/reserve equally and does not change household value',()=>{
  for(const account of ['savings','savings-dont-touch']) {
-  const i=fx.transfer(ledger(),10,'AA101',account),p=publish(i);
+  const i=fx.transfer(ledger(),10,'AA101',account,'2026-10-06'),p=publish(i);
   assert.deepEqual(point(p,'2026-10-07'),[70,129,199]);
   assert.deepEqual(point(p,'2026-10-21'),[70,69,139]);
   assert.deepEqual(point(p,'2026-11-02'),[147,69,216]);

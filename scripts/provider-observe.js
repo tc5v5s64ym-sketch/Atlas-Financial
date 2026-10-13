@@ -427,6 +427,8 @@ function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {
       || raw.has_children === true,
     parentId: raw.parent_id != null ? String(raw.parent_id) : null,
     pending: raw.is_pending === true,
+    savingsPostingEvidence: Object.hasOwn(raw, 'is_pending') && raw.is_pending === false ? 'posted'
+      : Object.hasOwn(raw, 'is_pending') && raw.is_pending === true ? 'pending' : 'unknown',
     status: raw.status || null,
     kind: minimumCategoryDebt ? 'card-payment' : raw.kind || null,
     mcc: raw.mcc || raw.plaid_mcc || null,
@@ -455,6 +457,22 @@ function normalizeLunchMoneyPayload(payload, fetchedAt) {
   const categoriesById = categoryIndexFromPayload(payload);
   const tagsById = tagIndexFromPayload(payload);
   const txWindow = payload.transactionWindow || payload.transaction_window || null;
+  // Capture original declarations before any normalization or row inference.
+  // Only literal query dates and an affirmative, noncontradictory completion
+  // cross the Savings boundary; absence never earns source provenance.
+  const declared = txWindow && typeof txWindow === 'object' && !Array.isArray(txWindow) ? txWindow : {};
+  const declaredDate = keys => {
+    const values = keys.filter(key => Object.hasOwn(declared, key)).map(key => declared[key]);
+    return values.length && values.every(value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      && value === values[0]) ? values[0] : null;
+  };
+  const savingsFetchCoverage = {
+    complete: Object.hasOwn(declared, 'complete') && declared.complete === true
+      && ['hasMore', 'has_more', 'truncated'].every(key => !Object.hasOwn(declared, key)
+        || declared[key] == null || declared[key] === false),
+    startDate: declaredDate(['startDate', 'start_date']),
+    endDate: declaredDate(['endDate', 'end_date']),
+  };
   return {
     provider: 'lunchmoney',
     fetchedAt: payload.fetchedAt || fetchedAt,
@@ -463,6 +481,7 @@ function normalizeLunchMoneyPayload(payload, fetchedAt) {
       normalizeLunchMoneyTransaction(tx, categoriesById, tagsById)),
     pendingCoverage: classifyPendingCoverage(payload),
     transactionWindow: {
+      savingsFetchCoverage,
       startDate: (txWindow && (txWindow.startDate || txWindow.start_date)) || null,
       endDate: (txWindow && (txWindow.endDate || txWindow.end_date)) || null,
       complete: txWindow && txWindow.complete === true
@@ -3433,9 +3452,11 @@ function savingsPoolObservations(data, normalized, accountMap) {
     if (!['cash', 'depository'].includes(String(account.type || '').toLowerCase())) continue;
     if ((data.debts || []).some(debt => debt && debt.id === accountId)) continue;
     const pending = normalized.transactions.some(tx => tx && tx.providerAccountId === account.providerAccountId && tx.pending === true);
+    const postingUnknown = normalized.transactions.some(tx => tx && tx.providerAccountId === account.providerAccountId
+      && !['posted', 'pending'].includes(tx.savingsPostingEvidence));
     accounts.push({ accountId, value: account.balance, currency: String(account.currency || '').toUpperCase(),
       evidenceDate: dateOnly(postedBalanceEvidenceInstant(account)),
-      pendingState: pending ? 'pending' : pendingCoverageIsComplete(normalized.pendingCoverage) ? 'clear' : 'unknown',
+      pendingState: pending ? 'pending' : postingUnknown ? 'unknown' : pendingCoverageIsComplete(normalized.pendingCoverage) ? 'clear' : 'unknown',
       source: 'provider-observe:lunchmoney' });
   }
   return { asOf, accounts };
@@ -4249,9 +4270,46 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   const txs = [];
   const currencyUnconfirmed = [];
   const cardCoverageUnconfirmed = [];
+  const postingByProviderId = new Map();
+  const sourceTransactions = report && report.transactions || [];
+  const provenPostingTransitions = new Set((report && report.identityEvidence || []).filter(row => {
+    const members = sourceTransactions.filter(tx => String(tx?.providerTransactionId) === String(row?.providerTransactionId));
+    return row?.transition === 'pending-to-posted' && row.postedCount === 1 && row.pendingCount > 0
+      && row.ghostPending === false && row.doubleCounted === false && members.length > 0
+      && members.every(tx => tx.providerAccountId === members[0].providerAccountId && tx.currency === 'cad');
+  }).map(row => String(row.providerTransactionId)));
+  for (const tx of sourceTransactions) if (tx?.providerTransactionId != null) {
+    const id = String(tx.providerTransactionId), evidence = ['posted', 'pending'].includes(tx.savingsPostingEvidence)
+      ? tx.savingsPostingEvidence : 'unknown', prior = postingByProviderId.get(id);
+    postingByProviderId.set(id, evidence === 'unknown' || prior === 'unknown' ? 'unknown'
+      : prior == null || prior === evidence ? evidence : provenPostingTransitions.has(id) ? 'transition' : 'unknown');
+  }
+  // Only canonical Savings account identity and fixed reasons may cross this
+  // boundary. A discarded provider row is not evidence of no movement.
+  const savingsMovementUnconfirmed = [];
+  const markSavingsUnconfirmed = (mapping, reason) => {
+    const accountId = mapping && mapping.canonical && mapping.canonical.id;
+    if (mapping?.canonical?.collection !== 'cash'
+      || !['savings', 'savings-dont-touch'].includes(accountId)) return;
+    if (!savingsMovementUnconfirmed.some(row => row.accountId === accountId && row.reason === reason)) {
+      savingsMovementUnconfirmed.push({ accountId, reason });
+    }
+  };
   const movementEvidenceRole = mapping => ['revolving-credit', 'heloc'].includes(atlasAccountRole(mapping));
   // Collapse omits undated rows; keep card and HELOC evidence unknown.
   for (const tx of report && report.transactions || []) {
+    if (tx && tx.savingsPostingEvidence === 'unknown') {
+      markSavingsUnconfirmed(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null,
+        'transaction-posting-status-unconfirmed');
+    }
+    if (tx && (!tx.date || lunchMoneyDebitAmount(tx.amount) == null)) {
+      markSavingsUnconfirmed(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null,
+        'transaction-amount-or-date-unconfirmed');
+    }
+    if (tx && tx.currency !== 'cad') {
+      markSavingsUnconfirmed(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null,
+        'native-plan-currency-unconfirmed');
+    }
     if (tx && !tx.date && movementEvidenceRole(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null)) {
       cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx), date: null,
         reason: 'transaction-amount-or-date-unconfirmed' });
@@ -4262,6 +4320,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
     const amount = lunchMoneyDebitAmount(tx.amount);
     if (!tx.date || amount == null) {
+      markSavingsUnconfirmed(mapping, 'transaction-amount-or-date-unconfirmed');
       if (movementEvidenceRole(mapping)
         || (atlasAccountRole(mapping) === 'household-cash'
           && (kindHintFromTransaction(tx) === 'card-payment' || isMbnaCardPayment(tx)))) {
@@ -4272,8 +4331,10 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     }
     const currencyRules = currencyRulesForTransaction(tx, mapDoc, opts.identityRules,
       opts.planForIdentity || opts.plan);
+    if (tx.coverageCurrencyConflict === true) markSavingsUnconfirmed(mapping, 'native-plan-currency-unconfirmed');
     if (tx.currencySettlementUnconfirmed === true
       || currencyRules.some(rule => !ruleCurrencyQualified(tx, rule))) {
+      markSavingsUnconfirmed(mapping, 'native-plan-currency-unconfirmed');
       currencyUnconfirmed.push({ id: localIdFor(tx.providerTransactionId), currency: tx.currency || null });
       continue;
     }
@@ -4339,6 +4400,9 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       currency: tx.currency || null,
       coverageCurrencyConflict: tx.coverageCurrencyConflict === true,
       pending: tx.pending === true,
+      savingsPostingEvidence: postingByProviderId.get(String(tx.providerTransactionId)) === 'transition'
+        ? tx.pending === false && tx.savingsPostingEvidence === 'posted' ? 'posted' : 'unknown'
+        : postingByProviderId.get(String(tx.providerTransactionId)) || 'unknown',
       currency: tx.currency || null,
       pendingTreatment: treatment.treatment,
       categoryLabel: tx.categoryLabel || null,
@@ -4474,6 +4538,8 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     cardCoverageUnconfirmed,
     cardCoverageRequired: ((mapDoc && mapDoc.mappings) || []).some(m => atlasAccountRole(m) === 'revolving-credit'),
     currencyUnconfirmed,
+    savingsMovementUnconfirmed,
+    savingsFetchCoverage: window.savingsFetchCoverage || { complete: false, startDate: null, endDate: null },
     paydayGapComplete: paydayGapCompleteFromEvidence({
       plan: opts.plan,
       asOf,
@@ -4486,6 +4552,10 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     transactions: txs,
   };
   if (!currentPeriodActualsLooksSanitized(packet)) {
+    for (const tx of txs) {
+      markSavingsUnconfirmed({ canonical: { collection: 'cash', id: tx.atlasAccountId } },
+        'transaction-evidence-sanitization-failed');
+    }
     packet.transactions = [];
     packet.representedActuals = representedActuals.map(row => ({
       id: row.id,

@@ -60,7 +60,26 @@ annual.plan.startingCash.heldElsewhere = [{ id: 'savings-dont-touch', value: 0, 
 annual.plan.savingsPoolObservation = { asOf: annual.meta.asOf, accounts: ['savings', 'savings-dont-touch']
   .map(accountId => ({ accountId, value: 0, currency: 'CAD', source: 'provider-observe:lunchmoney',
     evidenceDate: annual.meta.asOf, pendingState: 'clear' })) };
-const annualAdvice = run(annual);
+// A real observer packet earns this positive Savings funding context. The
+// complete invented window contains no movements and all four reports are zero.
+const annualInput = require('./fixtures/savings-v2-observation-data').input('valid-v2');
+annualInput.data = annual;
+annualInput.payload.fetchedAt = annual.meta.asOf + 'T20:00:00Z';
+annualInput.payload.transactionWindow = { startDate: annual.meta.asOf, endDate: annual.meta.asOf,
+  complete: true, hasMore: false, truncated: false };
+for (const row of annualInput.payload.accounts) {
+  row.balance = '0'; row.updated_at = annual.meta.asOf + 'T19:00:00Z';
+  if (Object.hasOwn(row, 'balance_last_update')) row.balance_last_update = annual.meta.asOf + 'T19:00:00Z';
+}
+const annualReport = require('../scripts/provider-observe').observe({ provider: 'lunchmoney', ...annualInput });
+const annualPacket = annualReport.currentPeriodActuals;
+assert.deepEqual(annualPacket.transactions, []);
+assert.deepEqual(annualPacket.savingsMovementUnconfirmed, []);
+assert.equal(annualPacket.observationAsOf, annual.meta.asOf);
+assert.equal(annualPacket.transactionCoverage, 'complete');
+assert.ok(annualReport.savingsPools.accounts.every(row => row.value === 0 && row.evidenceDate === annual.meta.asOf));
+const annualEvidence = JSON.stringify(annualReport);
+const annualAdvice = F.recommend(annual.plan, annual.meta.asOf, { currentPeriodActuals: annualPacket });
 const annualFirst = selected(annualAdvice, '2026-08-14').plannedCostFunding;
 const annualNextPeriod = selected(annualAdvice, '2026-08-28');
 const annualNext = annualNextPeriod.plannedCostFunding;
@@ -71,6 +90,15 @@ assert.equal(annualNext.billPaymentsAlreadyDeducted, 0);
 assert.equal(annualNext.proposedFundingForBillPayments, 0);
 assert.equal(annualNext.afterProposedFunding, 1000 - 200 - 150 - 300 - 350);
 assert.equal(annualNext.afterProposedFunding, 0);
+assert.equal(JSON.stringify(annualReport), annualEvidence, 'the returned evidence stays immutable');
+for (const packet of [undefined, { ...annualPacket, transactionCoverage: 'truncated' },
+  { ...annualPacket, observationAsOf: 'not-a-date' }]) {
+  const heldAdvice = F.recommend(annual.plan, annual.meta.asOf, { currentPeriodActuals: packet });
+  const unavailable = selected(heldAdvice, '2026-08-14').plannedCostFunding;
+  assert.equal(unavailable.contribution, null, 'missing or invalid evidence cannot grant the positive top-up');
+  assert.equal(heldAdvice.savingsFunding.rows.find(row => row.key === 'yearly-bill:annual-cost').needed,
+    600, 'Known Needed survives in its Savings publication');
+}
 
 // Between paydays, no original allocation or missing actual spending is
 // invented. Names/cost evidence remain accessible while money claims close.

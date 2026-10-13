@@ -70,11 +70,21 @@ test('one jar crosses sports/home locations: 119 = 60 + 24 + 35', () => {
 
 test('ten deposited into either account fills the same next gap', () => {
   const outcomes = ['savings', 'savings-dont-touch'].map(destination => {
-    const p = publish(fx.transfer(fixture(), 10, 'DEPOSIT10', destination));
+    const p = publish(fx.transfer(fixture(), 10, 'DD404', destination, '2026-10-06'));
     oracle(p, [['near', 6000], ['home-cost', 2400], ['far', 4500]], 12900);
     return allocated(p);
   });
   assert.deepEqual(outcomes[0], outcomes[1]);
+});
+
+test('same-day deposit/report has unknown inclusion without intraday evidence', () => {
+  const input = fx.transfer(fixture(), 10, 'DD404', 'savings', '2026-10-07'), p = publish(input);
+  assert.equal(F.householdInternalMovements(input.plan, input.opts).length, 1);
+  assert.equal(p.stock.reportedStock.amount, 129);
+  assert.equal(p.goalAllocation.status, 'unavailable');
+  assert.ok(p.backing.items.every(item => item.saved === null));
+  assert.deepEqual(p.rows.map(row => row.needed), [230, 24]);
+  assert.equal(p.period.proposal, null);
 });
 
 test('account/pool/reference array order is not allocation authority', () => {
@@ -171,7 +181,7 @@ test('missing one savings account does not publish a partial pool or zero backin
   assert.ok(items(p).every(r => r.saved === null));
 });
 
-test('stale or pending observation cannot become current backed allocation', () => {
+test('dated Saved allocation does not earn current backing; unsafe evidence stays unknown', () => {
   for (const mode of ['stale', 'pending', 'currency', 'duplicate', 'fractional']) {
     const input = fixture(), rows = input.plan.savingsPoolObservation.accounts;
     if (mode === 'stale') rows[1].evidenceDate = '2026-10-06';
@@ -182,7 +192,12 @@ test('stale or pending observation cannot become current backed allocation', () 
     const p = publish(input);
     assert.equal(p.backing.status, 'unavailable', mode);
     assert.equal(items(p).length, 3, mode + ': known requirement roster survives');
-    assert.ok(items(p).every(r => r.saved === null), mode);
+    assert.equal(p.period.proposal, null, mode + ': payment/top-up readiness is unchanged');
+    assert.equal(p.timeline.status, 'unavailable', mode);
+    if (mode === 'stale') {
+      assert.equal(p.goalAllocation.status, 'ready');
+      assert.deepEqual(items(p).map(r => r.saved), [60, 24, 35], 'latest dated 119 dollars allocate once');
+    } else assert.ok(items(p).every(r => r.saved === null), mode);
   }
 });
 

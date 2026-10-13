@@ -1,0 +1,147 @@
+{
+  "outcome": "PASS",
+  "headSha": "6a5193bcc26403df688f9f50a87b642a020f706c",
+  "method": "complete terminal GitHub-hosted Ubuntu jobs; all ordered repository-vetted start/outcome records, summaries and worker/aggregate terminal outcomes; raw streams retained only in local Temp",
+  "results": [
+    {
+      "runId": 38326560808,
+      "event": "push",
+      "headSha": "6a5193bcc26403df688f9f50a87b642a020f706c",
+      "url": "https://github.com/tc5v5s64ym-sketch/Atlas-Financial/actions/runs/38326560808",
+      "status": "completed",
+      "conclusion": "success",
+      "groups": [
+        {
+          "name": "standard",
+          "jobId": 115066474555,
+          "jobConclusion": "success",
+          "orderedStarts": 373,
+          "orderedOutcomes": 373,
+          "summary": {
+            "type": "ci-suite-summary",
+            "total": 373,
+            "passed": 373,
+            "failed": 0,
+            "failedSuites": [],
+            "exitCode": 0
+          },
+          "terminal": {
+            "type": "ci-worker-outcome",
+            "identity": "standard",
+            "status": "pass",
+            "category": "none",
+            "exitCode": 0,
+            "signal": null
+          },
+          "history": {
+            "type": "ci-outcome",
+            "identity": "test-private-period-history-completeness.js",
+            "status": "pass",
+            "category": "none",
+            "exitCode": 0,
+            "signal": null,
+            "executed": true
+          }
+        },
+        {
+          "name": "refresh-isolation",
+          "jobId": 115066474289,
+          "jobConclusion": "success",
+          "orderedStarts": 1,
+          "orderedOutcomes": 1,
+          "summary": {
+            "type": "ci-suite-summary",
+            "total": 1,
+            "passed": 1,
+            "failed": 0,
+            "failedSuites": [],
+            "exitCode": 0
+          },
+          "terminal": {
+            "type": "ci-worker-outcome",
+            "identity": "refresh-isolation",
+            "status": "pass",
+            "category": "none",
+            "exitCode": 0,
+            "signal": null
+          },
+          "history": null
+        }
+      ],
+      "aggregate": {
+        "status": "completed",
+        "conclusion": "success"
+      }
+    },
+    {
+      "runId": 38326567130,
+      "event": "pull_request",
+      "headSha": "6a5193bcc26403df688f9f50a87b642a020f706c",
+      "url": "https://github.com/tc5v5s64ym-sketch/Atlas-Financial/actions/runs/38326567130",
+      "status": "completed",
+      "conclusion": "success",
+      "groups": [
+        {
+          "name": "standard",
+          "jobId": 115066495038,
+          "jobConclusion": "success",
+          "orderedStarts": 373,
+          "orderedOutcomes": 373,
+          "summary": {
+            "type": "ci-suite-summary",
+            "total": 373,
+            "passed": 373,
+            "failed": 0,
+            "failedSuites": [],
+            "exitCode": 0
+          },
+          "terminal": {
+            "type": "ci-worker-outcome",
+            "identity": "standard",
+            "status": "pass",
+            "category": "none",
+            "exitCode": 0,
+            "signal": null
+          },
+          "history": {
+            "type": "ci-outcome",
+            "identity": "test-private-period-history-completeness.js",
+            "status": "pass",
+            "category": "none",
+            "exitCode": 0,
+            "signal": null,
+            "executed": true
+          }
+        },
+        {
+          "name": "refresh-isolation",
+          "jobId": 115066494727,
+          "jobConclusion": "success",
+          "orderedStarts": 1,
+          "orderedOutcomes": 1,
+          "summary": {
+            "type": "ci-suite-summary",
+            "total": 1,
+            "passed": 1,
+            "failed": 0,
+            "failedSuites": [],
+            "exitCode": 0
+          },
+          "terminal": {
+            "type": "ci-worker-outcome",
+            "identity": "refresh-isolation",
+            "status": "pass",
+            "category": "none",
+            "exitCode": 0,
+            "signal": null
+          },
+          "history": null
+        }
+      ],
+      "aggregate": {
+        "status": "completed",
+        "conclusion": "success"
+      }
+    }
+  ]
+}

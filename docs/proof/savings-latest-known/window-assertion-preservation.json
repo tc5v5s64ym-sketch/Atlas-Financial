@@ -1,0 +1,49 @@
+{
+  "outcome": "PASS",
+  "sourceCommit": "20e97ebe1b7202cac260dac4d81178801f3406e5",
+  "method": "all original assertion-containing lines retained byte-for-byte; three salary suites retain exact Git blobs; original comparisons execute in acceptance receipt",
+  "records": [
+    {
+      "file": "test/test-annual-savings-payperiod.js",
+      "originalAssertionLines": 84,
+      "preserved": 84,
+      "removed": 0
+    },
+    {
+      "file": "test/test-budget-period-funding.js",
+      "originalAssertionLines": 81,
+      "preserved": 81,
+      "removed": 0
+    },
+    {
+      "file": "test/test-savings-latest-known-allocation.js",
+      "originalAssertionLines": 105,
+      "preserved": 105,
+      "removed": 0
+    },
+    {
+      "file": "test/test-savings-observer-contract.js",
+      "originalAssertionLines": 35,
+      "preserved": 35,
+      "removed": 0
+    },
+    {
+      "file": "test/fixtures/minimum-category-conservation.js",
+      "originalAssertionLines": 4,
+      "preserved": 4,
+      "removed": 0
+    },
+    {
+      "file": "test/test-salary-diagnostic-candidates.js",
+      "exactOriginalBlob": true
+    },
+    {
+      "file": "test/test-salary-diagnostic-occurrences.js",
+      "exactOriginalBlob": true
+    },
+    {
+      "file": "test/test-salary-matcher-diagnostic.js",
+      "exactOriginalBlob": true
+    }
+  ]
+}
