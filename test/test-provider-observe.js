@@ -581,6 +581,86 @@ console.log('=== N. outgoing e-transfer identity boolean (SEND E-TFR, originalNa
     JSON.stringify(noWindowPacket.transactionWindow));
 }
 
+console.log('=== N2. unprocessable outgoing e-transfer candidates (P1 4253396900) ===');
+{
+  // Repair (Atlas BLOCK 5497313211): a household-cash SEND E-TFR row with a
+  // valid date but an unqualified amount is dropped by the amount guard
+  // before the identity matcher runs. The packet must retain sanitized,
+  // window-scoped evidence of the candidate — {date, reason} only, never
+  // the descriptor and never an invented amount — so Forecast can withhold
+  // the outgoing e-transfer all-clear. The row itself stays omitted and
+  // global transactionCoverage is untouched.
+  const mk2 = (id, extra) => O.normalizeLunchMoneyTransaction(Object.assign({
+    id, account_id: 1001, date: '2026-08-16', amount: 'unavailable', currency: 'cad',
+    is_pending: false, status: 'cleared', payee: 'Household recipient',
+    category_name: 'Transfer',
+  }, extra));
+  const reportFor = txs => ({
+    fetchedAt: '2026-08-16T18:00:00.000Z',
+    transactionWindow: { startDate: '2026-08-01', endDate: '2026-08-16', complete: true, hasMore: false, truncated: false },
+    pendingCoverage: { complete: true },
+    transactions: txs, collapsedTransactions: txs,
+    representedEventCandidates: [],
+  });
+
+  // Invalid-only: exactly one dates-only entry; the row stays omitted and
+  // global coverage still reads complete (only the publication degrades).
+  const invalidOnly = O.sanitizedCurrentPeriodActuals(
+    reportFor([mk2(94200, { original_name: 'SEND E-TFR J SMITH' })]),
+    { asOf: '2026-08-16', accountMap, plan: data.plan });
+  ok(Array.isArray(invalidOnly.outgoingETransferUnconfirmed)
+    && invalidOnly.outgoingETransferUnconfirmed.length === 1,
+    'an unqualified-amount household-cash SEND E-TFR row leaves exactly one unconfirmed entry',
+    JSON.stringify(invalidOnly.outgoingETransferUnconfirmed));
+  const entry = (invalidOnly.outgoingETransferUnconfirmed || [])[0] || {};
+  ok(JSON.stringify(Object.keys(entry).sort()) === JSON.stringify(['date', 'reason'])
+    && entry.date === '2026-08-16' && entry.reason === 'transaction-amount-unconfirmed',
+    'the entry is dates-and-reason only — no descriptor, no provider id, no amount',
+    JSON.stringify(entry));
+  ok(invalidOnly.transactions.length === 0,
+    'the unprocessable row itself stays omitted from packet transactions');
+  ok(invalidOnly.transactionCoverage === 'complete',
+    'global transactionCoverage is unchanged by the diagnostic (publication-level only)');
+  ok(!JSON.stringify(invalidOnly).includes('SEND E-TFR'),
+    'no raw descriptor text anywhere in the packet');
+
+  // Exclusions: FEE rows, revolving-credit rows and non-descriptor rows
+  // never produce an entry; a qualified SEND E-TFR row survives as before.
+  const exclusions = O.sanitizedCurrentPeriodActuals(reportFor([
+    mk2(94201, { original_name: 'SEND E-TFR FEE' }),
+    mk2(94202, { account_id: 2001, original_name: 'SEND E-TFR J SMITH' }),
+    mk2(94203, { original_name: 'ACME STORE' }),
+    mk2(94204, { original_name: 'SEND E-TFR J SMITH', amount: 75 }),
+  ]), { asOf: '2026-08-16', accountMap, plan: data.plan });
+  ok(Array.isArray(exclusions.outgoingETransferUnconfirmed)
+    && exclusions.outgoingETransferUnconfirmed.length === 0,
+    'FEE, revolving-credit and non-descriptor unqualified rows leave no entry',
+    JSON.stringify(exclusions.outgoingETransferUnconfirmed));
+  ok(exclusions.transactions.length === 1
+    && exclusions.transactions[0].outgoingETransferIdentity === true,
+    'the qualified SEND E-TFR row still survives with its identity boolean');
+
+  // Combined producer run (#595 coexistence): the same sanitizer pass also
+  // records account-scoped Savings provenance for an unqualified Savings
+  // row; neither channel disturbs the other.
+  const combinedMap = clone(accountMap);
+  combinedMap.mappings.push({ providerAccountId: '3001', atlasRole: 'household-cash',
+    canonical: { collection: 'cash', id: 'savings' } });
+  const combined = O.sanitizedCurrentPeriodActuals(reportFor([
+    mk2(94210, { original_name: 'SEND E-TFR J SMITH' }),
+    mk2(94211, { account_id: 3001, original_name: 'SAVINGS TRANSFER' }),
+  ]), { asOf: '2026-08-16', accountMap: combinedMap, plan: data.plan });
+  ok(Array.isArray(combined.outgoingETransferUnconfirmed)
+    && combined.outgoingETransferUnconfirmed.length === 1
+    && combined.outgoingETransferUnconfirmed[0].date === '2026-08-16',
+    'combined run: the e-transfer diagnostic entry is recorded',
+    JSON.stringify(combined.outgoingETransferUnconfirmed));
+  ok(combined.savingsMovementUnconfirmed.some(row => row.accountId === 'savings'
+    && row.reason === 'transaction-amount-or-date-unconfirmed'),
+    'combined run: #595 Savings provenance is recorded in the same pass',
+    JSON.stringify(combined.savingsMovementUnconfirmed));
+}
+
 if (failures) {
   console.log(`\n${failures} check(s) failed`);
   process.exit(1);

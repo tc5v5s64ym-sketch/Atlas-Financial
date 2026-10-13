@@ -4270,6 +4270,24 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   const txs = [];
   const currencyUnconfirmed = [];
   const cardCoverageUnconfirmed = [];
+  const outgoingETransferUnconfirmed = [];
+  // Outgoing e-transfer descriptor identity (Atlas decision, 2026-10-12),
+  // shared by the surviving-row boolean below and the unprocessable-
+  // candidate diagnostic in the amount guard: computed from
+  // tx.originalName alone — never tx.payee, never the originalMerchant
+  // fallback (which falls back to payee), never a Payment/Transfer
+  // category inference. Normalized as trim + collapse whitespace +
+  // uppercase, anchored at the start: 'SEND E-TFR' followed by
+  // end-of-string or a non-alphanumeric boundary, so SEND E-TFRXYZ and
+  // SEND E-TFR2 do not qualify. SEND E-TFR FEE is a fee, not a transfer
+  // (the scripts/interac.js precedent), and is excluded. Boolean only —
+  // the raw descriptor is never retained.
+  const outgoingETransferDescriptorIdentity = originalName => {
+    const name = typeof originalName === 'string'
+      ? originalName.trim().replace(/\s+/g, ' ').toUpperCase() : '';
+    return /^SEND E-TFR(?=$|[^A-Z0-9])/.test(name)
+      && !/^SEND E-TFR FEE(?=$|[^A-Z0-9])/.test(name);
+  };
   const postingByProviderId = new Map();
   const sourceTransactions = report && report.transactions || [];
   const provenPostingTransitions = new Set((report && report.identityEvidence || []).filter(row => {
@@ -4327,6 +4345,18 @@ function sanitizedCurrentPeriodActuals(report, opts) {
         cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx),
           date: tx.date || null, reason: 'transaction-amount-or-date-unconfirmed' });
       }
+      // P1 4253396900 diagnostic: a dated household-cash SEND E-TFR row
+      // whose amount cannot be qualified is dropped here, before identity
+      // detection — retain dates-only evidence so Forecast can withhold
+      // the outgoing e-transfer all-clear for the row's period. The row
+      // stays omitted; no descriptor, provider id or amount is retained,
+      // and global coverage and classification are untouched.
+      if (tx.date && amount == null
+        && atlasAccountRole(mapping) === 'household-cash'
+        && outgoingETransferDescriptorIdentity(tx.originalName)) {
+        outgoingETransferUnconfirmed.push({ date: tx.date,
+          reason: 'transaction-amount-unconfirmed' });
+      }
       continue;
     }
     const currencyRules = currencyRulesForTransaction(tx, mapDoc, opts.identityRules,
@@ -4370,19 +4400,9 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     };
     const explicitOwner = explicitPersonalOwnerFromTagsNotes(derivedInput);
     const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags(derivedInput);
-    // Outgoing e-transfer identity (Atlas decision, 2026-10-12): a boolean
-    // only, computed here from tx.originalName alone — never tx.payee, never
-    // the originalMerchant fallback (which falls back to payee), never a
-    // Payment/Transfer category inference. Normalized as trim + collapse
-    // whitespace + uppercase, anchored at the start: 'SEND E-TFR' followed
-    // by end-of-string or a non-alphanumeric boundary, so SEND E-TFRXYZ and
-    // SEND E-TFR2 do not qualify. SEND E-TFR FEE is a fee, not a transfer
-    // (the scripts/interac.js precedent), and is excluded. The raw
-    // descriptor is never retained: only this boolean enters the packet.
-    const outgoingETransferName = typeof tx.originalName === 'string'
-      ? tx.originalName.trim().replace(/\s+/g, ' ').toUpperCase() : '';
-    const outgoingETransferIdentity = /^SEND E-TFR(?=$|[^A-Z0-9])/.test(outgoingETransferName)
-      && !/^SEND E-TFR FEE(?=$|[^A-Z0-9])/.test(outgoingETransferName);
+    // Outgoing e-transfer identity: the shared descriptor test above,
+    // stamped as one boolean — only this boolean enters the packet.
+    const outgoingETransferIdentity = outgoingETransferDescriptorIdentity(tx.originalName);
     const coverageRelevant = movementEvidenceRole(mapping)
       || (atlasAccountRole(mapping) === 'household-cash'
         && (kindHint === 'card-payment' || flags.cardPaymentIdentity === true));
@@ -4562,6 +4582,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     pendingCoverage,
     transactionCoverage,
     cardCoverageUnconfirmed,
+    outgoingETransferUnconfirmed,
     cardCoverageRequired: ((mapDoc && mapDoc.mappings) || []).some(m => atlasAccountRole(m) === 'revolving-credit'),
     currencyUnconfirmed,
     savingsMovementUnconfirmed,

@@ -5669,8 +5669,20 @@
       && (!asOf || win.endDate >= asOf)
       && cov.coverageStart >= win.startDate && cov.coverageThrough <= win.endDate;
     const items = Array.isArray(collectedItems) ? collectedItems : null;
+    // P1 4253396900: the packet's sanitized dates-only evidence of an
+    // outgoing e-transfer candidate whose amount could not be qualified
+    // (dropped upstream before identity detection). A candidate dated
+    // inside this period withholds the all-clear: the publication falls
+    // through to available-incomplete with the observed items. Entries
+    // dated outside the period do not degrade this period's state.
+    const unconfirmed = Array.isArray(packet.outgoingETransferUnconfirmed)
+      ? packet.outgoingETransferUnconfirmed : [];
+    const unconfirmedInPeriod = unconfirmed.some(entry => entry
+      && typeof entry.date === 'string'
+      && (!periodStart || entry.date >= periodStart)
+      && (!asOf || entry.date <= asOf));
     if (coverage.status === 'current' && coverage.remainingClaim === 'precise'
-      && explicitBounds && provenanceOk && pendComplete) {
+      && explicitBounds && provenanceOk && pendComplete && !unconfirmedInPeriod) {
       return { status: 'available-complete', coverage: cov, count: items ? items.length : 0, items: items || [] };
     }
     if (coverage.status === 'current' && coverage.remainingClaim === 'posted-only'
