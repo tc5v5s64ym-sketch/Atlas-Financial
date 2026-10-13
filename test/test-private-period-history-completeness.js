@@ -230,6 +230,11 @@ try {
     delete legacyPublication.budgetProgress.household.delta;
     assert.deepEqual(legacyPublication, record.content.publication, 'every existing publication field remains exact');
     regenerated.content.engine = clone(record.content.engine);
+    const publicationOnly = clone(regenerated);
+    delete publicationOnly.content.provenance.transactionWindow.savingsFetchCoverage;
+    assert.deepEqual(publicationOnly.content.provenance.transactionWindow, record.content.provenance.transactionWindow,
+      'publication-only conflict has exact legacy window provenance');
+    rejects(() => append(archive, reseal(publicationOnly)), 'history-original-or-closing-conflict');
     rejects(() => append(archive, reseal(clone(regenerated))), 'history-original-or-closing-conflict');
     // Only genuinely identical legacy content retries as the v1 revision.
     // v1 contentKey is unchanged; derived v2 labels remain excluded.
