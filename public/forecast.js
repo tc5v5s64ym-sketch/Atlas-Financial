@@ -19148,11 +19148,11 @@
   function savingsReportedMovementCoherence(plan, day, opts, reported) {
     const packet = currentPeriodActualsPacket(opts), transactions = packet?.transactions;
     const accounts = new Set(reported.accountIds), byId = new Map();
-    const unknown = 'A savings movement lacks unique, qualified posted evidence. Balance-cutoff inclusion is unproven; Saved allocation is withheld.';
+    const unknown = 'A savings movement lacks unique, qualified posted evidence. Balance-cutoff inclusion is unproven; bank backing and new contributions are withheld.';
     // Legacy v1 packets did not retain account-scoped dropped-row provenance.
     // They remain readable elsewhere, but cannot prove this Savings boundary.
     if (!packet || !Object.hasOwn(packet, 'savingsMovementUnconfirmed')) {
-      return 'Savings movement provenance is unavailable in this legacy or missing observation packet. Saved allocation is withheld.';
+      return 'Savings movement provenance is unavailable in this legacy or missing observation packet. Bank backing and new contributions are withheld.';
     }
     const flags = packet.savingsMovementUnconfirmed;
     const reasons = ['transaction-amount-or-date-unconfirmed', 'native-plan-currency-unconfirmed',
@@ -19184,12 +19184,12 @@
       || packet.observationAsOf !== reported.checkedAsOf
       || !savingsDate(packet.coverageStart) || !savingsDate(packet.coverageThrough)
       || packet.coverageStart > packet.coverageThrough || packet.coverageThrough !== packet.observationAsOf) {
-      return 'Savings observation or transaction-window provenance is unconfirmed. Saved allocation is withheld.';
+      return 'Savings observation or transaction-window provenance is unconfirmed. Bank backing and new contributions are withheld.';
     }
     for (const tx of transactions) if (tx?.id != null) {
       const id = String(tx.id), rows = byId.get(id) || []; rows.push(tx); byId.set(id, rows);
     }
-    const uncertain = 'Reported balance cutoffs cannot establish inclusion of the savings movement. Saved allocation is withheld.';
+    const uncertain = 'Reported balance cutoffs cannot establish inclusion of the savings movement. Bank backing and new contributions are withheld.';
     const validId = id => typeof id === 'string' && !!id.trim() && id === id.trim()
       || typeof id === 'number' && Number.isSafeInteger(id) && id >= 0;
     const unconfirmed = row => packet.currencyUnconfirmed != null && (!Array.isArray(packet.currencyUnconfirmed)
@@ -19239,6 +19239,64 @@
         .filter(([, id]) => accounts.has(id)).map(([row, id]) => inclusion(row, id));
       if (included.some(value => value == null) || (included.length === 2
           ? included[0] !== included[1] : included[0] !== true)) return uncertain;
+    }
+    return null;
+  }
+  // Independently known reports do not need a reconstructed movement history.
+  // Retain only a demonstrated double representation of the same inter-reserve
+  // money: a qualified pair with donor report before debit and recipient report
+  // after credit. It is an account-cohort contradiction, not payment permission.
+  function savingsReportedStockOverlap(opts, reported, day) {
+    const packet = currentPeriodActualsPacket(opts), transactions = packet?.transactions;
+    // A positive contradiction needs explicit proof. The incumbent generic
+    // coverage helpers tolerate legacy omissions elsewhere; that fallback is
+    // not evidence for this narrow reported-stock overlap hold.
+    const complete = coverage => coverage === 'complete' || coverage != null
+      && typeof coverage === 'object' && !Array.isArray(coverage)
+      && Object.hasOwn(coverage, 'complete') && coverage.complete === true
+      && (!Object.hasOwn(coverage, 'status') || coverage.status === 'complete')
+      && ['truncated', 'hasMore', 'has_more'].every(key => !Object.hasOwn(coverage, key) || coverage[key] === false);
+    if (!Array.isArray(transactions) || !Object.hasOwn(packet, 'transactionCoverage')
+        || !Object.hasOwn(packet, 'pendingCoverage') || !complete(packet.transactionCoverage)
+        || !complete(packet.pendingCoverage)
+        || packet.currency != null && (typeof packet.currency !== 'string' || packet.currency.toUpperCase() !== 'CAD')) return null;
+    const window = packet.savingsFetchCoverage;
+    if (packet.schema !== 'atlas-current-period-actuals/v1' || !complete(window)
+        || !savingsDate(window.startDate) || !savingsDate(window.endDate)
+        || window.startDate !== packet.coverageStart || window.endDate !== packet.coverageThrough
+        || packet.coverageThrough !== packet.observationAsOf
+        || ['startDate', 'endDate'].some(key => Object.hasOwn(packet.transactionCoverage, key)
+          && packet.transactionCoverage[key] !== window[key])
+        || packet.transactionWindow != null && (!complete(packet.transactionWindow)
+          || packet.transactionWindow.startDate !== window.startDate || packet.transactionWindow.endDate !== window.endDate)) return null;
+    const accounts = new Set(reported.accountIds), byId = new Map();
+    for (const tx of transactions) if (tx?.id != null) {
+      const rows = byId.get(String(tx.id)) || []; rows.push(tx); byId.set(String(tx.id), rows);
+    }
+    const validId = id => typeof id === 'string' && !!id.trim() && id === id.trim()
+      || typeof id === 'number' && Number.isSafeInteger(id) && id >= 0;
+    const qualified = (tx, id) => tx && validId(tx.id) && byId.get(String(tx.id))?.length === 1
+      && tx.pending === false && tx.savingsPostingEvidence === 'posted'
+      && typeof tx.currency === 'string' && tx.currency.toUpperCase() === 'CAD'
+      && savingsDate(tx.date) && tx.date <= day && savingsCents(tx.amount, true) != null
+      && savingsDate(packet.coverageStart) && savingsDate(packet.coverageThrough)
+      && tx.date >= packet.coverageStart && tx.date <= packet.coverageThrough
+      && savingsDate(packet.observationAsOf) && packet.observationAsOf === reported.checkedAsOf
+      && (packet.currencyUnconfirmed == null || Array.isArray(packet.currencyUnconfirmed)
+        && !packet.currencyUnconfirmed.some(flag => !validId(flag?.id) || String(flag.id) === String(tx.id)))
+      && tx.accountRole === 'household-reserve' && householdCashLocationId(tx) === id
+      && [tx.atlasAccountId, tx.accountId, tx.account].every(alias => alias == null || alias === '' || alias === id);
+    for (const pair of householdInternalMovements(null, opts)) {
+      if (!accounts.has(pair.sourceAccountId) || !accounts.has(pair.destinationAccountId)) continue;
+      const debit = byId.get(pair.sourceTransactionId)?.[0], credit = byId.get(pair.destinationTransactionId)?.[0];
+      if (!qualified(debit, pair.sourceAccountId) || !qualified(credit, pair.destinationAccountId)
+          || savingsCents(debit.amount, true) <= 0 || savingsCents(credit.amount, true) >= 0
+          || savingsCents(debit.amount, true) !== -savingsCents(credit.amount, true)
+          || savingsCents(pair.amount) !== savingsCents(debit.amount, true)) continue;
+      const sourceDate = reported.balanceDates.find(row => row.accountId === pair.sourceAccountId)?.date;
+      const destinationDate = reported.balanceDates.find(row => row.accountId === pair.destinationAccountId)?.date;
+      if (sourceDate < debit.date && destinationDate > credit.date)
+        return 'Reported balances include the same proven reserve transfer in both accounts. A coherent reported balance update is required before earmarking that pot.';
     }
     return null;
   }
@@ -19346,12 +19404,15 @@
     const allocationReason = config.status !== 'ready' ? config.reason : !reportedKnown
       ? 'Both savings accounts require valid dated reported CAD cents evidence.'
       : observations.accounts.some(row => row.value < 0) ? 'Negative savings stock remains a protected deficit.'
-      : pendingMovement ? 'Pending savings movement withholds goal allocation; reported balances remain known.'
-      : coherenceReason ? coherenceReason
-      : unresolved.length ? 'Unresolved protected requirements withhold allocation; no date or priority is invented.' : null;
+      : savingsReportedStockOverlap(opts, reported, day)
+        || (unresolved.length ? 'Unresolved protected requirements withhold allocation; no date or priority is invented.' : null);
     const allocationReady = !allocationReason;
-    // One chronological allocator serves the Saved publication. Payment seeds
-    // still require the incumbent same-day readiness below, before any cash walk.
+    // Owner 2026-10-07/12: present earmarks use the latest known combined
+    // reported stock. Historical/pending movement and Bills/card reconciliation
+    // qualify payment backing and new contributions, not this dated allocation.
+    // No transaction is subtracted from a reported balance a second time.
+    // One chronological allocator serves Saved; payment seeds still require
+    // the incumbent same-day readiness below, before any cash walk.
     const ready=!reason; let left=allocationReady?reported[savingsReportedCents]:null;
     for(const item of items) if(allocationReady){const take=Math.min(left,item.needCents); item.savedCents=take; item.saved=take/100; left-=take;}
     const rows=[], groups=new Map();
@@ -19573,7 +19634,7 @@
           + [...new Set(derived.goalAllocation.balanceDates.map(row => row.date))].sort().join(' / ')
           + ', allocated by due date. Payment backing is qualified separately.'
         : derived.basis === 'policy-derived-combined-observed-backing'
-        ? derived.allocationDescription || 'Goal allocation requires validated reported Savings balances and clear pending evidence.'
+        ? derived.goalAllocation?.reason || derived.allocationDescription || 'Goal allocation requires validated dated reported Savings balances.'
         : 'Historical allocation policy applies to the dated pool evidence.',
       unresolved: (derived.unresolved || []).map(({ needCents, savedCents, event, rank, ...item }) => item), rows: derived.rows };
     const unknown = reason => ({ ...shell, status: 'unavailable', reason,

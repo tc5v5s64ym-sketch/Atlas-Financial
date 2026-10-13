@@ -43,6 +43,7 @@ const CiOutput = require('../scripts/ci-output');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['shared read-only transaction review presentation and privacy boundary', 'test-transaction-review.js'],
   ['public CI output and synthetic privacy canaries', 'test-ci-output.js'],
   ['serial runner, complete CI partition and aggregation contracts', 'test-ci-split.js'],
   ['annual savings expense excluded from payday Bills with one conserved draw', 'test-annual-savings-payperiod.js'],
@@ -52,6 +53,7 @@ const suites = [
   ['private pay-period history declared completeness, closing gate and legacy v1 compatibility', 'test-private-period-history-completeness.js'],
   ['one chronological savings publication and independent allocation oracle', 'test-chronological-savings-publication.js'],
   ['latest reported Savings allocations with unchanged native funding gates', 'test-savings-latest-known-allocation.js'],
+  ['present reported Savings earmarks independent of historical reconciliation', 'test-reported-savings-earmarks.js'],
   ['real observer Savings movement provenance and legacy fail-closed contract', 'test-savings-observer-contract.js'],
   ['combined savings location conservation and publication gates', 'test-chronological-savings-conservation.js'],
   ['independent savings review boundary and pre-payday conservation controls', 'test-chronological-savings-review-boundaries.js'],

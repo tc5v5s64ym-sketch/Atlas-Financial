@@ -332,6 +332,100 @@ if (require.main === module) (async () => {
     }
     now = CLOCK; mock.payload({ ...Fixture.payload(), tags: [] });
 
+    // Packet-level source-check receipt: the real serve capture projected
+    // through the real packet builder (Assistant.buildPacket projects the
+    // captured check into metadata.sourceCheck; nothing else in the packet
+    // is derived from it).
+    const Assistant = require('../scripts/assistant-packet');
+    const receiptPacket = (data, check, attemptedAt) => Assistant.buildPacket({
+      data, env, now: attemptedAt, sourceCheck: { check, attemptedAt },
+    });
+    {
+      let packetCheck;
+      const packetData = await Refresh.serve(canonical, env, { onCheck(value) { packetCheck = value; } });
+      await drain();
+      check(receiptPacket(packetData, packetCheck, '2026-08-20T18:05:00.000Z').metadata.sourceCheck, {
+        outcome: 'qualified', source: 'provider', qualified: true,
+        evidenceCheckedAt: CLOCK, attemptedAt: '2026-08-20T18:05:00.000Z', reason: null, cacheNote: null,
+      }, 'packet receipt: qualified provider check, original evidence time, separate attempt time');
+      let replayCheck;
+      const replayData = await Refresh.serve(canonical, env, { preferObservation: true, onCheck(value) { replayCheck = value; } });
+      await drain();
+      check(receiptPacket(replayData, replayCheck, '2026-08-20T19:30:00.000Z').metadata.sourceCheck, {
+        outcome: 'qualified', source: 'memory', qualified: true,
+        evidenceCheckedAt: CLOCK, attemptedAt: '2026-08-20T19:30:00.000Z', reason: null,
+        cacheNote: 'Source evidence is process-local warm reuse; it can disappear on restart, sleep or deploy.',
+      }, 'packet receipt: memory replay keeps the original evidence time and discloses warm reuse');
+      // Unqualified: the overlay applied (freshness still says live) but the
+      // check did not qualify — the receipt, not freshness, tells the truth.
+      const missing = { ...Fixture.payload(), tags: [] };
+      missing.accounts = missing.accounts.filter(row => row.id !== 2001);
+      mock.payload(missing);
+      let unqCheck;
+      const unqData = await Refresh.serve(canonical, env, { onCheck(value) { unqCheck = value; } });
+      await drain();
+      const unqPacket = receiptPacket(unqData, unqCheck, '2026-08-20T18:10:00.000Z');
+      check(unqPacket.metadata.sourceCheck.outcome, 'unqualified', 'packet receipt: dated but unqualified check is unqualified');
+      check(unqPacket.metadata.sourceCheck.evidenceCheckedAt, CLOCK, 'packet receipt: unqualified check keeps its evidence time');
+      check(unqPacket.metadata.freshness.confidence, 'live', 'packet freshness still says live on the unqualified overlay (the receipt is the qualification signal)');
+      mock.payload({ ...Fixture.payload(), tags: [] });
+      // Failure after a qualified success: the failed read must not present
+      // the prior success's evidence time as its own.
+      mock.mode('failure');
+      let failCheck;
+      const failData = await Refresh.serve(canonical, env, { onCheck(value) { failCheck = value; } });
+      await drain();
+      check(receiptPacket(failData, failCheck, '2026-08-20T18:15:00.000Z').metadata.sourceCheck, {
+        outcome: 'failed', source: 'provider', qualified: false,
+        evidenceCheckedAt: null, attemptedAt: '2026-08-20T18:15:00.000Z', reason: 'provider-check-failed', cacheNote: null,
+      }, 'packet receipt: failure after success is failed, with no evidence time');
+      mock.mode('ok');
+      await Refresh.serve(canonical, env); await drain();
+    }
+    {
+      // Concurrent consumers coalesce onto one provider job and receive the
+      // identical check, so their receipts agree.
+      const beforeCalls = mock.calls.length;
+      mock.hold();
+      let checkA, checkB;
+      const serveA = Refresh.serve(canonical, env, { onCheck(value) { checkA = value; } });
+      const serveB = Refresh.serve(canonical, env, { onCheck(value) { checkB = value; } });
+      await until(() => mock.calls.length > beforeCalls, 'coalesced provider job started');
+      mock.release();
+      const [dataA, dataB] = await Promise.all([serveA, serveB]);
+      await drain();
+      check(mock.calls.length - beforeCalls, 7, 'two concurrent serves share one seven-GET provider fetch');
+      check(checkA, checkB, 'coalesced waiters receive the identical check');
+      check(receiptPacket(dataA, checkA, '2026-08-20T18:20:00.000Z').metadata.sourceCheck,
+        receiptPacket(dataB, checkB, '2026-08-20T18:20:00.000Z').metadata.sourceCheck,
+        'coalesced consumers project identical receipts');
+    }
+    {
+      // A read during an in-flight write is refused (server.js maps this
+      // rejection to HTTP 503); the first read after the write settles runs
+      // a fresh provider check, and an uncertain write earns no replay.
+      let finishWrite;
+      const write = Refresh.withProviderWrite(() => new Promise(resolve => { finishWrite = resolve; }));
+      await reject(Refresh.serve(canonical, env, { preferObservation: true }), 'live-refresh-invalidated');
+      finishWrite({ status: 'applied' });
+      await write;
+      const afterWrite = mock.calls.length;
+      let postWriteCheck;
+      const postWriteData = await Refresh.serve(canonical, env, { preferObservation: true, onCheck(value) { postWriteCheck = value; } });
+      await drain();
+      check(mock.calls.length - afterWrite, 7, 'first read after a write performs a fresh provider fetch');
+      check(receiptPacket(postWriteData, postWriteCheck, '2026-08-20T18:25:00.000Z').metadata.sourceCheck.source,
+        'provider', 'first receipt after a write is a fresh provider check, never a pre-write replay');
+      await Refresh.withProviderWrite(async () => ({ status: 'write-unverified' }));
+      const afterUncertain = mock.calls.length;
+      let uncertainCheck;
+      const uncertainData = await Refresh.serve(canonical, env, { preferObservation: true, onCheck(value) { uncertainCheck = value; } });
+      await drain();
+      check(mock.calls.length - afterUncertain, 7, 'uncertain write attempt still forces a fresh provider fetch');
+      check(receiptPacket(uncertainData, uncertainCheck, '2026-08-20T18:26:00.000Z').metadata.sourceCheck.qualified,
+        true, 'receipt after an uncertain write reflects the post-write check, not a stale qualified replay');
+    }
+
     // Full session-authenticated route and static-Bearer live consumer.
     for (let restart = 0; restart < 2; restart++) {
       const app = await atlas(mock, { mcp: true });
@@ -371,6 +465,56 @@ if (require.main === module) (async () => {
         await fetch(app.base + '/data.json', { headers: { cookie: app.cookie } });
         check(mock.calls.length > retryCount, true, 'opening after failed force cannot hide failure behind old success');
         mock.mode('ok');
+      } finally { await app.close(); }
+    }
+    // Packet consumers over HTTP: /assistant/current and MCP get_atlas_current
+    // carry the same receipt the in-process projector produces. The child's
+    // synthetic evidence clock is CLOCK (the preload stubs Date.now, which
+    // the observer's fetch stamps use), while attemptedAt is the server's
+    // real serve-completion stamp — the two are asserted separately, never
+    // conflated.
+    {
+      const app = await atlas(mock, { mcp: true });
+      try {
+        const res = await fetch(app.base + '/assistant/current', { headers: { authorization: 'Bearer ' + TOKEN } });
+        check(res.status, 200, 'assistant/current succeeds for the receipt read');
+        const packet = await res.json();
+        const httpReceipt = packet.metadata.sourceCheck || {};
+        check({
+          outcome: httpReceipt.outcome, source: httpReceipt.source, qualified: httpReceipt.qualified,
+          evidenceCheckedAt: httpReceipt.evidenceCheckedAt, reason: httpReceipt.reason, cacheNote: httpReceipt.cacheNote,
+        }, {
+          outcome: 'qualified', source: 'provider', qualified: true,
+          evidenceCheckedAt: CLOCK, reason: null, cacheNote: null,
+        }, 'assistant/current receipt: qualified with the original evidence time');
+        check(typeof httpReceipt.attemptedAt === 'string'
+          && Number.isFinite(Date.parse(httpReceipt.attemptedAt))
+          && httpReceipt.attemptedAt !== httpReceipt.evidenceCheckedAt, true,
+          'assistant/current receipt: attempt time is a distinct serve-completion stamp');
+        const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
+        const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
+        const client = new Client({ name: 'synthetic-receipt-proof', version: '1' });
+        try {
+          await client.connect(new StreamableHTTPClientTransport(new URL(app.base + '/assistant/mcp'), {
+            requestInit: { headers: { authorization: 'Bearer ' + app.mcpToken } }, }));
+          const result = await client.callTool({ name: 'get_atlas_current', arguments: {} });
+          check(result.structuredContent?.metadata?.sourceCheck?.outcome, 'qualified', 'MCP get_atlas_current receipt is qualified');
+          check(result.structuredContent?.metadata?.sourceCheck?.evidenceCheckedAt, CLOCK, 'MCP receipt keeps the original evidence time');
+        } finally { await client.close(); }
+        mock.mode('failure');
+        const failRes = await fetch(app.base + '/assistant/current', { headers: { authorization: 'Bearer ' + TOKEN } });
+        const failPacket = await failRes.json();
+        check(failPacket.metadata.sourceCheck.outcome, 'failed', 'assistant/current receipt after provider failure is failed');
+        check(failPacket.metadata.sourceCheck.evidenceCheckedAt, null, 'failed HTTP receipt does not reuse the prior evidence time');
+        mock.mode('ok');
+        const missing = { ...Fixture.payload(), tags: [] };
+        missing.accounts = missing.accounts.filter(row => row.id !== 2001);
+        mock.payload(missing);
+        const unqRes = await fetch(app.base + '/assistant/current', { headers: { authorization: 'Bearer ' + TOKEN } });
+        const unqPacket = await unqRes.json();
+        check(unqPacket.metadata.sourceCheck.outcome, 'unqualified', 'assistant/current receipt for a dated unqualified check is unqualified');
+        check(unqPacket.metadata.freshness.confidence, 'live', 'HTTP packet freshness remains live on the unqualified overlay');
+        mock.payload({ ...Fixture.payload(), tags: [] });
       } finally { await app.close(); }
     }
     originalLog('MEASURED ' + JSON.stringify({ providerFreeResponseMs: Math.round(providerFreeResponseMs * 100) / 100,

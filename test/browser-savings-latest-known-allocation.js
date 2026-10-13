@@ -3,7 +3,8 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const cp = require('node:child_process'), crypto = require('node:crypto');
 const { chromium } = require('playwright');
-const O = require('../scripts/provider-observe'), provider = require('./fixtures/savings-v2-observation-data');
+const O = require('../scripts/provider-observe'), L = require('../scripts/live-plan');
+const provider = require('./fixtures/savings-v2-observation-data');
 const consumer = require('./fixtures/savings-daily-consumer-data');
 const transferCutoffs = require('./fixtures/savings-transfer-cutoffs');
 const observed = require('./fixtures/savings-observer-contract-data');
@@ -22,6 +23,29 @@ const binding = captureSourceBinding(root, [...files, ...runtimeFiles], process.
 fs.mkdirSync(output, { recursive: true });
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function input(mode) {
+  if (mode.startsWith('audit-')) {
+    const x = provider.input('valid'), day = '2026-10-07';
+    x.data.meta.asOf = x.data.plan.opening.asOf = day;
+    x.payload.fetchedAt = day + 'T20:00:00Z';
+    x.payload.transactionWindow.endDate = day;
+    x.payload.accounts.forEach((row, index) => {
+      if (index < 2) row.updated_at = day + 'T19:00:00Z';
+      else { row.balance_last_update = (index === 2 ? '2026-10-06' : '2026-10-04') + 'T19:00:00Z';
+        row.last_fetch = day + 'T19:30:00Z'; }
+    });
+    x.payload.categories.push({ id: 99, name: 'Invented transfer', is_income: false, exclude_from_totals: true });
+    x.payload.transactions.push({ id: 9901, account_id: mode === 'audit-other-reserve' ? 9004 : 9003,
+      date: '2026-10-03', amount: mode === 'audit-flagged' ? null : '17.43', currency: 'cad',
+      is_pending: mode === 'audit-pending', status: mode === 'audit-pending' ? 'unreviewed' : 'cleared',
+      category_id: 99, payee: 'AA101 TFR-TO Invented destination' });
+    if (mode === 'audit-truncated') Object.assign(x.payload.transactionWindow,
+      { complete: false, truncated: true, hasMore: true });
+    const report = O.observe({ provider: 'lunchmoney', ...x });
+    assert.equal(report.savingsPools.accounts.reduce((sum, row) => sum + Math.round(row.value * 100), 0), 11900);
+    if (mode === 'audit-flagged') assert.ok(report.currentPeriodActuals.savingsMovementUnconfirmed
+      .some(row => row.accountId === 'savings'), 'actual observer retains the dropped-row provenance');
+    return L.overlayLiveState({ data: x.data, report }).data;
+  }
   if (mode.startsWith('sameid-')) {
     const row = [...observed.sameIdCases, ...observed.sameIdGuards].find(row => row.name === mode.slice('sameid-'.length));
     assert.ok(row, 'declared same-ID fixture is required');
@@ -71,48 +95,57 @@ function input(mode) {
       ...[...observed.sameIdCases.filter(row => row.ready),
         ...observed.sameIdCases.filter(row => ['counterparty:posted-first:predecessor:string-false', 'direct:pending-first:successor:null'].includes(row.name)),
         ...observed.sameIdGuards.filter(row => row.shape === 'counterparty' && row.order === 'pending-first' && row.fault !== 'ambiguous-posted')]
-        .map(row => ['sameid-' + row.name, 390, 'light', row.ready ? [95, 24] : [null, null],
-          row.ready ? ['is-amber', 'is-full'] : ['is-unknown', 'is-unknown'], !row.ready]),
-      ['posting-direct:absent', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['posting-counterparty:string-false', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['posting-savings-leg:null', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+        .map(row => ['sameid-' + row.name, 390, 'light', [95, 24], ['is-amber', 'is-full'], !row.ready]),
+      ['posting-direct:absent', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['posting-counterparty:string-false', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['posting-savings-leg:null', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['posting-direct:posted', 390, 'light', [95, 24], ['is-amber', 'is-full'], false],
       ['posting-counterparty:posted', 390, 'light', [95, 24], ['is-amber', 'is-full'], false],
       ['posting-unrelated:absent', 320, 'dark', [95, 24], ['is-amber', 'is-full'], false],
       ['window-complete', 390, 'light', [95, 24], ['is-amber', 'is-full']],
-      ['window-truncated', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['window-impossibleObservation', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['window-raw-incomplete-end', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['window-truncated', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['window-impossibleObservation', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['window-raw-incomplete-end', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['window-unrelated-card', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['window-unrelated-unmapped', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['window-midnight', 320, 'dark', [95, 24], ['is-amber', 'is-full']],
-      ['window-source-missing-completion', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['window-source-null-completion', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['window-source-missing-dates', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['window-source-missing-completion', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['window-source-null-completion', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['window-source-missing-dates', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['pipeline-valid', 390, 'light', [95, 24], ['is-amber', 'is-full'], false],
       ['pipeline-valid-transfer', 390, 'light', [105, 24], ['is-amber', 'is-full'], false],
-      ['pipeline-undated', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['pipeline-undated-pending', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['pipeline-sanitization-fallback', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['pipeline-undated', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['pipeline-undated-pending', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['pipeline-sanitization-fallback', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['stale-date', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['stale-both', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['stale-both', 1440, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['audit-D1', 320, 'dark', [95, 24], ['is-amber', 'is-full']],
+      ['audit-D1', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['audit-D1', 1440, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['audit-other-reserve', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['audit-pending', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['audit-flagged', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['audit-truncated', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['prior-household-day', 320, 'dark', [95, 24], ['is-amber', 'is-full']],
       ['prior-check-day', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['cutoff-double-count', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['cutoff-inverse', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['cutoff-same-day', 390, 'light', [76, 24], ['is-amber', 'is-full']],
+      ['cutoff-same-day-one', 390, 'light', [176, 24], ['is-amber', 'is-full']],
+      ['cutoff-inverse', 390, 'light', [0, 0], ['is-red', 'is-red']],
       ['cutoff-both-before', 390, 'light', [76, 24], ['is-amber', 'is-full']],
       ['cutoff-both-after', 390, 'light', [76, 24], ['is-amber', 'is-full'], false],
       ['cutoff-unrelated-mixed', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['cutoff-zero', 390, 'light', [0, 0], ['is-red', 'is-red']],
-      ['cutoff-duplicate', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['cutoff-hint-only', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['cutoff-invalid-reference', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['cutoff-missing-reference', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['cutoff-boundary-withdraw-before', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['cutoff-boundary-deposit-before', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['cutoff-boundary-deposit-same-current', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['cutoff-boundary-fee-before', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
-      ['cutoff-boundary-credit-before', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['cutoff-duplicate', 390, 'light', [176, 24], ['is-amber', 'is-full']],
+      ['cutoff-hint-only', 390, 'light', [176, 24], ['is-amber', 'is-full']],
+      ['cutoff-invalid-reference', 390, 'light', [176, 24], ['is-amber', 'is-full']],
+      ['cutoff-missing-reference', 390, 'light', [176, 24], ['is-amber', 'is-full']],
+      ['cutoff-boundary-withdraw-before', 390, 'light', [76, 24], ['is-amber', 'is-full']],
+      ['cutoff-boundary-deposit-before', 390, 'light', [0, 0], ['is-red', 'is-red']],
+      ['cutoff-boundary-deposit-same-current', 390, 'light', [76, 24], ['is-amber', 'is-full']],
+      ['cutoff-boundary-fee-before', 390, 'light', [76, 24], ['is-amber', 'is-full']],
+      ['cutoff-boundary-credit-before', 390, 'light', [0, 0], ['is-red', 'is-red']],
       ['cutoff-boundary-withdraw-after', 390, 'light', [0, 0], ['is-red', 'is-red'], false],
       ['cutoff-boundary-deposit-after', 390, 'light', [76, 24], ['is-amber', 'is-full'], false],
       ['cutoff-boundary-fee-after', 390, 'light', [74.75, 24], ['is-amber', 'is-full'], false],
@@ -120,10 +153,11 @@ function input(mode) {
       ['withdrawal-stale', 390, 'light', [39.02, 0], ['is-red', 'is-red']],
       ['zero-stale', 390, 'light', [0, 0], ['is-red', 'is-red']],
       ['full-dated', 390, 'light', [230, 24], ['is-full', 'is-full']],
-      ['pending-movement', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['pending-movement', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['future-date', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
     ].filter(row => !selected || selected.includes(row[0]))) {
       const data = input(mode), inputHash = hash(JSON.stringify(data));
+      let servedData = data;
       const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
       page.setDefaultTimeout(20000);
       await page.addInitScript(({ theme }) => {
@@ -135,7 +169,7 @@ function input(mode) {
         const request = route.request(), url = new URL(request.url());
         if (request.method() !== 'GET') { writes.push(request.method()); return route.abort(); }
         if (url.origin !== 'http://latest-savings.test') { external.push(url.origin); return route.abort(); }
-        if (url.pathname === '/data.json') return route.fulfill({ json: data });
+        if (url.pathname === '/data.json') return route.fulfill({ json: servedData });
         if (['/periods.json', '/balance-history.json', '/running-build.json'].includes(url.pathname)) return route.fulfill({ json: null });
         const file = path.resolve(assets, '.' + (url.pathname === '/' ? '/index.html' : url.pathname));
         if (!file.startsWith(assets + path.sep) || !fs.existsSync(file)) return route.fulfill({ status: 404, body: '' });
@@ -172,7 +206,7 @@ function input(mode) {
       if (topUpHeld) assert.match(await body.locator('[data-budget-daily-proposal]').innerText(), /Unavailable/);
       if ((mode.startsWith('cutoff-') || mode.startsWith('window-') || mode.startsWith('posting-') || mode.startsWith('sameid-')) && expected[0] == null) {
         await body.locator('[data-budget-savings-info] > summary').click();
-        assert.match(await body.innerText(), /Saved allocation is withheld/);
+        assert.match(await body.innerText(), /same proven reserve transfer/);
         assert.match(await body.locator('[data-budget-savings-total-needed]').first().innerText(), /230\.00/);
         assert.match(await body.locator('[data-budget-savings-total-saved]').first().innerText(), /Unavailable/);
       }
@@ -190,9 +224,32 @@ function input(mode) {
       }
       await page.keyboard.press('Escape');
       assert.equal(await summary.evaluate(el => el === document.activeElement), true);
+      let refreshed = null;
+      if (mode === 'stale-both' && width === 390) {
+        servedData = JSON.parse(JSON.stringify(data));
+        servedData.plan.savingsPoolObservation.accounts.find(row => row.accountId === 'savings').value = 105;
+        const refresh = page.getByRole('button', { name: 'Manual Refresh', exact: true });
+        for (let i = 0; i < 2; i++) {
+          await Promise.all([page.waitForResponse(response => new URL(response.url()).pathname === '/data.json'), refresh.click()]);
+          await page.waitForFunction(() => document.querySelector('[data-budget-savings-goal="group:club"]')?.getAttribute('data-budget-goal-saved-amount') === '105');
+          assert.equal(await page.locator('[data-budget-savings-goal="yearly-bill:home-cost"]').getAttribute('data-budget-goal-saved-amount'), '24');
+          assert.match(await summary.innerText(), /129\.00/, 'combined 105 + 24 report replaces 119 without another deposit credit');
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        }
+        assert.equal(hash(await page.evaluate(() => JSON.stringify(App.data))), hash(JSON.stringify(servedData)));
+        await summary.focus(); await page.keyboard.press('Enter');
+        await page.locator('[data-budget-detail-sheet]').waitFor({ state: 'visible' });
+        assert.match(await body.locator('[data-budget-daily-proposal]').innerText(), /Unavailable/, 'refreshing reported earmarks cannot recover a new Bills contribution');
+        await page.keyboard.press('Escape');
+        const refreshFile = 'stale-both-390-refreshed.png';
+        await page.locator('[data-budget-savings-goals]').screenshot({ path: path.join(output, refreshFile), animations: 'disabled' });
+        refreshed = { sourceSum: 129, club: 105, home: 24, repeatedRefreshCount: 2,
+          topUpHeld: true, noOverflow: true, screenshot: refreshFile,
+          screenshotSha256: hash(fs.readFileSync(path.join(output, refreshFile))) };
+      }
       cases.push({ mode, width, theme, rows: result.rows, bars: result.bars, noOverflow: true,
         topUpHeld, focusRestored: true, inputSha256: inputHash,
-        screenshot: filename, screenshotSha256: hash(fs.readFileSync(path.join(output, filename))) });
+        screenshot: filename, screenshotSha256: hash(fs.readFileSync(path.join(output, filename))), refreshed });
       await page.close(); console.log('PASS latest Saved browser: ' + mode + ' ' + width + 'px');
     }
     assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(writes, []);

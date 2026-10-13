@@ -576,7 +576,16 @@ const App = (() => {
     const controls = document.createElement('div');
     controls.className = 'observation-controls';
     controls.append(checkStatus, refresh);
-    const checkMount = document.querySelector('.site-head-inner') || document.querySelector('.site-head') || $('asof')?.parentNode;
+    const toolbar = document.querySelector('[data-atlas-toolbar]');
+    if (toolbar) {
+      // Re-home the incumbent button, including its single-flight refresh
+      // handler. Source status stays in the native review sheet, not a banner.
+      refresh.className = 'atlas-toolbar-refresh';
+      refresh.setAttribute('aria-label', 'Manual Refresh');
+      refresh.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 9a7 7 0 1 0 0 6M19 4v5h-5"/></svg>';
+      toolbar.insertBefore(refresh, toolbar.querySelector('[data-transaction-review-open]'));
+    }
+    const checkMount = document.querySelector('[data-review-source-check]') || document.querySelector('.site-head-inner') || document.querySelector('.site-head') || $('asof')?.parentNode;
     if (checkMount) {
       checkMount.classList?.add('has-observation-controls');
       checkMount.append(controls);
