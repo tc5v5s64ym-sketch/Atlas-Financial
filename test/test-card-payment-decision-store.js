@@ -161,8 +161,134 @@ async function transitions() {
     eq((await retry.snapshot()).legacyDocument, legacy, 'migration retry preserves original bytes');
   }
 }
+function permutations(rows) {
+  return rows.length ? rows.flatMap((row, i) => permutations(rows.filter((_, j) => i !== j)).map(rest => [row, ...rest])) : [[]];
+}
+const document = (state, schema = 'atlas-card-payment-decisions/v1') => JSON.stringify({ schema, state, digest: S.digest(state) });
+function permutationFixture() {
+  const decisions = ['a', 'b', 'c'].map((char, i) => {
+    const d = decision(char); d.actor = i === 1 ? 'session-' + 'b'.repeat(64) : actor;
+    d.record.debitRef = 'pc-' + String(i + 1).repeat(24);
+    d.record.creditRef = 'pc-' + String(i + 4).repeat(24);
+    d.record.allocations[0].purchaseRef = 'pc-' + String(i + 7).repeat(24);
+    return d;
+  });
+  const outcomes = decisions.map((d, i) => ({ operationId: operation(String(i + 1)), actor: d.actor,
+    status: 'confirmed', revision: i + 1, reason: null, decisionId: d.record.id }));
+  for (const [i, reason] of ['revision-changed', 'evidence-changed'].entries()) outcomes.push({ operationId: operation(String(i + 4)),
+    actor: decisions[i].actor, status: 'rejected', revision: i + 4, reason, decisionId: null });
+  return { revision: outcomes.length, decisions, outcomes };
+}
+async function migrationPermutations() {
+  const fixture = permutationFixture(), expected = fixture.decisions.map(d => d.record.id).sort();
+  let attempted = 0, failures = 0;
+  // Complete bounded product: 3! decision orders x 5! outcome orders, including both rejected outcomes and mixed actors.
+  for (const decisions of permutations(fixture.decisions)) for (const rows of permutations(fixture.outcomes)) {
+    attempted++;
+    const state = { revision: 5, decisions, outcomes: rows.map((o, i) => ({ ...o, revision: i + 1 })) };
+    const original = document(state), storage = memory(original), store = S.createStore(storage), before = await store.snapshot();
+    eq(S.effectiveDecisions(before).map(d => d.record.id).sort(), expected, 'every valid v1 order retains the same identities');
+    const migration = { expectedRevision: 5, expectedDigest: before.documentDigest };
+    try { await store.migrate(migration); }
+    catch (error) {
+      assert.match(error.message, /card-decision-unavailable/);
+      eq(storage.read(), original, 'a failed migration cannot replace existing bytes');
+      failures++; continue;
+    }
+    const migrated = await store.snapshot();
+    eq([migrated.legacyDocument, migrated.decisions, migrated.outcomes, migrated.revision], [original, decisions, state.outcomes, 5],
+      'migration preserves original bytes, array orders, actors and receipts');
+    const target = fixture.decisions[1], successor = structuredClone(target);
+    successor.record.id = decision('f').record.id; successor.record.allocations[0].amount = 40;
+    const replace = { actor: target.actor, operationId: operation('a'), expectedRevision: 5,
+      command: command('replace', target.record.id), decision: successor };
+    const receipt = await store.commit(replace);
+    eq(receipt, { status: 'confirmed', operationId: operation('a'), revision: 6 }, 'replacement follows any inherited order');
+    const corrected = await store.snapshot();
+    eq(S.effectiveDecisions(corrected).map(d => d.record).sort((a, b) => a.id.localeCompare(b.id)),
+      [fixture.decisions[0].record, fixture.decisions[2].record, successor.record], 'only the intended head and claim change');
+    eq(await store.commit(replace), receipt, 'replacement retry retains its outcome after migration');
+    eq(await store.commit({ actor: target.actor, operationId: operation('b'), expectedRevision: 6,
+      command: command('retract', successor.record.id) }), { status: 'confirmed', operationId: operation('b'), revision: 7 },
+    'retraction follows the native successor, regardless of inherited order');
+    const after = await store.snapshot();
+    eq(S.effectiveDecisions(after).map(d => d.record.id).sort(), [expected[0], expected[2]], 'retraction leaves the other two claims intact');
+    eq([after.legacyDocument, after.decisions.slice(0, 3), after.outcomes.slice(0, 5)], [original, decisions, state.outcomes],
+      'replace/retract preserve every inherited choice and outcome');
+    eq(await store.migrate(migration), { status: 'migrated', revision: 5 }, 'migration retry still recognizes original bytes after operations');
+    for (const o of state.outcomes) eq(await store.outcome({ actor: o.actor, operationId: o.operationId }),
+      { status: o.status, operationId: o.operationId, revision: o.revision, ...(o.reason ? { reason: o.reason } : {}) },
+      'mixed-actor confirmed and rejected public receipts stay unchanged');
+  }
+  eq(attempted, 720, 'all 3! x 5! bounded orderings were exercised');
+  eq(failures, 0, 'every readable v1 permutation must migrate');
+}
+async function migrationSchemaControls() {
+  for (const state of [
+    { revision: 0, decisions: [], outcomes: [] },
+    { revision: 2, decisions: [], outcomes: permutationFixture().outcomes.slice(3).map((o, i) => ({ ...o, revision: i + 1 })) },
+    { ...permutationFixture(), decisions: permutationFixture().decisions.reverse() },
+  ]) {
+    const original = '\n  ' + JSON.stringify(JSON.parse(document(state)), null, 2) + '\n';
+    const storage = memory(original), store = S.createStore(storage), before = await store.snapshot();
+    await store.migrate({ expectedRevision: state.revision, expectedDigest: before.documentDigest });
+    const after = await store.snapshot();
+    eq([after.legacyDocument, after.decisions, after.outcomes, after.revision], [original, state.decisions, state.outcomes, state.revision],
+      'empty, rejection-only and reordered v1 preserve exact whitespace and arrays');
+  }
+  const invalidLegacy = [
+    s => { s.decisions[1].record.id = s.decisions[0].record.id; },
+    s => { s.decisions.pop(); },
+    s => { s.decisions[0].record.id = decision('d').record.id; },
+    s => { s.outcomes[1].decisionId = s.outcomes[0].decisionId; },
+    s => { s.decisions[1].actor = actor; },
+    s => { s.outcomes[0].revision = 2; },
+    s => { s.outcomes[1].operationId = s.outcomes[0].operationId; },
+    s => { s.decisions[1].record.creditRef = s.decisions[0].record.creditRef; },
+    s => { s.outcomes[3].decisionId = s.decisions[0].record.id; },
+    s => { s.outcomes[3].reason = 'target-changed'; },
+    s => { s.decisions[0].record.rawProviderId = 'synthetic-invalid-field'; },
+  ];
+  for (const mutate of invalidLegacy) {
+    const state = permutationFixture(); mutate(state);
+    const original = document(state), storage = memory(original), store = S.createStore(storage);
+    await assert.rejects(store.snapshot()); checks++;
+    await assert.rejects(store.migrate({ expectedRevision: state.revision, expectedDigest: S.digest(original) })); checks++;
+    eq(storage.read(), original, 'invalid legacy schema cannot be migrated or rewritten');
+  }
+  const state = permutationFixture(); state.decisions.reverse();
+  const original = document(state), storage = memory(original), store = S.createStore(storage);
+  await store.migrate({ expectedRevision: 5, expectedDigest: S.digest(original) });
+  const target = state.decisions[0], successor = structuredClone(target); successor.record.id = decision('d').record.id;
+  await store.commit({ actor: target.actor, operationId: operation('a'), expectedRevision: 5,
+    command: command('replace', target.record.id), decision: successor });
+  const next = structuredClone(successor); next.record.id = decision('e').record.id;
+  await store.commit({ actor: target.actor, operationId: operation('b'), expectedRevision: 6,
+    command: command('replace', successor.record.id), decision: next });
+  const valid = JSON.parse(storage.read());
+  for (const mutate of [
+    s => { [s.decisions[0], s.decisions[1]] = [s.decisions[1], s.decisions[0]]; },
+    s => { s.decisions[0].evidenceDigest = 'e'.repeat(64); },
+    s => { s.outcomes[0].actor = 'session-' + 'c'.repeat(64); },
+    s => { [s.decisions[3], s.decisions[4]] = [s.decisions[4], s.decisions[3]]; },
+    s => { s.decisions[3].record.id = s.decisions[0].record.id; s.outcomes[5].decisionId = s.decisions[0].record.id; },
+    s => { s.decisions.pop(); },
+    s => { s.outcomes[5].actor = 'session-' + 'b'.repeat(64); },
+    s => { s.outcomes[5].revision = 7; },
+    s => { s.outcomes[6].command.targetId = target.record.id; },
+    s => { s.decisions[3].record.debitRef = 'pc-' + 'f'.repeat(24); },
+  ]) {
+    const bad = structuredClone(valid); mutate(bad.state);
+    const body = document(bad.state, S.SCHEMA), broken = memory(body), reader = S.createStore(broken);
+    await assert.rejects(reader.snapshot()); checks++;
+    await assert.rejects(reader.migrate({ expectedRevision: 5, expectedDigest: S.digest(original) })); checks++;
+    eq(broken.read(), body, 'invalid inherited prefixes or native v2 lineage cannot be repaired implicitly');
+  }
+}
 async function main() {
   await transitions();
+  await migrationPermutations();
+  await migrationSchemaControls();
   // Stored document/choice types reject unexpected data even with a recomputed digest.
   for (const mutate of [
     value => { value.state.secret = 'invented-privacy-canary'; },

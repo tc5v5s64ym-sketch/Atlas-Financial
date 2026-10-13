@@ -137,7 +137,8 @@ function decode(body) {
     if (command.kind === 'retract') {
       check(o.decisionId === null); current.set(target.record.creditRef, { decision: target, active: false }); continue;
     }
-    const decision = state.decisions[seen.size];
+    // V1 associates receipts by identity; only newly appended v2 decisions have an order contract.
+    const decision = inherited ? legacy.decisions.find(d => d.record.id === o.decisionId) : state.decisions[seen.size];
     check(decision && decision.record.id === o.decisionId && decision.actor === o.actor && !seen.has(o.decisionId));
     const record = decision.record;
     check(command.kind === 'append' ? !current.has(record.creditRef)
