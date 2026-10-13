@@ -38,6 +38,16 @@ async function openPage(browser,width,theme,state,dir=serveRoot){
  assert.equal(JSON.stringify(data),before);return{page,refreshes:()=>refreshes};
 }
 const figures=page=>page.locator('#operating-surface-body').innerText();
+// The existing responsive skin can relocate the #604 disclosure around
+// the Payday card. Compare its full labelled text separately, preserving
+// every other financial label/value's order; do not sort money values.
+const financialSurface=page=>page.locator('#operating-surface-body').evaluate(el=>{
+ const text=node=>node?.textContent.replace(/\s+/g,' ').trim()||null;
+ const copy=el.cloneNode(true),transfer=copy.querySelector('[data-budget-browse="e-transfers"]');
+ const transfers=text(transfer);transfer?.remove();
+ copy.querySelector('[data-budget-detail-sheet]')?.remove();
+ return{financialText:text(copy),transfers};
+});
 async function closed(page){
  assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(e=>e.open),false);
  const bell=page.locator('[data-transaction-review-open]');
@@ -52,7 +62,7 @@ async function main(){
  const toolbar=page.locator('[data-atlas-toolbar]');
  assert.equal(await toolbar.count(),1,'the real page has one compact toolbar');
  const before=await figures(page);
- if(baseRoot){const base=await openPage(browser,width,theme,state,baseRoot);assert.equal(await figures(base.page),before,'base/head real financial surface is byte-identical');await base.page.close();}
+ if(baseRoot){const base=await openPage(browser,width,theme,state,baseRoot);assert.deepEqual(await financialSurface(base.page),await financialSurface(page),'base/head labelled financial and transfer publications are identical');await base.page.close();}
  const g=await toolbar.evaluate(el=>({buttons:[...el.querySelectorAll('button')].map(b=>{const r=b.getBoundingClientRect();return{width:r.width,height:r.height,top:r.top,left:r.left,right:r.right,name:b.getAttribute('aria-label')};}),
  headerHeight:el.closest('.site-head').getBoundingClientRect().height,overflow:document.documentElement.scrollWidth>innerWidth}));
  assert.equal(g.buttons.length,3);assert.ok(g.buttons.every(b=>b.width>=44&&b.height>=44&&b.name),'named 44px targets');
