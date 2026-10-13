@@ -15,6 +15,19 @@ fs.mkdirSync(out, { recursive: true });
 const executionHead = cp.execFileSync('git', ['-c', 'safe.directory=' + root.replace(/\\/g, '/'), 'rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 const CHROME_152 = path.join(root, '..', 'atlas-timeline-verify', 'chrome-linux64', 'chrome');
 const journeys = [];
+let headingChecks = 0;
+
+async function assertReviewHeading(page, label) {
+  const session = await page.context().newCDPSession(page);
+  try {
+    const { nodes } = await session.send('Accessibility.getFullAXTree');
+    const headings = nodes.filter(node => !node.ignored && node.role?.value === 'heading'
+      && node.name?.value === 'Outgoing e-transfers'
+      && node.properties?.some(property => property.name === 'level' && property.value?.value === 2));
+    assert.equal(headings.length, 1, `${label}: transfer review is discoverable as one level-two heading in the browser accessibility tree`);
+    headingChecks++;
+  } finally { await session.detach(); }
+}
 
 function servedFor(state) {
   if (state === 'unavailable') return fx.served({ unavailablePlan: true });
@@ -101,9 +114,11 @@ function servedFor(state) {
         assert.deepEqual(layoutFailures, [], `${width}/${theme}/${state}: compact review layout (${JSON.stringify(layout)})`);
         const disclosure = section.locator('details');
         const summary = disclosure.locator('summary');
+        await assertReviewHeading(page, `${width}/${theme}/${state}/closed`);
         await summary.focus();
         await page.keyboard.press('Enter');
         assert.equal(await disclosure.evaluate(el => el.open), true, 'keyboard opens review');
+        await assertReviewHeading(page, `${width}/${theme}/${state}/open`);
         assert.equal(await summary.evaluate(el => el === document.activeElement), true, 'disclosure retains focus');
         const text = await section.innerText();
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true,
@@ -235,12 +250,13 @@ function servedFor(state) {
       console.log('PASS navigation journey: current-only section across future/past/month navigation and back');
     }
     assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(writes, []);
+    assert.equal(headingChecks, 84, 'all 42 review views retain heading navigation while closed and open');
     fs.writeFileSync(path.join(out, 'etransfer-proof.json'), JSON.stringify({
       synthetic: true, executionHead, browserVersion: browser.version(),
       sourceSha256: Object.fromEntries(['public/plan.js', 'public/budget-blend.js', 'public/budget-blend.css'].map(file =>
         [file, crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex')])),
       browserCompanionSha256: crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),
-      journeys,
+      journeys, headingChecks,
     }, null, 2) + '\n');
     console.log('PASS browser proof: 42 state x theme x width views + navigation journey, compact layout, keyboard review and field whitelist hold');
   } finally { await browser.close(); }

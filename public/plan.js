@@ -7038,7 +7038,7 @@ function budgetOutgoingETransfersSectionHtml(pub) {
     : status === 'available-posted-only' || status === 'available-incomplete' ? `${items.length ? `${items.length} observed · ` : ''}Coverage incomplete`
     : status === 'unavailable-stale' ? 'Evidence not current' : 'Evidence unavailable';
   return `<section class="budget-browse-card budget-browse-etransfers" data-budget-browse="e-transfers" data-etransfer-state="${budgetBrowseEscape(status)}" aria-labelledby="budget-etransfers-heading">
-    <details class="budget-etransfers-review"><summary><span id="budget-etransfers-heading">Outgoing e-transfers</span><span class="budget-etransfers-status">${budgetBrowseEscape(summary)}</span></summary>
+    <details class="budget-etransfers-review"><summary><span id="budget-etransfers-heading" role="heading" aria-level="2">Outgoing e-transfers</span><span class="budget-etransfers-status">${budgetBrowseEscape(summary)}</span></summary>
       <div class="budget-etransfers-content"><p class="budget-browse-sub">Current pay period · Purpose not yet confirmed</p>${note}${rows}</div>
     </details>
   </section>`;
