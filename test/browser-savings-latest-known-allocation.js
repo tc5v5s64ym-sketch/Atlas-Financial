@@ -3,7 +3,8 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const cp = require('node:child_process'), crypto = require('node:crypto');
 const { chromium } = require('playwright');
-const O = require('../scripts/provider-observe'), provider = require('./fixtures/savings-v2-observation-data');
+const O = require('../scripts/provider-observe'), L = require('../scripts/live-plan');
+const provider = require('./fixtures/savings-v2-observation-data');
 const consumer = require('./fixtures/savings-daily-consumer-data');
 const transferCutoffs = require('./fixtures/savings-transfer-cutoffs');
 const observed = require('./fixtures/savings-observer-contract-data');
@@ -22,6 +23,29 @@ const binding = captureSourceBinding(root, [...files, ...runtimeFiles], process.
 fs.mkdirSync(output, { recursive: true });
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function input(mode) {
+  if (mode.startsWith('audit-')) {
+    const x = provider.input('valid'), day = '2026-10-07';
+    x.data.meta.asOf = x.data.plan.opening.asOf = day;
+    x.payload.fetchedAt = day + 'T20:00:00Z';
+    x.payload.transactionWindow.endDate = day;
+    x.payload.accounts.forEach((row, index) => {
+      if (index < 2) row.updated_at = day + 'T19:00:00Z';
+      else { row.balance_last_update = (index === 2 ? '2026-10-06' : '2026-10-04') + 'T19:00:00Z';
+        row.last_fetch = day + 'T19:30:00Z'; }
+    });
+    x.payload.categories.push({ id: 99, name: 'Invented transfer', is_income: false, exclude_from_totals: true });
+    x.payload.transactions.push({ id: 9901, account_id: mode === 'audit-other-reserve' ? 9004 : 9003,
+      date: '2026-10-03', amount: mode === 'audit-flagged' ? null : '17.43', currency: 'cad',
+      is_pending: mode === 'audit-pending', status: mode === 'audit-pending' ? 'unreviewed' : 'cleared',
+      category_id: 99, payee: 'AA101 TFR-TO Invented destination' });
+    if (mode === 'audit-truncated') Object.assign(x.payload.transactionWindow,
+      { complete: false, truncated: true, hasMore: true });
+    const report = O.observe({ provider: 'lunchmoney', ...x });
+    assert.equal(report.savingsPools.accounts.reduce((sum, row) => sum + Math.round(row.value * 100), 0), 11900);
+    if (mode === 'audit-flagged') assert.ok(report.currentPeriodActuals.savingsMovementUnconfirmed
+      .some(row => row.accountId === 'savings'), 'actual observer retains the dropped-row provenance');
+    return L.overlayLiveState({ data: x.data, report }).data;
+  }
   if (mode.startsWith('sameid-')) {
     const row = [...observed.sameIdCases, ...observed.sameIdGuards].find(row => row.name === mode.slice('sameid-'.length));
     assert.ok(row, 'declared same-ID fixture is required');
@@ -96,9 +120,18 @@ function input(mode) {
       ['stale-date', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['stale-both', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['stale-both', 1440, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['audit-D1', 320, 'dark', [95, 24], ['is-amber', 'is-full']],
+      ['audit-D1', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['audit-D1', 1440, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['audit-other-reserve', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['audit-pending', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['audit-flagged', 390, 'light', [95, 24], ['is-amber', 'is-full']],
+      ['audit-truncated', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['prior-household-day', 320, 'dark', [95, 24], ['is-amber', 'is-full']],
       ['prior-check-day', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['cutoff-double-count', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['cutoff-same-day', 390, 'light', [76, 24], ['is-amber', 'is-full']],
+      ['cutoff-same-day-one', 390, 'light', [176, 24], ['is-amber', 'is-full']],
       ['cutoff-inverse', 390, 'light', [0, 0], ['is-red', 'is-red']],
       ['cutoff-both-before', 390, 'light', [76, 24], ['is-amber', 'is-full']],
       ['cutoff-both-after', 390, 'light', [76, 24], ['is-amber', 'is-full'], false],
