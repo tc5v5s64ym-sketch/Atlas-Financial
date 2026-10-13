@@ -42,8 +42,10 @@ function fixture(mode = 'double-count') {
   Object.assign(accounts[1], { value: 100, evidenceDate: '2026-10-08' });
   const legs = [
     { id: 'cutoff-out', date: '2026-10-07', amount: 100, currency: 'CAD', pending: false,
+      savingsPostingEvidence: 'posted',
       accountRole: 'household-reserve', atlasAccountId: 'savings', tfrReference: 'AA101', tfrDirection: 'TO' },
     { id: 'cutoff-in', date: '2026-10-07', amount: -100, currency: 'CAD', pending: false,
+      savingsPostingEvidence: 'posted',
       accountRole: 'household-reserve', atlasAccountId: 'savings-dont-touch', tfrReference: 'AA101', tfrDirection: 'FR' },
   ];
   if (mode === 'inverse') {
@@ -115,7 +117,7 @@ function fixture(mode = 'double-count') {
     accounts[1].value = ['neither', 'zero-row'].includes(boundary.kind) ? 24 : 0;
     const cash = input.plan.startingCash.breakdown[0];
     const row = (id, amount, account, role) => ({ id, amount, date: boundary.postedDate || '2026-10-07', currency: 'CAD',
-      pending: false, atlasAccountId: account, accountRole: role });
+      pending: false, savingsPostingEvidence: 'posted', atlasAccountId: account, accountRole: role });
     if (['withdraw', 'deposit', 'neither'].includes(boundary.kind)) {
       const source = boundary.kind === 'withdraw' ? 'savings' : 'chequing-a';
       const destination = boundary.kind === 'neither' ? 'chequing-b' : boundary.kind === 'withdraw' ? 'chequing-a' : 'savings';

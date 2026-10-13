@@ -22,6 +22,10 @@ const binding = captureSourceBinding(root, [...files, ...runtimeFiles], process.
 fs.mkdirSync(output, { recursive: true });
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function input(mode) {
+  if (mode.startsWith('posting-')) {
+    const [shape, ...status] = mode.slice('posting-'.length).split(':');
+    return observed.postingObservation(shape, status.join(':')).data;
+  }
   if (mode === 'window-midnight') {
     const x = observed.windowObservation('complete');
     x.data.meta.asOf = x.data.plan.opening.asOf = '2026-10-06';
@@ -59,6 +63,12 @@ function input(mode) {
   try {
     const selected = process.env.ATLAS_LATEST_SAVINGS_CASES?.split(',');
     for (const [mode, width, theme, expected, bands, topUpHeld = true] of [
+      ['posting-direct:absent', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['posting-counterparty:string-false', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['posting-savings-leg:null', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
+      ['posting-direct:posted', 390, 'light', [95, 24], ['is-amber', 'is-full'], false],
+      ['posting-counterparty:posted', 390, 'light', [95, 24], ['is-amber', 'is-full'], false],
+      ['posting-unrelated:absent', 320, 'dark', [95, 24], ['is-amber', 'is-full'], false],
       ['window-complete', 390, 'light', [95, 24], ['is-amber', 'is-full']],
       ['window-truncated', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
       ['window-impossibleObservation', 390, 'light', [null, null], ['is-unknown', 'is-unknown']],
@@ -150,7 +160,7 @@ function input(mode) {
       const body = page.locator('[data-budget-detail-body]');
       await page.locator('[data-budget-detail-sheet]').waitFor({ state: 'visible' });
       if (topUpHeld) assert.match(await body.locator('[data-budget-daily-proposal]').innerText(), /Unavailable/);
-      if ((mode.startsWith('cutoff-') || mode.startsWith('window-')) && expected[0] == null) {
+      if ((mode.startsWith('cutoff-') || mode.startsWith('window-') || mode.startsWith('posting-')) && expected[0] == null) {
         await body.locator('[data-budget-savings-info] > summary').click();
         assert.match(await body.innerText(), /Saved allocation is withheld/);
         assert.match(await body.locator('[data-budget-savings-total-needed]').first().innerText(), /230\.00/);

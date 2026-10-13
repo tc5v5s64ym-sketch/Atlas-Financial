@@ -55,9 +55,11 @@ function fixture() {
         savingsFetchCoverage: { complete: true, startDate: '2026-10-02', endDate: AS_OF },
         representedActuals: [{ id: 'payroll', date: '2026-10-02', actual: 200, transactionId: 'income-1' }], transactions: [
           { id: 'income-1', date: '2026-10-02', amount: -200, pending: false, isIncome: true,
+            savingsPostingEvidence: 'posted',
             atlasAccountId: 'chequing-a', accountRole: 'household-cash', currency: 'CAD',
             incomeId: 'payroll', displayedPayee: 'Invented payroll' },
           { id: 'food-1', date: '2026-10-03', amount: 20, pending: false, atlasAccountId: 'chequing-a',
+            savingsPostingEvidence: 'posted',
             accountRole: 'household-cash', currency: 'CAD', categoryId: 'groceries',
             categoryLabel: 'Groceries', displayedPayee: 'Invented grocer' },
         ] },
@@ -73,9 +75,11 @@ function transfer(input, amount, reference = 'AA101', destination = 'savings', d
   mirror.value = target.value;
   input.opts.currentPeriodActuals.transactions.push(
     { id: reference + '-out', date, amount, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted',
       atlasAccountId: 'chequing-a', accountRole: 'household-cash', kindHint: 'transfer',
       originalMerchant: reference + ' TFR-TO Invented reserve', excludeFromTotals: true },
     { id: reference + '-in', date, amount: -amount, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted',
       atlasAccountId: destination, accountRole: 'household-reserve', kindHint: 'transfer',
       originalMerchant: reference + ' TFR-FR Invented operating', excludeFromTotals: true });
   return input;

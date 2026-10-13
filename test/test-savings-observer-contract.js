@@ -38,7 +38,7 @@ for (const mode of ['sanitization-fallback', 'collapsed-foreign', 'collapsed-mis
       assert.deepEqual(Object.keys(row).sort(), ['accountId', 'reason']);
       assert.ok(['savings', 'savings-dont-touch'].includes(row.accountId));
       assert.ok(['transaction-amount-or-date-unconfirmed', 'native-plan-currency-unconfirmed',
-        'transaction-evidence-sanitization-failed'].includes(row.reason));
+        'transaction-evidence-sanitization-failed', 'transaction-posting-status-unconfirmed'].includes(row.reason));
     }
     assert.equal(O.currentPeriodActualsLooksSanitized(report.currentPeriodActuals), true);
     if (mode === 'sanitization-fallback') assert.deepEqual(report.currentPeriodActuals.transactions, []);
@@ -125,9 +125,9 @@ for (const mode of observed.sourceWindowModes) for (const list of ['empty', 'unr
     const x = observed.windowObservation(mode, list, bank), advice = windowPublish(x), original = x.report.transactionWindow.savingsFetchCoverage;
     assert.strictEqual(x.packet, x.report.currentPeriodActuals);
     assert.deepEqual(x.packet.savingsFetchCoverage, original, 'source facts survive normalization and sanitization unchanged');
-    assert.equal(Object.getOwnPropertyDescriptor(x.report.transactionWindow, 'savingsFetchCoverage').enumerable, false,
-      'internal provenance does not change the existing serialized normalized-window/history key');
-    assert.equal(Object.isFrozen(original), true, 'original provenance cannot be rewritten after normalization');
+    assert.equal(Object.getOwnPropertyDescriptor(x.report.transactionWindow, 'savingsFetchCoverage').enumerable, true,
+      'original fetch provenance remains part of the keyed history');
+    assert.deepEqual(JSON.parse(JSON.stringify(x.report.transactionWindow)).savingsFetchCoverage, original);
     assert.deepEqual(Object.keys(original).sort(), ['complete', 'endDate', 'startDate']);
     assert.equal(typeof original.complete, 'boolean');
     assert.ok([original.startDate, original.endDate].every(date => date === null || /^\d{4}-\d{2}-\d{2}$/.test(date)));
@@ -177,3 +177,28 @@ test('normalizing a timestamp afterward cannot manufacture original query-date p
   assert.equal(packet.savingsFetchCoverage.startDate, null); assert.equal(packet.savingsFetchCoverage.endDate, null);
   held(windowPublish({ ...x, packet }));
 });
+for (const shape of ['direct', 'counterparty', 'savings-leg', 'unrelated', 'dropped', 'collapsed'])
+  for (const mode of observed.postingModes) test('actual posting provenance ' + shape + ':' + mode, () => {
+    const x = observed.postingObservation(shape, mode), advice = windowPublish(x), s = advice.savingsFunding;
+    const raw = x.report.transactions.find(row => row.providerTransactionId === x.rawId);
+    assert.equal(raw.pending, mode === 'pending', 'incumbent global pending normalization is unchanged');
+    assert.equal(raw.savingsPostingEvidence, mode === 'posted' ? 'posted' : mode === 'pending' ? 'pending' : 'unknown');
+    for (const row of x.packet.transactions) assert.ok(['posted', 'pending', 'unknown'].includes(row.savingsPostingEvidence));
+    const ready = shape === 'unrelated' || shape === 'collapsed' && mode === 'pending' || mode === 'posted' && shape !== 'dropped';
+    assert.equal(s.goalAllocation.status, ready ? 'ready' : 'unavailable');
+    assert.deepEqual(s.rows.map(row => row.saved), ready ? [95, 24] : [null, null]);
+    assert.deepEqual(s.rows.map(row => row.needed), [230, 24]); assert.equal(advice.savingsInventory.reportedStock.amount, 119);
+    if (!ready) { assert.equal(s.period.proposal, null); assert.ok(advice.sim.events.every(row => !row.reserveFunding)); }
+    if (shape === 'counterparty' && !['posted', 'pending'].includes(mode)) {
+      assert.equal(F.householdInternalMovements(x.data.plan, x.data.liveOverlay).length, 1,
+        'incumbent pair matching is unchanged; Savings qualifies each source leg independently');
+      assert.deepEqual(x.packet.savingsMovementUnconfirmed, [], 'cash counterparty does not become Savings account uncertainty');
+      assert.equal(x.packet.transactions[0].savingsPostingEvidence, 'unknown');
+    }
+    if (shape === 'collapsed' && mode === 'pending') {
+      assert.equal(x.packet.transactions.length, 1, 'explicit pending predecessor collapses into explicit posted successor');
+      assert.equal(x.packet.transactions[0].savingsPostingEvidence, 'posted');
+      assert.deepEqual(x.packet.savingsMovementUnconfirmed, []);
+    }
+    assert.equal(JSON.stringify(x.report), x.originalReport, 'real returned packets stay unchanged');
+  });

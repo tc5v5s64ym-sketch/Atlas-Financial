@@ -147,3 +147,31 @@ module.exports.windowObservation = windowObservation;
 module.exports.windowModes = Object.keys(windowMutations);
 module.exports.rawWindowModes = rawWindowModes;
 module.exports.sourceWindowModes = sourceWindowModes;
+const postingModes = ['absent', 'null', 'string-false', 'string-true', 'zero', 'one', 'object', 'posted', 'pending'];
+function postingObservation(shape = 'direct', mode = 'posted') {
+  const x = fx.input('valid-v2'); delete x.data.liveOverlay;
+  const debit = { id: 'invented-posting-debit', account_id: '9001', date: '2026-10-03', amount: '10',
+    currency: 'cad', is_pending: false, kind: 'transfer', original_name: 'DD404 TFR-TO Invented reserve' };
+  const credit = { id: 'invented-posting-credit', account_id: '9003', date: '2026-10-03', amount: '-10',
+    currency: 'cad', is_pending: false, kind: 'transfer', original_name: 'DD404 TFR-FR Invented cash' };
+  const fee = { id: 'invented-posting-fee', account_id: shape === 'unrelated' ? '9001' : '9003',
+    date: '2026-10-03', amount: '1.25', currency: 'cad', is_pending: false };
+  const paired = ['counterparty', 'savings-leg'].includes(shape);
+  const prior = { ...fee, id: 'invented-posting-pending', is_pending: true,
+    plaid_metadata: { transaction_id: 'invented-posting-pending' } };
+  if (shape === 'collapsed') fee.plaid_metadata = { transaction_id: fee.id, pending_transaction_id: prior.id };
+  const target = shape === 'collapsed' ? prior : paired
+    ? shape === 'counterparty' ? debit : credit : fee;
+  x.payload.transactions = shape === 'collapsed' ? [prior, fee] : paired ? [debit, credit] : [fee];
+  const values = { null: null, 'string-false': 'false', 'string-true': 'true', zero: 0, one: 1, object: {}, posted: false, pending: true };
+  if (mode === 'absent') delete target.is_pending; else target.is_pending = values[mode];
+  if (shape === 'dropped') delete target.date;
+  const inputBytes = JSON.stringify(x), report = O.observe({ provider: 'lunchmoney', ...x });
+  assert.equal(JSON.stringify(x), inputBytes);
+  const originalReport = JSON.stringify(report), data = L.overlayLiveState({ data: x.data, report }).data;
+  assert.deepEqual(data.liveOverlay.currentPeriodActuals, report.currentPeriodActuals);
+  assert.deepEqual(data.plan.savingsPoolObservation, report.savingsPools);
+  return { input: x, data, report, packet: report.currentPeriodActuals, originalReport, rawId: target.id };
+}
+module.exports.postingModes = postingModes;
+module.exports.postingObservation = postingObservation;

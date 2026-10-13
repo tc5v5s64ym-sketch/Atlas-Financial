@@ -35,6 +35,7 @@ module.exports = function dailyConsumerData(mode = 'ready') {
     input.plan.startingCash.breakdown[0].value += 500; input.plan.opening.paydaySnapshot.opening += 500;
     input.plan.savingsPoolObservation.accounts[0].value += 80; input.plan.startingCash.breakdown[2].value += 80;
     input.opts.currentPeriodActuals.transactions.push({ id: 'saved-income', date: '2026-10-04', amount: -80,
+      savingsPostingEvidence: 'posted',
       pending: false, currency: 'CAD', atlasAccountId: 'savings', accountRole: 'household-reserve',
       isIncome: true, displayedPayee: 'Invented saved gift' });
   }

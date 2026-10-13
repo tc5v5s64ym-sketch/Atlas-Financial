@@ -234,6 +234,16 @@ try {
     // Only genuinely identical legacy content retries as the v1 revision.
     // v1 contentKey is unchanged; derived v2 labels remain excluded.
     regenerated.content.publication = legacyPublication;
+    const projectedWindow = clone(regenerated.content.provenance.transactionWindow);
+    assert.deepEqual(projectedWindow.savingsFetchCoverage,
+      { complete: true, startDate: ANCHOR, endDate: ANCHOR }, 'new original-query provenance is exact');
+    delete projectedWindow.savingsFetchCoverage;
+    assert.deepEqual(projectedWindow, record.content.provenance.transactionWindow,
+      'every pre-existing window field remains exact');
+    rejects(() => append(archive, reseal(clone(regenerated))), 'history-original-or-closing-conflict');
+    // This explicit legacy projection removes only the new provenance leaf.
+    // Production contentKey still protects every new provenance fact.
+    regenerated.content.provenance.transactionWindow = projectedWindow;
     const retry = append(archive, reseal(regenerated));
     assert.deepEqual([retry.status, retry.revisionId, retry.schema], ['duplicate', V1[0].revisionId, 'atlas-private-period-history/v1']);
     // A genuine v2 revision chains after the legacy head without rewriting it.

@@ -18968,7 +18968,7 @@
     }
     const flags = packet.savingsMovementUnconfirmed;
     const reasons = ['transaction-amount-or-date-unconfirmed', 'native-plan-currency-unconfirmed',
-      'transaction-evidence-sanitization-failed'];
+      'transaction-evidence-sanitization-failed', 'transaction-posting-status-unconfirmed'];
     if (!Array.isArray(transactions) || !Array.isArray(flags) || flags.some(row =>
       !savingsKeys(row, ['accountId', 'reason'])
       || !['savings', 'savings-dont-touch', ...HOUSEHOLD_CHEQUING_IDS].includes(row.accountId)
@@ -19012,7 +19012,7 @@
       const id = row?.id, cents = savingsCents(row?.amount, true), ids = [row?.atlasAccountId, row?.accountId, row?.account];
       const role = accounts.has(accountId) || !HOUSEHOLD_CHEQUING_IDS.includes(accountId) ? 'household-reserve' : 'household-cash';
       return validId(id)
-        && byId.get(String(id))?.length === 1 && row.pending === false
+        && byId.get(String(id))?.length === 1 && row.pending === false && row.savingsPostingEvidence === 'posted'
         && typeof row.currency === 'string' && row.currency.toUpperCase() === 'CAD' && !unconfirmed(row)
         && row.accountRole === role && householdCashLocationId(row) === accountId && ids.some(id => id === accountId)
         && ids.every(id => id == null || id === '' || id === accountId)

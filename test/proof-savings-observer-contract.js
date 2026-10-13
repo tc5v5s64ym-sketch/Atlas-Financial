@@ -5,10 +5,11 @@ const assert = require('node:assert/strict'), cp = require('node:child_process')
 const Module = require('node:module'), path = require('node:path'), crypto = require('node:crypto');
 const observed = require('./fixtures/savings-observer-contract-data');
 const { captureSourceBinding, verifySourceBinding } = require('./proof-source-binding');
-const root = path.resolve(__dirname, '..'), base = process.argv[2], windowBase = process.argv[3], fetchBase = process.argv[4], cache = new Map();
+const root = path.resolve(__dirname, '..'), base = process.argv[2], windowBase = process.argv[3], fetchBase = process.argv[4], postingBase = process.argv[5], cache = new Map();
 assert.match(base || '', /^[0-9a-f]{40}$/, 'explicit full pre-repair SHA is required');
 assert.match(windowBase || '', /^[0-9a-f]{40}$/, 'explicit full window pre-repair SHA is required');
 assert.match(fetchBase || '', /^[0-9a-f]{40}$/, 'explicit full fetch pre-repair SHA is required');
+assert.match(postingBase || '', /^[0-9a-f]{40}$/, 'explicit full posting pre-repair SHA is required');
 function baseline(file, sha = base) {
   const key = sha + ':' + file;
   if (cache.has(key)) return cache.get(key).exports;
@@ -111,6 +112,31 @@ for (const mode of observed.sourceWindowModes) for (const list of ['empty', 'unr
       afterPass: true, knownNeeded: [230, 24], reportedStock: 119 });
   }
 assert.equal(fetchCases.length, 60); assert.equal(fetchCases.filter(row => !row.beforePass).length, 38);
+const PostingBefore = baseline('public/forecast.js', postingBase), PostingObserver = baseline('scripts/provider-observe.js', postingBase);
+const PostingOverlay = baseline('scripts/live-plan.js', postingBase), postingCases = [];
+for (const shape of ['direct', 'counterparty', 'savings-leg', 'unrelated', 'dropped', 'collapsed']) for (const mode of observed.postingModes) {
+  const x = observed.postingObservation(shape, mode), inputHash = hash(x.input);
+  const original = PostingObserver.observe({ provider: 'lunchmoney', ...x.input }), originalHash = hash(original);
+  const data = PostingOverlay.overlayLiveState({ data: x.input.data, report: original }).data;
+  assert.deepEqual(data.liveOverlay.currentPeriodActuals, original.currentPeriodActuals);
+  const before = PostingBefore.recommend(data.plan, data.meta.asOf, { weeklyVariable: 40, debts: data.debts, ...data.liveOverlay });
+  const after = Current.recommend(x.data.plan, x.data.meta.asOf, { weeklyVariable: 40, debts: x.data.debts, ...x.data.liveOverlay });
+  const ready = shape === 'unrelated' || shape === 'collapsed' && mode === 'pending' || mode === 'posted' && shape !== 'dropped';
+  const expected = ready ? [95, 24] : [null, null];
+  const beforeSaved = before.savingsFunding.rows.map(row => row.saved), afterSaved = after.savingsFunding.rows.map(row => row.saved);
+  assert.deepEqual(afterSaved, expected); assert.deepEqual(after.savingsFunding.rows.map(row => row.needed), [230, 24]);
+  assert.equal(after.savingsInventory.reportedStock.amount, 119);
+  if (!ready) { assert.equal(after.savingsFunding.period.proposal, null); assert.ok(after.sim.events.every(row => !row.reserveFunding)); }
+  assert.equal(hash(x.input), inputHash); assert.equal(hash(original), originalHash); assert.equal(JSON.stringify(x.report), x.originalReport);
+  const oldRow = original.transactions.find(row => row.providerTransactionId === x.rawId);
+  const newRow = x.report.transactions.find(row => row.providerTransactionId === x.rawId);
+  assert.equal(newRow.pending, oldRow.pending, 'global pending classification is unchanged');
+  postingCases.push({ shape, mode, inputSha256: inputHash, expected, beforeSaved, afterSaved,
+    beforePass: JSON.stringify(beforeSaved) === JSON.stringify(expected), afterPass: true,
+    incumbentPendingUnchanged: true, sourcePostingEvidence: newRow.savingsPostingEvidence,
+    returnedPacketsUnchanged: true, knownNeeded: [230, 24], reportedStock: 119 });
+}
+assert.equal(postingCases.length, 54); assert.equal(postingCases.filter(row => !row.beforePass).length, 28);
 verifySourceBinding(root, binding);
 console.log(JSON.stringify({ outcome: 'PASS', base, executionBinding: binding,
   before: { controls: 12, pass: 6, fail: 6, aggregate: 'FAIL' },
@@ -118,4 +144,6 @@ console.log(JSON.stringify({ outcome: 'PASS', base, executionBinding: binding,
   windowRepair: { base: windowBase, before: { controls: 82, pass: 8, fail: windowFailures, aggregate: 'FAIL' },
     after: { controls: 82, pass: 82, fail: 0, aggregate: 'PASS' }, cases: windowCases },
   fetchRepair: { base: fetchBase, before: { controls: 60, pass: 22, fail: 38, aggregate: 'FAIL' },
-    after: { controls: 60, pass: 60, fail: 0, aggregate: 'PASS' }, cases: fetchCases } }, null, 2));
+    after: { controls: 60, pass: 60, fail: 0, aggregate: 'PASS' }, cases: fetchCases },
+  postingRepair: { base: postingBase, before: { controls: 54, pass: 26, fail: 28, aggregate: 'FAIL' },
+    after: { controls: 54, pass: 54, fail: 0, aggregate: 'PASS' }, cases: postingCases } }, null, 2));

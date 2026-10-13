@@ -14,6 +14,9 @@ module.exports = function minimumCategoryExpectation(report, input, historicalOb
       assert.equal(tx.categoryId, null, 'salary fixture cannot supply a minimum category ID');
       assert.ok(!Object.hasOwn(tx, 'minimumCategoryDebt'), 'historical transaction predates the new leaf');
       tx.minimumCategoryDebt = null;
+      const raw = input.payload.transactions.find(row => String(row.id) === tx.providerTransactionId);
+      assert.ok(raw && typeof raw.is_pending === 'boolean', 'salary fixtures explicitly declare their posting status');
+      tx.savingsPostingEvidence = raw.is_pending ? 'pending' : 'posted';
     }
   }
   expected.cardMinimumCategoryEvidence = {
@@ -39,5 +42,10 @@ module.exports = function minimumCategoryExpectation(report, input, historicalOb
   assert.ok(!Object.hasOwn(expected.transactionWindow, 'savingsFetchCoverage'));
   assert.ok(!Object.hasOwn(expected.currentPeriodActuals, 'savingsFetchCoverage'));
   expected.currentPeriodActuals.savingsFetchCoverage = sourceWindow;
+  expected.transactionWindow.savingsFetchCoverage = sourceWindow;
+  for (const row of expected.currentPeriodActuals.transactions) {
+    assert.equal(typeof row.pending, 'boolean');
+    row.savingsPostingEvidence = row.pending ? 'pending' : 'posted';
+  }
   return expected;
 };

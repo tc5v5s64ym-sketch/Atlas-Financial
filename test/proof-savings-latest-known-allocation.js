@@ -123,6 +123,11 @@ if (process.env.ATLAS_SAVINGS_COHERENCE_PROOF === '1') {
     windowCompare(mode, 'empty', mode === 'card-with-savings-fee' ? 'valid-v2' : 'prior-year');
   for (const mode of windows.sourceWindowModes) for (const list of ['empty', 'unrelated', 'zero'])
     for (const bank of ['prior-year', 'valid-v2']) windowCompare(mode, list, bank);
+  for (const shape of ['direct', 'counterparty', 'savings-leg', 'unrelated', 'dropped', 'collapsed']) for (const mode of windows.postingModes) {
+    const x = windows.postingObservation(shape, mode);
+    const ready = shape === 'unrelated' || shape === 'collapsed' && mode === 'pending' || mode === 'posted' && shape !== 'dropped';
+    compare('posting:' + shape + ':' + mode, x.data, true, { saved: ready ? [95, 24] : null });
+  }
 }
 const sourceFiles = ['public/forecast.js', 'public/savings-inventory.js', 'public/plan.js', 'public/budget-blend.js'];
 const fs = require('node:fs');
