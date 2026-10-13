@@ -67,6 +67,138 @@ async function save(s, proposal) {
   const result = await s.controller.confirm({ session: 'A', operationId: p.operationId });
   eq(result.status, 'confirmed', 'synthetic intent is saved through the controller'); return result;
 }
+const command = (kind, targetId) => ({ version: 1, kind, targetId });
+async function correction(s, kind, targetId, selection, controller = s.controller, session = 'A') {
+  return controller.prepare({ session, command: command(kind, targetId), selection });
+}
+async function corrections() {
+  const x = seed(); pair(x, 80102, 80103, 40);
+  const s = setup(ledger(x)); const originalReceipt = await save(s, record(x));
+  const original = (await s.store.snapshot()).decisions[0], targetId = original.record.id;
+  const proposal = record(x, 40, 40), sourceBefore = JSON.stringify(observed(x));
+  const p = await correction(s, 'replace', targetId, proposal);
+  eq(p.status, 'prepared', 'replacement qualifies without counting its predecessor twice');
+  eq([p.allocation.backfill, p.allocation.cardPayment], [40, 40], 'independent 4000 purchase cents + 4000 other cents = 8000 payment cents');
+  eq((await s.controller.input()).plan.cardPurchaseCoverage.payments[0].allocations[0].amount, 80, 'preview does not change the effective claim');
+  const replaced = await s.controller.confirm({ session: 'A', operationId: p.operationId });
+  const state = await s.store.snapshot(), successorId = state.decisions[1].record.id;
+  eq(state.decisions[0], original, 'replacement keeps exact original choice and provenance');
+  eq(await s.restart().outcome({ session: 'A', operationId: originalReceipt.operationId }), originalReceipt, 'original receipt remains recoverable after correction');
+  eq(await s.restart().confirm({ session: 'A', operationId: p.operationId }), replaced, 'restart repeats successor receipt without reapplying');
+  eq((await s.controller.input()).plan.cardPurchaseCoverage.payments.map(d => d.id), [successorId], 'only successor reaches Forecast');
+  const missingSuccessor = structuredClone(x);
+  missingSuccessor.payload.transactions = missingSuccessor.payload.transactions.filter(tx => tx.id !== 80003);
+  s.change(ledger(missingSuccessor));
+  eq((await s.controller.input()).plan.cardPurchaseCoverage.payments.map(d => [d.id, d.confirmed]), [[successorId, false]],
+    'missing successor evidence never revives predecessor or erases successor');
+  const tooMuch = structuredClone(missingSuccessor);
+  tooMuch.payload.transactions.find(tx => tx.id === 80102).amount = 40.01;
+  tooMuch.payload.transactions.find(tx => tx.id === 80103).amount = -40.01;
+  s.change(ledger(tooMuch));
+  eq((await prepare(s, choice(tooMuch, 80102, 80103, 80001, 40.01))).status, 'unavailable', 'missing successor retains its 4000 cents, rejecting 4001 additional cents');
+  s.change(x);
+  eq((await s.controller.input()).plan.cardPurchaseCoverage.payments.map(d => [d.id, d.confirmed]), [[successorId, true]], 'evidence return requalifies successor alone');
+  await save(s, choice(x, 80102, 80103, 80001, 40));
+  let input = await s.controller.input();
+  eq(input.plan.cardPurchaseCoverage.payments.map(d => d.confirmed), [true, true], 'replacement atomically releases exactly 4000 purchase cents for an independent pair');
+  eq(input.plan.cardPurchaseCoverage.payments.reduce((sum, d) => sum + Math.round(d.allocations[0].amount * 100), 0), 8000, 'effective purchase claims total exactly the independent purchase amount');
+  eq([F.startingCashAmount(input.plan), input.debts[0].balance], [380, 360], 'interpretation leaves observed bank ledger at 500-80-40 and 400+80-80-40');
+  eq((await correction(s, 'replace', successorId, record(x))).status, 'unavailable', 'replacement cannot take 8000 cents while independent 4000-cent claim remains');
+  const withdrawal = await correction(s, 'retract', successorId);
+  eq(withdrawal.operation, { version: 1, kind: 'retract' }, 'withdrawal preview explicitly names its versioned operation');
+  eq(Object.hasOwn(withdrawal, 'allocation'), false, 'retraction does not pretend to reverse a bank allocation');
+  const undone = await s.controller.confirm({ session: 'A', operationId: withdrawal.operationId });
+  eq(undone.status, 'confirmed', 'explicit undo is recorded');
+  input = await s.restart().input();
+  eq(input.plan.cardPurchaseCoverage.payments.length, 1, 'undo withdraws just the selected interpretation');
+  eq([F.startingCashAmount(input.plan), input.debts[0].balance], [380, 360], 'undo never reverses bank cash or card debt');
+  eq((await s.store.snapshot()).decisions.length, 3, 'undo erases no historical intent');
+  eq(await s.restart().confirm({ session: 'A', operationId: withdrawal.operationId }), undone, 'undo receipt survives restart');
+  eq((await correction(s, 'retract', successorId)).status, 'unavailable', 'new operation cannot withdraw an already withdrawn head');
+  eq((await prepare(s, proposal)).status, 'unavailable', 'append cannot bypass withdrawn lineage');
+  eq((await correction(s, 'replace', targetId, proposal)).status, 'unavailable', 'superseded original cannot fork the lineage');
+  const restore = await correction(s, 'replace', successorId, proposal);
+  eq(restore.status, 'prepared', 'explicit restoration revalidates against the independent retained claim');
+  await s.controller.confirm({ session: 'A', operationId: restore.operationId });
+  eq((await s.controller.input()).plan.cardPurchaseCoverage.payments.map(d => d.confirmed), [true, true], 'restoration preserves one active version and independent partial');
+  eq(JSON.stringify(observed(x)), sourceBefore, 'all correction operations leave provider/canonical evidence unchanged');
+  eq(/pc-|coverageRef|purchaseRef|debitRef|creditRef|session-|decision-/.test(JSON.stringify([p, replaced, withdrawal, undone, restore])), false, 'correction previews/receipts expose no private reference or saved-choice identity');
+
+  for (const kind of ['replace', 'retract']) {
+    const race = setup(); await save(race, record(race.x)); const id = (await race.store.snapshot()).decisions[0].record.id;
+    const secondTab = race.restart();
+    const a = await correction(race, kind, id, record(race.x, 40, 40));
+    const b = await correction(race, kind, id, record(race.x, 20, 60), secondTab, 'B');
+    const receipts = await Promise.all([race.controller.confirm({ session: 'A', operationId: a.operationId }), secondTab.confirm({ session: 'B', operationId: b.operationId })]);
+    eq(receipts.map(r => r.status).sort(), ['confirmed', 'rejected'], 'different tabs/sessions serialize ' + kind);
+    eq(receipts.find(r => r.status === 'rejected').reason, 'revision-changed', 'stale ' + kind + ' is terminal instead of rebased');
+    eq(await race.restart().confirm({ session: 'B', operationId: b.operationId }), receipts[1], 'second-tab terminal outcome is durable');
+    eq((await race.controller.outcome({ session: 'B', operationId: a.operationId })).status, 'unknown', 'another household session cannot inspect operation receipts');
+  }
+  for (const kind of ['replace', 'retract']) for (const committed of [false, true]) {
+    const crash = setup(); await save(crash, record(crash.x)); const id = (await crash.store.snapshot()).decisions[0].record.id;
+    const p = await correction(crash, kind, id, record(crash.x, 40, 40));
+    const update = crash.storage.update.bind(crash.storage);
+    crash.storage.update = async transform => { if (committed) await update(transform); throw new Error('synthetic interrupted write'); };
+    eq((await crash.controller.confirm({ session: 'A', operationId: p.operationId })).status, 'unavailable', kind + ' interrupted write is uncertain');
+    eq((await crash.restart().outcome({ session: 'A', operationId: p.operationId })).status, committed ? 'confirmed' : 'unknown', 'outcome distinguishes commit from no commit');
+    crash.storage.update = update;
+    if (!committed) eq((await crash.restart().confirm({ session: 'A', operationId: p.operationId })).status, 'unknown', 'restart does not reconstruct unknown uncommitted correction');
+    eq((await crash.controller.confirm({ session: 'A', operationId: p.operationId })).status, 'confirmed', 'same retained preview safely retries ' + kind + ' after verification');
+    eq((await crash.store.snapshot()).revision, 2, 'retry commits correction exactly once');
+  }
+  for (const kind of ['replace', 'retract']) {
+    const retry = setup(); await save(retry, record(retry.x)); const id = (await retry.store.snapshot()).decisions[0].record.id;
+    const p = await correction(retry, kind, id, record(retry.x, 40, 40));
+    const update = retry.storage.update.bind(retry.storage);
+    retry.storage.update = async () => { throw new Error('synthetic pre-commit failure'); };
+    await retry.controller.confirm({ session: 'A', operationId: p.operationId });
+    retry.storage.update = update;
+    const changed = seed(); changed.payload.transactions[0].amount = 79; retry.change(changed);
+    eq((await retry.controller.confirm({ session: 'A', operationId: p.operationId })).reason, 'evidence-changed', 'retry rechecks evidence before ' + kind);
+    eq((await retry.store.snapshot()).decisions.length, 1, 'stale retry preserves predecessor');
+  }
+  const absent = setup(); await save(absent, record(absent.x)); const id = (await absent.store.snapshot()).decisions[0].record.id;
+  const missing = seed(); pair(missing, 80102, 80103, 80);
+  missing.payload.transactions = missing.payload.transactions.filter(tx => tx.id !== 80003); absent.change(ledger(missing));
+  eq((await correction(absent, 'replace', id, record(absent.x, 40, 40))).status, 'unavailable', 'missing evidence cannot earn replacement');
+  eq((await prepare(absent, choice(missing, 80102, 80103, 80001, 80))).status, 'unavailable', 'missing predecessor still retains all purchase claims');
+  absent.change(seed());
+  eq((await absent.controller.input()).plan.cardPurchaseCoverage.payments[0].confirmed, true, 'unchanged evidence restores original intent');
+  const stale = await correction(absent, 'replace', id, record(absent.x, 40, 40));
+  absent.change(ledger(missing));
+  eq((await absent.controller.confirm({ session: 'A', operationId: stale.operationId })).reason, 'evidence-changed', 'evidence loss rejects prepared replacement');
+  eq((await absent.store.snapshot()).decisions.length, 1, 'failed replacement erases nothing');
+  const explicitUndo = await correction(absent, 'retract', id);
+  eq(explicitUndo.status, 'prepared', 'household may explicitly withdraw intent while references are absent');
+  await absent.controller.confirm({ session: 'A', operationId: explicitUndo.operationId });
+  await save(absent, choice(missing, 80102, 80103, 80001, 80));
+  missing.payload.transactions.push(seed().payload.transactions[2]); absent.change(ledger(missing));
+  eq((await absent.controller.input()).plan.cardPurchaseCoverage.payments.length, 1, 'evidence return never resurrects explicitly withdrawn intent');
+  eq((await correction(absent, 'replace', id, record(absent.x))).status, 'unavailable', 'withdrawn intent cannot return over reused purchase cents');
+
+  const legacy = setup(); await save(legacy, record(legacy.x));
+  const saved = await legacy.store.snapshot(), v1 = { revision: saved.revision, decisions: saved.decisions,
+    outcomes: saved.outcomes.map(({ command, requestDigest, ...o }) => o) };
+  const oldBody = JSON.stringify({ schema: 'atlas-card-payment-decisions/v1', state: v1, digest: S.digest(v1) });
+  legacy.storage.replace(oldBody);
+  eq((await legacy.controller.input()).plan.cardPurchaseCoverage.payments[0].confirmed, true, 'v1 choices remain safely requalified before migration');
+  eq((await correction(legacy, 'retract', saved.decisions[0].record.id)).status, 'unavailable', 'controller cannot migrate v1 implicitly');
+  const oldReader = C.createController({ store: { snapshot: async () => {
+    const doc = JSON.parse(await legacy.storage.read());
+    if (doc.schema !== 'atlas-card-payment-decisions/v1') throw new Error('card-decision-unavailable');
+    return doc.state;
+  } }, evidence: { read: async () => observed(legacy.x) }, sessions: {} });
+  eq((await oldReader.input()).plan.cardPurchaseCoverage.payments.length, 1, 'rollback-reader control reads v1 before transition');
+  const before = await legacy.store.snapshot(); await legacy.store.migrate({ expectedRevision: before.revision, expectedDigest: before.documentDigest });
+  await assert.rejects(oldReader.input(), /card-decision-unavailable/, 'rollback reader cannot publish a plan by treating v2 as empty'); checks++;
+  for (const body of ['{', oldBody.replace('/v1', '/v99')]) {
+    legacy.storage.replace(body);
+    await assert.rejects(legacy.controller.input(), 'corrupt/unsupported reader withholds entire dependent input'); checks++;
+    eq(await correction(legacy, 'retract', saved.decisions[0].record.id), { status: 'unavailable' }, 'reader failure cannot erase claims via undo');
+    eq(await legacy.storage.read(), body, 'reader failure never initializes over existing state');
+  }
+}
 async function retainedLifecycle() {
   for (const missing of ['credit', 'debit']) for (const overlap of missing === 'credit' ? ['debit-and-purchase', 'debit-only', 'purchase-only'] : ['credit']) {
     const s = setup(); await save(s, record(s.x));
@@ -171,7 +303,72 @@ async function retainedLifecycle() {
     eq((await s.store.snapshot()).decisions.length, 3, 'aggregate rejection withholds qualification without erasing intent');
   }
 }
+async function purchasePostingContracts() {
+  const cases = [
+    ['posted', true], ['pending', false], ['raw-missing', false], ['raw-null', false],
+    ['raw-string-false', false], ['raw-string-true', false], ['raw-zero', false], ['raw-one', false], ['raw-object', false],
+    ['dto-missing', false], ['dto-null', false], ['dto-string-false', false], ['dto-zero', false], ['dto-object', false],
+    ['dto-source-unknown', false], ['dto-source-null', false], ['dto-source-pending', false],
+    ['pending-confirmed-treatment', false], ['pending-presumed-treatment', false], ['legacy-posted', true],
+  ];
+  for (const [mode, ready] of cases) for (const allocated of [80, 40]) {
+    const x = seed(), raw = x.payload.transactions[0];
+    if (mode.startsWith('pending')) { raw.is_pending = true; x.payload.accounts[3].balance = 320; }
+    if (mode === 'raw-missing') delete raw.is_pending;
+    const rawValues = { 'raw-null': null, 'raw-string-false': 'false', 'raw-string-true': 'true',
+      'raw-zero': 0, 'raw-one': 1, 'raw-object': {} };
+    if (Object.hasOwn(rawValues, mode)) raw.is_pending = rawValues[mode];
+    const e = observed(x), original = JSON.stringify(e), packet = structuredClone(e.packet);
+    const purchase = packet.transactions.find(tx => tx.atlasAccountId === x.cardId && tx.amount === 80);
+    if (mode === 'dto-missing') delete purchase.pending;
+    const dtoValues = { 'dto-null': null, 'dto-string-false': 'false', 'dto-zero': 0, 'dto-object': {} };
+    if (Object.hasOwn(dtoValues, mode)) purchase.pending = dtoValues[mode];
+    if (mode === 'dto-source-unknown') purchase.savingsPostingEvidence = 'unknown';
+    if (mode === 'dto-source-null') purchase.savingsPostingEvidence = null;
+    if (mode === 'dto-source-pending') purchase.savingsPostingEvidence = 'pending';
+    if (mode === 'legacy-posted') delete purchase.savingsPostingEvidence;
+    if (mode === 'pending-confirmed-treatment') purchase.pendingTreatment = 'confirmed-settled';
+    if (mode === 'pending-presumed-treatment') purchase.pendingTreatment = 'presumed-settled-for-current-forecast';
+    const proposed = record(x, allocated, 80 - allocated), outcome = F.validateCardPaymentDecision({ ...e, packet, record: proposed });
+    eq(outcome.status, ready ? 'ready' : 'unavailable', mode + ': only qualified posted purchases receive confirmed allocation');
+    if (ready) eq([outcome.allocation.backfill, outcome.allocation.cardPayment], [allocated, 80 - allocated],
+      'independent cents: allocated ' + allocated * 100 + ' plus remaining purpose equals 8000');
+    const plan = structuredClone(e.plan); plan.cardPurchaseCoverage.payments.push(proposed);
+    const advice = F.recommend(plan, e.asOf, { debts: e.debts, currentPeriodActuals: packet });
+    const rows = advice.cardPurchaseCoverage.purchases;
+    eq(rows.length, 1, 'posting qualification never removes the counted purchase');
+    eq([rows[0].amount, rows[0].covered, rows[0].remaining], [80, ready ? allocated : 0, ready ? 80 - allocated : 80],
+      '8000 purchase cents remain counted; unqualified allocation covers no cents');
+    eq([F.startingCashAmount(plan), e.debts[0].balance, e.debts[0].pending],
+      [420, mode.startsWith('pending') ? 320 : 400, mode.startsWith('pending') ? 80 : 0],
+      'cash 50000-8000; posted debt 40000+posted purchase-8000; pending authorization separate');
+    eq(JSON.stringify(e), original, 'qualifier leaves real producer-shaped input immutable');
+  }
+  // The older schema already supplies an explicitly confirmed opening liability.
+  // It is not an unqualified current row with its posting field omitted.
+  const opening = seed(); opening.payload.transactions = opening.payload.transactions.slice(1);
+  opening.payload.accounts[3].balance = 320;
+  opening.data.plan.cardPurchaseCoverage.opening = { asOf: '2026-09-18', confirmed: true,
+    currency: 'cad', fundingAccountId: 'chequing-a', purchases: [{ ref: 'invented-opening-purchase',
+      accountId: opening.cardId, date: '2026-09-17', amount: 80, covered: 0, categoryLabel: 'Groceries' }] };
+  const old = observed(opening), carry = { ...record(seed()),
+    allocations: [{ purchaseRef: 'invented-opening-purchase', amount: 80 }] };
+  eq(F.validateCardPaymentDecision({ ...old, record: carry }).status, 'ready', 'confirmed legacy opening retains its posted qualification');
+
+  const retained = setup(); await save(retained, record(retained.x));
+  const pending = seed(); pending.payload.transactions[0].is_pending = true; pending.payload.accounts[3].balance = 320;
+  retained.change(pending);
+  eq((await retained.controller.input()).plan.cardPurchaseCoverage.payments.map(p => p.confirmed), [false],
+    'pending purchase withholds current qualification of the retained intent');
+  eq((await retained.store.snapshot()).decisions[0].record.allocations[0].amount, 80, 'original 8000-cent claim stays retained');
+  eq((await prepare(retained, record(pending))).status, 'unavailable', 'unqualified purchase cannot gain another confirmed claim');
+  retained.change(seed());
+  eq((await retained.controller.input()).plan.cardPurchaseCoverage.payments.map(p => p.confirmed), [true],
+    'the same retained intent requalifies when explicit posted evidence returns');
+  eq((await retained.store.snapshot()).decisions.length, 1, 'requalification never appends or activates another choice');
+}
 async function main() {
+  await purchasePostingContracts();
   const s = setup(), before = JSON.stringify(s.x), e = observed(s.x);
   eq((await s.controller.input()).plan, e.plan, 'empty store leaves the complete effective plan unchanged');
   const valid = F.validateCardPaymentDecision({ ...e, record: record(s.x) });
@@ -290,6 +487,7 @@ async function main() {
   eq(await corrupt.controller.prepare({ session: 'A', selection: record(corrupt.x) }), { status: 'unavailable' }, 'corruption leaks no paths or values');
   eq(await setup().controller.prepare({ session: 'not authenticated', selection: record(seed()) }), { status: 'unavailable' }, 'missing authentication adapter result fails closed');
   await retainedLifecycle();
+  await corrections();
   console.log('PASS private card decision foundation: ' + checks + ' synthetic provider/controller checks');
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });

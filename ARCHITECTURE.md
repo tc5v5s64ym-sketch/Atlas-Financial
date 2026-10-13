@@ -1501,6 +1501,26 @@ or receipts. Evidence loss never retires payment-leg or purchase-cent claims.
 Preview, confirmation and current requalification validate the complete retained
 cohort through Forecast's incumbent aggregate bounds, including unavailable records;
 independent partial allocations remain permitted when their total fits.
+The inactive v2 store preserves immutable original and successor choices and
+operation receipts. Version-1 `replace` / `retract` commands name the exact
+current saved choice and preview revision; replacement keeps the same payment
+pair and revalidates the successor against every other effective retained claim.
+Retraction withdraws interpretation, never reverses bank money. Only an explicit
+confirmed correction/withdrawal releases its predecessor's claims; missing
+evidence never does. A withdrawn head may be restored only through a newly
+qualified replacement. Superseded heads cannot fork. Identical operation retries
+recover the original outcome; conflicting payloads cannot reuse an operation ID.
+An uncertain write retains its in-process preview for explicit retry after
+outcome lookup and fresh validation; a restart cannot reconstruct an unknown
+preview or automatically apply it.
+
+Existing v1 documents remain readable but cannot be written until an explicit
+revision-and-document-digest-bound migration atomically installs v2 with the exact
+original v1 bytes retained inside it. No household migration is performed by this
+foundation. Missing/corrupt/unsupported data is never treated as empty. A rollback
+reader that cannot read v2 must withhold the entire dependent input, never fall
+back to the preserved v1 bytes after newer operations. Orphan-lock recovery and
+restoration from backups require separately reviewed recovery; neither is automatic.
 Unknown historical opening stays unknown; another unresolved card
 keeps global coverage unavailable; household payment purpose does not establish
 issuer minimum satisfaction. Canonical data and financial providers are untouched.

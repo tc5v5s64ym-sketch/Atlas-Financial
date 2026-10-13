@@ -661,6 +661,199 @@ console.log('=== N2. unprocessable outgoing e-transfer candidates (P1 4253396900
     JSON.stringify(combined.savingsMovementUnconfirmed));
 }
 
+console.log('=== P. malformed transaction IDs fail closed (trustworthy-ID boundary) ===');
+{
+  // Boundary (Atlas, approved 2026-10-12): a Lunch Money transaction ID is
+  // trustworthy only as a safe-integer number, or as a nonempty string
+  // exactly equal to its own trim() — trustworthy strings are opaque
+  // identities preserved verbatim. Everything else is untrustworthy:
+  // unmergeable at fetch (mergeTransactionsById passes the row through,
+  // never keyed into the dedup Set) and rejected at normalization through
+  // the EXISTING missing-id failure path, so observe() aborts and produces
+  // no report/packet — downstream gates withhold by absence.
+  const MISSING_ID = 'Lunch Money transaction is missing a stable id.';
+  const baseTx = { account_id: 1001, date: '2026-08-16', amount: 25, currency: 'cad', is_pending: false };
+  const normalizeError = raw => {
+    try {
+      O.normalizeLunchMoneyTransaction(raw);
+      return null;
+    } catch (err) {
+      return err && err.message;
+    }
+  };
+
+  // Baseline that already holds today: null/undefined take the same path.
+  ok(normalizeError(Object.assign({}, baseTx, { id: null })) === MISSING_ID
+    && normalizeError(Object.assign({}, baseTx, { id: undefined })) === MISSING_ID,
+    'null/undefined IDs fail through the existing missing-id path (baseline)');
+
+  // Malformed IDs: each fails closed at normalization with the SAME
+  // missing-id error — not a new error, not a silent stringification.
+  for (const [label, badId] of [
+    ['empty-string ID', ''],
+    ['whitespace-only string ID', '   '],
+    ['whitespace-padded string ID', ' 123 '],
+    ['array ID', [123]],
+    ['object ID', { value: 123 }],
+    ['boolean true ID', true],
+    ['boolean false ID', false],
+    ['NaN ID', NaN],
+    ['Infinity ID', Infinity],
+    ['non-integer number ID', 12.5],
+    ['unsafe integer ID', Number.MAX_SAFE_INTEGER + 1],
+  ]) {
+    ok(normalizeError(Object.assign({}, baseTx, { id: badId })) === MISSING_ID,
+      `${label} fails closed at normalization with the missing-id error`);
+  }
+
+  // Trustworthy IDs normalize exactly as today; identity is the String()
+  // form, so number/string equivalence is preserved and opaque strings are
+  // kept verbatim (case and leading zeros are identity).
+  ok(O.normalizeLunchMoneyTransaction(Object.assign({}, baseTx, { id: 123 })).providerTransactionId === '123'
+    && O.normalizeLunchMoneyTransaction(Object.assign({}, baseTx, { id: '123' })).providerTransactionId === '123',
+    "number 123 and string '123' keep the same String() identity (current behaviour)");
+  ok(O.normalizeLunchMoneyTransaction(Object.assign({}, baseTx, { id: '0123' })).providerTransactionId === '0123',
+    "opaque string '0123' is preserved verbatim — a distinct identity from '123'");
+  ok(O.normalizeLunchMoneyTransaction(Object.assign({}, baseTx, { id: 'AbC-009x' })).providerTransactionId === 'AbC-009x',
+    'mixed-case opaque string ID is preserved verbatim');
+  ok(O.normalizeLunchMoneyTransaction(Object.assign({}, baseTx, { id: 0 })).providerTransactionId === '0',
+    'numeric zero is a safe integer and stays trustworthy');
+  ok(O.normalizeLunchMoneyTransaction(Object.assign({}, baseTx, { id: Number.MAX_SAFE_INTEGER })).providerTransactionId === String(Number.MAX_SAFE_INTEGER),
+    'Number.MAX_SAFE_INTEGER stays trustworthy');
+
+  // Identity controls at the (frozen) collapse: a valid same-ID
+  // pending→posted pair still collapses with correct identityEvidence;
+  // number/string '123' are one identity; '0123' is a different one.
+  const collapseOf = raws => O.collapseByProviderTransactionId(
+    raws.map(raw => O.normalizeLunchMoneyTransaction(raw)));
+  const pair = collapseOf([
+    Object.assign({}, baseTx, { id: 777, is_pending: true }),
+    Object.assign({}, baseTx, { id: 777, is_pending: false }),
+  ]);
+  ok(pair.transactions.length === 1 && pair.transactions[0].priorPending === true
+    && pair.identityEvidence.length === 1
+    && pair.identityEvidence[0].providerTransactionId === '777'
+    && pair.identityEvidence[0].transition === 'pending-to-posted'
+    && pair.identityEvidence[0].pendingCount === 1
+    && pair.identityEvidence[0].postedCount === 1,
+    'valid pending→posted same-ID pair still collapses with correct identityEvidence',
+    JSON.stringify(pair.identityEvidence));
+  const numericStringPair = collapseOf([
+    Object.assign({}, baseTx, { id: 123, is_pending: true }),
+    Object.assign({}, baseTx, { id: '123', is_pending: false }),
+  ]);
+  ok(numericStringPair.transactions.length === 1
+    && numericStringPair.identityEvidence.length === 1,
+    "number 123 pending + string '123' posted collapse as one identity");
+  const opaquePair = collapseOf([
+    Object.assign({}, baseTx, { id: '0123' }),
+    Object.assign({}, baseTx, { id: '123' }),
+  ]);
+  ok(opaquePair.transactions.length === 2 && opaquePair.identityEvidence.length === 0,
+    "'0123' and '123' remain distinct identities — no collapse");
+
+  // Observe-level: one malformed row aborts the whole observation. The
+  // array ID [88001] String()-collides with the fixture's genuine 88001
+  // today and is silently absorbed; after the boundary it must produce
+  // NO report and NO packet.
+  const malformedPayload = clone(payload);
+  malformedPayload.transactions = payload.transactions.concat([
+    { id: [88001], account_id: 1001, date: '2026-08-15', amount: 10, is_pending: false },
+  ]);
+  let observeError = null;
+  try {
+    O.observe({ provider: 'lunchmoney', payload: malformedPayload, accountMap, data });
+  } catch (err) {
+    observeError = err && err.message;
+  }
+  ok(observeError === MISSING_ID,
+    'a payload carrying an array ID alongside genuine 88001 aborts observe() — no report, no packet');
+
+  // CLI artifact path: the same payload through the CLI prints no report.
+  const tmpFixture = path.join(os.tmpdir(), `atlas-malformed-id-fixture-${process.pid}.json`);
+  fs.writeFileSync(tmpFixture, JSON.stringify(malformedPayload));
+  let cliThrew = false;
+  let cliStderr = '';
+  let cliStdout = '';
+  try {
+    cliStdout = execFileSync(process.execPath, [
+      path.join(ROOT, 'scripts', 'provider-observe.js'),
+      '--provider', 'lunchmoney',
+      '--fixture', tmpFixture,
+    ], { cwd: ROOT, encoding: 'utf8' });
+  } catch (e) {
+    cliThrew = true;
+    cliStderr = String(e.stderr || '');
+    cliStdout = String(e.stdout || '');
+  } finally {
+    fs.unlinkSync(tmpFixture);
+  }
+  ok(cliThrew && cliStderr.includes(MISSING_ID) && !cliStdout.includes('"writesCanonicalState"'),
+    'CLI run on a malformed-ID fixture aborts with the missing-id error and prints no report artifact');
+
+  // Fetch-level: the array-ID row must survive mergeTransactionsById (never
+  // deduped away against the genuine 123) and fail at normalization. Proved
+  // through the live fetch harness: primary page carries genuine 123, the
+  // pending universe carries [123].
+  const harness = [
+    "'use strict';",
+    "const https = require('https');",
+    "const { EventEmitter } = require('events');",
+    'https.request = (url, options, cb) => {',
+    '  const href = url && url.href ? url.href : String(url);',
+    '  const parsed = new URL(href);',
+    '  const req = new EventEmitter();',
+    '  req.end = () => {',
+    '    process.nextTick(() => {',
+    '      const res = new EventEmitter();',
+    '      res.statusCode = 200;',
+    '      cb(res);',
+    "      let body = { has_more: false, transactions: [] };",
+    "      if (parsed.pathname === '/v2/me' || parsed.pathname === '/v2/plaid_accounts'",
+    "        || parsed.pathname === '/v2/manual_accounts' || parsed.pathname === '/v2/assets') {",
+    '        body = {};',
+    "      } else if (parsed.pathname === '/v2/categories') {",
+    '        body = { categories: [] };',
+    "      } else if (parsed.pathname === '/v2/tags') {",
+    '        body = { tags: [] };',
+    "      } else if (parsed.searchParams.get('include_pending') === 'true') {",
+    "        body = { has_more: false, transactions: [{ id: 123, account_id: 1001, date: '2026-08-15', amount: 10, is_pending: false }] };",
+    "      } else if (parsed.searchParams.get('is_pending') === 'true') {",
+    "        body = { has_more: false, transactions: [{ id: [123], account_id: 1001, date: '2026-08-15', amount: 10, is_pending: true }] };",
+    '      }',
+    "      res.emit('data', Buffer.from(JSON.stringify(body)));",
+    "      res.emit('end');",
+    '    });',
+    '  };',
+    '  return req;',
+    '};',
+    `const O = require(${JSON.stringify(path.join(ROOT, 'scripts', 'provider-observe.js'))});`,
+    "O.fetchLunchMoneyLive('test-token', '2026-08-16T18:00:00.000Z').then((payload) => {",
+    '  const kinds = (payload.transactions || []).map(t => (Array.isArray(t.id) ? \'array\' : String(t.id)));',
+    "  let threw = false; let message = '';",
+    '  try {',
+    '    O.normalizeLunchMoneyPayload(payload);',
+    '  } catch (err) {',
+    '    threw = true; message = String(err && err.message || err);',
+    '  }',
+    '  process.stdout.write(JSON.stringify({ count: (payload.transactions || []).length, kinds, threw, message }));',
+    '}).catch((err) => {',
+    '  process.stderr.write(String(err && err.message || err));',
+    '  process.exit(1);',
+    '});',
+  ].join('\n');
+  const fetched = JSON.parse(execFileSync(process.execPath, ['-e', harness], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  }));
+  ok(fetched.count === 2 && fetched.kinds.includes('array') && fetched.kinds.includes('123'),
+    'fetch merge never dedupes the array-ID row away against genuine 123 — both rows reach normalization',
+    JSON.stringify(fetched));
+  ok(fetched.threw === true && fetched.message === MISSING_ID,
+    'the surviving array-ID row fails at normalization with the missing-id error — no silent disappearance',
+    JSON.stringify(fetched));
+}
+
 if (failures) {
   console.log(`\n${failures} check(s) failed`);
   process.exit(1);
