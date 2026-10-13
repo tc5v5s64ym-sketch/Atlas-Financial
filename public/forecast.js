@@ -19621,7 +19621,7 @@
           + [...new Set(derived.goalAllocation.balanceDates.map(row => row.date))].sort().join(' / ')
           + ', allocated by due date. Payment backing is qualified separately.'
         : derived.basis === 'policy-derived-combined-observed-backing'
-        ? derived.allocationDescription || 'Goal allocation requires validated dated reported Savings balances.'
+        ? derived.goalAllocation?.reason || derived.allocationDescription || 'Goal allocation requires validated dated reported Savings balances.'
         : 'Historical allocation policy applies to the dated pool evidence.',
       unresolved: (derived.unresolved || []).map(({ needCents, savedCents, event, rank, ...item }) => item), rows: derived.rows };
     const unknown = reason => ({ ...shell, status: 'unavailable', reason,
