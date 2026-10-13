@@ -10,6 +10,8 @@ const Fixture = require('./fixtures/budget-surface-data');
 const ROOT = path.resolve(__dirname, '..');
 const CLOCK = Fixture.payload().fetchedAt;
 const PASS = 'synthetic-observation-site-password';
+const SECRET = 'synthetic-observation-session-secret';
+const OTHER_PASS = 'synthetic-new-household-context';
 const TOKEN = 'synthetic-observation-assistant-token-32chars';
 
 // A child-only preload substitutes the dated baseline in memory. It never
@@ -106,7 +108,7 @@ async function atlas(mock, { mcp = false } = {}) {
   const base = 'http://127.0.0.1:' + port, auth = mcp ? await oauthIssuer() : null;
   const child = spawn(process.execPath, ['--require', __filename, path.join(ROOT, 'server.js')], {
     cwd: ROOT, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...environment(mock.base),
-      PORT: String(port), SITE_PASSWORD: PASS, SESSION_SECRET: 'synthetic-observation-session-secret',
+      PORT: String(port), SITE_PASSWORD: PASS, SESSION_SECRET: SECRET,
       ATLAS_ASSISTANT_TOKEN: TOKEN, ATLAS_SYNTHETIC_OBSERVATION_PRELOAD: '1',
       ...(auth ? { ATLAS_MCP_RESOURCE_URL: base + '/assistant/mcp', ATLAS_OAUTH_ISSUER: auth.issuer, ATLAS_OAUTH_JWKS_URI: auth.jwks } : {}) } });
   // Capture privately; publish only the test's own closed counts/timings.
@@ -250,7 +252,7 @@ if (require.main === module) (async () => {
       mock.mode('ok'); await Refresh.serve(canonical, env); await drain();
     }
     for (const change of [
-      { LUNCHMONEY_ACCESS_TOKEN: 'SYNTHETIC-DIFFERENT-TOKEN' }, { SITE_PASSWORD: 'synthetic-new-household-context' },
+      { LUNCHMONEY_ACCESS_TOKEN: 'SYNTHETIC-DIFFERENT-TOKEN' }, { SITE_PASSWORD: OTHER_PASS },
       { RENDER_GIT_COMMIT: 'synthetic-new-runtime' }, { ATLAS_PROVIDER_ACCOUNT_MAP_JSON: JSON.stringify({ ...Fixture.map, scope: 'live', revision: 'new' }) },
     ]) {
       const count = mock.calls.length;
