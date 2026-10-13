@@ -32,11 +32,24 @@ for(const mode of modes)for(const allocated of [80,40]){
   const financial=card=>({posted:card.posted.map(({paymentAllocation,...row})=>row),pending:card.pending,netMovement:card.netMovement,netStatus:card.netStatus});
   const window=F.spendingCycle(plan,x.asOf),oldMovement=Before.cardPeriodMovements(plan,data.debts,x.asOf,window,opts),newMovement=F.cardPeriodMovements(plan,data.debts,x.asOf,window,opts);
   assert.deepEqual(oldMovement.cards.map(financial),newMovement.cards.map(financial),'physical card movements are unchanged; allocation evidence alone differs');
+  assert.deepEqual(F.currentPeriodAction(plan,x.asOf,opts).outgoingETransfers,Before.currentPeriodAction(plan,x.asOf,opts).outgoingETransfers,'current-main e-transfer publication stays unchanged');
   assert.equal(digest(x),inputHash);assert.equal(digest(served.report),reportHash);assert.equal(digest(args),argsHash);
   cases.push({mode,allocatedCents:allocated*100,expectedStatus:ready?'ready':'unavailable',beforeStatus:before.status,afterStatus:after.status,beforePass:before.status===(ready?'ready':'unavailable'),afterPass:true,purchaseCents:8000,beforeCoveredCents:Math.round(prior[0].covered*100),afterCoveredCents:Math.round(now[0].covered*100),remainingCents:Math.round(now[0].remaining*100),cashCents:42000,postedDebtCents:mode.startsWith('pending')?32000:40000,pendingDebtCents:mode.startsWith('pending')?8000:0,physicalCardMovementChanges:0,inputSha256:inputHash,returnedReportUnchanged:true});
 }
 assert.equal(cases.length,40);assert.equal(cases.filter(row=>!row.beforePass).length,36);
+const publicationControls=[];
+for(const pending of [false,true]){
+  const x=fx('backfill');delete x.data.plan.cardPurchaseCoverage.opening;x.payload.transactions.slice(1).forEach(tx=>{tx.category_name='Payment, Transfer';tx.notes=null;});
+  x.payload.transactions[0].is_pending=pending;x.payload.accounts[3].balance=pending?320:400;
+  x.payload.transactions.push({...x.payload.transactions[1],id:80004,amount:17,payee:'Invented recipient',original_name:'SEND E-TFR INVENTED',category_name:'Transfer'});x.payload.accounts[0].balance=403;
+  const data=L.fromObservation(x).data,packet=data.liveOverlay.currentPeriodActuals;
+  assert.equal(packet.transactions.find(tx=>tx.amount===17).outgoingETransferIdentity,true);
+  data.plan.cardPurchaseCoverage.payments.push({id:'decision-'+'a'.repeat(32),confirmed:true,debitRef:fx.ref(x,80002),creditRef:fx.ref(x,80003),allocations:[{purchaseRef:fx.ref(x,80001),amount:80}],otherAmount:0,otherPurpose:null});
+  const opts={debts:data.debts,currentPeriodActuals:packet},before=Before.currentPeriodAction(data.plan,x.asOf,opts).outgoingETransfers,after=F.currentPeriodAction(data.plan,x.asOf,opts).outgoingETransfers;
+  assert.deepEqual(after,before);assert.equal(after.count,1);assert.equal(after.items[0].amount,17);assert.equal(F.startingCashAmount(data.plan),403);
+  publicationControls.push({purchasePending:pending,outgoingCents:1700,count:after.count,status:after.status,publicationChanged:false,cashCents:40300});
+}
 const files=new Set(Object.keys(require.cache).filter(file=>file.startsWith(root+path.sep)).map(file=>path.relative(root,file).replace(/\\/g,'/')));
 files.add('test/proof-card-purchase-posting.js');files.add('test/test-card-payment-decisions.js');files.add('public/forecast-card-period.js');
 const binding=captureSourceBinding(root,[...files],base);verifySourceBinding(root,binding);
-console.log(JSON.stringify({outcome:'PASS',base,executionBinding:binding,independentCents:{purchase:8000,payment:8000,postedCash:50000-8000,postedDebt:40000+8000-8000,pendingPurchasePostedDebt:40000-8000,pendingAuthorization:8000},before:{controls:40,pass:4,fail:36},after:{controls:40,pass:40,fail:0},cases,qualification:'Observed cash/debt and card movement rows unchanged. Unqualified coverage/holds intentionally change; no claim of whole-Forecast equality.'},null,2));
+console.log(JSON.stringify({outcome:'PASS',base,executionBinding:binding,independentCents:{purchase:8000,payment:8000,postedCash:50000-8000,postedDebt:40000+8000-8000,pendingPurchasePostedDebt:40000-8000,pendingAuthorization:8000},before:{controls:40,pass:4,fail:36},after:{controls:40,pass:40,fail:0},cases,publicationControls,qualification:'Observed cash/debt, physical card movements and current-main outgoing e-transfer publication unchanged. Unqualified coverage/holds intentionally change; no claim of whole-Forecast equality.'},null,2));
