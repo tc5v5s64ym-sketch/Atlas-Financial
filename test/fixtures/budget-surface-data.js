@@ -181,6 +181,16 @@ function served(opts = {}) {
     // No salary occurred: 1,215 closing + 1,400 paid mortgage = 2,615 opening.
     data.plan.startingCash.breakdown.find(row => row.id === 'chequing-a').value = 2615;
   }
+  if (opts.etransfer) {
+    // One invented outgoing e-transfer: provider descriptor SEND E-TFR on
+    // the raw row only, Lunch Money category Transfer. The opening for the
+    // spending account rises by the same $75 so the observed closing
+    // balance stays 160, exactly like the groceriesExtra pattern above.
+    observed.categories.push({ id: 17, name: 'Transfer', is_income: false, exclude_from_totals: true });
+    observed.transactions.push(tx(92009, 1002, '2026-08-19', 75, 'Synthetic recipient', 17,
+      { original_name: 'SEND E-TFR SYNTHETIC RECIPIENT' }));
+    data.plan.startingCash.breakdown.find(row => row.id === 'chequing-b').value += 75;
+  }
   if (Array.isArray(opts.budgetCategories)) data.plan.budget.categories = opts.budgetCategories;
   if (typeof opts.groceriesExtra === 'number' && opts.groceriesExtra > 0) {
     observed.transactions.push(tx(92008, 1002, '2026-08-19', opts.groceriesExtra, 'Synthetic extra grocer', 11));

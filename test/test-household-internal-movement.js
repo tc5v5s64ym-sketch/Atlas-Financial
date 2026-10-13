@@ -620,6 +620,38 @@ console.log('=== 10. Existing Amanda salary recognition is unchanged ===');
     'Amanda salary is not reclassified as Other Income');
 }
 
+console.log('=== 10. Proven internal movement carrying the e-transfer boolean stays out of the review list ===');
+{
+  // The TO leg carries outgoingETransferIdentity: the proven-pair exclusion
+  // (and the internal-movement classification) must keep it out of the new
+  // outgoing e-transfer publication, and internalMovements is unchanged.
+  const src = tfrLeg({
+    id: 'tx-etfr-pair-out', dir: 'TO', amount: BILLS_TO_SAVINGS,
+    atlasAccountId: 'chequing-a', payee: 'ZZ999 TFR-TO SAVE01',
+  });
+  src.outgoingETransferIdentity = true;
+  const dst = tfrLeg({
+    id: 'tx-etfr-pair-in', dir: 'FR', amount: BILLS_TO_SAVINGS,
+    atlasAccountId: 'savings', payee: 'ZZ999 TFR-FR BILLSA',
+  });
+  const txs = [src, dst];
+  const plan = paydayPlan();
+  const fullPacket = Object.assign(packet(txs), {
+    transactionCoverage: 'complete',
+    transactionWindow: { startDate: PAYDAY, endDate: PAYDAY, complete: true, hasMore: false, truncated: false },
+  });
+  const action = F.currentPeriodAction(plan, PAYDAY,
+    { currentPeriodActuals: fullPacket, packet: fullPacket });
+  ok(action.internalMovements && action.internalMovements.length === 1
+    && action.internalMovements[0].tfrReference === 'ZZ999',
+    'the proven pair is still published as one internal movement, unchanged');
+  ok(action.outgoingETransfers && action.outgoingETransfers.status === 'available-complete'
+    && action.outgoingETransfers.count === 0
+    && !action.outgoingETransfers.items.some(i => i.id === 'tx-etfr-pair-out'),
+    'a proven internal-movement leg carrying the e-transfer boolean is not in the review publication',
+    JSON.stringify(action.outgoingETransfers));
+}
+
 if (failures) {
   console.log('\n' + failures + ' failure(s)');
   process.exit(1);

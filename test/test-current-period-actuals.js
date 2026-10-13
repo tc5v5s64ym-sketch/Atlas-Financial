@@ -1429,6 +1429,371 @@ console.log('\n=== S. named remaining is not precise while household spend is un
   }
 }
 
+console.log('\n=== ET. outgoing e-transfer review publication (additional visibility only) ===');
+{
+  const etPlan = () => basePlan({
+    opening: { asOf: MID, priorAsOf: PAYDAY, representedEvents: [] },
+    income: [{ id: 'pay', label: 'Pay', frequency: 'once', date: NEXT, amount: 2500, confidence: 'confirmed' }],
+  });
+  const etPacket = (txs, extra) => packet(txs, Object.assign({
+    asOf: MID, coverageStart: PAYDAY, coverageThrough: MID, transactionCoverage: 'complete',
+    transactionWindow: { startDate: PAYDAY, endDate: MID, complete: true, hasMore: false, truncated: false },
+  }, extra || {}));
+  const groceryRow = {
+    id: 'et-grocery', date: '2026-09-02', amount: 50, pending: false,
+    categoryLabel: 'Groceries', accountRole: 'household-cash', displayedPayee: 'Save-On-Foods',
+  };
+  const etRow = (id, extra) => Object.assign({
+    id, date: '2026-09-03', amount: 75, pending: false, categoryLabel: 'Transfer',
+    accountRole: 'household-cash', atlasAccountId: 'chequing-a', outgoingETransferIdentity: true,
+  }, extra || {});
+  const incumbent = action => JSON.stringify({
+    categories: action.categories, unclassified: action.unclassified,
+    excluded: action.excluded, remainingClaim: action.remainingClaim,
+    categoryRemainingClaim: action.categoryRemainingClaim,
+    internalMovements: action.internalMovements,
+  });
+
+  // Population: transfer-labelled and unclassified flagged rows, posted and
+  // pending; item shape is exactly id/date/amount/pending/account.
+  const flagged = [
+    etRow('et-a'),
+    etRow('et-b', { date: '2026-09-04', amount: 40, categoryLabel: null }),
+    etRow('et-c', { date: '2026-09-05', amount: 25, pending: true, pendingTreatment: 'unresolved' }),
+  ];
+  const withFlagged = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([groceryRow].concat(flagged)),
+  }));
+  const pub = withFlagged.outgoingETransfers;
+  ok(pub && pub.status === 'available-complete',
+    'explicit complete evidence publishes available-complete', pub && pub.status);
+  ok(pub && pub.count === 3 && Array.isArray(pub.items) && pub.items.length === 3,
+    'all three flagged rows are published', pub && String(pub.count));
+  ok(pub && JSON.stringify(Object.keys(pub.items[0]).sort())
+      === JSON.stringify(['account', 'amount', 'date', 'id', 'pending']),
+    'published items carry only id/date/amount/pending/account — no descriptor, payee or category');
+  ok(pub && pub.items.some(i => i.id === 'et-a' && i.amount === 75 && i.account === 'chequing-a' && i.pending === false)
+    && pub.items.some(i => i.id === 'et-c' && i.pending === true),
+    'posted and observed-pending items publish with their pending flag');
+  ok(!JSON.stringify(pub).includes('SEND E-TFR') && !JSON.stringify(pub).includes('Transfer'),
+    'the publication contains no descriptor or category text');
+
+  // Classification and totals are byte-identical with and without the
+  // flag: same rows, identity boolean off. The publication is a sibling,
+  // never a reclassification — the rows feed the incumbent aggregates
+  // exactly as they did before the boolean existed.
+  const unflagged = flagged.map(row => Object.assign({}, row, { outgoingETransferIdentity: false }));
+  const withoutFlagged = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([groceryRow].concat(unflagged)),
+  }));
+  ok(incumbent(withFlagged) === incumbent(withoutFlagged),
+    'incumbent categories/unclassified/excluded/claims are byte-identical with the flag on or off');
+  ok(withoutFlagged.outgoingETransfers.count === 0,
+    'the same rows unflagged publish an empty (complete-evidence) list');
+  ok(F.classifyCurrentPeriodTransaction(flagged[0], etPlan()).kind === 'transfer'
+    && F.classifyCurrentPeriodTransaction(flagged[1], etPlan()).kind === 'unclassified',
+    'flagged rows keep their incumbent classifications (transfer / unclassified)');
+
+  // Exclusions: each row below carries the identity boolean and must stay
+  // out of the publication, each for its named reason.
+  const exclusions = [
+    ['card-payment category label (Credit card payment)', etRow('ex-cc-label', { categoryLabel: 'Credit card payment' })],
+    ['card-payment kind hint', etRow('ex-cc-hint', { kindHint: 'payment' })],
+    ['stamped cardPaymentIdentity', etRow('ex-cc-flag', { cardPaymentIdentity: true })],
+    ['personal-loan debt payment label', etRow('ex-debt-label', { categoryLabel: 'Personal loan payment' })],
+    ['represented bill', etRow('ex-bill', { representedBill: true })],
+    ['pending matching card-paid bill', etRow('ex-pending-bill', { pending: true, pendingTreatment: 'unresolved', pendingMatchingCardPaidBill: true })],
+    ['revolving-credit account', etRow('ex-revolving', { accountRole: 'revolving-credit' })],
+    ['refund (negative amount)', etRow('ex-refund', { amount: -30 })],
+    ['income row', etRow('ex-income', { isIncome: true })],
+    ['identity boolean absent (SEND E-TFR FEE stamps false upstream)', etRow('ex-fee', { outgoingETransferIdentity: false })],
+  ];
+  for (const [label, row] of exclusions) {
+    const action = F.currentPeriodAction(etPlan(), MID, opts({
+      currentPeriodActuals: etPacket([groceryRow, row]),
+    }));
+    ok(action.outgoingETransfers.count === 0
+      && !action.outgoingETransfers.items.some(i => i.id === row.id),
+      `excluded from the publication: ${label}`,
+      JSON.stringify(action.outgoingETransfers.items));
+  }
+
+  // Refinement 3 — explicit negative case: a confirmed named spending
+  // category row plus a residual transfer hint. Classify returns transfer
+  // early (before category resolution), so kind alone would admit it; the
+  // named category must exclude it, and its classification stays untouched.
+  const namedRow = etRow('ex-named', { categoryLabel: 'Groceries', kindHint: 'transfer' });
+  const namedCls = F.classifyCurrentPeriodTransaction(namedRow, etPlan(),
+    { currentPeriodActuals: etPacket([namedRow]) });
+  ok(namedCls.kind === 'transfer',
+    'setup: the named-category row with a transfer hint really does classify as transfer', namedCls.kind);
+  const namedAction = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([groceryRow, namedRow]),
+  }));
+  ok(namedAction.outgoingETransfers.count === 0,
+    'a confirmed named spending category row is excluded despite the residual transfer hint');
+
+  // Coverage states.
+  const missing = F.currentPeriodAction(etPlan(), MID, opts());
+  ok(missing.outgoingETransfers.status === 'unavailable-missing'
+    && missing.outgoingETransfers.count === null && missing.outgoingETransfers.items === null,
+    'no packet: unavailable-missing with null count/items — never a zero all-clear');
+
+  const stale = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-stale')], { coverageThrough: '2026-09-05' }),
+  }));
+  ok(stale.outgoingETransfers.status === 'unavailable-stale'
+    && stale.outgoingETransfers.count === null && stale.outgoingETransfers.items === null,
+    'stale evidence: unavailable-stale, stale items are not shown as current-period fact');
+
+  const truncated = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-trunc')], { transactionCoverage: 'truncated' }),
+  }));
+  ok(truncated.outgoingETransfers.status === 'available-incomplete'
+    && truncated.outgoingETransfers.count === null && truncated.outgoingETransfers.items === null,
+    'truncated coverage: available-incomplete with no list and no count when nothing was collected');
+
+  const postedOnly = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-po')], { pendingCoverage: 'unknown' }),
+  }));
+  ok(postedOnly.outgoingETransfers.status === 'available-posted-only'
+    && postedOnly.outgoingETransfers.count === 1 && postedOnly.outgoingETransfers.items.length === 1,
+    'pending coverage incomplete alone: available-posted-only with the observed subset');
+
+  // Legacy defaults must not manufacture completeness (refinement 4): the
+  // incumbent remainingClaim still reads precise when transactionCoverage,
+  // observationAsOf or coverageStart are absent — the new publication must
+  // not follow it into an all-clear.
+  const legacyTx = etPacket([etRow('et-legacy')]); delete legacyTx.transactionCoverage;
+  const legacyAction = F.currentPeriodAction(etPlan(), MID, opts({ currentPeriodActuals: legacyTx }));
+  ok(legacyAction.remainingClaim === 'precise'
+    && legacyAction.outgoingETransfers.status === 'available-incomplete'
+    && legacyAction.outgoingETransfers.items.length === 1,
+    'missing transactionCoverage: incumbent claim unchanged, publication stays an observed subset (available-incomplete)');
+  const noObs = etPacket([etRow('et-noobs')]); noObs.observationAsOf = null;
+  const noObsAction = F.currentPeriodAction(etPlan(), MID, opts({ currentPeriodActuals: noObs }));
+  ok(noObsAction.outgoingETransfers.status === 'available-incomplete',
+    'missing observationAsOf: no available-complete all-clear');
+  const noStart = etPacket([etRow('et-nostart')]); noStart.coverageStart = null;
+  const noStartAction = F.currentPeriodAction(etPlan(), MID, opts({ currentPeriodActuals: noStart }));
+  ok(noStartAction.outgoingETransfers.status === 'available-incomplete',
+    'missing coverageStart: no available-complete all-clear');
+  const lateStart = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-late')], { coverageStart: '2026-09-03' }),
+  }));
+  ok(lateStart.outgoingETransfers.status === 'available-incomplete'
+    && lateStart.outgoingETransfers.items === null,
+    'coverage starting after the period origin: available-incomplete, nothing collected, no count');
+
+  const zeroComplete = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([groceryRow]),
+  }));
+  ok(zeroComplete.outgoingETransfers.status === 'available-complete'
+    && zeroComplete.outgoingETransfers.count === 0
+    && Array.isArray(zeroComplete.outgoingETransfers.items) && zeroComplete.outgoingETransfers.items.length === 0,
+    'available-complete with no flagged rows is the only factual zero');
+
+  // Repair (Atlas, 2026-10-12) — canonical Uncategorised is the remainder
+  // bucket, not a confirmed named category: a flagged row the owner has not
+  // categorised must stay in the review list on both classification paths
+  // (transfer via an early hint return, and spend into the bucket itself).
+  const uncatHint = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-uncat-hint', { categoryLabel: 'Uncategorised', kindHint: 'transfer' })]),
+  }));
+  ok(uncatHint.outgoingETransfers.count === 1
+    && uncatHint.outgoingETransfers.items.some(i => i.id === 'et-uncat-hint' && i.amount === 75),
+    'flagged $75 row labelled Uncategorised with a transfer hint stays in the review list');
+  const uncatSpend = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-uncat-spend', { categoryLabel: 'Uncategorised' })]),
+  }));
+  ok(uncatSpend.outgoingETransfers.count === 1
+    && uncatSpend.outgoingETransfers.items.some(i => i.id === 'et-uncat-spend' && i.amount === 75),
+    'flagged $75 row classified spend into the Uncategorised bucket stays in the review list');
+  ok(uncatSpend.outgoingETransfers.status === 'available-complete',
+    'the Uncategorised-bucket row publishes under the same complete evidence');
+  const uncatUnflagged = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-uncat-spend', { categoryLabel: 'Uncategorised', outgoingETransferIdentity: false })]),
+  }));
+  ok(incumbent(uncatSpend) === incumbent(uncatUnflagged),
+    'listing the bucket row changes no category total, unclassified count or claim');
+
+  // Repair (Atlas, 2026-10-12) — provenance: the transaction window bounds
+  // and the observation date are validated, not assumed. Out-of-window or
+  // invalidly-dated evidence must not produce an all-clear.
+  const noWindow = etPacket([etRow('et-nowin')]); delete noWindow.transactionWindow;
+  const noWindowAction = F.currentPeriodAction(etPlan(), MID, opts({ currentPeriodActuals: noWindow }));
+  ok(noWindowAction.outgoingETransfers.status === 'available-incomplete',
+    'missing transactionWindow: no available-complete all-clear');
+  const openWindow = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-openwin')], {
+      transactionWindow: { startDate: PAYDAY, endDate: MID, complete: false, hasMore: false, truncated: false },
+    }),
+  }));
+  ok(openWindow.outgoingETransfers.status === 'available-incomplete',
+    'window not marked complete: no available-complete all-clear');
+  const lateWindow = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-latewin')], {
+      transactionWindow: { startDate: '2026-09-03', endDate: MID, complete: true, hasMore: false, truncated: false },
+    }),
+  }));
+  ok(lateWindow.outgoingETransfers.status === 'available-incomplete',
+    'window starting after the period origin: no available-complete all-clear');
+  const shortWindow = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([etRow('et-shortwin')], {
+      transactionWindow: { startDate: PAYDAY, endDate: '2026-09-05', complete: true, hasMore: false, truncated: false },
+    }),
+  }));
+  ok(shortWindow.outgoingETransfers.status === 'available-incomplete',
+    'window ending before the as-of: no available-complete all-clear');
+  const badObs = etPacket([etRow('et-badobs')]); badObs.observationAsOf = 'not-a-date';
+  const badObsAction = F.currentPeriodAction(etPlan(), MID, opts({ currentPeriodActuals: badObs }));
+  ok(badObsAction.outgoingETransfers.status === 'available-incomplete',
+    'invalid observationAsOf: no available-complete all-clear');
+  const oldObs = etPacket([etRow('et-oldobs')]); oldObs.observationAsOf = '2026-09-02';
+  const oldObsAction = F.currentPeriodAction(etPlan(), MID, opts({ currentPeriodActuals: oldObs }));
+  ok(oldObsAction.outgoingETransfers.status === 'available-incomplete',
+    'observationAsOf predating the coverage it claims: no available-complete all-clear');
+  const futureObs = etPacket([etRow('et-futureobs')]); futureObs.observationAsOf = '2026-12-31';
+  const futureObsAction = F.currentPeriodAction(etPlan(), MID, opts({ currentPeriodActuals: futureObs }));
+  ok(futureObsAction.outgoingETransfers.status === 'available-incomplete',
+    'observationAsOf after the financial as-of: no available-complete all-clear');
+}
+
+console.log('\n=== ET2. unprocessable e-transfer candidates: producer to publication (P1 4253396900) ===');
+{
+  // Repair (Atlas BLOCK 5497313211): the sanitizer drops a household-cash
+  // SEND E-TFR row whose amount cannot be qualified, before identity
+  // detection. The packet's dates-only outgoingETransferUnconfirmed entry
+  // must withhold the publication's available-complete all-clear for any
+  // period the candidate date falls in — without touching the review
+  // population, classification, or totals. These cases run the real
+  // producer (sanitizedCurrentPeriodActuals) into the real publication.
+  const et2Plan = () => basePlan({
+    opening: { asOf: MID, priorAsOf: PAYDAY, representedEvents: [] },
+    income: [{ id: 'pay', label: 'Pay', frequency: 'once', date: NEXT, amount: 2500, confidence: 'confirmed' }],
+  });
+  const et2Map = {
+    schema: 'atlas-provider-account-map/v1',
+    mappings: [
+      { providerAccountId: '1001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
+      { providerAccountId: '2001', canonical: { collection: 'debts', id: 'tdcc' }, atlasRole: 'revolving-credit' },
+    ],
+  };
+  const rawRow = (id, extra) => Object.assign({
+    date: '2026-09-03', amount: 75, pending: false, categoryLabel: 'Transfer',
+    payee: 'Interac recipient', originalName: 'SEND E-TFR J SMITH', currency: 'cad',
+    providerAccountId: '1001', providerTransactionId: id,
+  }, extra || {});
+  const produce = (txs, pending) => O.sanitizedCurrentPeriodActuals({
+    fetchedAt: MID + 'T18:00:00.000Z',
+    transactionWindow: { startDate: PAYDAY, endDate: MID, complete: true, hasMore: false, truncated: false },
+    pendingCoverage: pending || { complete: true },
+    transactions: txs, collapsedTransactions: txs,
+    representedEventCandidates: [],
+  }, { asOf: MID, accountMap: et2Map, plan: et2Plan() });
+  const incumbent = action => JSON.stringify({
+    categories: action.categories, unclassified: action.unclassified,
+    excluded: action.excluded, remainingClaim: action.remainingClaim,
+    categoryRemainingClaim: action.categoryRemainingClaim,
+    internalMovements: action.internalMovements,
+  });
+  const publish = txs => F.currentPeriodAction(et2Plan(), MID, opts({ currentPeriodActuals: produce(txs) }));
+
+  // Invalid-only: the producer records the candidate and the publication
+  // withholds the all-clear — an observed subset of zero, not a factual zero.
+  const invalidPacket = produce([rawRow('et2-invalid', { amount: 'unavailable' })]);
+  ok(Array.isArray(invalidPacket.outgoingETransferUnconfirmed)
+    && invalidPacket.outgoingETransferUnconfirmed.length === 1
+    && invalidPacket.outgoingETransferUnconfirmed[0].date === '2026-09-03',
+    'producer: the unprocessable candidate is recorded as a dates-only entry',
+    JSON.stringify(invalidPacket.outgoingETransferUnconfirmed));
+  const invalidAction = F.currentPeriodAction(et2Plan(), MID, opts({ currentPeriodActuals: invalidPacket }));
+  ok(invalidAction.outgoingETransfers.status === 'available-incomplete'
+    && invalidAction.outgoingETransfers.count === 0
+    && Array.isArray(invalidAction.outgoingETransfers.items) && invalidAction.outgoingETransfers.items.length === 0,
+    'invalid-only: publication is available-incomplete with the empty observed subset — no all-clear',
+    invalidAction.outgoingETransfers.status);
+  const emptyAction = publish([]);
+  ok(incumbent(invalidAction) === incumbent(emptyAction),
+    'invalid-only: incumbent categories/totals/claims are identical to the no-candidate packet');
+
+  // Valid flagged row: complete evidence still earns the all-clear.
+  const validAction = publish([rawRow('et2-valid')]);
+  ok(validAction.outgoingETransfers.status === 'available-complete'
+    && validAction.outgoingETransfers.count === 1,
+    'valid flagged row: available-complete with count 1', validAction.outgoingETransfers.status);
+
+  // FEE: excluded upstream, no entry, complete state unaffected.
+  const feePacket = produce([rawRow('et2-fee', { originalName: 'SEND E-TFR FEE' })]);
+  const feeAction = F.currentPeriodAction(et2Plan(), MID, opts({ currentPeriodActuals: feePacket }));
+  ok(Array.isArray(feePacket.outgoingETransferUnconfirmed)
+    && feePacket.outgoingETransferUnconfirmed.length === 0
+    && feeAction.outgoingETransfers.status === 'available-complete'
+    && feeAction.outgoingETransfers.count === 0,
+    'SEND E-TFR FEE: no unconfirmed entry and the complete state is unaffected');
+
+  // Mixed: the valid item stays listed; completeness is withheld.
+  const mixedAction = publish([
+    rawRow('et2-mixed-valid'),
+    rawRow('et2-mixed-invalid', { amount: 'unavailable', date: '2026-09-04' }),
+  ]);
+  ok(mixedAction.outgoingETransfers.status === 'available-incomplete'
+    && mixedAction.outgoingETransfers.count === 1
+    && mixedAction.outgoingETransfers.items.length === 1
+    && mixedAction.outgoingETransfers.items[0].amount === 75,
+    'mixed valid + invalid: available-incomplete with the one observed item still listed',
+    mixedAction.outgoingETransfers.status);
+
+  // Out-of-period candidate: recorded by the producer, scoped out by the
+  // publication — the all-clear for this period stands.
+  const earlyPacket = produce([rawRow('et2-early', { amount: 'unavailable', date: '2026-08-31' })]);
+  const earlyAction = F.currentPeriodAction(et2Plan(), MID, opts({ currentPeriodActuals: earlyPacket }));
+  ok(Array.isArray(earlyPacket.outgoingETransferUnconfirmed)
+    && earlyPacket.outgoingETransferUnconfirmed.length === 1
+    && earlyAction.outgoingETransfers.status === 'available-complete'
+    && earlyAction.outgoingETransfers.count === 0,
+    'candidate dated before the period origin: all-clear stands',
+    earlyAction.outgoingETransfers.status);
+
+  // Posted-only branch (Atlas BLOCK 5498435733): pending coverage unknown
+  // alone earns available-posted-only, whose claim is that pending is the
+  // SOLE gap. An in-period unprocessable candidate means posted evidence
+  // is also lost, so the same guard must withhold posted-only too.
+  const unknownPending = {};
+  const poInvalid = F.currentPeriodAction(et2Plan(), MID, opts({
+    currentPeriodActuals: produce([rawRow('et2-po-invalid', { amount: 'unavailable' })], unknownPending),
+  }));
+  ok(poInvalid.outgoingETransfers.status === 'available-incomplete'
+    && poInvalid.outgoingETransfers.count === 0,
+    'invalid-only + unknown pending: available-incomplete — posted-only must not claim pending is the sole gap',
+    poInvalid.outgoingETransfers.status);
+  const poMixed = F.currentPeriodAction(et2Plan(), MID, opts({
+    currentPeriodActuals: produce([
+      rawRow('et2-po-valid'),
+      rawRow('et2-po-mixed-invalid', { amount: 'unavailable', date: '2026-09-04' }),
+    ], unknownPending),
+  }));
+  ok(poMixed.outgoingETransfers.status === 'available-incomplete'
+    && poMixed.outgoingETransfers.count === 1
+    && poMixed.outgoingETransfers.items.length === 1,
+    'mixed + unknown pending: available-incomplete with the observed item still listed',
+    poMixed.outgoingETransfers.status);
+  const poValid = F.currentPeriodAction(et2Plan(), MID, opts({
+    currentPeriodActuals: produce([rawRow('et2-po-control')], unknownPending),
+  }));
+  ok(poValid.outgoingETransfers.status === 'available-posted-only'
+    && poValid.outgoingETransfers.count === 1,
+    'control — valid flagged row + unknown pending, no candidate: available-posted-only stands',
+    poValid.outgoingETransfers.status);
+  const poFee = F.currentPeriodAction(et2Plan(), MID, opts({
+    currentPeriodActuals: produce([rawRow('et2-po-fee', { originalName: 'SEND E-TFR FEE', amount: 'unavailable' })], unknownPending),
+  }));
+  ok(poFee.outgoingETransfers.status === 'available-posted-only'
+    && poFee.outgoingETransfers.count === 0,
+    'control — unqualified FEE row + unknown pending: no entry, available-posted-only stands',
+    poFee.outgoingETransfers.status);
+}
+
 if (failures) {
   console.log(`\n${failures} failure(s)`);
   process.exit(1);
