@@ -23,6 +23,15 @@ function publish(input) {
   return advice;
 }
 function saved(packet) { return packet.backing.items.map(row => [row.id, row.saved]); }
+// Independent invented requirements, in order: 6000, 2400, 17000 cents.
+// The current source contract allocates reports, never reconstructed transfers.
+function reportedExpected(input) {
+  const values = input.plan.savingsPoolObservation.accounts.map(row => row.value);
+  if (values.some(value => typeof value !== 'number' || !Number.isFinite(value))) return null;
+  const total = values.reduce((sum,value) => sum + Math.round(value * 100), 0);
+  const first = Math.min(6000, total), second = Math.min(2400, total - first);
+  return [first / 100, second / 100, Math.min(17000, total - first - second) / 100];
+}
 function fundingHeld(advice) {
   const packet = advice.savingsFunding;
   assert.equal(packet.stock.amount, null, 'same-day observed stock gate survives');
@@ -50,16 +59,15 @@ test('paired reserve transfer across opposite cutoffs cannot allocate the same 1
   assert.deepEqual(packet.rows.map(row => row.needed), [230, 24]);
   assert.equal(packet.period.proposal, null);
 });
-for (const row of transferCutoffs.boundaryCases) test(row.name + ' uses one Savings-account boundary', () => {
+for (const row of transferCutoffs.boundaryCases) test(row.name + ' retains reported earmarks and separately qualifies payment backing', () => {
   const input = transferCutoffs(row.name), advice = publish(input), packet = advice.savingsFunding;
-  assert.equal(packet.goalAllocation.status, row.saved ? 'ready' : 'unavailable');
-  assert.deepEqual(packet.backing.items.map(item => item.saved), row.saved || [null, null, null]);
+  assert.equal(packet.goalAllocation.status, 'ready');
+  assert.deepEqual(packet.backing.items.map(item => item.saved), reportedExpected(input));
   assert.deepEqual(packet.rows.map(item => item.needed), [230, 24]);
   assert.deepEqual(packet.goalAllocation.balanceDates, input.plan.savingsPoolObservation.accounts
     .map(item => ({ accountId: item.accountId, date: item.evidenceDate })));
   if (!row.saved) {
-    assert.ok(packet.rows.every(item => item.saved === null && item.savedTrust === 'unknown'));
-    assert.ok(packet.lenses.every(lens => lens.items.every(item => item.saved === null && item.savedTrust === 'unknown')));
+    assert.equal(packet.backing.status, 'unavailable', 'unqualified movement never gains payment backing');
     assert.equal(packet.period.proposal, null);
     assert.equal(packet.moneyMovementPermission, 'not-granted');
     assert.ok(advice.sim.events.every(item => !item.reserveFunding));
@@ -70,16 +78,16 @@ for (const mode of ['inverse', 'opposite-direction', 'same-day', 'same-day-one',
   'impossible-date', 'future-date', 'alias', 'alias-outside', 'missing-id', 'malformed-id', 'role', 'duplicate', 'ambiguous-reference', 'duplicate-id-elsewhere', 'unmatched',
   'unknown-coverage', 'missing-coverage', 'coverage-gap', 'unknown-observation', 'packet-currency', 'split-posting-dates',
   'hint-only', 'hint-internal', 'hint-one-leg', 'invalid-reference', 'missing-reference', 'missing-direction', 'identity-flag'])
-  test('reserve-cutoff ' + mode + ' cannot authorize Saved or reconciliation', () => {
+  test('reserve-cutoff ' + mode + ' cannot authorize reconciliation or new funding', () => {
     const input = transferCutoffs(mode), advice = publish(input), packet = advice.savingsFunding;
     if (mode.startsWith('hint-') || mode.includes('reference') || mode === 'missing-direction' || mode === 'identity-flag') {
       assert.equal(F.householdInternalMovements(input.plan, input.opts).length, 0, 'hint or malformed reference cannot prove a pair by amounts');
       assert.equal(advice.savingsInventory.reportedStock.amount, 200, 'original reports are not adjusted');
     }
-    assert.equal(packet.goalAllocation.status, 'unavailable');
-    assert.ok(packet.backing.items.every(row => row.saved === null));
-    assert.ok(packet.rows.every(row => row.saved === null && row.savedTrust === 'unknown'));
-    assert.ok(packet.lenses.every(lens => lens.items.every(row => row.saved === null && row.savedTrust === 'unknown')));
+    const held = ['opposite-direction', 'unknown-stock'].includes(mode);
+    assert.equal(packet.goalAllocation.status, held ? 'unavailable' : 'ready');
+    assert.deepEqual(packet.backing.items.map(row => row.saved), held ? [null,null,null] : reportedExpected(input));
+    assert.equal(packet.backing.status, 'unavailable');
     assert.deepEqual(packet.rows.map(row => row.needed), [230, 24], 'requirements remain independently known');
     assert.equal(packet.period.proposal, null);
     assert.equal(packet.timeline.status, 'unavailable');
@@ -212,8 +220,6 @@ for (const [name, mutate] of Object.entries({
   infinite: p => { p.savingsPoolObservation.accounts[0].value = Infinity; },
   unsafeSum: p => { p.savingsPoolObservation.accounts.forEach(row => { row.value = 50000000000000; }); },
   negativeAccount: p => { p.savingsPoolObservation.accounts[0].value = -1; },
-  pending: p => { p.savingsPoolObservation.accounts[0].pendingState = 'pending'; },
-  unknownPending: p => { delete p.savingsPoolObservation.accounts[0].pendingState; },
   undatedGoal: p => { delete p.commitments[0].date; },
   rangedGoal: p => { delete p.commitments[0].amount; p.commitments[0].amountMin = 50; p.commitments[0].amountMax = 70; },
 })) test(name + ' still withholds Saved and funding without fallback', () => {
@@ -233,8 +239,8 @@ for (const failure of ['global-cash', 'card-coverage', 'pending-cash', 'pending-
       atlasAccountId: failure === 'pending-reserve' ? 'savings' : 'chequing-a',
       accountRole: failure === 'pending-reserve' ? 'household-reserve' : 'household-cash' });
     const advice = publish(input), packet = advice.savingsFunding;
-    assert.equal(packet.goalAllocation.status, failure === 'pending-reserve' ? 'unavailable' : 'ready');
-    if (failure !== 'pending-reserve') assert.deepEqual(saved(packet), [['near', 60], ['home-cost', 24], ['far', 35]]);
+    assert.equal(packet.goalAllocation.status, 'ready');
+    assert.deepEqual(saved(packet), [['near', 60], ['home-cost', 24], ['far', 35]]);
     fundingHeld(advice);
   });
 
@@ -252,7 +258,7 @@ for (const name of ['app', 'bill-detail', 'savings-inventory', 'budget-surface',
 }
 vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];', page);
 
-test('uncertain transfer Saved stays unknown in Plan, shared Inventory and grouped members', () => {
+test('reported earmarks print through independent movement holds; genuine duplicate stock remains unknown', () => {
   for (const mode of ['double-count', 'inverse', 'duplicate', 'unmatched', 'hint-only', 'hint-internal',
     'hint-one-leg', 'invalid-reference', 'missing-reference', 'missing-direction', 'identity-flag',
     ...transferCutoffs.boundaryCases.filter(row => !row.saved).map(row => row.name)]) {
@@ -262,16 +268,22 @@ test('uncertain transfer Saved stays unknown in Plan, shared Inventory and group
     page.src = { plan: input.plan, debts: [], asOf: input.asOf, advice };
     const html = vm.runInContext('budgetSurfaceHtml(src)', page);
     const savedStamps = [...html.matchAll(/data-budget-goal-saved-amount="([^"]*)"/g)];
-    assert.equal(savedStamps.length, 0);
+    const expected = mode === 'double-count' ? null : reportedExpected(input);
+    assert.equal(savedStamps.length, expected ? 2 : 0);
     const printed = [...html.matchAll(/data-budget-savings-(?:total|member)-saved>([\s\S]*?)<\/span>/g)];
     assert.ok(printed.length >= 4);
-    assert.ok(printed.every(match => /Unavailable/.test(match[1])));
+    assert.ok(printed.every(match => expected ? !/Unavailable/.test(match[1]) : /Unavailable/.test(match[1])));
+    if (expected) {
+      assert.match(html, new RegExp('data-budget-goal-saved-amount="' + (expected[0] + expected[2]) + '"'));
+      assert.match(html, new RegExp('data-budget-goal-saved-amount="' + expected[1] + '"'));
+    }
     assert.match(html, /data-budget-goal-required-amount="230"/);
     assert.match(html, /data-budget-goal-required-amount="24"/);
     const inventory = Inventory.html(packet, { asOf: input.asOf, advice });
     const inventorySaved = [...inventory.matchAll(/data-savings-(?:member-)?backed><dt>[^<]*<\/dt><dd>([^<]*)/g)];
     assert.ok(inventorySaved.length >= 4);
-    assert.ok(inventorySaved.every(match => match[1].trim() === 'Unknown'));
+    assert.ok(inventorySaved.every(match => expected ? match[1].trim() !== 'Unknown' : match[1].trim() === 'Unknown'));
+    assert.equal(packet.period.proposal, null, 'printing an earmark never publishes a new contribution');
     assert.match(inventory, /data-savings-needed><dt>Needed<\/dt><dd>\$230\.00/);
   }
 });

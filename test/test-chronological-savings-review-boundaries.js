@@ -70,7 +70,8 @@ test('a usable planning target does not resolve pending savings evidence', () =>
   const packet = targetPacket(input);
   assert.equal(packet.stock.amount, 119);
   assert.equal(packet.backing.status, 'unavailable');
-  assert.ok(packet.backing.items.every(row => row.saved === null));
+  assert.deepEqual(packet.backing.items.map(row => row.saved), [60, 37, 22], 'pending movement does not erase reported earmarks');
+  assert.equal(packet.goalAllocation.evidenceTrust, 'provider-reported');
   assert.equal(packet.period.proposal, null);
 });
 const page = vm.createContext({ Forecast: F, App: { register() {}, boot() {} },

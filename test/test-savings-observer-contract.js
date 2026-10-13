@@ -16,16 +16,16 @@ for (const mode of ['valid', 'valid-transfer', 'undated', 'null-amount', 'malfor
       assert.equal(packet.goalAllocation.status, 'ready', 'genuine CAD evidence must remain usable');
       assert.deepEqual(packet.backing.items.map(row => row.saved), mode === 'valid-transfer' ? [60, 24, 45] : [60, 24, 35]);
     } else {
-      assert.equal(packet.goalAllocation.status, 'unavailable', 'excluded/invalid relevant evidence is uncertainty, not no activity');
-      assert.ok(packet.rows.every(row => row.saved === null));
+      assert.equal(packet.goalAllocation.status, 'ready', 'valid reported account stock is independent of movement qualification');
+      assert.deepEqual(packet.rows.map(row => row.saved), [95, 24]);
       assert.equal(packet.period.proposal, null);
     }
   });
 
 function held(advice) {
   assert.equal(advice.savingsInventory.reportedStock.amount, 119, 'original Savings stock survives');
-  assert.equal(advice.savingsFunding.goalAllocation.status, 'unavailable');
-  assert.ok(advice.savingsFunding.rows.every(row => row.saved === null));
+  assert.equal(advice.savingsFunding.goalAllocation.status, 'ready', 'transaction uncertainty does not erase dated account reports');
+  assert.deepEqual(advice.savingsFunding.rows.map(row => row.saved), [95, 24]);
   assert.equal(advice.savingsFunding.period.proposal, null);
   assert.ok(advice.sim.events.every(row => !row.reserveFunding));
 }
@@ -76,7 +76,7 @@ for (const [mode, mutate] of Object.entries({
   const packet = JSON.parse(JSON.stringify(report.currentPeriodActuals)); mutate(packet);
   const advice = F.recommend(data.plan, data.meta.asOf, { weeklyVariable: 40, ...data.liveOverlay, currentPeriodActuals: packet });
   held(advice);
-  if (mode === 'legacy') assert.match(advice.savingsFunding.goalAllocation.reason, /legacy or missing/);
+  if (mode === 'legacy') assert.match(advice.savingsFunding.backing.reason, /legacy or missing/);
   assert.equal(JSON.stringify(report), before, 'negative test never patches the real packet');
 });
 test('valid uncertainty on an unrelated canonical account is scoped out', () => {
@@ -103,8 +103,8 @@ for (const list of ['empty', 'unrelated', 'zero']) for (const mode of observed.w
   test('observation/window ' + mode + ' is qualified before ' + list + ' iteration', () => {
     const x = observed.windowObservation(mode, list), advice = windowPublish(x), s = advice.savingsFunding;
     const ready = ['complete', 'unrelatedFlag'].includes(mode);
-    assert.equal(s.goalAllocation.status, ready ? 'ready' : 'unavailable');
-    assert.deepEqual(s.rows.map(row => row.saved), ready ? [95, 24] : [null, null]);
+    assert.equal(s.goalAllocation.status, 'ready');
+    assert.deepEqual(s.rows.map(row => row.saved), [95, 24]);
     assert.deepEqual(s.rows.map(row => row.needed), [230, 24]);
     assert.equal(advice.savingsInventory.reportedStock.amount, 119);
     assert.equal(s.goalAllocation.checkedAsOf, '2026-10-05');
@@ -185,8 +185,8 @@ for (const shape of ['direct', 'counterparty', 'savings-leg', 'unrelated', 'drop
     assert.equal(raw.savingsPostingEvidence, mode === 'posted' ? 'posted' : mode === 'pending' ? 'pending' : 'unknown');
     for (const row of x.packet.transactions) assert.ok(['posted', 'pending', 'unknown'].includes(row.savingsPostingEvidence));
     const ready = shape === 'unrelated' || shape === 'collapsed' && mode === 'pending' || mode === 'posted' && shape !== 'dropped';
-    assert.equal(s.goalAllocation.status, ready ? 'ready' : 'unavailable');
-    assert.deepEqual(s.rows.map(row => row.saved), ready ? [95, 24] : [null, null]);
+    assert.equal(s.goalAllocation.status, 'ready');
+    assert.deepEqual(s.rows.map(row => row.saved), [95, 24]);
     assert.deepEqual(s.rows.map(row => row.needed), [230, 24]); assert.equal(advice.savingsInventory.reportedStock.amount, 119);
     if (!ready) { assert.equal(s.period.proposal, null); assert.ok(advice.sim.events.every(row => !row.reserveFunding)); }
     if (shape === 'counterparty' && !['posted', 'pending'].includes(mode)) {
@@ -206,8 +206,8 @@ assert.equal(observed.sameIdCases.length, 90);
 assert.equal(new Set(observed.sameIdCases.map(row => row.name)).size, 90);
 for (const row of [...observed.sameIdCases, ...observed.sameIdGuards]) test('actual same-ID posting provenance ' + row.name, () => {
   const x = observed.sameIdObservation(row), advice = windowPublish(x), s = advice.savingsFunding;
-  assert.equal(s.goalAllocation.status, row.ready ? 'ready' : 'unavailable');
-  assert.deepEqual(s.rows.map(item => item.saved), row.ready ? [95, 24] : [null, null]);
+  assert.equal(s.goalAllocation.status, 'ready');
+  assert.deepEqual(s.rows.map(item => item.saved), [95, 24]);
   assert.deepEqual(s.rows.map(item => item.needed), [230, 24]); assert.equal(advice.savingsInventory.reportedStock.amount, 119);
   if (row.ready) {
     const transition = x.report.identityEvidence.find(item => item.providerTransactionId === x.rawId);

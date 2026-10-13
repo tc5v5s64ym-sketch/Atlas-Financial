@@ -5203,7 +5203,7 @@ function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null,
     <ul class="budget-savings-contributions">${rows || '<li>Named savings unavailable.</li>'}</ul>${annualBillNote}
     <p class="operating-line"><span>Unsent top-up today</span><strong data-budget-daily-proposal>${value(period?.proposal, period?.trust)}</strong></p>
     <details class="budget-savings-info" data-budget-savings-info><summary>Info</summary><div>
-      <p>${budgetV3Escape(packet.allocationDescription || 'Savings allocation evidence is unavailable.')} These figures are replaced on refresh. A proposal is not a transfer or a confirmed manual assignment.</p>
+      <p>${budgetV3Escape(packet.allocationDescription || 'Savings allocation evidence is unavailable.')} These figures are replaced on refresh. Saved amounts are reported earmarks, not money moved or bills paid. New Bills contributions are qualified separately.</p>
       ${packet.period?.reason || packet.backing?.reason ? '<p>' + budgetV3Escape(packet.period?.reason || packet.backing?.reason) + '</p>' : ''}
       <div class="operating-line"><span>Period balance before proposals</span><span>${value(period?.nativePeriodSurplus, period?.trust)}</span></div>
       <div class="operating-line"><span>Funding entitlement</span><span>${value(period?.entitlement, period?.trust)}</span></div>
