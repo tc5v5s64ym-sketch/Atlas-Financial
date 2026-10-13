@@ -707,3 +707,65 @@ used. Actual append-suite PASS in complete hosted Linux CI is still required;
 the forthcoming terminal result must be recorded separately in the PR card.
 Failed-refresh retention remains a separate follow-on. Root exact-head Systems
 PASS and the required checks remain release gates. No merge/deploy/activation.
+
+## Supported same-ID transition correction
+
+Independent Root review reproduced a supported positive regression on exact
+`6a5193bcc26403df688f9f50a87b642a020f706c`: raw explicit pending predecessor and
+posted successor with the same provider ID are collapsed correctly by the
+incumbent, but the added status map treated their two known statuses as unknown.
+The preceding distinct-ID/Plaid controls did not cover this admission contract.
+Both complete Linux runs on that prior head passed standard 373/373, isolation
+1/1 and aggregate, including actual History append; those results remain
+[prior-head CI only](savings-latest-known/prior-6a-terminal-ci.json) and did not
+waive the independently reproduced defect.
+
+Root explicitly approved the narrow correction. Clean exercised source is
+`4600b361ea950cc8fb3b255eff4d1cb2dffe1c7c`, still based on reviewed main
+`a773a950c1927e450fea7dafd3bef6b35ed0b8a6`. The only production difference since
+6a5193bc is `provider-observe.js::sanitizedCurrentPeriodActuals`: unknown source
+status remains sticky across every original member. A known-status mixture may
+use only the incumbent proven pending-to-posted transition with one posted row,
+no ghost/double count, and consistent provider account/native currency. Emission
+uses the selected posted survivor's own explicit evidence. No matching, collapse,
+pending classification, Forecast, balance, History, or retention code changes.
+
+- [Actual-producer RED/GREEN](savings-latest-known/same-id-red-green.json):
+  90 unique same-ID controls — direct Savings fee, cash counterpart and Savings
+  leg, both input orders, predecessor/successor missing/null/string/numeric/object
+  status. Exact 6a5193bc fails all six valid positives and passes all 84 malformed
+  negatives; repaired source passes all 90. Eighteen additional account/currency/
+  ambiguous-posted guards remain held before and after. Incumbent identity proof,
+  collapsed survivors and observed balances/dates/pending facts remain identical.
+  Returned inputs/reports remain unchanged. All earlier 12/82/60/54 observer,
+  window, raw-fetch and posting controls freshly pass too.
+- [Exact-main financial comparison](savings-latest-known/same-id-main-comparison.json):
+  444 invented ledgers, 1,003,249 equal subtrees, 140 incumbent held-backing
+  controls and zero unexpected differences. Original conservative-control and
+  non-exhaustive Savings equality qualifications remain unchanged.
+- [Registered acceptance](savings-latest-known/same-id-suite-repair.json):
+  all 22 suites pass, including the unchanged provider/pending contracts admitting
+  this same-ID transition. 130 exact source/static/input fixture files are bound;
+  only hashes and closed status metadata are emitted. The separate focused run
+  passes 480 tests (130 latest-known, 338 observer/window/source/posting/same-ID,
+  12 annual). No original financial assertion is replaced.
+- [Preservation and complete diff](savings-latest-known/same-id-preservation.json):
+  production bytes equal the approved in-memory proposal exactly; all bytes
+  outside the sanitizer match 6a5193bc. All 479 assertion-containing lines from
+  the six checked prior-head financial/history files remain, alongside the older
+  458-line preservation check. Production History/frozen archives and all 12
+  reviewed #598 paths remain exact, including registration. The complete
+  production diff since 7ec5347e is included. The three retention-boundary files
+  remain exact prior-head blobs. No private figures comparison is repeated.
+- [Browser proof](savings-latest-known/browser-same-id-qualified.json):
+  26 App.boot/Edge cases pass, including all six valid same-ID shapes/orders,
+  malformed-status and account/currency negatives, and all prior 16 cases.
+  Correct bands, Known Needed, held Saved/top-ups, focus/overflow and source/
+  screenshot hashes are verified; no page error, external request or write.
+
+Full hosted CI on the forthcoming evidence-only head must pass before the final
+review packet. The 6a5193bc 373/373 results qualify only that prior head. Current
+Windows durability remains unqualified; its last local failure is recorded
+without promotion or a storage shim. Failed-refresh retention is unchanged and
+remains a separate follow-on. Fresh exact-head Systems PASS remains required.
+No merge, deployment or activation occurred.

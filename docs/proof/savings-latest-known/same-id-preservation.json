@@ -1,0 +1,261 @@
+{
+  "outcome": "PASS",
+  "sourceCommit": "4600b361ea950cc8fb3b255eff4d1cb2dffe1c7c",
+  "main": "a773a950c1927e450fea7dafd3bef6b35ed0b8a6",
+  "prior": "7ec5347e9a37ace08cb7291ef77bf996718378dd",
+  "executionBinding": {
+    "sourceCommit": "4600b361ea950cc8fb3b255eff4d1cb2dffe1c7c",
+    "sourceTree": "3057d211c4dc219410849a34571e8b8c2adac4a3",
+    "baseCommit": "a773a950c1927e450fea7dafd3bef6b35ed0b8a6",
+    "cleanAtStart": true,
+    "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
+    "files": {
+      "scripts/private-period-history.js": {
+        "gitBlob": "5fe54945fff32a84c6f7a3a6b087fd90ba0bbb2c",
+        "sha256": "8461b5b47db4880078409168a0ae1a8a6bea8d9b38ec18325bfd396bc04cfb12",
+        "bytes": 30775
+      },
+      "test/fixtures/private-period-history-v1/00000001-d84b83847b86a9d7e946bd7181131e16a40404b842c7e8515f41409aafca3e96.json": {
+        "gitBlob": "47a3f3952fb1ce4a27d9f956efa40878da375ac4",
+        "sha256": "f0f000afe8c851a90f06c0052af54ce70251d6265b0bd7b2822f07547cc00233",
+        "bytes": 31625
+      },
+      "test/fixtures/private-period-history-v1/00000002-00893c06c699d37c479f98f9cd6d35bb2c864870b62f504b55bf39cf297bd976.json": {
+        "gitBlob": "f88506ff4b97e4e60b8afdfdf9bf3add4439c58c",
+        "sha256": "0b4519fbb605c96b2192c21885960f48455aa8284bfccafe9ac1c685abae3193",
+        "bytes": 28180
+      },
+      "test/test-private-period-history-completeness.js": {
+        "gitBlob": "0ccfae523ce1a5024aee8c681d15708a50c3c354",
+        "sha256": "90c252c5364ffa85f4ec91d3733f5d419d9cb73eedf7ad983ea88f5e29fc0bfb",
+        "bytes": 32896
+      }
+    }
+  },
+  "originalAssertions": [
+    {
+      "file": "test/test-annual-savings-payperiod.js",
+      "base": "7ec5347e9a37ace08cb7291ef77bf996718378dd",
+      "originalAssertionLines": 86,
+      "preserved": 86,
+      "removed": 0
+    },
+    {
+      "file": "test/test-budget-period-funding.js",
+      "base": "7ec5347e9a37ace08cb7291ef77bf996718378dd",
+      "originalAssertionLines": 89,
+      "preserved": 89,
+      "removed": 0
+    },
+    {
+      "file": "test/test-savings-latest-known-allocation.js",
+      "base": "7ec5347e9a37ace08cb7291ef77bf996718378dd",
+      "originalAssertionLines": 106,
+      "preserved": 106,
+      "removed": 0
+    },
+    {
+      "file": "test/test-savings-observer-contract.js",
+      "base": "7ec5347e9a37ace08cb7291ef77bf996718378dd",
+      "originalAssertionLines": 72,
+      "preserved": 72,
+      "removed": 0
+    },
+    {
+      "file": "test/fixtures/minimum-category-conservation.js",
+      "base": "7ec5347e9a37ace08cb7291ef77bf996718378dd",
+      "originalAssertionLines": 8,
+      "preserved": 8,
+      "removed": 0
+    },
+    {
+      "file": "test/test-private-period-history-completeness.js",
+      "base": "a773a950c1927e450fea7dafd3bef6b35ed0b8a6",
+      "originalAssertionLines": 97,
+      "preserved": 97,
+      "removed": 0
+    },
+    {
+      "file": "test/test-salary-diagnostic-candidates.js",
+      "exactMainBlob": true
+    },
+    {
+      "file": "test/test-salary-diagnostic-occurrences.js",
+      "exactMainBlob": true
+    },
+    {
+      "file": "test/test-salary-matcher-diagnostic.js",
+      "exactMainBlob": true
+    }
+  ],
+  "unchangedHistory": [
+    {
+      "file": "scripts/private-period-history.js",
+      "mainBlob": "5fe54945fff32a84c6f7a3a6b087fd90ba0bbb2c",
+      "headBlob": "5fe54945fff32a84c6f7a3a6b087fd90ba0bbb2c",
+      "sha256": "8461b5b47db4880078409168a0ae1a8a6bea8d9b38ec18325bfd396bc04cfb12"
+    },
+    {
+      "file": "test/fixtures/private-period-history-v1/00000001-d84b83847b86a9d7e946bd7181131e16a40404b842c7e8515f41409aafca3e96.json",
+      "mainBlob": "47a3f3952fb1ce4a27d9f956efa40878da375ac4",
+      "headBlob": "47a3f3952fb1ce4a27d9f956efa40878da375ac4",
+      "sha256": "f0f000afe8c851a90f06c0052af54ce70251d6265b0bd7b2822f07547cc00233"
+    },
+    {
+      "file": "test/fixtures/private-period-history-v1/00000002-00893c06c699d37c479f98f9cd6d35bb2c864870b62f504b55bf39cf297bd976.json",
+      "mainBlob": "f88506ff4b97e4e60b8afdfdf9bf3add4439c58c",
+      "headBlob": "f88506ff4b97e4e60b8afdfdf9bf3add4439c58c",
+      "sha256": "0b4519fbb605c96b2192c21885960f48455aa8284bfccafe9ac1c685abae3193"
+    }
+  ],
+  "preserved598": [
+    {
+      "file": "docs/proof/card-panel-lead-2026-10-12/panel-lead-unavailable-390-dark.png",
+      "mainBlob": "b4961610a3cc71e1e301bc0214b4cec33cd1f6be",
+      "headBlob": "b4961610a3cc71e1e301bc0214b4cec33cd1f6be"
+    },
+    {
+      "file": "docs/proof/card-panel-lead-2026-10-12/panel-lead-zero-390-light.png",
+      "mainBlob": "ee81fc13c809190a1f6f5b08170df9caad444473",
+      "headBlob": "ee81fc13c809190a1f6f5b08170df9caad444473"
+    },
+    {
+      "file": "docs/proof/card-panel-lead-2026-10-12/panel-open-1440-dark.png",
+      "mainBlob": "8c3d9d9e1a4b1d4fb812f21c404c16e3bb00fb6e",
+      "headBlob": "8c3d9d9e1a4b1d4fb812f21c404c16e3bb00fb6e"
+    },
+    {
+      "file": "docs/proof/card-panel-lead-2026-10-12/panel-open-390-light.png",
+      "mainBlob": "9ff1367e8d3a6429e4f9af12b2cfa23f12cff1c4",
+      "headBlob": "9ff1367e8d3a6429e4f9af12b2cfa23f12cff1c4"
+    },
+    {
+      "file": "docs/proof/card-panel-lead-2026-10-12/panel-strip-320-light.png",
+      "mainBlob": "6d0b7d496496c5d294f11e5ec617e5aa1529070d",
+      "headBlob": "6d0b7d496496c5d294f11e5ec617e5aa1529070d"
+    },
+    {
+      "file": "docs/proof/card-panel-lead-2026-10-12/proof.json",
+      "mainBlob": "c55e3b52cd39e07ae41fded906e35a091412156e",
+      "headBlob": "c55e3b52cd39e07ae41fded906e35a091412156e"
+    },
+    {
+      "file": "public/budget-blend.css",
+      "mainBlob": "33198266e5fd7044371c4f9395f4d83c15f0c7c6",
+      "headBlob": "33198266e5fd7044371c4f9395f4d83c15f0c7c6"
+    },
+    {
+      "file": "public/budget-blend.js",
+      "mainBlob": "50d7eb97c0fc7756c5647f6b945ac58dda408acc",
+      "headBlob": "50d7eb97c0fc7756c5647f6b945ac58dda408acc"
+    },
+    {
+      "file": "public/budget-card-movements.js",
+      "mainBlob": "d19ab8847f3615aed1d09bc768d7bc8b18fc23d3",
+      "headBlob": "d19ab8847f3615aed1d09bc768d7bc8b18fc23d3"
+    },
+    {
+      "file": "test/browser-card-panel-lead.js",
+      "mainBlob": "7d63092cbcff15e79908a4687305c8e5a9825844",
+      "headBlob": "7d63092cbcff15e79908a4687305c8e5a9825844"
+    },
+    {
+      "file": "test/browser-card-period-movements.js",
+      "mainBlob": "48130a709dd8598beb70cc0dafc747e63e333ced",
+      "headBlob": "48130a709dd8598beb70cc0dafc747e63e333ced"
+    },
+    {
+      "file": "test/test-card-panel-lead.js",
+      "mainBlob": "109be3ebed990ac8b620c4cbb01356b85b0180db",
+      "headBlob": "109be3ebed990ac8b620c4cbb01356b85b0180db"
+    }
+  ],
+  "registryPreserved": true,
+  "productionSince7ec": [
+    "public/forecast.js",
+    "scripts/provider-observe.js"
+  ],
+  "productionDiffSince7ec": "diff --git a/public/forecast.js b/public/forecast.js\nindex 9f5f6c61..32299949 100644\n--- a/public/forecast.js\n+++ b/public/forecast.js\n@@ -18968,7 +18968,7 @@\n     }\n     const flags = packet.savingsMovementUnconfirmed;\n     const reasons = ['transaction-amount-or-date-unconfirmed', 'native-plan-currency-unconfirmed',\n-      'transaction-evidence-sanitization-failed'];\n+      'transaction-evidence-sanitization-failed', 'transaction-posting-status-unconfirmed'];\n     if (!Array.isArray(transactions) || !Array.isArray(flags) || flags.some(row =>\n       !savingsKeys(row, ['accountId', 'reason'])\n       || !['savings', 'savings-dont-touch', ...HOUSEHOLD_CHEQUING_IDS].includes(row.accountId)\n@@ -19012,7 +19012,7 @@\n       const id = row?.id, cents = savingsCents(row?.amount, true), ids = [row?.atlasAccountId, row?.accountId, row?.account];\n       const role = accounts.has(accountId) || !HOUSEHOLD_CHEQUING_IDS.includes(accountId) ? 'household-reserve' : 'household-cash';\n       return validId(id)\n-        && byId.get(String(id))?.length === 1 && row.pending === false\n+        && byId.get(String(id))?.length === 1 && row.pending === false && row.savingsPostingEvidence === 'posted'\n         && typeof row.currency === 'string' && row.currency.toUpperCase() === 'CAD' && !unconfirmed(row)\n         && row.accountRole === role && householdCashLocationId(row) === accountId && ids.some(id => id === accountId)\n         && ids.every(id => id == null || id === '' || id === accountId)\ndiff --git a/scripts/provider-observe.js b/scripts/provider-observe.js\nindex 42154d9a..a4e9a3f3 100644\n--- a/scripts/provider-observe.js\n+++ b/scripts/provider-observe.js\n@@ -427,6 +427,8 @@ function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {\n       || raw.has_children === true,\n     parentId: raw.parent_id != null ? String(raw.parent_id) : null,\n     pending: raw.is_pending === true,\n+    savingsPostingEvidence: Object.hasOwn(raw, 'is_pending') && raw.is_pending === false ? 'posted'\n+      : Object.hasOwn(raw, 'is_pending') && raw.is_pending === true ? 'pending' : 'unknown',\n     status: raw.status || null,\n     kind: minimumCategoryDebt ? 'card-payment' : raw.kind || null,\n     mcc: raw.mcc || raw.plaid_mcc || null,\n@@ -3450,9 +3452,11 @@ function savingsPoolObservations(data, normalized, accountMap) {\n     if (!['cash', 'depository'].includes(String(account.type || '').toLowerCase())) continue;\n     if ((data.debts || []).some(debt => debt && debt.id === accountId)) continue;\n     const pending = normalized.transactions.some(tx => tx && tx.providerAccountId === account.providerAccountId && tx.pending === true);\n+    const postingUnknown = normalized.transactions.some(tx => tx && tx.providerAccountId === account.providerAccountId\n+      && !['posted', 'pending'].includes(tx.savingsPostingEvidence));\n     accounts.push({ accountId, value: account.balance, currency: String(account.currency || '').toUpperCase(),\n       evidenceDate: dateOnly(postedBalanceEvidenceInstant(account)),\n-      pendingState: pending ? 'pending' : pendingCoverageIsComplete(normalized.pendingCoverage) ? 'clear' : 'unknown',\n+      pendingState: pending ? 'pending' : postingUnknown ? 'unknown' : pendingCoverageIsComplete(normalized.pendingCoverage) ? 'clear' : 'unknown',\n       source: 'provider-observe:lunchmoney' });\n   }\n   return { asOf, accounts };\n@@ -4266,6 +4270,20 @@ function sanitizedCurrentPeriodActuals(report, opts) {\n   const txs = [];\n   const currencyUnconfirmed = [];\n   const cardCoverageUnconfirmed = [];\n+  const postingByProviderId = new Map();\n+  const sourceTransactions = report && report.transactions || [];\n+  const provenPostingTransitions = new Set((report && report.identityEvidence || []).filter(row => {\n+    const members = sourceTransactions.filter(tx => String(tx?.providerTransactionId) === String(row?.providerTransactionId));\n+    return row?.transition === 'pending-to-posted' && row.postedCount === 1 && row.pendingCount > 0\n+      && row.ghostPending === false && row.doubleCounted === false && members.length > 0\n+      && members.every(tx => tx.providerAccountId === members[0].providerAccountId && tx.currency === 'cad');\n+  }).map(row => String(row.providerTransactionId)));\n+  for (const tx of sourceTransactions) if (tx?.providerTransactionId != null) {\n+    const id = String(tx.providerTransactionId), evidence = ['posted', 'pending'].includes(tx.savingsPostingEvidence)\n+      ? tx.savingsPostingEvidence : 'unknown', prior = postingByProviderId.get(id);\n+    postingByProviderId.set(id, evidence === 'unknown' || prior === 'unknown' ? 'unknown'\n+      : prior == null || prior === evidence ? evidence : provenPostingTransitions.has(id) ? 'transition' : 'unknown');\n+  }\n   // Only canonical Savings account identity and fixed reasons may cross this\n   // boundary. A discarded provider row is not evidence of no movement.\n   const savingsMovementUnconfirmed = [];\n@@ -4280,6 +4298,10 @@ function sanitizedCurrentPeriodActuals(report, opts) {\n   const movementEvidenceRole = mapping => ['revolving-credit', 'heloc'].includes(atlasAccountRole(mapping));\n   // Collapse omits undated rows; keep card and HELOC evidence unknown.\n   for (const tx of report && report.transactions || []) {\n+    if (tx && tx.savingsPostingEvidence === 'unknown') {\n+      markSavingsUnconfirmed(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null,\n+        'transaction-posting-status-unconfirmed');\n+    }\n     if (tx && (!tx.date || lunchMoneyDebitAmount(tx.amount) == null)) {\n       markSavingsUnconfirmed(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null,\n         'transaction-amount-or-date-unconfirmed');\n@@ -4378,6 +4400,9 @@ function sanitizedCurrentPeriodActuals(report, opts) {\n       currency: tx.currency || null,\n       coverageCurrencyConflict: tx.coverageCurrencyConflict === true,\n       pending: tx.pending === true,\n+      savingsPostingEvidence: postingByProviderId.get(String(tx.providerTransactionId)) === 'transition'\n+        ? tx.pending === false && tx.savingsPostingEvidence === 'posted' ? 'posted' : 'unknown'\n+        : postingByProviderId.get(String(tx.providerTransactionId)) || 'unknown',\n       currency: tx.currency || null,\n       pendingTreatment: treatment.treatment,\n       categoryLabel: tx.categoryLabel || null,",
+  "sameIdBase": "6a5193bcc26403df688f9f50a87b642a020f706c",
+  "productionSince6a": [
+    "scripts/provider-observe.js"
+  ],
+  "productionFunctionSince6a": "sanitizedCurrentPeriodActuals",
+  "productionOutsideSanitizerUnchanged": true,
+  "approvedCandidateBytesExact": true,
+  "currentAssertions": [
+    {
+      "file": "test/test-annual-savings-payperiod.js",
+      "base": "6a5193bcc26403df688f9f50a87b642a020f706c",
+      "originalAssertionLines": 86,
+      "preserved": 86,
+      "removed": 0
+    },
+    {
+      "file": "test/test-budget-period-funding.js",
+      "base": "6a5193bcc26403df688f9f50a87b642a020f706c",
+      "originalAssertionLines": 89,
+      "preserved": 89,
+      "removed": 0
+    },
+    {
+      "file": "test/test-savings-latest-known-allocation.js",
+      "base": "6a5193bcc26403df688f9f50a87b642a020f706c",
+      "originalAssertionLines": 106,
+      "preserved": 106,
+      "removed": 0
+    },
+    {
+      "file": "test/test-savings-observer-contract.js",
+      "base": "6a5193bcc26403df688f9f50a87b642a020f706c",
+      "originalAssertionLines": 88,
+      "preserved": 88,
+      "removed": 0
+    },
+    {
+      "file": "test/fixtures/minimum-category-conservation.js",
+      "base": "6a5193bcc26403df688f9f50a87b642a020f706c",
+      "originalAssertionLines": 10,
+      "preserved": 10,
+      "removed": 0
+    },
+    {
+      "file": "test/test-private-period-history-completeness.js",
+      "base": "6a5193bcc26403df688f9f50a87b642a020f706c",
+      "originalAssertionLines": 100,
+      "preserved": 100,
+      "removed": 0
+    }
+  ],
+  "retentionUnchanged": [
+    {
+      "file": "scripts/server-live-refresh.js",
+      "previousBlob": "b29faeb04eb859b5ef81a5d64356d79f3ac8a2fd",
+      "headBlob": "b29faeb04eb859b5ef81a5d64356d79f3ac8a2fd"
+    },
+    {
+      "file": "scripts/live-plan.js",
+      "previousBlob": "3da2f2a01e1bc49c6df7d09de7c2c297b9d80210",
+      "headBlob": "3da2f2a01e1bc49c6df7d09de7c2c297b9d80210"
+    },
+    {
+      "file": "server.js",
+      "previousBlob": "84c90ca01b8e250b51c35e75c8042580b2e6d36d",
+      "headBlob": "84c90ca01b8e250b51c35e75c8042580b2e6d36d"
+    }
+  ],
+  "supersededIntermediate": "61d5261df63c47f4599d5b513421bdd9ec6adfbf",
+  "fetchProvenanceEnumerable": true,
+  "productionHistoryOrContentKeyChanges": 0,
+  "historyTestChange": "exact new leaf and exact pre-existing window fields; isolated publication/provenance conflicts; only new leaf removed from cloned legacy projection before frozen dedup; prior financial/chain/hash comparisons preserved",
+  "windowsHistory": {
+    "outcome": "UNQUALIFIED",
+    "lastLocalSource": "604492c76bb96dde87e31d06239ff3fcf8633127",
+    "lastOutcome": "FAIL",
+    "reason": "history-io-failed at incumbent engine-conflict append assertion before new compatibility assertions; not rerun or promoted to the current source; Windows directory durability remains unqualified"
+  },
+  "linuxHistory": {
+    "outcome": "PENDING",
+    "required": "actual append suite and complete hosted Linux CI must pass before release"
+  }
+}
