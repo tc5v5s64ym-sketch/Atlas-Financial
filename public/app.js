@@ -391,9 +391,8 @@ const App = (() => {
     // element's prior inert / aria-hidden state is captured here and
     // restored exactly by restoreShell(), which runs on the
     // successful resolution (the notice's only removal path).
-    // Failure and cancel keep the overlay, and with it the inert
-    // shell, until a retry succeeds or the page navigates away (the
-    // 401 path). Applied once here; load() never re-applies.
+    // Failure and cancel keep the inert shell until a retry succeeds.
+    // A later Manual Refresh captures the restored shell again.
     // On index.html the same isolation is baked into the static
     // markup for the pre-script interval (inert + aria-hidden +
     // data-boot-inert on the header and each .wrap child). A
@@ -404,7 +403,8 @@ const App = (() => {
     // consumed here and never restored.
     const shellState = [];
     let restoreShell = () => {};
-    {
+    function isolateShell() {
+      if (shellState.length) return;
       const shell = [];
       const covered = new Set();
       const cover = el => { if (el && !covered.has(el)) { covered.add(el); shell.push(el); } };
@@ -462,6 +462,7 @@ const App = (() => {
         }
       };
     }
+    isolateShell();
     // Branded boot treatment: the brand mark — the same four-block
     // SVG as index.html's static layer, filled by the shared
     // .boot-mark-* classes in styles.css and animated there — over
@@ -487,14 +488,37 @@ const App = (() => {
       return treatment;
     };
     let loading = false;
-    function load() {
+    const refresh = document.createElement('button');
+    refresh.type = 'button';
+    refresh.textContent = 'Manual Refresh';
+    refresh.setAttribute('data-manual-refresh', '');
+    const checkStatus = document.createElement('span');
+    checkStatus.className = 'muted';
+    checkStatus.setAttribute('data-observation-check', '');
+    checkStatus.setAttribute('role', 'status');
+    const controls = document.createElement('div');
+    controls.className = 'observation-controls';
+    controls.append(checkStatus, refresh);
+    const checkMount = document.querySelector('.site-head-inner') || document.querySelector('.site-head') || $('asof')?.parentNode;
+    if (checkMount) {
+      checkMount.classList?.add('has-observation-controls');
+      checkMount.append(controls);
+    }
+    refresh.addEventListener('click', () => load(true));
+    function load(forceRefresh = false) {
       if (loading) return;
       loading = true;
+      if (wrap && !notice.isConnected) wrap.prepend(notice);
+      isolateShell();
+      refresh.disabled = true;
       const controller = new AbortController();
+      let check = null;
       let cancelled = false;
       const timer = setTimeout(() => controller.abort(), 180000);
       notice.className = 'note-box is-loading';
-      notice.textContent = 'Loading current data... This can take a couple of minutes. ';
+      notice.textContent = forceRefresh
+        ? 'Checking Lunch Money... This can take a couple of minutes. '
+        : 'Loading current data... This can take a couple of minutes. ';
       const cancel = document.createElement('button');
       cancel.type = 'button';
       cancel.textContent = 'Cancel';
@@ -504,10 +528,13 @@ const App = (() => {
       // textContent reset above wipes the notice's children; success
       // removes it with the notice.
       notice.append(buildBootTreatment());
-      const wants = [fetch('/data.json', { credentials: 'same-origin', signal: controller.signal })
+      const wants = [fetch(forceRefresh ? '/data.json?refresh=force' : '/data.json', { credentials: 'same-origin', signal: controller.signal })
         .then(r => {
           if (r.status === 401) { location.href = '/login'; throw new Error('auth'); }
           if (!r.ok) throw new Error('data unavailable');
+          check = { source: r.headers?.get('X-Atlas-Observation-Source'),
+            qualified: r.headers?.get('X-Atlas-Observation-Qualified') === 'true',
+            checkedAt: r.headers?.get('X-Atlas-Observation-Checked-At') };
           return r.json();
         })];
       wants.push(opts.periods
@@ -522,6 +549,9 @@ const App = (() => {
         : Promise.resolve(null));
       Promise.all(wants).then(([d, p, h]) => {
         if (controller.signal.aborted) throw new Error('load cancelled');
+        // Existing once-wired views capture their initial inputs. A successful
+        // forced check rebuilds every view; the next boot replays its evidence.
+        if (forceRefresh) { location.reload(); return; }
         DATA = d; PERIODS = p || null; HISTORY = h || null;
         const asof = $('asof');
         if (asof) {
@@ -529,6 +559,12 @@ const App = (() => {
         }
         for (const fn of onceHooks) fn(DATA, PERIODS, HISTORY);
         rerender();
+        if (check?.qualified && check.checkedAt && Number.isFinite(Date.parse(check.checkedAt))) {
+          const checked = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Vancouver',
+            dateStyle: 'medium', timeStyle: 'short' }).format(new Date(check.checkedAt));
+          checkStatus.textContent = (check.source === 'memory' ? 'Using last successful check: ' : 'Provider checked: ') + checked + ' PT';
+        } else checkStatus.textContent = 'Provider check unavailable';
+        refresh.disabled = false;
         restoreShell();
         notice.remove();
       }).catch(err => {
@@ -537,7 +573,10 @@ const App = (() => {
         notice.className = 'note-box crit';
         notice.textContent = cancelled
           ? 'Loading cancelled. Figures remain unavailable. '
-          : 'Current data could not be loaded. Figures remain unavailable. ';
+          : forceRefresh ? 'Provider refresh failed. Figures remain unavailable. '
+            : 'Current data could not be loaded. Figures remain unavailable. ';
+        checkStatus.textContent = cancelled ? 'Provider refresh cancelled'
+          : forceRefresh ? 'Provider refresh failed' : 'Provider check unavailable';
         // The textContent reset wiped the loading copy of the
         // treatment; the terminated surface keeps the same branding
         // as a fresh, static copy — the mark's animation is keyed to
@@ -548,9 +587,9 @@ const App = (() => {
         const retry = document.createElement('button');
         retry.type = 'button';
         retry.textContent = 'Retry';
-        retry.addEventListener('click', load);
+        retry.addEventListener('click', () => load(forceRefresh));
         notice.append(retry);
-      }).finally(() => { loading = false; clearTimeout(timer); });
+      }).finally(() => { loading = false; refresh.disabled = false; clearTimeout(timer); });
     }
     load();
   }

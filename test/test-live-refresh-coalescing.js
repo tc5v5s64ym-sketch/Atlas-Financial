@@ -378,27 +378,27 @@ if (!threads.isMainThread && process.env.ATLAS_COALESCING_TEST_WORKER_MODE) {
       fs.writeFileSync(mapFile, JSON.stringify(map));
       const fileEnv = { ...env, ATLAS_LIVE_OVERLAY_MAP: mapFile }; delete fileEnv.ATLAS_PROVIDER_ACCOUNT_MAP_JSON;
       mock.hold(); const fileBefore = workers.length, fileCalls = countMe(mock);
-      const oldMap = Refresh.serve(canonical, fileEnv);
+      const oldMap = rejection(Refresh.serve(canonical, fileEnv), 'live-refresh-invalidated');
       await until(() => countMe(mock) === fileCalls + 1, 'original file mapping');
       fs.writeFileSync(mapFile, JSON.stringify({ ...map, owns: 'New synthetic revision with unchanged identities' }));
       const newMap = Refresh.serve(canonical, fileEnv);
       await until(() => countMe(mock) === fileCalls + 2, 'changed file mapping');
       check(workers.length - fileBefore, 2, 'file-backed mapping revision cannot join old work');
-      mock.release(); await Promise.all([oldMap, newMap]); await drain();
+      mock.release(); await oldMap; check(await newMap, expected, 'only current file context can publish'); await drain();
 
       // Same pinned evidence time, distinct current Pacific evaluation days.
       const originalNow = Date.now;
       try {
         mock.hold(); const midnightBefore = workers.length, midnightCalls = countMe(mock);
         Date.now = () => Date.parse('2026-10-14T06:59:59.999Z');
-        const yesterday = Refresh.serve(canonical, env);
+        const yesterday = rejection(Refresh.serve(canonical, env), 'live-refresh-invalidated');
         Date.now = () => Date.parse('2026-10-14T07:00:00.000Z');
         const today = Refresh.serve(canonical, env);
-        Date.now = originalNow;
         await until(() => countMe(mock) === midnightCalls + 2, 'Pacific midnight isolation');
         check(workers.length - midnightBefore, 2, 'Pacific midnight starts a separate worker');
         mock.release();
-        for (const result of await Promise.all([yesterday, today])) check(result, expected, 'clock context never rewrites original evidence dates');
+        await yesterday;
+        check(await today, expected, 'current clock context never rewrites original evidence dates');
         await drain();
       } finally { Date.now = originalNow; }
 

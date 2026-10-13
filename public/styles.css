@@ -125,6 +125,16 @@ button, input, select { font-family:inherit; }
   }
 }
 .site-head-inner { max-width:1080px; margin:0 auto; padding:10px 16px 0; }
+.has-observation-controls { flex-wrap:wrap; }
+.observation-controls { display:flex; align-items:center; justify-content:flex-end; gap:8px;
+  flex-wrap:wrap; min-width:0; max-width:100%; font-size:12px; }
+.observation-controls [data-observation-check] { min-width:0; max-width:100%; overflow-wrap:anywhere; }
+.observation-controls button { flex-shrink:0; font:inherit; padding:5px 10px; border:1px solid var(--border);
+  border-radius:var(--radius-sm); color:var(--text-primary); background:var(--surface-1); cursor:pointer; }
+.observation-controls button:disabled { cursor:wait; }
+@media (max-width:640px) {
+  .observation-controls { grid-column:1 / -1; flex-basis:100%; justify-content:flex-start; margin:6px 0; }
+}
 .site-head-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-height:36px; }
 .brand { font-weight:650; font-size:.98rem; letter-spacing:-0.01em; color:var(--text-primary); }
 .spacer { flex:1; }

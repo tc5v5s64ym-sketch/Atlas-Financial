@@ -315,14 +315,14 @@ function loadCanonicalData() {
   }
   return cachedData;
 }
-async function servedAtlasData(req, res) {
+async function servedAtlasData(req, res, options = {}) {
   const controller = new AbortController();
   const cancel = () => { if (!res || !res.writableEnded) controller.abort(); };
   req?.once('aborted', cancel);
   res?.once('close', cancel);
   if (req?.aborted || res?.destroyed) controller.abort();
   try {
-    return await ServerLiveRefresh.serve(loadCanonicalData(), process.env, { signal: controller.signal });
+    return await ServerLiveRefresh.serve(loadCanonicalData(), process.env, { ...options, signal: controller.signal });
   } finally {
     req?.removeListener('aborted', cancel);
     res?.removeListener('close', cancel);
@@ -416,12 +416,24 @@ app.use((req, res, next) => {
 
 // ---------------------------------------------------------------- data
 app.get('/data.json', async (req, res) => {
+  // Only this session-authenticated browser route may prefer process memory.
+  // Assistant/current, MCP and Talk retain the incumbent live-read preference.
+  if (req.query.refresh !== undefined && req.query.refresh !== 'force') {
+    return res.status(400).json({ error: 'invalid refresh option' });
+  }
   try {
     // Dated openings stay on disk. An explicit overlay (ATLAS_LIVE_OVERLAY=
     // fixture|live) may replace posted/pending for today's live plan only.
     // Production read-only Lunch Money uses live mode plus owner-supplied
     // secrets. Default without that flag remains the canonical file.
-    const served = await servedAtlasData(req, res);
+    const served = await servedAtlasData(req, res, {
+      preferObservation: true, forceRefresh: req.query.refresh === 'force',
+      onCheck(check) {
+        res.set('X-Atlas-Observation-Source', check.source);
+        res.set('X-Atlas-Observation-Qualified', check.qualified ? 'true' : 'false');
+        if (check.checkedAt) res.set('X-Atlas-Observation-Checked-At', check.checkedAt);
+      },
+    });
     if (!res.destroyed) res.json(served);
   } catch (err) {
     if (err.code !== 'live-refresh-cancelled') console.error('data.json could not be read:', err.code || 'data unavailable');
