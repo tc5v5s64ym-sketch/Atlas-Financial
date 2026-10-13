@@ -251,6 +251,28 @@ if (require.main === module) (async () => {
       if (mode !== 'optionalFailure') check(failed.liveOverlay.applied, false, mode + ': incomplete/invalid data does not advance cash');
       mock.mode('ok'); await Refresh.serve(canonical, env); await drain();
     }
+    // Source qualification and financial completeness are distinct. Missing a
+    // mapped card can leave cash applied but fail receipt qualification; a
+    // qualified source check can still withhold card-covered spending figures.
+    const missingCard = { ...Fixture.payload(), tags: [] };
+    missingCard.accounts = missingCard.accounts.filter(row => row.id !== 2001);
+    mock.payload(missingCard); let incompleteCheck;
+    const incomplete = await Refresh.serve(canonical, env, {
+      onCheck(value) { incompleteCheck = value; } }); await drain();
+    check(incompleteCheck, { source: 'provider', qualified: false, checkedAt: CLOCK }, 'dated provider response is not a qualified source check');
+    check(incomplete.liveOverlay.applied, true, 'unqualified receipt does not invent a failed cash overlay');
+    check(incomplete.refreshTrust.displayState, 'attention-needed', 'incumbent financial attention state retained');
+    await reject(Refresh.serve(canonical, env, { forceRefresh: true }), 'live-refresh-unavailable'); await drain();
+    const incompleteCount = mock.calls.length;
+    await Refresh.serve(canonical, env, { preferObservation: true }); await drain();
+    check(mock.calls.length - incompleteCount, 7, 'unqualified source response never enters completed memory');
+    mock.payload({ ...Fixture.payload(), tags: [] });
+    const uncovered = structuredClone(canonical); delete uncovered.plan.cardPurchaseCoverage; let coveredCheck;
+    const limited = await Refresh.serve(uncovered, env, { onCheck(value) { coveredCheck = value; } }); await drain();
+    check(coveredCheck, { source: 'provider', qualified: true, checkedAt: CLOCK }, 'source check can qualify while financial coverage is limited');
+    check(limited.refreshTrust.exactFiguresAvailable, false, 'card coverage still withholds exact financial figures');
+    check(limited.refreshTrust.coverageLimits.some(row => row.id === 'card-purchase-coverage-unconfirmed'), true, 'incumbent card coverage reason retained');
+    await Refresh.serve(canonical, env); await drain();
     for (const change of [
       { LUNCHMONEY_ACCESS_TOKEN: 'SYNTHETIC-DIFFERENT-TOKEN' }, { SITE_PASSWORD: OTHER_PASS },
       { RENDER_GIT_COMMIT: 'synthetic-new-runtime' }, { ATLAS_PROVIDER_ACCOUNT_MAP_JSON: JSON.stringify({ ...Fixture.map, scope: 'live', revision: 'new' }) },

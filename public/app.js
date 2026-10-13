@@ -69,6 +69,28 @@ function formatSiteAsOfChip(data, periods) {
   return text;
 }
 
+// Response metadata describes the source check, not financial completeness.
+// Render coverage from the incumbent refresh-trust publication independently;
+// never turn a fetched timestamp or a qualified check into a financial verdict.
+function formatObservationCheck(check, trust) {
+  let source = 'Provider check details unavailable.';
+  if (['provider', 'memory'].includes(check?.source) && check.checkedAt
+      && Number.isFinite(Date.parse(check.checkedAt))) {
+    const checked = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Vancouver',
+      dateStyle: 'medium', timeStyle: 'short' }).format(new Date(check.checkedAt)) + ' PT';
+    source = check.qualified
+      ? (check.source === 'memory' ? 'Using last successful check: ' : 'Provider checked: ') + checked + '.'
+      : 'Provider observation received: ' + checked + '. Source check not fully qualified.';
+  }
+  const labels = { current: 'Financial coverage: current.', 'partially-current': 'Financial coverage: partial.',
+    'attention-needed': 'Financial coverage: needs attention.' };
+  const coverage = trust?.exactFiguresAvailable === false
+    ? 'Some financial figures unavailable.'
+    : Object.hasOwn(labels, trust?.displayState) ? labels[trust.displayState]
+      : 'Financial coverage details unavailable.';
+  return source + ' ' + coverage;
+}
+
 /* ------------------------------------------------------------------ tooltip */
 const tip = $('tip');
 function showTip(e, html) {
@@ -559,11 +581,7 @@ const App = (() => {
         }
         for (const fn of onceHooks) fn(DATA, PERIODS, HISTORY);
         rerender();
-        if (check?.qualified && check.checkedAt && Number.isFinite(Date.parse(check.checkedAt))) {
-          const checked = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Vancouver',
-            dateStyle: 'medium', timeStyle: 'short' }).format(new Date(check.checkedAt));
-          checkStatus.textContent = (check.source === 'memory' ? 'Using last successful check: ' : 'Provider checked: ') + checked + ' PT';
-        } else checkStatus.textContent = 'Provider check unavailable';
+        checkStatus.textContent = formatObservationCheck(check, d.refreshTrust);
         refresh.disabled = false;
         restoreShell();
         notice.remove();
