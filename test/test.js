@@ -43,6 +43,7 @@ const CiOutput = require('../scripts/ci-output');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['shared read-only transaction review presentation and privacy boundary', 'test-transaction-review.js'],
   ['public CI output and synthetic privacy canaries', 'test-ci-output.js'],
   ['serial runner, complete CI partition and aggregation contracts', 'test-ci-split.js'],
   ['annual savings expense excluded from payday Bills with one conserved draw', 'test-annual-savings-payperiod.js'],

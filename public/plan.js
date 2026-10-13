@@ -5510,6 +5510,7 @@ function budgetDetailSheetController(mount) {
   };
   const present = item => {
     title.textContent = item.label;
+    dialog.classList.toggle('transaction-review-sheet', item.source.hasAttribute('data-transaction-review'));
     dialog.classList.toggle('budget-surface-today', item.today);
     dialog.classList.toggle('budget-surface-period', !item.today);
     item.source.hidden = false;
@@ -5528,6 +5529,7 @@ function budgetDetailSheetController(mount) {
     items.reverse().forEach(release);
     backButton.hidden = true;
     dialog.close();
+    dialog.classList.remove('transaction-review-sheet');
     document.body.classList.remove('budget-detail-open');
     const returnTo = openerFor(root) || root.trigger;
     if (restoreFocus && !focus(returnTo) && !focus(root.trigger)) {
@@ -5925,6 +5927,13 @@ function wirePlanLookPicker(mount, ctx) {
     }
   };
   const sheet = budgetDetailSheetController(mount);
+  if (typeof TransactionReview !== 'undefined') {
+    const selected = payPeriodSelection(ctx.advice || {}, ctx.planPayPeriodId).period;
+    TransactionReview.wire(mount, sheet, {
+      current: budgetGranularity === 'pay-period' && selected?.timelineRole === 'current',
+      publication: selected?.operatingPlanUnavailable ? null : ctx.advice?.currentPeriodAction?.outgoingETransfers,
+    });
+  }
   wireBudgetWindow(mount, ctx, sheet);
   wireBudgetBrowse(mount, ctx, sheet);
   wireBudgetFunding(mount, sheet);
