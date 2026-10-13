@@ -9977,6 +9977,16 @@
       used.add(tx.coverageRef);
     }
     const paymentIds = new Set(), accepted = new Map();
+    const postedPurchase = ref => {
+      const tx = byRef.get(ref);
+      // Current rows require explicit posted status. The producer's optional
+      // raw posting fact is emitted for every account, not only Savings.
+      // Older explicit-posted rows and confirmed opening carry retain their
+      // existing qualification without requiring that later provenance leaf.
+      return tx ? tx.pending === false
+        && (!Object.prototype.hasOwnProperty.call(tx, 'savingsPostingEvidence') || tx.savingsPostingEvidence === 'posted')
+        : purchases.get(ref)?.audit.some(row => row.kind === 'confirmed-opening') === true;
+    };
     for (const record of Array.isArray(records) ? records : []) {
       const credit = record && checkedRow(record.creditRef, -1);
       const debit = record && checkedRow(record.debitRef, 1, 'chequing-a');
@@ -9992,7 +10002,7 @@
         && (!other || ['prior-debt', 'required-payment', 'other'].includes(record.otherPurpose));
       for (const part of parts) {
         const row = purchases.get(part && part.purchaseRef), cents = part && savingsCents(part.amount);
-        if (!row || row.accountId !== account || cents == null || cents <= 0
+        if (!row || !postedPurchase(part.purchaseRef) || row.accountId !== account || cents == null || cents <= 0
           || split.has(part.purchaseRef) || row.date > credit?.date
           || savingsCents(row.covered) + cents > savingsCents(row.amount)) valid = false;
         else split.set(part.purchaseRef, cents);
