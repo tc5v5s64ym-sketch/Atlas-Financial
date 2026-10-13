@@ -153,7 +153,7 @@ function input(mode) {
       result.bars.forEach((bar, i) => assert.ok(bar.classes.includes(bands[i]), mode + ': existing painter band'));
       assert.equal(result.noOverflow, true);
       assert.equal(hash(result.source), inputHash, 'App input is unchanged');
-      const filename = mode + '-' + width + '-' + theme + '.png';
+      const filename = mode.replace(/:/g, '-') + '-' + width + '-' + theme + '.png';
       await page.locator('[data-budget-savings-goals]').screenshot({ path: path.join(output, filename), animations: 'disabled' });
       const summary = page.locator('[data-operating-question="savings"] > details > summary');
       await summary.focus(); await page.keyboard.press('Enter');
