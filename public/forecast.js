@@ -5536,7 +5536,163 @@
         transfers: 0, cardPayments: 0, income: 0, business: 0, external: 0,
         bills: 0, refunds: 0, interest: 0,
       },
+      // Fail-closed default for the outgoing e-transfer review publication:
+      // no collector ran, so there is no list and no count — never a zero
+      // that reads as "none found". currentPeriodAction stamps the
+      // coverage-derived state onto this shape before publishing.
+      outgoingETransfers: { status: 'unavailable-missing', coverage: null, count: null, items: null },
     };
+  }
+
+  // Outgoing e-transfer review population (Atlas decision, 2026-10-12).
+  // Additional visibility only: these helpers only read the packet row and
+  // the classification the incumbent sumCategoryActuals loop already
+  // computed. They never change a classification, a total, excluded.*,
+  // unclassified.*, or categoryRemainingClaim.
+  function outgoingETransferCardPaymentIdentity(tx) {
+    if (!tx) return false;
+    if (tx.cardPaymentIdentity === true) return true;
+    if (isCanadianTireMastercardPayment(tx)) return true;
+    const hint = normalizeCategoryLabel(tx.kindHint);
+    if (hint === 'payment' || hint === 'card-payment' || hint === 'bill-payment') return true;
+    const label = normalizeCategoryLabel(tx.categoryLabel);
+    return DEBT_PAYMENT_CATEGORY_LABELS.has(label)
+      || label === 'credit card payment' || label === 'cc payment';
+  }
+
+  // A confirmed named category (a plan budget category, an owner guilt-free
+  // label, or another closed named label set) excludes the row even when an
+  // early transfer return in classifyCurrentPeriodTransaction kept its kind
+  // transfer/unclassified: category resolution cannot be assumed from kind
+  // alone. The transfer labels themselves are the population's own labels
+  // and do not exclude.
+  function outgoingETransferNamedCategory(tx, plan) {
+    const label = normalizeCategoryLabel(tx && tx.categoryLabel);
+    if (!label || TRANSFER_CATEGORY_LABELS.has(label)) return false;
+    // Canonical `uncategorised` is the remainder bucket, not a trusted named
+    // category (the same rule categoryRemainingClaimFrom states): the plan
+    // carries it as a category, so without this guard every flagged row the
+    // owner has not categorised would be excluded by its own bucket and
+    // vanish from the review list.
+    if (label === 'uncategorised') return false;
+    if (lunchMoneyGuiltFreeCategoryOwner(label, plan)) return true;
+    if (EATING_OUT_LABELS.has(label) || BILL_CATEGORY_LABELS.has(label)
+      || REFUND_LABELS.has(label) || DEBT_PAYMENT_CATEGORY_LABELS.has(label)) return true;
+    const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
+    for (const row of excluded) {
+      if (normalizeCategoryLabel(row && (row.from || row.label)) === label) return true;
+    }
+    const cats = (plan && plan.budget && plan.budget.categories) || [];
+    for (const c of cats) {
+      if (!c) continue;
+      const aliases = [c.id, c.label].concat(c.from || []);
+      if (aliases.some(a => normalizeCategoryLabel(a) === label)) return true;
+    }
+    return false;
+  }
+
+  function outgoingETransferEligible(tx, cls, plan, classifyOpts) {
+    if (!tx || tx.outgoingETransferIdentity !== true) return false;
+    if (tx.accountRole !== 'household-cash') return false;
+    const amt = Number(tx.amount);
+    if (!isFinite(amt) || !(amt > 0)) return false;
+    // Population: transfer- and unclassified-classified rows, plus rows the
+    // classifier could only place in the canonical `uncategorised` remainder
+    // bucket (kind 'spend' there is a bucket assignment, not a confirmed
+    // category — a flagged row must stay visible regardless of that state).
+    // Named-category spend is admitted never; the direct checks below and
+    // the named-category guard still exclude every resolved row.
+    if (!cls || (cls.kind !== 'transfer' && cls.kind !== 'unclassified'
+      && !(cls.kind === 'spend'
+        && (cls.categoryId || 'uncategorised') === 'uncategorised'))) return false;
+    // Direct row/packet checks, not kind alone: classify returns transfer
+    // before ever evaluating the represented-bill and pending-card-paid-bill
+    // rules, and a card payment can arrive classified as transfer.
+    if (provenInternalMovementForTx(tx, classifyOpts)) return false;
+    if (outgoingETransferCardPaymentIdentity(tx)) return false;
+    if (txMatchesRepresentedBill(tx, classifyOpts)) return false;
+    if (tx.pending === true && tx.pendingMatchingCardPaidBill === true) return false;
+    if (outgoingETransferNamedCategory(tx, plan)) return false;
+    return true;
+  }
+
+  // Coverage state for the outgoing e-transfer publication. Stricter than
+  // actualsCoverageState's legacy defaults: an all-clear requires an
+  // explicit observation date, period-covering date bounds, and explicit
+  // complete transaction + pending evidence. A missing transactionCoverage
+  // field reads 'complete' in the incumbent state and must not manufacture
+  // completeness here; the same holds for bounds the incumbent treats as
+  // passing when absent. Partial counts stay labelled by the state itself:
+  // they are observed subsets, never a complete queue.
+  function outgoingETransfersPublication(collectedItems, coverage, opts, asOf, periodStart) {
+    const packet = currentPeriodActualsPacket(opts);
+    const cov = coverage ? {
+      status: coverage.status || null,
+      reason: coverage.reason || null,
+      observationAsOf: coverage.observationAsOf || null,
+      coverageStart: coverage.coverageStart || null,
+      coverageThrough: coverage.coverageThrough || null,
+      pendingStatus: coverage.pendingStatus || null,
+    } : null;
+    const fail = status => ({ status, coverage: cov, count: null, items: null });
+    if (!packet || !Array.isArray(packet.transactions)) return fail('unavailable-missing');
+    if (!coverage || coverage.status === 'absent') return fail('unavailable-missing');
+    if (!cov.coverageThrough || (asOf && cov.coverageThrough < asOf)) return fail('unavailable-stale');
+    const txCov = packet.transactionCoverage;
+    const txComplete = txCov === 'complete'
+      || (txCov != null && typeof txCov === 'object' && txCov.complete === true
+        && txCov.truncated !== true && txCov.hasMore !== true);
+    const pendCov = packet.pendingCoverage;
+    const pendComplete = pendCov === 'complete'
+      || (pendCov != null && typeof pendCov === 'object' && pendCov.complete === true
+        && pendCov.status !== 'insufficient');
+    const explicitBounds = !!cov.observationAsOf && !!cov.coverageStart
+      && (!periodStart || cov.coverageStart <= periodStart) && txComplete;
+    // Provenance (Atlas repair, 2026-10-12): the coverage echo alone cannot
+    // carry an all-clear. The observation date must be a real calendar date
+    // that does not predate the coverage it claims and is not after the
+    // financial as-of; an old or invalidly-dated observation fails closed.
+    // The packet's own transaction window must also be present, complete,
+    // and actually span the period: coverage derived by falling back to the
+    // transactions' own min/max dates, or a window that starts after the
+    // period origin or ends before the as-of, is out-of-window evidence and
+    // must not produce an all-clear either.
+    const win = packet.transactionWindow;
+    const provenanceOk = savingsDate(cov.observationAsOf)
+      && savingsDate(cov.coverageStart) && savingsDate(cov.coverageThrough)
+      && cov.coverageThrough <= cov.observationAsOf
+      && (!asOf || cov.observationAsOf <= asOf)
+      && !!win && typeof win === 'object'
+      && savingsDate(win.startDate) && savingsDate(win.endDate)
+      && win.complete === true && win.truncated !== true && win.hasMore !== true
+      && (!periodStart || win.startDate <= periodStart)
+      && (!asOf || win.endDate >= asOf)
+      && cov.coverageStart >= win.startDate && cov.coverageThrough <= win.endDate;
+    const items = Array.isArray(collectedItems) ? collectedItems : null;
+    // P1 4253396900: the packet's sanitized dates-only evidence of an
+    // outgoing e-transfer candidate whose amount could not be qualified
+    // (dropped upstream before identity detection). A candidate dated
+    // inside this period withholds the all-clear: the publication falls
+    // through to available-incomplete with the observed items. Entries
+    // dated outside the period do not degrade this period's state.
+    const unconfirmed = Array.isArray(packet.outgoingETransferUnconfirmed)
+      ? packet.outgoingETransferUnconfirmed : [];
+    const unconfirmedInPeriod = unconfirmed.some(entry => entry
+      && typeof entry.date === 'string'
+      && (!periodStart || entry.date >= periodStart)
+      && (!asOf || entry.date <= asOf));
+    if (coverage.status === 'current' && coverage.remainingClaim === 'precise'
+      && explicitBounds && provenanceOk && pendComplete && !unconfirmedInPeriod) {
+      return { status: 'available-complete', coverage: cov, count: items ? items.length : 0, items: items || [] };
+    }
+    if (coverage.status === 'current' && coverage.remainingClaim === 'posted-only'
+      && explicitBounds && provenanceOk && !unconfirmedInPeriod) {
+      // posted-only is produced only when pending coverage is the sole
+      // failing check, so the observed items are a truthful subset whose
+      // only known gap is pending evidence.
+      return { status: 'available-posted-only', coverage: cov, count: items ? items.length : null, items };
+    }
+    return { status: 'available-incomplete', coverage: cov, count: items ? items.length : null, items };
   }
 
   // Confidence only. Category amount accounting still uses `byId`.
@@ -5565,6 +5721,7 @@
     if (!packet || !Array.isArray(packet.transactions)) return out;
     const classifyOpts = Object.assign({}, opts || {}, { packet, currentPeriodActuals: packet });
     const duplicateIds = pendingPostedDuplicateIdSet(packet);
+    const etransferItems = [];
     const datedOtherTarget = otherSpendPayPeriodTarget(plan, periodStart);
     const add = (row, state, amt) => {
       if (state === 'pending') row.pending = roundCent(row.pending + amt);
@@ -5584,6 +5741,18 @@
       }
       const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
       const state = transactionPendingState(tx);
+      // Additional visibility only: collect the outgoing e-transfer review
+      // population before the kind branches below continue past these rows.
+      // Nothing here feeds back into any total or classification.
+      if (outgoingETransferEligible(tx, cls, plan, classifyOpts)) {
+        etransferItems.push({
+          id: tx.id != null ? tx.id : null,
+          date: tx.date,
+          amount: roundCent(amt),
+          pending: state === 'pending',
+          account: tx.atlasAccountId || tx.account || null,
+        });
+      }
       if (cls.kind === 'transfer' || cls.kind === 'internal-movement') {
         out.excluded.transfers = roundCent(out.excluded.transfers + amt); continue;
       }
@@ -5633,6 +5802,13 @@
         add(out.unclassified, state, amt);
       }
     }
+    // Provisional collector output: never an all-clear on its own.
+    // currentPeriodAction re-stamps the coverage-derived state before
+    // publishing; other sumCategoryActuals consumers do not read this field.
+    out.outgoingETransfers = {
+      status: 'available-incomplete', coverage: null,
+      count: etransferItems.length, items: etransferItems,
+    };
     return out;
   }
 
@@ -11252,6 +11428,8 @@
       ...(alloc.cardPurchaseCoverage?.status === 'unavailable'
         ? { unavailable: true, reason: alloc.cardPurchaseCoverage.reason } : {}),
       internalMovements: householdInternalMovements(plan, opts),
+      outgoingETransfers: outgoingETransfersPublication(
+        useActuals ? actuals.outgoingETransfers.items : null, coverage, opts, asOf, origin),
     };
     if (income.status !== 'unavailable') return result;
     for (const row of result.thisPaydayDue.concat(result.thisPeriodGlance)) {

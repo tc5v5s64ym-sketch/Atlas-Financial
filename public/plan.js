@@ -6997,10 +6997,84 @@ function budgetBrowseAttentionHtml(period) {
   return items.length ? `<section class="budget-browse-card budget-browse-attention" data-budget-browse="attention" aria-labelledby="budget-attention-heading"><header><h2 id="budget-attention-heading">Worth a look</h2><span class="budget-browse-pill is-muted">${items.length} items</span></header><div>${items.join('')}</div></section>` : '';
 }
 
+// Outgoing e-transfer review list. Renders only what Forecast publishes on
+// currentPeriodAction.outgoingETransfers: the generic label, date, amount
+// and canonical account — never a descriptor, payee or purpose. The
+// coverage state is Forecast's; this formats it only and never invents a
+// count, a total, or an all-clear.
+function budgetOutgoingETransfersSectionHtml(pub) {
+  const status = pub && typeof pub.status === 'string' ? pub.status : 'unavailable-missing';
+  const coverage = (pub && pub.coverage) || {};
+  const items = status !== 'unavailable-stale' && status !== 'unavailable-missing'
+    && Array.isArray(pub && pub.items) ? pub.items : [];
+  const rows = items.map(item => {
+    const dateLabel = isValidIsoCalendarDate(item && item.date) ? fmtDate(item.date) : 'Date unavailable';
+    const amount = Number(item && item.amount);
+    return `<div class="budget-browse-row" data-etransfer-item>
+      <span>Outgoing e-transfer</span>
+      <span>${budgetBrowseEscape(dateLabel)}</span>
+      <span>${Number.isFinite(amount) ? money2(amount) : 'Unavailable'}</span>
+      <span>${budgetBrowseEscape((item && item.account) || 'Account unavailable')}</span>
+      ${item && item.pending ? '<span>Pending</span>' : ''}
+    </div>`;
+  }).join('');
+  let note = '';
+  if (status === 'available-complete') {
+    note = items.length
+      ? `<p class="budget-browse-note">${items.length} unresolved outgoing e-transfer${items.length === 1 ? '' : 's'} from household cash accounts ${items.length === 1 ? 'is' : 'are'} listed for review this period. Purpose not yet confirmed.</p>`
+      : '<p class="budget-browse-note">No unresolved outgoing e-transfers from household cash accounts are listed for review this period.</p>';
+  } else if (status === 'available-posted-only') {
+    note = `<p class="budget-browse-note">${items.length ? `Showing ${items.length} observed outgoing e-transfer${items.length === 1 ? '' : 's'}. ` : 'None observed yet. '}Pending coverage is incomplete, so additional outgoing e-transfers may exist.</p>`;
+  } else if (status === 'available-incomplete') {
+    note = `<p class="budget-browse-note">${items.length ? `Showing ${items.length} observed outgoing e-transfer${items.length === 1 ? '' : 's'} as an observed subset. ` : ''}Coverage is incomplete, so this list may be missing items.${coverage.reason ? ` ${budgetBrowseEscape(coverage.reason)}` : ''}</p>`;
+  } else if (status === 'unavailable-stale') {
+    note = `<p class="budget-browse-note">Transaction evidence is not current${coverage.coverageThrough && isValidIsoCalendarDate(coverage.coverageThrough) ? ` (through ${budgetBrowseEscape(fmtDate(coverage.coverageThrough))})` : ''}, so outgoing e-transfers can't be confirmed for this period.</p>`;
+  } else {
+    note = `<p class="budget-browse-note">Outgoing e-transfer evidence is unavailable, so outgoing e-transfers can't be confirmed for this period.</p>`;
+  }
+  return `<section class="budget-browse-card budget-browse-etransfers" data-budget-browse="e-transfers" data-etransfer-state="${budgetBrowseEscape(status)}" aria-labelledby="budget-etransfers-heading">
+    <header><div><p class="budget-browse-eyebrow">Current pay period</p><h2 id="budget-etransfers-heading">Outgoing e-transfers</h2>
+    <p class="budget-browse-sub">Purpose not yet confirmed</p></div></header>
+    ${rows}
+    ${note}
+  </section>`;
+}
+
+function budgetOutgoingETransfersHtml(period, ctx) {
+  // currentPeriodAction always describes the current period, while this
+  // renderer follows the selected period: gate on the current role so a
+  // past or future selection never shows the current list under its name.
+  if (!period || period.timelineRole !== 'current') return '';
+  const pub = ctx && ctx.advice && ctx.advice.currentPeriodAction
+    ? ctx.advice.currentPeriodAction.outgoingETransfers : null;
+  return budgetOutgoingETransfersSectionHtml(pub);
+}
+
+// Plan-unavailable path: BudgetSurface skips browseHtml there, so without
+// this contribution the section would vanish and read as "none found".
+// Notice only — no items are ever resurrected as current-period fact.
+// Same current-period gate as budgetOutgoingETransfersHtml: the publication
+// always describes the current period, so when the selected period is a
+// past or future one the notice must not render under that selection.
+// Pay-period view only: BudgetSurface renders the unavailable card under
+// either granularity, so the period gate alone would leak this notice
+// into the month view whenever a current-period selection is retained.
+function budgetOutgoingETransfersUnavailableHtml(ctx) {
+  if (budgetGranularity !== 'pay-period') return '';
+  const period = payPeriodSelection(ctx && ctx.advice || {}, ctx && ctx.planPayPeriodId).period;
+  if (!period || period.timelineRole !== 'current') return '';
+  const pub = ctx && ctx.advice && ctx.advice.currentPeriodAction
+    ? ctx.advice.currentPeriodAction.outgoingETransfers : null;
+  const status = pub && pub.status === 'unavailable-stale' ? 'unavailable-stale' : 'unavailable-missing';
+  return budgetOutgoingETransfersSectionHtml({
+    status, coverage: pub ? pub.coverage : null, count: null, items: null,
+  });
+}
+
 function budgetBrowseSectionsHtml(ctx) {
   const period = payPeriodSelection(ctx.advice || {}, ctx.planPayPeriodId).period;
   if (!period || period.operatingPlanUnavailable) return '';
-  return `${budgetBrowseAttentionHtml(period)}<div class="budget-browse-grid">${budgetSpendingSectionHtml(period, ctx)}${budgetBillsSectionHtml(period, ctx)}</div>`;
+  return `${budgetBrowseAttentionHtml(period)}<div class="budget-browse-grid">${budgetSpendingSectionHtml(period, ctx)}${budgetBillsSectionHtml(period, ctx)}</div>${budgetOutgoingETransfersHtml(period, ctx)}`;
 }
 
 // Approved v3 presentation. The incumbents are publishBudgetPeriodFunding
@@ -7277,7 +7351,7 @@ function billsAccountPeriodBalanceHtml(ctx) {
 function budgetSurfaceParts() {
   return {
     planUnavailable: ctx => liveOperatingPlanUnavailable(ctx.advice || {}, ctx.liveOverlay),
-    unavailableHtml: ctx => unavailableOperatingSurfaceHtml(ctx) + billsAccountPeriodBalanceHtml(ctx),
+    unavailableHtml: ctx => unavailableOperatingSurfaceHtml(ctx) + billsAccountPeriodBalanceHtml(ctx) + budgetOutgoingETransfersUnavailableHtml(ctx),
     granularity: () => budgetGranularity,
       granularityToggleHtml: () => budgetGranularityToggleHtml(),
       headerHtml: ctx => budgetWindowHeaderHtml(ctx),
