@@ -20,54 +20,69 @@ function createController({ store, evidence, sessions, now = Date.now }) {
   };
   function compose(source, state) {
     const data = clone(source);
-    if (!state.decisions.length) return { ...data, revision: state.revision };
+    const decisions = Store.effectiveDecisions(state);
+    if (!decisions.length) return { ...data, revision: state.revision };
     const policy = data.plan.cardPurchaseCoverage || { payments: [], refunds: [], reversals: [] };
-    policy.payments = [...(policy.payments || []), ...state.decisions.map(decision => ({ ...clone(decision.record),
+    policy.payments = [...(policy.payments || []), ...decisions.map(decision => ({ ...clone(decision.record),
       confirmed: Store.digest(selectedEvidence(data, decision.record)) === decision.evidenceDigest
         && qualified(source, state, decision.record).status === 'ready' }))];
     data.plan.cardPurchaseCoverage = policy;
     return { ...data, revision: state.revision };
   }
   async function input() { return compose(await evidence.read(), await store.snapshot()); }
-  function qualified(source, state, record) {
+  function qualified(source, state, record, replacedId = null) {
     // Evidence loss withholds publication, never retires the household's claim.
-    const retainedRecords = state.decisions.filter(d => d.record.id !== record.id).map(d => d.record);
+    const retainedRecords = Store.effectiveDecisions(state)
+      .filter(d => d.record.id !== record.id && d.record.id !== replacedId).map(d => d.record);
     return Forecast.validateCardPaymentDecision({ ...source, record, retainedRecords });
   }
-  return { input, async prepare({ session, selection }) {
+  return { input, async prepare({ session, selection, command = { version: 1, kind: 'append', targetId: null } }) {
     try {
       const actor = actorFor(session), state = await store.snapshot(), source = await evidence.read();
-      const record = clone(await evidence.resolve(selection, source));
-      record.id = Store.opaque('decision-'); record.confirmed = true; Store.recordValid(record);
-      const result = qualified(source, state, record);
+      if (state.schema !== Store.SCHEMA) return { status: 'unavailable' }; // Explicit migration only.
+      command = clone(command); Store.commandValid(command);
+      const target = Store.operationTarget(state, command);
+      if (command.kind !== 'append' && !target) return { status: 'unavailable' };
+      let record = null;
+      if (command.kind !== 'retract') {
+        record = clone(await evidence.resolve(selection, source));
+        record.id = Store.opaque('decision-'); record.confirmed = true; Store.recordValid(record);
+        if (target && (record.creditRef !== target.record.creditRef || record.debitRef !== target.record.debitRef)) return { status: 'unavailable' };
+        if (command.kind === 'append' && state.decisions.some(d => d.record.creditRef === record.creditRef)) return { status: 'unavailable' };
+      }
+      const result = record ? qualified(source, state, record, command.targetId) : { status: 'ready' };
       if (result.status !== 'ready') return { status: 'unavailable' };
       for (const [key, value] of previews) if (value.expiresAt <= now()) previews.delete(key);
       if (previews.size >= 200) return { status: 'unavailable' };
       const operationId = Store.opaque('operation-'), expiresAt = now() + TTL_MS;
-      previews.set(operationId, { actor, record, revision: state.revision, expiresAt,
-        digest: Store.digest(source), evidenceDigest: Store.digest(selectedEvidence(source, record)),
-        referenceDates: selectedEvidence(source, record).flatMap(part => part.rows.map(tx => tx.date)) });
+      previews.set(operationId, { actor, record, command, revision: state.revision, expiresAt,
+        digest: Store.digest(source), evidenceDigest: record && Store.digest(selectedEvidence(source, record)),
+        referenceDates: record && selectedEvidence(source, record).flatMap(part => part.rows.map(tx => tx.date)) });
       return { status: 'prepared', operationId, revision: state.revision, expiresAt,
-        allocation: result.allocation };
+        operation: { version: command.version, kind: command.kind }, ...(record ? { allocation: result.allocation } : {}) };
     } catch { return { status: 'unavailable' }; }
   }, async confirm({ session, operationId }) {
     try {
       const actor = actorFor(session);
       if (!Store.operationValid(operationId)) return { status: 'unavailable' };
       const receipt = await store.outcome({ actor, operationId });
-      if (receipt.status !== 'unknown') return receipt;
+      if (receipt.status !== 'unknown') { previews.delete(operationId); return receipt; }
       const preview = previews.get(operationId);
       if (!preview || preview.actor !== actor) return { status: 'unknown', operationId };
       if (inFlight.has(operationId)) return { status: 'unavailable', operationId };
-      inFlight.add(operationId); previews.delete(operationId); // Consume before any awaited validation/write.
+      inFlight.add(operationId); // Keep the exact preview after an uncertain/pre-commit failure.
       try {
         const source = await evidence.read(), state = await store.snapshot();
         const reason = preview.expiresAt <= now() ? 'preview-expired'
           : Store.digest(source) !== preview.digest ? 'evidence-changed'
-          : qualified(source, state, preview.record).status !== 'ready' ? 'validation-unavailable' : null;
-        return await store.commit({ actor, operationId, expectedRevision: preview.revision, reason,
-          decision: reason ? null : { record: preview.record, actor, recordedAt: new Date(now()).toISOString(),
+          : preview.command.kind !== 'append' && !Store.operationTarget(state, preview.command) ? 'target-changed'
+          : preview.record && qualified(source, state, preview.record, preview.command.targetId).status !== 'ready' ? 'validation-unavailable' : null;
+        preview.recordedAt ||= new Date(now()).toISOString();
+        const result = await store.commit({ actor, operationId, expectedRevision: preview.revision, reason, command: preview.command,
+          decision: reason || !preview.record ? null : { record: preview.record, actor, recordedAt: preview.recordedAt,
             evidenceDigest: preview.evidenceDigest, referenceDates: preview.referenceDates } });
+        if (['confirmed', 'rejected', 'conflict'].includes(result.status)) previews.delete(operationId);
+        return result;
       } finally { inFlight.delete(operationId); }
     } catch { return { status: 'unavailable', ...(Store.operationValid(operationId) ? { operationId } : {}) }; }
   }, async outcome({ session, operationId }) {
