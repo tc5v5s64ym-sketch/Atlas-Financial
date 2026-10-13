@@ -122,7 +122,7 @@ for(const evidence of ['observation','transaction'])test('pending '+evidence+' h
  const p=publish(i);
  assert.equal(p.stock.status,'ready');assert.equal(p.stock.amount,119);assert.equal(p.stock.evidenceTrust,'verified');
  assert.equal(p.stock.pendingState,'unresolved');assert.equal(p.backing.status,'unavailable');
- assert.deepEqual(p.backing.items.map(row=>row.saved),[60,24,35],'pending movement leaves reported earmarks intact');assert.equal(p.period.proposal,null);
+ assert.deepEqual(p.backing.items.map(row=>row.saved),[60],'the single invented 60-dollar requirement retains its reported earmark');assert.equal(p.period.proposal,null);
  assert.ok(p.lenses.every(lens=>!lens.ready&&lens.items.every(row=>row.contribution===null)));
  assert.equal(p.schedule.status,'unavailable');assert.equal(p.timeline.status,'unavailable');
  assert.equal(p.period.actualSaved,null);assert.equal(p.backing.actualTransferred,null);
