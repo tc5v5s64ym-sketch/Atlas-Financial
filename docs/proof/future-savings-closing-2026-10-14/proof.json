@@ -1,5 +1,5 @@
 {
-  "head": "ed73a3b2bb482fdd71ab44fa11ab9c6986f6ce37",
+  "head": "526a43e5e5a91808cee4142fe1ea5d26a2a10311",
   "synthetic": true,
   "cases": [
     {
@@ -8,6 +8,22 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $1,119.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $1,119.00.\n\nInvented first goal\n$1,119.00\nSaved\n/\n$1,500.00\nNeeded\n\n$1,000.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nSaved $1,500.00\nNeeded $1,500.00\nInvented second goal\nSaved $619.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $2,119.00.\n\nInvented first goal\n$1,500.00\nSaved\n/\n$1,500.00\nNeeded\n\n$381.00 this period\nInfo >\n\nInvented second goal\n$619.00\nSaved\n/\n$1,000.00\nNeeded\n\n$619.00 this period\nInfo >\n\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: $2,119.00.\n\nINVENTED FIRST GOAL\nSaved\n$1,500.00\nNeeded\n$1,500.00\nThis period\n$381.00\nINVENTED SECOND GOAL\nSaved\n$619.00\nNeeded\n$1,000.00\nThis period\n$619.00\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 2119,
+        "diagnostics": {
+          "signedSavings": 2119,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 2080,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -18,6 +34,22 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented shared group\nSaved $1,119.00\nNeeded $2,500.00\nSaving for\n\nSavings at period close: $1,119.00.\n\nInvented shared group\n$1,119.00\nSaved\n/\n$2,500.00\nNeeded\n\n$1,000.00 this period\nInfo >\n\nInvented first goal Dec 18$1,119.00 / $1,500.00Saved / needed$1,000.00This period\nInvented second goal Jan 4$0.00 / $1,000.00Saved / neededUnavailableThis period\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented shared group\nSaved $2,119.00\nNeeded $2,500.00\nSaving for\n\nSavings at period close: $2,119.00.\n\nInvented shared group\n$2,119.00\nSaved\n/\n$2,500.00\nNeeded\n\n$1,000.00 this period\nInfo >\n\nInvented first goal Dec 18$1,500.00 / $1,500.00Saved / needed$381.00This period\nInvented second goal Jan 4$619.00 / $1,000.00Saved / needed$619.00This period\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: $2,119.00.\n\nINVENTED SHARED GROUP\nSaved\n$2,119.00\nNeeded\n$2,500.00\nThis period\n$1,000.00\nInvented first goal 2026-12-18\nSaved\n$1,500.00\nNeeded\n$1,500.00\nThis period\n$381.00\nInvented second goal 2027-01-04\nSaved\n$619.00\nNeeded\n$1,000.00\nThis period\n$619.00\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 2119,
+        "diagnostics": {
+          "signedSavings": 2119,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 2080,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -28,6 +60,22 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented installment two\nSaved $60.00\nNeeded $60.00\nInvented later requirement\nSaved $979.00\nNeeded $3,000.00\nSaving for\n\nSavings at period close: $1,039.00.\n\nInvented installment two\n$60.00\nSaved\n/\n$60.00\nNeeded\n\n$21.00 this period\nInfo >\n\nInvented later requirement\n$979.00\nSaved\n/\n$3,000.00\nNeeded\n\n$979.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented later requirement\nSaved $1,979.00\nNeeded $3,000.00\nSaving for\n\nSavings at period close: $1,979.00.\n\nInvented later requirement\n$1,979.00\nSaved\n/\n$3,000.00\nNeeded\n\n$1,000.00 this period\nInfo >\n\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: $1,979.00.\n\nINVENTED LATER REQUIREMENT\nSaved\n$1,979.00\nNeeded\n$3,000.00\nThis period\n$1,000.00\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 1979,
+        "diagnostics": {
+          "signedSavings": 1979,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 2059,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -36,8 +84,24 @@
       "width": 1440,
       "mode": "gap",
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $500.00\nNeeded $600.00\nInvented third cost\nSaved $0.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $500.00.\n\nInvented second cost\n$500.00\nSaved\n/\n$600.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented third cost\n$0.00\nSaved\n/\n$400.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
-      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented third cost\nSaved $100.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $100.00.\n\nInvented third cost\n$100.00\nSaved\n/\n$400.00\nNeeded\n\n$100.00 this period\nInfo >\n\nAccounts & evidence",
-      "inventory": "One savings pot\n\nSavings at period close: $100.00.\n\nINVENTED THIRD COST\nSaved\n$100.00\nNeeded\n$400.00\nThis period\n$100.00\nAccounts & evidence\nInvented club pool: $800.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented third cost\nSaved $100.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $100.00.\n\nInvented third cost\n$100.00\nSaved\n/\n$400.00\nNeeded\n\n$200.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $100.00.\n\nINVENTED THIRD COST\nSaved\n$100.00\nNeeded\n$400.00\nThis period\n$200.00\nAccounts & evidence\nInvented club pool: $800.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 100,
+        "diagnostics": {
+          "signedSavings": 100,
+          "operatingResidual": 0,
+          "nativeOperatingCash": 100,
+          "trust": "estimated"
+        },
+        "operating": 0
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -45,9 +109,25 @@
     {
       "width": 1440,
       "mode": "zero",
-      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $500.00\nNeeded $600.00\nInvented third cost\nSaved $0.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $500.00.\n\nInvented second cost\n$500.00\nSaved\n/\n$600.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented third cost\n$0.00\nSaved\n/\n$400.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $600.00\nNeeded $600.00\nInvented third cost\nSaved $0.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $600.00.\n\nInvented second cost\n$600.00\nSaved\n/\n$600.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented third cost\n$0.00\nSaved\n/\n$400.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented third cost\nSaved $200.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $200.00.\n\nInvented third cost\n$200.00\nSaved\n/\n$400.00\nNeeded\n\n$200.00 this period\nInfo >\n\nAccounts & evidence",
-      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nINVENTED THIRD COST\nSaved\n$200.00\nNeeded\n$400.00\nThis period\n$200.00\nAccounts & evidence\nInvented club pool: $800.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nINVENTED THIRD COST\nSaved\n$200.00\nNeeded\n$400.00\nThis period\n$200.00\nAccounts & evidence\nInvented club pool: $900.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 200,
+        "diagnostics": {
+          "signedSavings": 200,
+          "operatingResidual": 100,
+          "nativeOperatingCash": 300,
+          "trust": "estimated"
+        },
+        "operating": 100
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -58,6 +138,22 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $80.00\nNeeded $80.00\nInvented second goal\nSaved $1,000.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $1,119.00.\n\nInvented first goal\n$80.00\nSaved\n/\n$80.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$1,000.00\nSaved\n/\n$1,000.00\nNeeded\n\n$961.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented second goal\nSaved $1,000.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $2,039.00.\n\nInvented second goal\n$1,000.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: $2,039.00.\n\nINVENTED SECOND GOAL\nSaved\n$1,000.00\nNeeded\n$1,000.00\nThis period\n$0.00\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 2039,
+        "diagnostics": {
+          "signedSavings": 2039,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 2080,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -68,6 +164,111 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nUnavailable\nNeeded $1,500.00\nInvented second goal\nUnavailable\nNeeded $1,000.00\nSaving for\n\nSavings at period close: Unavailable.\n\nInvented first goal\nUnavailable\nSaved\n/\n$1,500.00\nNeeded\n\nUnavailable\nthis period\nInfo >\n\nInvented second goal\nUnavailable\nSaved\n/\n$1,000.00\nNeeded\n\nUnavailable\nthis period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nUnavailable\nNeeded $1,500.00\nInvented second goal\nUnavailable\nNeeded $1,000.00\nSaving for\n\nSavings at period close: Unavailable.\n\nInvented first goal\nUnavailable\nSaved\n/\n$1,500.00\nNeeded\n\nUnavailable\nthis period\nInfo >\n\nInvented second goal\nUnavailable\nSaved\n/\n$1,000.00\nNeeded\n\nUnavailable\nthis period\nInfo >\n\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: Unknown.\n\nSavings movement provenance is unavailable in this legacy or missing observation packet. Bank backing and new contributions are withheld.\n\nINVENTED FIRST GOAL\nSaved\nUnknown\nNeeded\n$1,500.00\nThis period\nUnknown\nINVENTED SECOND GOAL\nSaved\nUnknown\nNeeded\n$1,000.00\nThis period\nUnknown\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "unknown",
+        "actualSaved": null,
+        "action": "not-granted",
+        "status": "unavailable",
+        "stock": null
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 1440,
+      "mode": "owner80",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $200.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $200.00.\n\nInvented second cost\n$200.00\nSaved\n/\n$400.00\nNeeded\n\n$400.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: $200.00.\n\nNo remaining Savings requirements.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nAccounts & evidence\nInvented club pool: $300.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 200,
+        "diagnostics": {
+          "signedSavings": 200,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 280,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 1440,
+      "mode": "owner1000",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $200.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $200.00.\n\nInvented second cost\n$200.00\nSaved\n/\n$400.00\nNeeded\n\n$400.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: $200.00.\n\nNo remaining Savings requirements.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nAccounts & evidence\nInvented club pool: $300.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 200,
+        "diagnostics": {
+          "signedSavings": 200,
+          "operatingResidual": 1000,
+          "nativeOperatingCash": 1200,
+          "trust": "estimated"
+        },
+        "operating": 1000
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 1440,
+      "mode": "owner-deficit",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nOct 16–Oct 29\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-10-29: $100.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-11-12: $400.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: Unknown.\n\nFunding gap on 2026-11-12: $400.00.\n\nAccounts & evidence\nInvented club pool: $300.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "unknown",
+        "actualSaved": null,
+        "action": "not-granted",
+        "status": "unavailable",
+        "stock": null,
+        "diagnostics": {
+          "signedSavings": -400,
+          "operatingResidual": 1000,
+          "nativeOperatingCash": 600,
+          "trust": "estimated"
+        }
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 1440,
+      "mode": "timing",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nOct 16–Oct 29\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-10-16: $140.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-10-16: $140.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: Unknown.\n\nFunding gap on 2026-10-16: $140.00.\n\nAccounts & evidence\nInvented club pool: $300.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "unknown",
+        "actualSaved": null,
+        "action": "not-granted",
+        "status": "unavailable",
+        "stock": null,
+        "diagnostics": {
+          "signedSavings": 200,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 280,
+          "trust": "estimated"
+        }
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -78,6 +279,22 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $1,119.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $1,119.00.\n\nInvented first goal\n$1,119.00\nSaved\n/\n$1,500.00\nNeeded\n\n$1,000.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nSaved $1,500.00\nNeeded $1,500.00\nInvented second goal\nSaved $619.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $2,119.00.\n\nInvented first goal\n$1,500.00\nSaved\n/\n$1,500.00\nNeeded\n\n$381.00 this period\nInfo >\n\nInvented second goal\n$619.00\nSaved\n/\n$1,000.00\nNeeded\n\n$619.00 this period\nInfo >\n\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: $2,119.00.\n\nINVENTED FIRST GOAL\nSaved\n$1,500.00\nNeeded\n$1,500.00\nThis period\n$381.00\nINVENTED SECOND GOAL\nSaved\n$619.00\nNeeded\n$1,000.00\nThis period\n$619.00\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 2119,
+        "diagnostics": {
+          "signedSavings": 2119,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 2080,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -88,6 +305,22 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented shared group\nSaved $1,119.00\nNeeded $2,500.00\nSaving for\n\nSavings at period close: $1,119.00.\n\nInvented shared group\n$1,119.00\nSaved\n/\n$2,500.00\nNeeded\n\n$1,000.00 this period\nInfo >\n\nInvented first goal Dec 18$1,119.00 / $1,500.00Saved / needed$1,000.00This period\nInvented second goal Jan 4$0.00 / $1,000.00Saved / neededUnavailableThis period\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented shared group\nSaved $2,119.00\nNeeded $2,500.00\nSaving for\n\nSavings at period close: $2,119.00.\n\nInvented shared group\n$2,119.00\nSaved\n/\n$2,500.00\nNeeded\n\n$1,000.00 this period\nInfo >\n\nInvented first goal Dec 18$1,500.00 / $1,500.00Saved / needed$381.00This period\nInvented second goal Jan 4$619.00 / $1,000.00Saved / needed$619.00This period\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: $2,119.00.\n\nINVENTED SHARED GROUP\nSaved\n$2,119.00\nNeeded\n$2,500.00\nThis period\n$1,000.00\nInvented first goal 2026-12-18\nSaved\n$1,500.00\nNeeded\n$1,500.00\nThis period\n$381.00\nInvented second goal 2027-01-04\nSaved\n$619.00\nNeeded\n$1,000.00\nThis period\n$619.00\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 2119,
+        "diagnostics": {
+          "signedSavings": 2119,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 2080,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -98,6 +331,22 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented installment two\nSaved $60.00\nNeeded $60.00\nInvented later requirement\nSaved $979.00\nNeeded $3,000.00\nSaving for\n\nSavings at period close: $1,039.00.\n\nInvented installment two\n$60.00\nSaved\n/\n$60.00\nNeeded\n\n$21.00 this period\nInfo >\n\nInvented later requirement\n$979.00\nSaved\n/\n$3,000.00\nNeeded\n\n$979.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented later requirement\nSaved $1,979.00\nNeeded $3,000.00\nSaving for\n\nSavings at period close: $1,979.00.\n\nInvented later requirement\n$1,979.00\nSaved\n/\n$3,000.00\nNeeded\n\n$1,000.00 this period\nInfo >\n\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: $1,979.00.\n\nINVENTED LATER REQUIREMENT\nSaved\n$1,979.00\nNeeded\n$3,000.00\nThis period\n$1,000.00\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 1979,
+        "diagnostics": {
+          "signedSavings": 1979,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 2059,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -106,8 +355,24 @@
       "width": 390,
       "mode": "gap",
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $500.00\nNeeded $600.00\nInvented third cost\nSaved $0.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $500.00.\n\nInvented second cost\n$500.00\nSaved\n/\n$600.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented third cost\n$0.00\nSaved\n/\n$400.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
-      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented third cost\nSaved $100.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $100.00.\n\nInvented third cost\n$100.00\nSaved\n/\n$400.00\nNeeded\n\n$100.00 this period\nInfo >\n\nAccounts & evidence",
-      "inventory": "One savings pot\n\nSavings at period close: $100.00.\n\nINVENTED THIRD COST\nSaved\n$100.00\nNeeded\n$400.00\nThis period\n$100.00\nAccounts & evidence\nInvented club pool: $800.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented third cost\nSaved $100.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $100.00.\n\nInvented third cost\n$100.00\nSaved\n/\n$400.00\nNeeded\n\n$200.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $100.00.\n\nINVENTED THIRD COST\nSaved\n$100.00\nNeeded\n$400.00\nThis period\n$200.00\nAccounts & evidence\nInvented club pool: $800.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 100,
+        "diagnostics": {
+          "signedSavings": 100,
+          "operatingResidual": 0,
+          "nativeOperatingCash": 100,
+          "trust": "estimated"
+        },
+        "operating": 0
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -115,9 +380,25 @@
     {
       "width": 390,
       "mode": "zero",
-      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $500.00\nNeeded $600.00\nInvented third cost\nSaved $0.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $500.00.\n\nInvented second cost\n$500.00\nSaved\n/\n$600.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented third cost\n$0.00\nSaved\n/\n$400.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $600.00\nNeeded $600.00\nInvented third cost\nSaved $0.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $600.00.\n\nInvented second cost\n$600.00\nSaved\n/\n$600.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented third cost\n$0.00\nSaved\n/\n$400.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented third cost\nSaved $200.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $200.00.\n\nInvented third cost\n$200.00\nSaved\n/\n$400.00\nNeeded\n\n$200.00 this period\nInfo >\n\nAccounts & evidence",
-      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nINVENTED THIRD COST\nSaved\n$200.00\nNeeded\n$400.00\nThis period\n$200.00\nAccounts & evidence\nInvented club pool: $800.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nINVENTED THIRD COST\nSaved\n$200.00\nNeeded\n$400.00\nThis period\n$200.00\nAccounts & evidence\nInvented club pool: $900.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 200,
+        "diagnostics": {
+          "signedSavings": 200,
+          "operatingResidual": 100,
+          "nativeOperatingCash": 300,
+          "trust": "estimated"
+        },
+        "operating": 100
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -128,6 +409,22 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $80.00\nNeeded $80.00\nInvented second goal\nSaved $1,000.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $1,119.00.\n\nInvented first goal\n$80.00\nSaved\n/\n$80.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$1,000.00\nSaved\n/\n$1,000.00\nNeeded\n\n$961.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented second goal\nSaved $1,000.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $2,039.00.\n\nInvented second goal\n$1,000.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: $2,039.00.\n\nINVENTED SECOND GOAL\nSaved\n$1,000.00\nNeeded\n$1,000.00\nThis period\n$0.00\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 2039,
+        "diagnostics": {
+          "signedSavings": 2039,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 2080,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -138,6 +435,111 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nUnavailable\nNeeded $1,500.00\nInvented second goal\nUnavailable\nNeeded $1,000.00\nSaving for\n\nSavings at period close: Unavailable.\n\nInvented first goal\nUnavailable\nSaved\n/\n$1,500.00\nNeeded\n\nUnavailable\nthis period\nInfo >\n\nInvented second goal\nUnavailable\nSaved\n/\n$1,000.00\nNeeded\n\nUnavailable\nthis period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nUnavailable\nNeeded $1,500.00\nInvented second goal\nUnavailable\nNeeded $1,000.00\nSaving for\n\nSavings at period close: Unavailable.\n\nInvented first goal\nUnavailable\nSaved\n/\n$1,500.00\nNeeded\n\nUnavailable\nthis period\nInfo >\n\nInvented second goal\nUnavailable\nSaved\n/\n$1,000.00\nNeeded\n\nUnavailable\nthis period\nInfo >\n\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: Unknown.\n\nSavings movement provenance is unavailable in this legacy or missing observation packet. Bank backing and new contributions are withheld.\n\nINVENTED FIRST GOAL\nSaved\nUnknown\nNeeded\n$1,500.00\nThis period\nUnknown\nINVENTED SECOND GOAL\nSaved\nUnknown\nNeeded\n$1,000.00\nThis period\nUnknown\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "unknown",
+        "actualSaved": null,
+        "action": "not-granted",
+        "status": "unavailable",
+        "stock": null
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 390,
+      "mode": "owner80",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $200.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $200.00.\n\nInvented second cost\n$200.00\nSaved\n/\n$400.00\nNeeded\n\n$400.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: $200.00.\n\nNo remaining Savings requirements.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nAccounts & evidence\nInvented club pool: $300.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 200,
+        "diagnostics": {
+          "signedSavings": 200,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 280,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 390,
+      "mode": "owner1000",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $200.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $200.00.\n\nInvented second cost\n$200.00\nSaved\n/\n$400.00\nNeeded\n\n$400.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: $200.00.\n\nNo remaining Savings requirements.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nAccounts & evidence\nInvented club pool: $300.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 200,
+        "diagnostics": {
+          "signedSavings": 200,
+          "operatingResidual": 1000,
+          "nativeOperatingCash": 1200,
+          "trust": "estimated"
+        },
+        "operating": 1000
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 390,
+      "mode": "owner-deficit",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nOct 16–Oct 29\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-10-29: $100.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-11-12: $400.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: Unknown.\n\nFunding gap on 2026-11-12: $400.00.\n\nAccounts & evidence\nInvented club pool: $300.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "unknown",
+        "actualSaved": null,
+        "action": "not-granted",
+        "status": "unavailable",
+        "stock": null,
+        "diagnostics": {
+          "signedSavings": -400,
+          "operatingResidual": 1000,
+          "nativeOperatingCash": 600,
+          "trust": "estimated"
+        }
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 390,
+      "mode": "timing",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nOct 16–Oct 29\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-10-16: $140.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-10-16: $140.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: Unknown.\n\nFunding gap on 2026-10-16: $140.00.\n\nAccounts & evidence\nInvented club pool: $300.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "unknown",
+        "actualSaved": null,
+        "action": "not-granted",
+        "status": "unavailable",
+        "stock": null,
+        "diagnostics": {
+          "signedSavings": 200,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 280,
+          "trust": "estimated"
+        }
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -148,6 +550,22 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $1,119.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $1,119.00.\n\nInvented first goal\n$1,119.00\nSaved\n/\n$1,500.00\nNeeded\n\n$1,000.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nSaved $1,500.00\nNeeded $1,500.00\nInvented second goal\nSaved $619.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $2,119.00.\n\nInvented first goal\n$1,500.00\nSaved\n/\n$1,500.00\nNeeded\n\n$381.00 this period\nInfo >\n\nInvented second goal\n$619.00\nSaved\n/\n$1,000.00\nNeeded\n\n$619.00 this period\nInfo >\n\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: $2,119.00.\n\nINVENTED FIRST GOAL\nSaved\n$1,500.00\nNeeded\n$1,500.00\nThis period\n$381.00\nINVENTED SECOND GOAL\nSaved\n$619.00\nNeeded\n$1,000.00\nThis period\n$619.00\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 2119,
+        "diagnostics": {
+          "signedSavings": 2119,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 2080,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -158,6 +576,22 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented shared group\nSaved $1,119.00\nNeeded $2,500.00\nSaving for\n\nSavings at period close: $1,119.00.\n\nInvented shared group\n$1,119.00\nSaved\n/\n$2,500.00\nNeeded\n\n$1,000.00 this period\nInfo >\n\nInvented first goal Dec 18$1,119.00 / $1,500.00Saved / needed$1,000.00This period\nInvented second goal Jan 4$0.00 / $1,000.00Saved / neededUnavailableThis period\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented shared group\nSaved $2,119.00\nNeeded $2,500.00\nSaving for\n\nSavings at period close: $2,119.00.\n\nInvented shared group\n$2,119.00\nSaved\n/\n$2,500.00\nNeeded\n\n$1,000.00 this period\nInfo >\n\nInvented first goal Dec 18$1,500.00 / $1,500.00Saved / needed$381.00This period\nInvented second goal Jan 4$619.00 / $1,000.00Saved / needed$619.00This period\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: $2,119.00.\n\nINVENTED SHARED GROUP\nSaved\n$2,119.00\nNeeded\n$2,500.00\nThis period\n$1,000.00\nInvented first goal 2026-12-18\nSaved\n$1,500.00\nNeeded\n$1,500.00\nThis period\n$381.00\nInvented second goal 2027-01-04\nSaved\n$619.00\nNeeded\n$1,000.00\nThis period\n$619.00\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 2119,
+        "diagnostics": {
+          "signedSavings": 2119,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 2080,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -168,6 +602,22 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented installment two\nSaved $60.00\nNeeded $60.00\nInvented later requirement\nSaved $979.00\nNeeded $3,000.00\nSaving for\n\nSavings at period close: $1,039.00.\n\nInvented installment two\n$60.00\nSaved\n/\n$60.00\nNeeded\n\n$21.00 this period\nInfo >\n\nInvented later requirement\n$979.00\nSaved\n/\n$3,000.00\nNeeded\n\n$979.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented later requirement\nSaved $1,979.00\nNeeded $3,000.00\nSaving for\n\nSavings at period close: $1,979.00.\n\nInvented later requirement\n$1,979.00\nSaved\n/\n$3,000.00\nNeeded\n\n$1,000.00 this period\nInfo >\n\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: $1,979.00.\n\nINVENTED LATER REQUIREMENT\nSaved\n$1,979.00\nNeeded\n$3,000.00\nThis period\n$1,000.00\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 1979,
+        "diagnostics": {
+          "signedSavings": 1979,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 2059,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -176,8 +626,24 @@
       "width": 320,
       "mode": "gap",
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $500.00\nNeeded $600.00\nInvented third cost\nSaved $0.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $500.00.\n\nInvented second cost\n$500.00\nSaved\n/\n$600.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented third cost\n$0.00\nSaved\n/\n$400.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
-      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented third cost\nSaved $100.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $100.00.\n\nInvented third cost\n$100.00\nSaved\n/\n$400.00\nNeeded\n\n$100.00 this period\nInfo >\n\nAccounts & evidence",
-      "inventory": "One savings pot\n\nSavings at period close: $100.00.\n\nINVENTED THIRD COST\nSaved\n$100.00\nNeeded\n$400.00\nThis period\n$100.00\nAccounts & evidence\nInvented club pool: $800.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented third cost\nSaved $100.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $100.00.\n\nInvented third cost\n$100.00\nSaved\n/\n$400.00\nNeeded\n\n$200.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $100.00.\n\nINVENTED THIRD COST\nSaved\n$100.00\nNeeded\n$400.00\nThis period\n$200.00\nAccounts & evidence\nInvented club pool: $800.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 100,
+        "diagnostics": {
+          "signedSavings": 100,
+          "operatingResidual": 0,
+          "nativeOperatingCash": 100,
+          "trust": "estimated"
+        },
+        "operating": 0
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -185,9 +651,25 @@
     {
       "width": 320,
       "mode": "zero",
-      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $500.00\nNeeded $600.00\nInvented third cost\nSaved $0.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $500.00.\n\nInvented second cost\n$500.00\nSaved\n/\n$600.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented third cost\n$0.00\nSaved\n/\n$400.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $600.00\nNeeded $600.00\nInvented third cost\nSaved $0.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $600.00.\n\nInvented second cost\n$600.00\nSaved\n/\n$600.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented third cost\n$0.00\nSaved\n/\n$400.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented third cost\nSaved $200.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $200.00.\n\nInvented third cost\n$200.00\nSaved\n/\n$400.00\nNeeded\n\n$200.00 this period\nInfo >\n\nAccounts & evidence",
-      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nINVENTED THIRD COST\nSaved\n$200.00\nNeeded\n$400.00\nThis period\n$200.00\nAccounts & evidence\nInvented club pool: $800.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nINVENTED THIRD COST\nSaved\n$200.00\nNeeded\n$400.00\nThis period\n$200.00\nAccounts & evidence\nInvented club pool: $900.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 200,
+        "diagnostics": {
+          "signedSavings": 200,
+          "operatingResidual": 100,
+          "nativeOperatingCash": 300,
+          "trust": "estimated"
+        },
+        "operating": 100
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -198,6 +680,22 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $80.00\nNeeded $80.00\nInvented second goal\nSaved $1,000.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $1,119.00.\n\nInvented first goal\n$80.00\nSaved\n/\n$80.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$1,000.00\nSaved\n/\n$1,000.00\nNeeded\n\n$961.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented second goal\nSaved $1,000.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $2,039.00.\n\nInvented second goal\n$1,000.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: $2,039.00.\n\nINVENTED SECOND GOAL\nSaved\n$1,000.00\nNeeded\n$1,000.00\nThis period\n$0.00\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 2039,
+        "diagnostics": {
+          "signedSavings": 2039,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 2080,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -208,6 +706,111 @@
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nUnavailable\nNeeded $1,500.00\nInvented second goal\nUnavailable\nNeeded $1,000.00\nSaving for\n\nSavings at period close: Unavailable.\n\nInvented first goal\nUnavailable\nSaved\n/\n$1,500.00\nNeeded\n\nUnavailable\nthis period\nInfo >\n\nInvented second goal\nUnavailable\nSaved\n/\n$1,000.00\nNeeded\n\nUnavailable\nthis period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nUnavailable\nNeeded $1,500.00\nInvented second goal\nUnavailable\nNeeded $1,000.00\nSaving for\n\nSavings at period close: Unavailable.\n\nInvented first goal\nUnavailable\nSaved\n/\n$1,500.00\nNeeded\n\nUnavailable\nthis period\nInfo >\n\nInvented second goal\nUnavailable\nSaved\n/\n$1,000.00\nNeeded\n\nUnavailable\nthis period\nInfo >\n\nAccounts & evidence",
       "inventory": "One savings pot\n\nSavings at period close: Unknown.\n\nSavings movement provenance is unavailable in this legacy or missing observation packet. Bank backing and new contributions are withheld.\n\nINVENTED FIRST GOAL\nSaved\nUnknown\nNeeded\n$1,500.00\nThis period\nUnknown\nINVENTED SECOND GOAL\nSaved\nUnknown\nNeeded\n$1,000.00\nThis period\nUnknown\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "unknown",
+        "actualSaved": null,
+        "action": "not-granted",
+        "status": "unavailable",
+        "stock": null
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 320,
+      "mode": "owner80",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $200.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $200.00.\n\nInvented second cost\n$200.00\nSaved\n/\n$400.00\nNeeded\n\n$400.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: $200.00.\n\nNo remaining Savings requirements.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nAccounts & evidence\nInvented club pool: $300.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 200,
+        "diagnostics": {
+          "signedSavings": 200,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 280,
+          "trust": "estimated"
+        },
+        "operating": 80
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 320,
+      "mode": "owner1000",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $200.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $200.00.\n\nInvented second cost\n$200.00\nSaved\n/\n$400.00\nNeeded\n\n$400.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: $200.00.\n\nNo remaining Savings requirements.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nAccounts & evidence\nInvented club pool: $300.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 200,
+        "diagnostics": {
+          "signedSavings": 200,
+          "operatingResidual": 1000,
+          "nativeOperatingCash": 1200,
+          "trust": "estimated"
+        },
+        "operating": 1000
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 320,
+      "mode": "owner-deficit",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nOct 16–Oct 29\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-10-29: $100.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-11-12: $400.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: Unknown.\n\nFunding gap on 2026-11-12: $400.00.\n\nAccounts & evidence\nInvented club pool: $300.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "unknown",
+        "actualSaved": null,
+        "action": "not-granted",
+        "status": "unavailable",
+        "stock": null,
+        "diagnostics": {
+          "signedSavings": -400,
+          "operatingResidual": 1000,
+          "nativeOperatingCash": 600,
+          "trust": "estimated"
+        }
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 320,
+      "mode": "timing",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nOct 16–Oct 29\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-10-16: $140.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-10-16: $140.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: Unknown.\n\nFunding gap on 2026-10-16: $140.00.\n\nAccounts & evidence\nInvented club pool: $300.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "unknown",
+        "actualSaved": null,
+        "action": "not-granted",
+        "status": "unavailable",
+        "stock": null,
+        "diagnostics": {
+          "signedSavings": 200,
+          "operatingResidual": 80,
+          "nativeOperatingCash": 280,
+          "trust": "estimated"
+        }
+      },
       "replay": true,
       "currentRestored": true,
       "immutable": true
@@ -230,7 +833,7 @@
     "public/transaction-review.css": "d9ea9e8b896400cf7284d7f48739bde6ae968c3fbfce5f7e5b929f9dda42431a",
     "public/app.js": "10eec681b00b50202152ec8f8d7490d05d1facc90bc11fad4d559bde91b7ef7b",
     "public/forecast-card-period.js": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20",
-    "public/forecast.js": "b231886387777f2d8f7a0e2f386986efce9aec5456acdd3315afeba679ebbfb7",
+    "public/forecast.js": "1019e0cc01bc01d0a14991e89ebe2e3a40cfce2787dc846c35314f27f0f3bc3b",
     "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
     "public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
     "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
@@ -239,7 +842,7 @@
     "public/budget-card-movements.js": "d1d9f97c636779ce45658c6ffb7b05b694cb8fa9c52bbed32306bd2542219505",
     "public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
     "public/transaction-review.js": "5dc2c26f2be9ee3c0e5715656e16c0113167213d2bb1bd46c48ee27457fb0106",
-    "public/plan.js": "6b7a84415a6f305d7fc2797cdda6eceb0daa69b5b87cb6d45bd55a5d3006634f",
+    "public/plan.js": "3e196d35612bff2b408686b15f3a3225833030f9a7c78a0cc31816fce0ab5b7b",
     "public/household-view.js": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
     "public/budget-polish.js": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
     "public/aurora.js": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
@@ -260,37 +863,57 @@
     {
       "artifactHead": "34c891f043b1434158b098230ae4a6c9bad71d97",
       "sourceHead": "d555109d109e17f00d34d3ed297a01f42a1b86b8"
+    },
+    {
+      "artifactHead": "6f0f486c1fdf6197cf7a42b21cb9533e459dfd7c",
+      "sourceHead": "ed73a3b2bb482fdd71ab44fa11ab9c6986f6ce37",
+      "systemsReview": "BLOCK",
+      "reviewId": 5512258894
     }
   ],
   "acceptance": {
-    "focusedFinancialCases": 31,
+    "focusedFinancialCases": 40,
     "currentReportedCases": 88,
-    "browserCases": 21,
-    "completeNativeRecommendationsUnchanged": 6,
+    "browserCases": 33,
+    "completeNativeRecommendationsUnchanged": 10,
     "inclusiveClosing": true,
     "installmentsRetire": true,
     "unavoidableNativeGapPreservesPriorCloses": true,
     "noAddedVisibleForecastActualBadges": true,
     "internalEstimatedProvenancePreserved": true,
-    "nativeLocationBasis": true,
+    "ownerClosingLedgerBasis": true,
+    "operatingOpeningIndependent": true,
+    "fullGoalCostsOnce": true,
+    "failingBeforeOwnerControls": 4,
+    "signedSavingsDeficits": [
+      -100,
+      -400
+    ],
     "signedDiagnosticsDoNotBecomeSavings": true,
+    "positiveClosingCannotOverrideNativeDailyGap": true,
     "currentTailUnavailableGatePreserved": true,
     "physicalSafari": false,
     "systemsReview": "required-pending"
   },
   "testBindings": {
-    "test/test-savings-future-closing.js": "7471021bfd27968a130d7aeccb739e56720279e15d304a1052b9c7647c5022bc",
-    "test/browser-savings-future-closing.js": "eb253db6e70346d12e9f0da63baefcfd47ef1b435ef850f1ec76368ee4a7e2f9",
+    "test/test-savings-future-closing.js": "79db39934d29e38d75a14bdc483a5f62c497544938c257880e796b9c5c654928",
+    "test/browser-savings-future-closing.js": "94f8a3abb61974dcd1cd6415dc5e8394b079682cfac20b0303496c2dba5e0135",
     "test/fixtures/savings-future-closing-data.js": "c84a4680a04c3b77185c092f9d4baa5140a46ddfc724a85ed4f3fc336624c17f",
+    "test/fixtures/savings-owner-closing-data.js": "58e9cbff4a1ccbe5bd5d2d7a2bfcec7e2def7ae0465234f7e894e6a18d242ab5",
+    "test/proof-savings-future-closing-before-after.js": "e50bf4798cd5e51c5be0afba4b8bd4f4b254b3061500a40186667951e57b9425",
     "test/test-savings-group-members.js": "1ad4e2f785511a4107ffe5d9c468d120b8fd140f6ef6e8683e420ab626689ed5"
   },
   "screenshotHashes": {
-    "ready-320.png": "f15cf3fccba3df0e1ebeea94a327f9790191841b088f7c46b24e33d7dd3584ab",
-    "group-320.png": "e4beaa2fbca908b05cb649376821adcd946db281aa086d59c4cbd1003d52d615",
-    "installments-320.png": "b7e2e9b7c50f6aca076c4821e9f67601aa7978b00633ee1cf0117a390595967a",
-    "gap-320.png": "87f75047f3fa4eb6918396ba6a5c9b4ffe815a632f66d48b62dd9bec839c1b97",
-    "zero-320.png": "bb39b0c2d8237507347c5ba645bc4f25ebd88faf9fed3264eb6490cceed9912a",
-    "expense-390.png": "31d7650d2b77c121a24748e02c938d9a0721d08554fd122a108671b12ed85f55",
-    "unknown-320.png": "a5d71dd03f389b5e170c45779b6c2c2197c87c9e7aa2e2f66c01c605f9814c0b"
+    "ready-320.png": "9c85c03cbe59d6fac08958d3fb5effe8e7d683e0126d96394ff3db6fc27a438c",
+    "group-320.png": "7cc1d00bb2d577eb1dc7b58a0e97950bd77dddd190174e011cc010191ee866fc",
+    "installments-320.png": "b6bd47fde743e73d3d6c51516e338ad9d6c5e6c1d53e13097e9c55c3f6fce119",
+    "gap-320.png": "73478a627abb2a1858e577d6c81c45c8e26642066752aeff792501221d694f59",
+    "zero-closing-320.png": "5b00dbcf9e1d443869fe668f99ebf171e3ac0686635279c3a988bb842af0bdc5",
+    "expense-390.png": "c49b2f52aab802f4d4be91c6171bafc930b2bf1102837504fa027953b2fc9e7f",
+    "unknown-320.png": "6eeef9a0ae7784ffd28703205f1ca35be2a921f8cd4c260e1871d2bdb706ffc0",
+    "owner80-320.png": "4daf0dc988fa103e56ce2f79ea04926a8d72caa9e7e57c32cadffcd4b81902ae",
+    "owner1000-320.png": "4daf0dc988fa103e56ce2f79ea04926a8d72caa9e7e57c32cadffcd4b81902ae",
+    "owner-deficit-320.png": "98d66ec586d3ce310d17952e524ca4e83883ed1b841504e4c920f258bb9a7e25",
+    "timing-320.png": "7fb169ed77a7e83ab6565397886d8f9e2cc4c128fd9d3a55dbc2172ecd63dd48"
   }
 }
