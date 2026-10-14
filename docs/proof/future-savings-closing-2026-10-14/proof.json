@@ -1,5 +1,5 @@
 {
-  "head": "526a43e5e5a91808cee4142fe1ea5d26a2a10311",
+  "head": "04610ba6483e5280d11748acdded527b26676957",
   "synthetic": true,
   "cases": [
     {
@@ -12,7 +12,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 2119,
@@ -20,9 +20,12 @@
           "signedSavings": 2119,
           "operatingResidual": 80,
           "nativeOperatingCash": 2080,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -38,7 +41,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 2119,
@@ -46,9 +49,12 @@
           "signedSavings": 2119,
           "operatingResidual": 80,
           "nativeOperatingCash": 2080,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -64,7 +70,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 1979,
@@ -72,9 +78,12 @@
           "signedSavings": 1979,
           "operatingResidual": 80,
           "nativeOperatingCash": 2059,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -90,7 +99,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 100,
@@ -98,9 +107,12 @@
           "signedSavings": 100,
           "operatingResidual": 0,
           "nativeOperatingCash": 100,
+          "qualifiedOperatingCash": 0,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 0
+        "operating": 0,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -116,7 +128,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 200,
@@ -124,9 +136,12 @@
           "signedSavings": 200,
           "operatingResidual": 100,
           "nativeOperatingCash": 300,
+          "qualifiedOperatingCash": 100,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 100
+        "operating": 100,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -142,7 +157,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 2039,
@@ -150,9 +165,12 @@
           "signedSavings": 2039,
           "operatingResidual": 80,
           "nativeOperatingCash": 2080,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -185,7 +203,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 200,
@@ -193,9 +211,12 @@
           "signedSavings": 200,
           "operatingResidual": 80,
           "nativeOperatingCash": 280,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -211,7 +232,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 200,
@@ -219,9 +240,12 @@
           "signedSavings": 200,
           "operatingResidual": 1000,
           "nativeOperatingCash": 1200,
+          "qualifiedOperatingCash": 1000,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 1000
+        "operating": 1000,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -243,6 +267,8 @@
           "signedSavings": -400,
           "operatingResidual": 1000,
           "nativeOperatingCash": 600,
+          "qualifiedOperatingCash": 600,
+          "deficitCoverage": 0,
           "trust": "estimated"
         }
       },
@@ -266,6 +292,91 @@
           "signedSavings": 200,
           "operatingResidual": 80,
           "nativeOperatingCash": 280,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
+          "trust": "estimated"
+        }
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 1440,
+      "mode": "carry",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $700.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $700.00.\n\nInvented first goal\n$700.00\nSaved\n/\n$1,500.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nSaved $700.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $700.00.\n\nInvented first goal\n$700.00\nSaved\n/\n$1,500.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $700.00.\n\nINVENTED FIRST GOAL\nSaved\n$700.00\nNeeded\n$1,500.00\nThis period\n$0.00\nINVENTED SECOND GOAL\nSaved\n$0.00\nNeeded\n$1,000.00\nThis period\n$0.00\nAccounts & evidence\nInvented club pool: $500.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 700,
+        "diagnostics": {
+          "signedSavings": 700,
+          "operatingResidual": 20,
+          "nativeOperatingCash": 220,
+          "qualifiedOperatingCash": 20,
+          "deficitCoverage": 0,
+          "trust": "estimated"
+        },
+        "operating": 20,
+        "coverage": 0
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 1440,
+      "mode": "fallback",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $500.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $500.00.\n\nInvented first goal\n$500.00\nSaved\n/\n$1,500.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nSaved $400.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $400.00.\n\nInvented first goal\n$400.00\nSaved\n/\n$1,500.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $400.00.\n\nINVENTED FIRST GOAL\nSaved\n$400.00\nNeeded\n$1,500.00\nThis period\n$0.00\nINVENTED SECOND GOAL\nSaved\n$0.00\nNeeded\n$1,000.00\nThis period\n$0.00\nAccounts & evidence\nInvented club pool: $500.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 400,
+        "diagnostics": {
+          "signedSavings": 400,
+          "operatingResidual": 20,
+          "nativeOperatingCash": -80,
+          "qualifiedOperatingCash": 20,
+          "deficitCoverage": 100,
+          "trust": "estimated"
+        },
+        "operating": 20,
+        "coverage": 100
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 1440,
+      "mode": "fallback-short",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $50.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $50.00.\n\nInvented first goal\n$50.00\nSaved\n/\n$1,500.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-11-12: $50.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: Unknown.\n\nFunding gap on 2026-11-12: $50.00.\n\nAccounts & evidence\nInvented club pool: $50.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "unknown",
+        "actualSaved": null,
+        "action": "not-granted",
+        "status": "unavailable",
+        "stock": null,
+        "diagnostics": {
+          "signedSavings": -50,
+          "operatingResidual": 20,
+          "nativeOperatingCash": -80,
+          "qualifiedOperatingCash": -30,
+          "deficitCoverage": 100,
           "trust": "estimated"
         }
       },
@@ -283,7 +394,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 2119,
@@ -291,9 +402,12 @@
           "signedSavings": 2119,
           "operatingResidual": 80,
           "nativeOperatingCash": 2080,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -309,7 +423,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 2119,
@@ -317,9 +431,12 @@
           "signedSavings": 2119,
           "operatingResidual": 80,
           "nativeOperatingCash": 2080,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -335,7 +452,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 1979,
@@ -343,9 +460,12 @@
           "signedSavings": 1979,
           "operatingResidual": 80,
           "nativeOperatingCash": 2059,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -361,7 +481,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 100,
@@ -369,9 +489,12 @@
           "signedSavings": 100,
           "operatingResidual": 0,
           "nativeOperatingCash": 100,
+          "qualifiedOperatingCash": 0,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 0
+        "operating": 0,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -387,7 +510,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 200,
@@ -395,9 +518,12 @@
           "signedSavings": 200,
           "operatingResidual": 100,
           "nativeOperatingCash": 300,
+          "qualifiedOperatingCash": 100,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 100
+        "operating": 100,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -413,7 +539,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 2039,
@@ -421,9 +547,12 @@
           "signedSavings": 2039,
           "operatingResidual": 80,
           "nativeOperatingCash": 2080,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -456,7 +585,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 200,
@@ -464,9 +593,12 @@
           "signedSavings": 200,
           "operatingResidual": 80,
           "nativeOperatingCash": 280,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -482,7 +614,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 200,
@@ -490,9 +622,12 @@
           "signedSavings": 200,
           "operatingResidual": 1000,
           "nativeOperatingCash": 1200,
+          "qualifiedOperatingCash": 1000,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 1000
+        "operating": 1000,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -514,6 +649,8 @@
           "signedSavings": -400,
           "operatingResidual": 1000,
           "nativeOperatingCash": 600,
+          "qualifiedOperatingCash": 600,
+          "deficitCoverage": 0,
           "trust": "estimated"
         }
       },
@@ -537,6 +674,91 @@
           "signedSavings": 200,
           "operatingResidual": 80,
           "nativeOperatingCash": 280,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
+          "trust": "estimated"
+        }
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 390,
+      "mode": "carry",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $700.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $700.00.\n\nInvented first goal\n$700.00\nSaved\n/\n$1,500.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nSaved $700.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $700.00.\n\nInvented first goal\n$700.00\nSaved\n/\n$1,500.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $700.00.\n\nINVENTED FIRST GOAL\nSaved\n$700.00\nNeeded\n$1,500.00\nThis period\n$0.00\nINVENTED SECOND GOAL\nSaved\n$0.00\nNeeded\n$1,000.00\nThis period\n$0.00\nAccounts & evidence\nInvented club pool: $500.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 700,
+        "diagnostics": {
+          "signedSavings": 700,
+          "operatingResidual": 20,
+          "nativeOperatingCash": 220,
+          "qualifiedOperatingCash": 20,
+          "deficitCoverage": 0,
+          "trust": "estimated"
+        },
+        "operating": 20,
+        "coverage": 0
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 390,
+      "mode": "fallback",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $500.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $500.00.\n\nInvented first goal\n$500.00\nSaved\n/\n$1,500.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nSaved $400.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $400.00.\n\nInvented first goal\n$400.00\nSaved\n/\n$1,500.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $400.00.\n\nINVENTED FIRST GOAL\nSaved\n$400.00\nNeeded\n$1,500.00\nThis period\n$0.00\nINVENTED SECOND GOAL\nSaved\n$0.00\nNeeded\n$1,000.00\nThis period\n$0.00\nAccounts & evidence\nInvented club pool: $500.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 400,
+        "diagnostics": {
+          "signedSavings": 400,
+          "operatingResidual": 20,
+          "nativeOperatingCash": -80,
+          "qualifiedOperatingCash": 20,
+          "deficitCoverage": 100,
+          "trust": "estimated"
+        },
+        "operating": 20,
+        "coverage": 100
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 390,
+      "mode": "fallback-short",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $50.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $50.00.\n\nInvented first goal\n$50.00\nSaved\n/\n$1,500.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-11-12: $50.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: Unknown.\n\nFunding gap on 2026-11-12: $50.00.\n\nAccounts & evidence\nInvented club pool: $50.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "unknown",
+        "actualSaved": null,
+        "action": "not-granted",
+        "status": "unavailable",
+        "stock": null,
+        "diagnostics": {
+          "signedSavings": -50,
+          "operatingResidual": 20,
+          "nativeOperatingCash": -80,
+          "qualifiedOperatingCash": -30,
+          "deficitCoverage": 100,
           "trust": "estimated"
         }
       },
@@ -554,7 +776,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 2119,
@@ -562,9 +784,12 @@
           "signedSavings": 2119,
           "operatingResidual": 80,
           "nativeOperatingCash": 2080,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -580,7 +805,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 2119,
@@ -588,9 +813,12 @@
           "signedSavings": 2119,
           "operatingResidual": 80,
           "nativeOperatingCash": 2080,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -606,7 +834,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 1979,
@@ -614,9 +842,12 @@
           "signedSavings": 1979,
           "operatingResidual": 80,
           "nativeOperatingCash": 2059,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -632,7 +863,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 100,
@@ -640,9 +871,12 @@
           "signedSavings": 100,
           "operatingResidual": 0,
           "nativeOperatingCash": 100,
+          "qualifiedOperatingCash": 0,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 0
+        "operating": 0,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -658,7 +892,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 200,
@@ -666,9 +900,12 @@
           "signedSavings": 200,
           "operatingResidual": 100,
           "nativeOperatingCash": 300,
+          "qualifiedOperatingCash": 100,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 100
+        "operating": 100,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -684,7 +921,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 2039,
@@ -692,9 +929,12 @@
           "signedSavings": 2039,
           "operatingResidual": 80,
           "nativeOperatingCash": 2080,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -727,7 +967,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 200,
@@ -735,9 +975,12 @@
           "signedSavings": 200,
           "operatingResidual": 80,
           "nativeOperatingCash": 280,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 80
+        "operating": 80,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -753,7 +996,7 @@
         "trust": "estimated",
         "actualSaved": null,
         "nature": "if-eligible-surplus-saved",
-        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
         "action": "not-granted",
         "status": "ready",
         "stock": 200,
@@ -761,9 +1004,12 @@
           "signedSavings": 200,
           "operatingResidual": 1000,
           "nativeOperatingCash": 1200,
+          "qualifiedOperatingCash": 1000,
+          "deficitCoverage": 0,
           "trust": "estimated"
         },
-        "operating": 1000
+        "operating": 1000,
+        "coverage": 0
       },
       "replay": true,
       "currentRestored": true,
@@ -785,6 +1031,8 @@
           "signedSavings": -400,
           "operatingResidual": 1000,
           "nativeOperatingCash": 600,
+          "qualifiedOperatingCash": 600,
+          "deficitCoverage": 0,
           "trust": "estimated"
         }
       },
@@ -808,6 +1056,91 @@
           "signedSavings": 200,
           "operatingResidual": 80,
           "nativeOperatingCash": 280,
+          "qualifiedOperatingCash": 80,
+          "deficitCoverage": 0,
+          "trust": "estimated"
+        }
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 320,
+      "mode": "carry",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $700.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $700.00.\n\nInvented first goal\n$700.00\nSaved\n/\n$1,500.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nSaved $700.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $700.00.\n\nInvented first goal\n$700.00\nSaved\n/\n$1,500.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $700.00.\n\nINVENTED FIRST GOAL\nSaved\n$700.00\nNeeded\n$1,500.00\nThis period\n$0.00\nINVENTED SECOND GOAL\nSaved\n$0.00\nNeeded\n$1,000.00\nThis period\n$0.00\nAccounts & evidence\nInvented club pool: $500.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 700,
+        "diagnostics": {
+          "signedSavings": 700,
+          "operatingResidual": 20,
+          "nativeOperatingCash": 220,
+          "qualifiedOperatingCash": 20,
+          "deficitCoverage": 0,
+          "trust": "estimated"
+        },
+        "operating": 20,
+        "coverage": 0
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 320,
+      "mode": "fallback",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $500.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $500.00.\n\nInvented first goal\n$500.00\nSaved\n/\n$1,500.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nSaved $400.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $400.00.\n\nInvented first goal\n$400.00\nSaved\n/\n$1,500.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $400.00.\n\nINVENTED FIRST GOAL\nSaved\n$400.00\nNeeded\n$1,500.00\nThis period\n$0.00\nINVENTED SECOND GOAL\nSaved\n$0.00\nNeeded\n$1,000.00\nThis period\n$0.00\nAccounts & evidence\nInvented club pool: $500.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "estimated",
+        "actualSaved": null,
+        "nature": "if-eligible-surplus-saved",
+        "basis": "opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits",
+        "action": "not-granted",
+        "status": "ready",
+        "stock": 400,
+        "diagnostics": {
+          "signedSavings": 400,
+          "operatingResidual": 20,
+          "nativeOperatingCash": -80,
+          "qualifiedOperatingCash": 20,
+          "deficitCoverage": 100,
+          "trust": "estimated"
+        },
+        "operating": 20,
+        "coverage": 100
+      },
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 320,
+      "mode": "fallback-short",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $50.00\nNeeded $1,500.00\nInvented second goal\nSaved $0.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $50.00.\n\nInvented first goal\n$50.00\nSaved\n/\n$1,500.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$0.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nOct 30–Nov 12\nSaving for\n\nSavings at period close: Unavailable.\n\nFunding gap on 2026-11-12: $50.00.\n\nNamed savings unavailable.\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: Unknown.\n\nFunding gap on 2026-11-12: $50.00.\n\nAccounts & evidence\nInvented club pool: $50.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "internalPublication": {
+        "trust": "unknown",
+        "actualSaved": null,
+        "action": "not-granted",
+        "status": "unavailable",
+        "stock": null,
+        "diagnostics": {
+          "signedSavings": -50,
+          "operatingResidual": 20,
+          "nativeOperatingCash": -80,
+          "qualifiedOperatingCash": -30,
+          "deficitCoverage": 100,
           "trust": "estimated"
         }
       },
@@ -833,7 +1166,7 @@
     "public/transaction-review.css": "d9ea9e8b896400cf7284d7f48739bde6ae968c3fbfce5f7e5b929f9dda42431a",
     "public/app.js": "10eec681b00b50202152ec8f8d7490d05d1facc90bc11fad4d559bde91b7ef7b",
     "public/forecast-card-period.js": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20",
-    "public/forecast.js": "1019e0cc01bc01d0a14991e89ebe2e3a40cfce2787dc846c35314f27f0f3bc3b",
+    "public/forecast.js": "661864e45a211027e9bef6207fcba1b77b8787aaae1589d86f9649abbaa1cebe",
     "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
     "public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
     "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
@@ -842,7 +1175,7 @@
     "public/budget-card-movements.js": "d1d9f97c636779ce45658c6ffb7b05b694cb8fa9c52bbed32306bd2542219505",
     "public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
     "public/transaction-review.js": "5dc2c26f2be9ee3c0e5715656e16c0113167213d2bb1bd46c48ee27457fb0106",
-    "public/plan.js": "3e196d35612bff2b408686b15f3a3225833030f9a7c78a0cc31816fce0ab5b7b",
+    "public/plan.js": "610f6a25f1362116c2c2ae2c90fe1adbb15ca0328d20402c988ab29bcdd685e5",
     "public/household-view.js": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
     "public/budget-polish.js": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
     "public/aurora.js": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
@@ -869,13 +1202,18 @@
       "sourceHead": "ed73a3b2bb482fdd71ab44fa11ab9c6986f6ce37",
       "systemsReview": "BLOCK",
       "reviewId": 5512258894
+    },
+    {
+      "artifactHead": "4b9a536e6f31314d9c64a4eabc605dd07f14bfff",
+      "sourceHead": "526a43e5e5a91808cee4142fe1ea5d26a2a10311",
+      "missingQualifiedRemainder": true
     }
   ],
   "acceptance": {
-    "focusedFinancialCases": 40,
+    "focusedFinancialCases": 48,
     "currentReportedCases": 88,
-    "browserCases": 33,
-    "completeNativeRecommendationsUnchanged": 10,
+    "browserCases": 42,
+    "completeNativeRecommendationsUnchanged": 14,
     "inclusiveClosing": true,
     "installmentsRetire": true,
     "unavoidableNativeGapPreservesPriorCloses": true,
@@ -890,17 +1228,26 @@
       -400
     ],
     "signedDiagnosticsDoNotBecomeSavings": true,
-    "positiveClosingCannotOverrideNativeDailyGap": true,
+    "positiveClosingCannotOverrideUnsupportedDailyGap": true,
     "currentTailUnavailableGatePreserved": true,
+    "ownerCarryFirstClarification": "Sentinel_98d4486829848191b933e14411bbc3cd",
+    "retainedSurplusCannotBeDoubleAllocated": true,
+    "qualifiedSavingsRemainderOnly": true,
+    "fallbackControls": 8,
+    "failingBeforeFallbackControls": 6,
+    "passingBeforeCarryControls": 2,
+    "lateNonSurplusIncomeRemainsBillsCarry": true,
+    "nativeReserveStockCannotBeReused": true,
     "physicalSafari": false,
     "systemsReview": "required-pending"
   },
   "testBindings": {
-    "test/test-savings-future-closing.js": "79db39934d29e38d75a14bdc483a5f62c497544938c257880e796b9c5c654928",
-    "test/browser-savings-future-closing.js": "94f8a3abb61974dcd1cd6415dc5e8394b079682cfac20b0303496c2dba5e0135",
+    "test/test-savings-future-closing.js": "7c73c6ee12b42a4318b2cd78ce3130719fa46774e22f6562dcc65d17c38f8269",
+    "test/browser-savings-future-closing.js": "beea9bd24dc9d97cb3f077a6b515bc13e9800c533417253d98c4a7d7ea4abad3",
     "test/fixtures/savings-future-closing-data.js": "c84a4680a04c3b77185c092f9d4baa5140a46ddfc724a85ed4f3fc336624c17f",
     "test/fixtures/savings-owner-closing-data.js": "58e9cbff4a1ccbe5bd5d2d7a2bfcec7e2def7ae0465234f7e894e6a18d242ab5",
-    "test/proof-savings-future-closing-before-after.js": "e50bf4798cd5e51c5be0afba4b8bd4f4b254b3061500a40186667951e57b9425",
+    "test/fixtures/savings-deficit-coverage-data.js": "9a3d2e28897311426fe9449ea9f43f9943cbafe401e42e992f09f2d3f5af38f6",
+    "test/proof-savings-future-closing-before-after.js": "c9b4b6c48a81a57a69ce55dc95c87da6e5a9fce69c70fcbd3001133f0f43870b",
     "test/test-savings-group-members.js": "1ad4e2f785511a4107ffe5d9c468d120b8fd140f6ef6e8683e420ab626689ed5"
   },
   "screenshotHashes": {
@@ -914,6 +1261,9 @@
     "owner80-320.png": "4daf0dc988fa103e56ce2f79ea04926a8d72caa9e7e57c32cadffcd4b81902ae",
     "owner1000-320.png": "4daf0dc988fa103e56ce2f79ea04926a8d72caa9e7e57c32cadffcd4b81902ae",
     "owner-deficit-320.png": "98d66ec586d3ce310d17952e524ca4e83883ed1b841504e4c920f258bb9a7e25",
-    "timing-320.png": "7fb169ed77a7e83ab6565397886d8f9e2cc4c128fd9d3a55dbc2172ecd63dd48"
+    "timing-320.png": "7fb169ed77a7e83ab6565397886d8f9e2cc4c128fd9d3a55dbc2172ecd63dd48",
+    "carry-320.png": "ceef5eb36ab705932b094cdc48925a375892508ab25d649201739b246d12c2c7",
+    "fallback-320.png": "38c4ddffdce01afe019c1ec5e9ab8a39ffdf9aaaefdb90431e3a67141ca44bc7",
+    "fallback-short-320.png": "26e53c92cdf51f0584ea232ab5a8b96ab40ff994be3527b4456ca030d0fe67ad"
   }
 }
