@@ -80,10 +80,12 @@ page errors and horizontal overflow fail. The output binds served source bytes
 by SHA-256. A focused presentation fix removes the tile clipping class only
 while future Savings evidence is in its dialog and restores it on close.
 
-The [source-bound receipt](proof.json) records 18 passing browser cases and exact
-served bytes from code candidate `d555109d109e17f00d34d3ed297a01f42a1b86b8`.
-The artifact commit preserves those runtime/test blobs. The 28 financial cases,
-all 88 released current-report regressions and 62 affected suites pass. Six
+The [source-bound receipt](proof.json) records 21 passing browser cases and exact
+served bytes from integrated candidate `ed73a3b2bb482fdd71ab44fa11ab9c6986f6ce37`,
+based on released main `a722031e0e7bc936426695066f2723420f8d64ff` including #607.
+The artifact commit preserves those runtime/test blobs. The 31 financial cases
+and all 88 released current-report regressions pass. Final affected registry
+selection includes 63 suites and #607 compatibility. Six
 complete native recommendation objects equal exact main after removing only
 the two new publication fields; the independent comparison script is
 `test/proof-savings-future-closing-before-after.js`.
@@ -91,7 +93,13 @@ the two new publication fields; the independent comparison script is
 Selected invented screenshots: [ready at 320px](ready-320.png),
 [grouped at 320px](group-320.png), [expense at 390px](expense-390.png),
 [unknown at 320px](unknown-320.png), [installments at 320px](installments-320.png),
-and [last affordable close before the gap](gap-320.png).
+and [last affordable close before the gap](gap-320.png),
+plus [a fully conserved zero location](zero-320.png).
+
+Prior receipts remain historical through Git:
+[initial candidate](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/blob/25470fd1f14d82709be07323f3ebf6eefa631656/docs/proof/future-savings-closing-2026-10-14/proof.json) and
+[inclusive-close/presentation candidate](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/blob/34c891f043b1434158b098230ae4a6c9bad71d97/docs/proof/future-savings-closing-2026-10-14/proof.json).
+These are historical evidence, not acceptance for a later head.
 
 Physical Safari and signed-in production acceptance, owner figures look and
 exact-head Systems Review remain separate release work.

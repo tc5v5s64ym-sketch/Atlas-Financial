@@ -1,5 +1,5 @@
 {
-  "head": "d555109d109e17f00d34d3ed297a01f42a1b86b8",
+  "head": "ed73a3b2bb482fdd71ab44fa11ab9c6986f6ce37",
   "synthetic": true,
   "cases": [
     {
@@ -44,6 +44,16 @@
     },
     {
       "width": 1440,
+      "mode": "zero",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $500.00\nNeeded $600.00\nInvented third cost\nSaved $0.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $500.00.\n\nInvented second cost\n$500.00\nSaved\n/\n$600.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented third cost\n$0.00\nSaved\n/\n$400.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented third cost\nSaved $200.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $200.00.\n\nInvented third cost\n$200.00\nSaved\n/\n$400.00\nNeeded\n\n$200.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nINVENTED THIRD COST\nSaved\n$200.00\nNeeded\n$400.00\nThis period\n$200.00\nAccounts & evidence\nInvented club pool: $800.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 1440,
       "mode": "expense",
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $80.00\nNeeded $80.00\nInvented second goal\nSaved $1,000.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $1,119.00.\n\nInvented first goal\n$80.00\nSaved\n/\n$80.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$1,000.00\nSaved\n/\n$1,000.00\nNeeded\n\n$961.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented second goal\nSaved $1,000.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $2,039.00.\n\nInvented second goal\n$1,000.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
@@ -104,6 +114,16 @@
     },
     {
       "width": 390,
+      "mode": "zero",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $500.00\nNeeded $600.00\nInvented third cost\nSaved $0.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $500.00.\n\nInvented second cost\n$500.00\nSaved\n/\n$600.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented third cost\n$0.00\nSaved\n/\n$400.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented third cost\nSaved $200.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $200.00.\n\nInvented third cost\n$200.00\nSaved\n/\n$400.00\nNeeded\n\n$200.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nINVENTED THIRD COST\nSaved\n$200.00\nNeeded\n$400.00\nThis period\n$200.00\nAccounts & evidence\nInvented club pool: $800.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 390,
       "mode": "expense",
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $80.00\nNeeded $80.00\nInvented second goal\nSaved $1,000.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $1,119.00.\n\nInvented first goal\n$80.00\nSaved\n/\n$80.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$1,000.00\nSaved\n/\n$1,000.00\nNeeded\n\n$961.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented second goal\nSaved $1,000.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $2,039.00.\n\nInvented second goal\n$1,000.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
@@ -164,6 +184,16 @@
     },
     {
       "width": 320,
+      "mode": "zero",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented second cost\nSaved $500.00\nNeeded $600.00\nInvented third cost\nSaved $0.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $500.00.\n\nInvented second cost\n$500.00\nSaved\n/\n$600.00\nNeeded\n\n$200.00 this period\nInfo >\n\nInvented third cost\n$0.00\nSaved\n/\n$400.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented third cost\nSaved $200.00\nNeeded $400.00\nSaving for\n\nSavings at period close: $200.00.\n\nInvented third cost\n$200.00\nSaved\n/\n$400.00\nNeeded\n\n$200.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nSavings at period close: $200.00.\n\nINVENTED THIRD COST\nSaved\n$200.00\nNeeded\n$400.00\nThis period\n$200.00\nAccounts & evidence\nInvented club pool: $800.00\n2026-10-07\nInvented home pool: $0.00\n2026-10-07",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 320,
       "mode": "expense",
       "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nSaved $80.00\nNeeded $80.00\nInvented second goal\nSaved $1,000.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $1,119.00.\n\nInvented first goal\n$80.00\nSaved\n/\n$80.00\nNeeded\n\n$0.00 this period\nInfo >\n\nInvented second goal\n$1,000.00\nSaved\n/\n$1,000.00\nNeeded\n\n$961.00 this period\nInfo >\n\nAccounts & evidence",
       "second": "OCT 30–NOV 12\n\nSavings goals\nInvented second goal\nSaved $1,000.00\nNeeded $1,000.00\nSaving for\n\nSavings at period close: $2,039.00.\n\nInvented second goal\n$1,000.00\nSaved\n/\n$1,000.00\nNeeded\n\n$0.00 this period\nInfo >\n\nAccounts & evidence",
@@ -192,15 +222,15 @@
     "public/budget-polish.css": "29be9b313c3c7b4d402ff730abe76dfd09e07f38df4dfd04a26a12fa479d16fe",
     "public/bill-detail.css": "df5e707892d09bded4516822edd1c8a056b472e092c353062a645d7a79ef69c0",
     "public/savings-inventory.css": "39591b0f8fbb0c8109f5f2fe71dd707067dbaf54e85d467989ed96342e4e1a58",
-    "public/running-build.css": "1121433390812139a1c0fc810a882a7b97903e17a6d42f19dcc93fa05a5327d5",
+    "public/running-build.css": "67e3b3487a50f3f9e2a778b4d9f56262291393e8874a0fde11c5f2fffff88423",
     "public/budget-surface.css": "0e372751e431960210cfcf97812d4e5d0be7d51480e7898daf8dd4d37329e714",
     "public/budget-blend.css": "a140d486912b15b2df01f8ffc093237771ecc46ca6a3762f48bc52e1fe4b0e7c",
     "public/budget-gface.css": "9cda7168d7949ddf2a754ed8e9115169c115ef877ea7bdd819e250ca47f498de",
     "public/budget-sheet-motion.css": "31fbea5e07e133925d3f357c62ddf6d7f38d84e7bc0b654d8473070e5d1ed2c4",
     "public/transaction-review.css": "d9ea9e8b896400cf7284d7f48739bde6ae968c3fbfce5f7e5b929f9dda42431a",
-    "public/app.js": "87cbf944b3b2b95e86b9d98e3821937381ae6e7dabb6e0e2483ba42422c76888",
+    "public/app.js": "10eec681b00b50202152ec8f8d7490d05d1facc90bc11fad4d559bde91b7ef7b",
     "public/forecast-card-period.js": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20",
-    "public/forecast.js": "986714f6e8831b74676948877fa9f2a176811a6128890a18f510e4eae0e77a5c",
+    "public/forecast.js": "b231886387777f2d8f7a0e2f386986efce9aec5456acdd3315afeba679ebbfb7",
     "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
     "public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
     "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
@@ -209,7 +239,7 @@
     "public/budget-card-movements.js": "d1d9f97c636779ce45658c6ffb7b05b694cb8fa9c52bbed32306bd2542219505",
     "public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
     "public/transaction-review.js": "5dc2c26f2be9ee3c0e5715656e16c0113167213d2bb1bd46c48ee27457fb0106",
-    "public/plan.js": "77f8e9f1afc6d9b7374178bb73d33ed57447f1688c7f4246c3d898738a1705d7",
+    "public/plan.js": "6b7a84415a6f305d7fc2797cdda6eceb0daa69b5b87cb6d45bd55a5d3006634f",
     "public/household-view.js": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
     "public/budget-polish.js": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
     "public/aurora.js": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
@@ -220,33 +250,47 @@
   "errors": [],
   "external": [],
   "writes": [],
-  "baseline": "73b73b2b22b2dee2b367a04ba386de201bbae5bd",
+  "baseline": "a722031e0e7bc936426695066f2723420f8d64ff",
   "sourceBlobsVerified": true,
+  "historicalProofs": [
+    {
+      "artifactHead": "25470fd1f14d82709be07323f3ebf6eefa631656",
+      "sourceHead": "99348fa715ef7be5a5f979a69acd50a6e6a177ec"
+    },
+    {
+      "artifactHead": "34c891f043b1434158b098230ae4a6c9bad71d97",
+      "sourceHead": "d555109d109e17f00d34d3ed297a01f42a1b86b8"
+    }
+  ],
   "acceptance": {
-    "focusedFinancialCases": 28,
+    "focusedFinancialCases": 31,
     "currentReportedCases": 88,
-    "browserCases": 18,
+    "browserCases": 21,
     "completeNativeRecommendationsUnchanged": 6,
     "inclusiveClosing": true,
     "installmentsRetire": true,
     "unavoidableNativeGapPreservesPriorCloses": true,
     "noAddedVisibleForecastActualBadges": true,
     "internalEstimatedProvenancePreserved": true,
+    "nativeLocationBasis": true,
+    "signedDiagnosticsDoNotBecomeSavings": true,
+    "currentTailUnavailableGatePreserved": true,
     "physicalSafari": false,
     "systemsReview": "required-pending"
   },
   "testBindings": {
-    "test/test-savings-future-closing.js": "217a3e07af38a6c703d1501f4300da31f5872eae02412977717a8ba4fc353c82",
-    "test/browser-savings-future-closing.js": "cb83e0ffb9c7cdc081e9c05e2cf8c96e35968649364524d8d5022e1638388fc9",
+    "test/test-savings-future-closing.js": "7471021bfd27968a130d7aeccb739e56720279e15d304a1052b9c7647c5022bc",
+    "test/browser-savings-future-closing.js": "eb253db6e70346d12e9f0da63baefcfd47ef1b435ef850f1ec76368ee4a7e2f9",
     "test/fixtures/savings-future-closing-data.js": "c84a4680a04c3b77185c092f9d4baa5140a46ddfc724a85ed4f3fc336624c17f",
     "test/test-savings-group-members.js": "1ad4e2f785511a4107ffe5d9c468d120b8fd140f6ef6e8683e420ab626689ed5"
   },
   "screenshotHashes": {
-    "ready-320.png": "712ed01a5859f94d495b7bc3e27114b312acd00fe82dc07e84c6303bd4cf092a",
-    "group-320.png": "f280099f90b3bd2af3fc9ede99f785f3bb1e16c8074789448b3abc0b2e1b0b51",
-    "installments-320.png": "fb36d7633519c1c32460deaf70a6cb75fbdaaf73c1bf53d2262117ec7881c373",
-    "gap-320.png": "5b6c2113c96a37beeb3ae7d7af85f7db703e9d8d25c3992df9f8e14e7292a153",
-    "expense-390.png": "2a2f725cbcbadb8f3b8dd654a9720c3e21b07b64e6c4b2052b87983b6f1808c1",
-    "unknown-320.png": "9aee17f000cd9788c307c7449759dcfd6933829fb63b0cdbe419f5d7537c2b32"
+    "ready-320.png": "f15cf3fccba3df0e1ebeea94a327f9790191841b088f7c46b24e33d7dd3584ab",
+    "group-320.png": "e4beaa2fbca908b05cb649376821adcd946db281aa086d59c4cbd1003d52d615",
+    "installments-320.png": "b7e2e9b7c50f6aca076c4821e9f67601aa7978b00633ee1cf0117a390595967a",
+    "gap-320.png": "87f75047f3fa4eb6918396ba6a5c9b4ffe815a632f66d48b62dd9bec839c1b97",
+    "zero-320.png": "bb39b0c2d8237507347c5ba645bc4f25ebd88faf9fed3264eb6490cceed9912a",
+    "expense-390.png": "31d7650d2b77c121a24748e02c938d9a0721d08554fd122a108671b12ed85f55",
+    "unknown-320.png": "a5d71dd03f389b5e170c45779b6c2c2197c87c9e7aa2e2f66c01c605f9814c0b"
   }
 }
