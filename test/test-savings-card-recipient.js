@@ -111,3 +111,34 @@ test('recognized recipient does not establish independently required card covera
   assert.doesNotMatch(close.reason, unknown); assert.match(close.reason, /card|coverage|opening/i);
   assert.equal(close.moneyMovementPermission, 'not-granted');
 });
+for (const mode of ['typed-card-debit', 'untyped-transfer-debit', 'genuine-benefit-credit'])
+  test('incumbent income exclusions remain intact: ' + mode, () => {
+    const plan = { defaults: { targetBuffer: 0 }, startingCash: { amount: 100,
+      breakdown: [{ id: 'chequing-a', value: 0 }, { id: 'chequing-b', value: 100 }] },
+      opening: { asOf: '2026-09-18', priorAsOf: '2026-09-11', representedEvents: [] },
+      income: [{ id: 'payroll', label: 'Invented payroll', frequency: 'biweekly', anchor: '2026-08-14', amount: 0, confidence: 'confirmed' },
+        { id: 'childBenefit', label: 'Invented benefit', frequency: 'monthly', day: 20, amount: 7.25, confidence: 'confirmed' }],
+      bills: [], obligations: [], commitments: [], budget: { categories: [] } };
+    const tx = { id: 'invented-income-label-control', date: '2026-09-18', amount: 7.25, currency: 'CAD', pending: false,
+      atlasAccountId: 'chequing-b', accountRole: 'household-cash', isIncome: true,
+      tdCardPaymentIdentity: true, cardPaymentIdentity: true, tfrReference: 'ZX777', tfrDirection: 'TO' };
+    if (mode === 'untyped-transfer-debit') { delete tx.tdCardPaymentIdentity; delete tx.cardPaymentIdentity; }
+    if (mode === 'genuine-benefit-credit') {
+      tx.amount = -7.25; delete tx.tdCardPaymentIdentity; delete tx.cardPaymentIdentity;
+      delete tx.tfrReference; delete tx.tfrDirection;
+    }
+    const packet = { schema: 'atlas-current-period-actuals/v1', observationAsOf: '2026-09-18', coverageStart: '2026-09-11',
+      coverageThrough: '2026-09-18', pendingCoverage: 'complete', transactions: [tx], representedActuals: [] };
+    const before = JSON.stringify({ plan, packet });
+    const a = F.recommend(plan, '2026-09-18', { targetBuffer: 0, debts: [], currentPeriodActuals: packet });
+    const active = a.defaultView.calendarPeriods.find(p => p.id === 'this-pay-period');
+    const child = active.income.find(r => r.id === 'childBenefit');
+    if (mode === 'genuine-benefit-credit') {
+      assert.equal(child.settlement, 'represented'); assert.equal(child.status, 'received');
+    } else {
+      assert.notEqual(child.settlement, 'represented', 'a bank debit with an incorrect Income label cannot supply a receipt');
+      assert.notEqual(child.alreadyInCash, true);
+      assert.ok(!active.otherIncome.items.some(r => r.id === 'other-income:' + tx.id));
+    }
+    assert.equal(JSON.stringify({ plan, packet }), before);
+  });

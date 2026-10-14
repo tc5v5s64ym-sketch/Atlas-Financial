@@ -8266,7 +8266,8 @@
 
   function isInternalHouseholdTransfer(tx) {
     if (!tx) return false;
-    if (isTdCardPaymentIdentity(tx)) return false;
+    // Keep the incumbent broad TFR exclusion for income/spending identity.
+    // Savings distinguishes the proven non-cash recipient at its own boundary.
     if (isInternalTransferIdentity(tx)) return true;
     const hint = normalizeCategoryLabel(tx.kindHint);
     if ((hint === 'transfer' || hint === 'internal-transfer')
@@ -19306,7 +19307,7 @@
         if (transactions.some(other => other !== tx && householdCashLocationId(other)
           && parseTdInternalTransferIdentity(other)?.tfrReference === reference)) return unknown;
       }
-      if (!isInternalHouseholdTransfer(tx)) {
+      if (isTdCardPaymentIdentity(tx) || !isInternalHouseholdTransfer(tx)) {
         if (inclusion(tx, accountId) !== true) return uncertain;
         continue;
       }
@@ -20012,7 +20013,8 @@
     const transfers = householdInternalMovements(plan, opts);
     const paired = new Set(transfers.flatMap(t => [t.sourceTransactionId, t.destinationTransactionId]));
     if (opts.currentPeriodActuals.transactions.some(tx => tx.date >= cycle.start
-      && (isInternalHouseholdTransfer(tx) && (!paired.has(String(tx.id)) || tx.pending === true)
+      && (isInternalHouseholdTransfer(tx) && !isTdCardPaymentIdentity(tx)
+        && (!paired.has(String(tx.id)) || tx.pending === true)
         || tx.accountRole === 'household-cash' && tx.pending === true))) return unknown('A pending or unmatched household transfer/cash movement remains encumbering.');
     if (transfers.some(t => t.date >= cycle.start && (t.sourceDate !== t.destinationDate
       || t.sourceDate > day || t.destinationDate > day))) return unknown('Transfer legs do not share compatible settled dates.');
