@@ -10,8 +10,8 @@ authorities. Provenance and estimated scenario trust remain internal; the select
 period supplies context, with no added Forecast/Actual badges or ordinary
 assumption reminders. Genuine missing-data and native funding-gap failures remain.
 
-On released main `73b73b2b22b2dee2b367a04ba386de201bbae5bd`, the final 23-case
-acceptance specification fails 22 cases, with the existing outside-income-bound
+On released main `73b73b2b22b2dee2b367a04ba386de201bbae5bd`, the 23-case
+initial specification fails 22 cases, with the existing outside-income-bound
 control passing. Main has no closing-surplus publication. The earlier 11-case
 initial specification failed all 11 cases before implementation.
 
@@ -39,6 +39,19 @@ stock, pending movement, missing amounts/dates, missing receipts and unsupported
 periods remain unknown. Typed closing packets reject malformed date, source,
 permissions, currency, stock, items and actual-Saved promotions.
 
+The explicit inclusive-close additions use installments 80 due October 29 and
+60 due November 12. At the first close only the later installment remains; at
+the second close the group is gone and the pot is 1,979. Costs before/on/after
+the first closing date and repeated backward/forward selection are asserted.
+Current actual settlement is never changed by future date passage.
+
+The independent native-gap ledger starts with Savings 800, operating/floor 0,
+three 200 incomes and dated costs 500 / 600 / 400. The first two closes are
+500 and 100. The third close reports the native 100 funding gap and withholds
+allocations. This case failed on the initial PR head because a later gap hid
+all earlier closes; the bounded native-prefix repair now preserves those
+affordable closes without worsening the gap or inventing funding.
+
 ## Reproduction
 
 `node --test test/test-savings-future-closing.js`
@@ -57,17 +70,18 @@ page errors and horizontal overflow fail. The output binds served source bytes
 by SHA-256. A focused presentation fix removes the tile clipping class only
 while future Savings evidence is in its dialog and restores it on close.
 
-The [source-bound receipt](proof.json) records 12 passing browser cases and exact
-served bytes from code candidate `99348fa715ef7be5a5f979a69acd50a6e6a177ec`.
-The artifact commit preserves those runtime/test blobs. The 23 financial cases,
-all 88 released current-report regressions and 62 affected suites pass. Five
+The [source-bound receipt](proof.json) records 18 passing browser cases and exact
+served bytes from code candidate `d555109d109e17f00d34d3ed297a01f42a1b86b8`.
+The artifact commit preserves those runtime/test blobs. The 28 financial cases,
+all 88 released current-report regressions and 62 affected suites pass. Six
 complete native recommendation objects equal exact main after removing only
 the two new publication fields; the independent comparison script is
 `test/proof-savings-future-closing-before-after.js`.
 
 Selected invented screenshots: [ready at 320px](ready-320.png),
 [grouped at 320px](group-320.png), [expense at 390px](expense-390.png),
-[unknown at 320px](unknown-320.png).
+[unknown at 320px](unknown-320.png), [installments at 320px](installments-320.png),
+and [last affordable close before the gap](gap-320.png).
 
 Physical Safari and signed-in production acceptance, owner figures look and
 exact-head Systems Review remain separate release work.
