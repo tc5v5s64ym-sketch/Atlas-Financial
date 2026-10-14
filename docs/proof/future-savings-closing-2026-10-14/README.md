@@ -8,8 +8,8 @@ requirement allocation for the selected future pay period, if eligible surplus
 is saved. Current reported allocation and the generic deadline-minimum funding
 schedule retain their authorities.
 
-On released main `73b73b2b22b2dee2b367a04ba386de201bbae5bd`, the final 15-case
-acceptance specification fails 14 cases, with the existing outside-income-bound
+On released main `73b73b2b22b2dee2b367a04ba386de201bbae5bd`, the final 23-case
+acceptance specification fails 22 cases, with the existing outside-income-bound
 control passing. Main has no closing-surplus publication. The earlier 11-case
 initial specification failed all 11 cases before implementation.
 
@@ -55,6 +55,17 @@ page errors and horizontal overflow fail. The output binds served source bytes
 by SHA-256. A focused presentation fix removes the tile clipping class only
 while future Savings evidence is in its dialog and restores it on close.
 
-The source-bound browser receipt and screenshots will be added after the code
-candidate is committed. Physical Safari and signed-in production acceptance,
-owner figures look and exact-head Systems Review remain separate release work.
+The [source-bound receipt](proof.json) records 12 passing browser cases and exact
+served bytes from code candidate `99348fa715ef7be5a5f979a69acd50a6e6a177ec`.
+The artifact commit preserves those runtime/test blobs. The 23 financial cases,
+all 88 released current-report regressions and 62 affected suites pass. Five
+complete native recommendation objects equal exact main after removing only
+the two new publication fields; the independent comparison script is
+`test/proof-savings-future-closing-before-after.js`.
+
+Selected invented screenshots: [ready at 320px](ready-320.png),
+[grouped at 320px](group-320.png), [expense at 390px](expense-390.png),
+[unknown at 320px](unknown-320.png).
+
+Physical Safari and signed-in production acceptance, owner figures look and
+exact-head Systems Review remain separate release work.

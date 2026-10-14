@@ -1,0 +1,185 @@
+{
+  "head": "99348fa715ef7be5a5f979a69acd50a6e6a177ec",
+  "synthetic": true,
+  "cases": [
+    {
+      "width": 1440,
+      "mode": "ready",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nNeeded $1,500.00\nInvented second goal\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $1,119.00. If eligible surplus is saved.\n\nInvented first goal\n≈\nestimated\n $1,119.00\nForecast\n/\ncalculated\n$1,500.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$1,000.00 this period\nInfo >\n\nInvented second goal\n≈\nestimated\n $0.00\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nNeeded $1,500.00\nInvented second goal\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $2,119.00. If eligible surplus is saved.\n\nInvented first goal\n≈\nestimated\n $1,500.00\nForecast\n/\ncalculated\n$1,500.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$381.00 this period\nInfo >\n\nInvented second goal\n≈\nestimated\n $619.00\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$619.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nStock for this selected period: Unknown. Forecast combined savings at close 2026-11-12: $2,119.00. If eligible surplus is saved. Forecast amounts follow unpaid planning dates across both reserves.\n\nForecast at period close if eligible surplus is saved. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.\n\nINVENTED FIRST GOAL\nForecast\n$1,500.00\nestimated\nNeeded\n$1,500.00\ncalculated\nProjected this period\n$381.00\nestimated\nINVENTED SECOND GOAL\nForecast\n$619.00\nestimated\nNeeded\n$1,000.00\ncalculated\nProjected this period\n$619.00\nestimated\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07\n\nActual future balances, contributions and settlement are unknown. Forecast costs are consumed once; this scenario grants no money movement permission.",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 1440,
+      "mode": "group",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented shared group\nNeeded $2,500.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $1,119.00. If eligible surplus is saved.\n\nInvented shared group\n≈\nestimated\n $1,119.00\nForecast\n/\ncalculated\n$2,500.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$1,000.00 this period\nInfo >\n\nInvented first goal Dec 18≈\nestimated\n $1,119.00 / ≈\nestimated\n $1,500.00Forecast / needed≈\nestimated\n $1,000.00This period\nInvented second goal Jan 4≈\nestimated\n $0.00 / ≈\nestimated\n $1,000.00Forecast / neededUnavailableThis period\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented shared group\nNeeded $2,500.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $2,119.00. If eligible surplus is saved.\n\nInvented shared group\n≈\nestimated\n $2,119.00\nForecast\n/\ncalculated\n$2,500.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$1,000.00 this period\nInfo >\n\nInvented first goal Dec 18≈\nestimated\n $1,500.00 / ≈\nestimated\n $1,500.00Forecast / needed≈\nestimated\n $381.00This period\nInvented second goal Jan 4≈\nestimated\n $619.00 / ≈\nestimated\n $1,000.00Forecast / needed≈\nestimated\n $619.00This period\nAccounts & evidence",
+      "inventory": "One savings pot\n\nStock for this selected period: Unknown. Forecast combined savings at close 2026-11-12: $2,119.00. If eligible surplus is saved. Forecast amounts follow unpaid planning dates across both reserves.\n\nForecast at period close if eligible surplus is saved. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.\n\nINVENTED SHARED GROUP\nForecast\n$2,119.00\nestimated\nNeeded\n$2,500.00\ncalculated\nProjected this period\n$1,000.00\nestimated\nInvented first goal 2026-12-18\nForecast\n$1,500.00\nestimated\nNeeded\n$1,500.00\nestimated\nProjected this period\n$381.00\nestimated\nInvented second goal 2027-01-04\nForecast\n$619.00\nestimated\nNeeded\n$1,000.00\nestimated\nProjected this period\n$619.00\nestimated\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07\n\nActual future balances, contributions and settlement are unknown. Forecast costs are consumed once; this scenario grants no money movement permission.",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 1440,
+      "mode": "expense",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nNeeded $80.00\nInvented second goal\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $1,119.00. If eligible surplus is saved.\n\nInvented first goal\n≈\nestimated\n $80.00\nForecast\n/\ncalculated\n$80.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$0.00 this period\nInfo >\n\nInvented second goal\n≈\nestimated\n $1,000.00\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$961.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented second goal\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $2,039.00. If eligible surplus is saved.\n\nInvented second goal\n≈\nestimated\n $1,000.00\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nStock for this selected period: Unknown. Forecast combined savings at close 2026-11-12: $2,039.00. If eligible surplus is saved. Forecast amounts follow unpaid planning dates across both reserves.\n\nForecast at period close if eligible surplus is saved. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.\n\nINVENTED SECOND GOAL\nForecast\n$1,000.00\nestimated\nNeeded\n$1,000.00\ncalculated\nProjected this period\n$0.00\nestimated\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07\n\nActual future balances, contributions and settlement are unknown. Forecast costs are consumed once; this scenario grants no money movement permission.",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 1440,
+      "mode": "unknown",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nUnavailable\nNeeded $1,500.00\nInvented second goal\nUnavailable\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: Unavailable. If eligible surplus is saved.\n\nInvented first goal\nUnavailable\nForecast\n/\ncalculated\n$1,500.00\nNeeded\n\nProjected top-up:\nUnavailable\nthis period\nInfo >\n\nInvented second goal\nUnavailable\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\nUnavailable\nthis period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nUnavailable\nNeeded $1,500.00\nInvented second goal\nUnavailable\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: Unavailable. If eligible surplus is saved.\n\nInvented first goal\nUnavailable\nForecast\n/\ncalculated\n$1,500.00\nNeeded\n\nProjected top-up:\nUnavailable\nthis period\nInfo >\n\nInvented second goal\nUnavailable\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\nUnavailable\nthis period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nStock for this selected period: Unknown. Forecast combined savings at close 2026-11-12: Unknown. If eligible surplus is saved. Forecast amounts follow unpaid planning dates across both reserves.\n\nSavings movement provenance is unavailable in this legacy or missing observation packet. Bank backing and new contributions are withheld.\n\nINVENTED FIRST GOAL\nForecast\nUnknown\nunknown\nNeeded\n$1,500.00\ncalculated\nProjected this period\nUnknown\nunknown\nINVENTED SECOND GOAL\nForecast\nUnknown\nunknown\nNeeded\n$1,000.00\ncalculated\nProjected this period\nUnknown\nunknown\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07\n\nActual future balances, contributions and settlement are unknown. Forecast costs are consumed once; this scenario grants no money movement permission.",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 390,
+      "mode": "ready",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nNeeded $1,500.00\nInvented second goal\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $1,119.00. If eligible surplus is saved.\n\nInvented first goal\n≈\nestimated\n $1,119.00\nForecast\n/\ncalculated\n$1,500.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$1,000.00 this period\nInfo >\n\nInvented second goal\n≈\nestimated\n $0.00\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nNeeded $1,500.00\nInvented second goal\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $2,119.00. If eligible surplus is saved.\n\nInvented first goal\n≈\nestimated\n $1,500.00\nForecast\n/\ncalculated\n$1,500.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$381.00 this period\nInfo >\n\nInvented second goal\n≈\nestimated\n $619.00\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$619.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nStock for this selected period: Unknown. Forecast combined savings at close 2026-11-12: $2,119.00. If eligible surplus is saved. Forecast amounts follow unpaid planning dates across both reserves.\n\nForecast at period close if eligible surplus is saved. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.\n\nINVENTED FIRST GOAL\nForecast\n$1,500.00\nestimated\nNeeded\n$1,500.00\ncalculated\nProjected this period\n$381.00\nestimated\nINVENTED SECOND GOAL\nForecast\n$619.00\nestimated\nNeeded\n$1,000.00\ncalculated\nProjected this period\n$619.00\nestimated\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07\n\nActual future balances, contributions and settlement are unknown. Forecast costs are consumed once; this scenario grants no money movement permission.",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 390,
+      "mode": "group",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented shared group\nNeeded $2,500.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $1,119.00. If eligible surplus is saved.\n\nInvented shared group\n≈\nestimated\n $1,119.00\nForecast\n/\ncalculated\n$2,500.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$1,000.00 this period\nInfo >\n\nInvented first goal Dec 18≈\nestimated\n $1,119.00 / ≈\nestimated\n $1,500.00Forecast / needed≈\nestimated\n $1,000.00This period\nInvented second goal Jan 4≈\nestimated\n $0.00 / ≈\nestimated\n $1,000.00Forecast / neededUnavailableThis period\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented shared group\nNeeded $2,500.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $2,119.00. If eligible surplus is saved.\n\nInvented shared group\n≈\nestimated\n $2,119.00\nForecast\n/\ncalculated\n$2,500.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$1,000.00 this period\nInfo >\n\nInvented first goal Dec 18≈\nestimated\n $1,500.00 / ≈\nestimated\n $1,500.00Forecast / needed≈\nestimated\n $381.00This period\nInvented second goal Jan 4≈\nestimated\n $619.00 / ≈\nestimated\n $1,000.00Forecast / needed≈\nestimated\n $619.00This period\nAccounts & evidence",
+      "inventory": "One savings pot\n\nStock for this selected period: Unknown. Forecast combined savings at close 2026-11-12: $2,119.00. If eligible surplus is saved. Forecast amounts follow unpaid planning dates across both reserves.\n\nForecast at period close if eligible surplus is saved. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.\n\nINVENTED SHARED GROUP\nForecast\n$2,119.00\nestimated\nNeeded\n$2,500.00\ncalculated\nProjected this period\n$1,000.00\nestimated\nInvented first goal 2026-12-18\nForecast\n$1,500.00\nestimated\nNeeded\n$1,500.00\nestimated\nProjected this period\n$381.00\nestimated\nInvented second goal 2027-01-04\nForecast\n$619.00\nestimated\nNeeded\n$1,000.00\nestimated\nProjected this period\n$619.00\nestimated\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07\n\nActual future balances, contributions and settlement are unknown. Forecast costs are consumed once; this scenario grants no money movement permission.",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 390,
+      "mode": "expense",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nNeeded $80.00\nInvented second goal\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $1,119.00. If eligible surplus is saved.\n\nInvented first goal\n≈\nestimated\n $80.00\nForecast\n/\ncalculated\n$80.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$0.00 this period\nInfo >\n\nInvented second goal\n≈\nestimated\n $1,000.00\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$961.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented second goal\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $2,039.00. If eligible surplus is saved.\n\nInvented second goal\n≈\nestimated\n $1,000.00\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nStock for this selected period: Unknown. Forecast combined savings at close 2026-11-12: $2,039.00. If eligible surplus is saved. Forecast amounts follow unpaid planning dates across both reserves.\n\nForecast at period close if eligible surplus is saved. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.\n\nINVENTED SECOND GOAL\nForecast\n$1,000.00\nestimated\nNeeded\n$1,000.00\ncalculated\nProjected this period\n$0.00\nestimated\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07\n\nActual future balances, contributions and settlement are unknown. Forecast costs are consumed once; this scenario grants no money movement permission.",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 390,
+      "mode": "unknown",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nUnavailable\nNeeded $1,500.00\nInvented second goal\nUnavailable\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: Unavailable. If eligible surplus is saved.\n\nInvented first goal\nUnavailable\nForecast\n/\ncalculated\n$1,500.00\nNeeded\n\nProjected top-up:\nUnavailable\nthis period\nInfo >\n\nInvented second goal\nUnavailable\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\nUnavailable\nthis period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nUnavailable\nNeeded $1,500.00\nInvented second goal\nUnavailable\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: Unavailable. If eligible surplus is saved.\n\nInvented first goal\nUnavailable\nForecast\n/\ncalculated\n$1,500.00\nNeeded\n\nProjected top-up:\nUnavailable\nthis period\nInfo >\n\nInvented second goal\nUnavailable\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\nUnavailable\nthis period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nStock for this selected period: Unknown. Forecast combined savings at close 2026-11-12: Unknown. If eligible surplus is saved. Forecast amounts follow unpaid planning dates across both reserves.\n\nSavings movement provenance is unavailable in this legacy or missing observation packet. Bank backing and new contributions are withheld.\n\nINVENTED FIRST GOAL\nForecast\nUnknown\nunknown\nNeeded\n$1,500.00\ncalculated\nProjected this period\nUnknown\nunknown\nINVENTED SECOND GOAL\nForecast\nUnknown\nunknown\nNeeded\n$1,000.00\ncalculated\nProjected this period\nUnknown\nunknown\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07\n\nActual future balances, contributions and settlement are unknown. Forecast costs are consumed once; this scenario grants no money movement permission.",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 320,
+      "mode": "ready",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nNeeded $1,500.00\nInvented second goal\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $1,119.00. If eligible surplus is saved.\n\nInvented first goal\n≈\nestimated\n $1,119.00\nForecast\n/\ncalculated\n$1,500.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$1,000.00 this period\nInfo >\n\nInvented second goal\n≈\nestimated\n $0.00\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nNeeded $1,500.00\nInvented second goal\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $2,119.00. If eligible surplus is saved.\n\nInvented first goal\n≈\nestimated\n $1,500.00\nForecast\n/\ncalculated\n$1,500.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$381.00 this period\nInfo >\n\nInvented second goal\n≈\nestimated\n $619.00\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$619.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nStock for this selected period: Unknown. Forecast combined savings at close 2026-11-12: $2,119.00. If eligible surplus is saved. Forecast amounts follow unpaid planning dates across both reserves.\n\nForecast at period close if eligible surplus is saved. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.\n\nINVENTED FIRST GOAL\nForecast\n$1,500.00\nestimated\nNeeded\n$1,500.00\ncalculated\nProjected this period\n$381.00\nestimated\nINVENTED SECOND GOAL\nForecast\n$619.00\nestimated\nNeeded\n$1,000.00\ncalculated\nProjected this period\n$619.00\nestimated\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07\n\nActual future balances, contributions and settlement are unknown. Forecast costs are consumed once; this scenario grants no money movement permission.",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 320,
+      "mode": "group",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented shared group\nNeeded $2,500.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $1,119.00. If eligible surplus is saved.\n\nInvented shared group\n≈\nestimated\n $1,119.00\nForecast\n/\ncalculated\n$2,500.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$1,000.00 this period\nInfo >\n\nInvented first goal Dec 18≈\nestimated\n $1,119.00 / ≈\nestimated\n $1,500.00Forecast / needed≈\nestimated\n $1,000.00This period\nInvented second goal Jan 4≈\nestimated\n $0.00 / ≈\nestimated\n $1,000.00Forecast / neededUnavailableThis period\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented shared group\nNeeded $2,500.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $2,119.00. If eligible surplus is saved.\n\nInvented shared group\n≈\nestimated\n $2,119.00\nForecast\n/\ncalculated\n$2,500.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$1,000.00 this period\nInfo >\n\nInvented first goal Dec 18≈\nestimated\n $1,500.00 / ≈\nestimated\n $1,500.00Forecast / needed≈\nestimated\n $381.00This period\nInvented second goal Jan 4≈\nestimated\n $619.00 / ≈\nestimated\n $1,000.00Forecast / needed≈\nestimated\n $619.00This period\nAccounts & evidence",
+      "inventory": "One savings pot\n\nStock for this selected period: Unknown. Forecast combined savings at close 2026-11-12: $2,119.00. If eligible surplus is saved. Forecast amounts follow unpaid planning dates across both reserves.\n\nForecast at period close if eligible surplus is saved. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.\n\nINVENTED SHARED GROUP\nForecast\n$2,119.00\nestimated\nNeeded\n$2,500.00\ncalculated\nProjected this period\n$1,000.00\nestimated\nInvented first goal 2026-12-18\nForecast\n$1,500.00\nestimated\nNeeded\n$1,500.00\nestimated\nProjected this period\n$381.00\nestimated\nInvented second goal 2027-01-04\nForecast\n$619.00\nestimated\nNeeded\n$1,000.00\nestimated\nProjected this period\n$619.00\nestimated\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07\n\nActual future balances, contributions and settlement are unknown. Forecast costs are consumed once; this scenario grants no money movement permission.",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 320,
+      "mode": "expense",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nNeeded $80.00\nInvented second goal\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $1,119.00. If eligible surplus is saved.\n\nInvented first goal\n≈\nestimated\n $80.00\nForecast\n/\ncalculated\n$80.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$0.00 this period\nInfo >\n\nInvented second goal\n≈\nestimated\n $1,000.00\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$961.00 this period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented second goal\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: ≈\nestimated\n $2,039.00. If eligible surplus is saved.\n\nInvented second goal\n≈\nestimated\n $1,000.00\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\n≈\nestimated\n$0.00 this period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nStock for this selected period: Unknown. Forecast combined savings at close 2026-11-12: $2,039.00. If eligible surplus is saved. Forecast amounts follow unpaid planning dates across both reserves.\n\nForecast at period close if eligible surplus is saved. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.\n\nINVENTED SECOND GOAL\nForecast\n$1,000.00\nestimated\nNeeded\n$1,000.00\ncalculated\nProjected this period\n$0.00\nestimated\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07\n\nActual future balances, contributions and settlement are unknown. Forecast costs are consumed once; this scenario grants no money movement permission.",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    },
+    {
+      "width": 320,
+      "mode": "unknown",
+      "first": "OCT 16–OCT 29\n\nSavings goals\nInvented first goal\nUnavailable\nNeeded $1,500.00\nInvented second goal\nUnavailable\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: Unavailable. If eligible surplus is saved.\n\nInvented first goal\nUnavailable\nForecast\n/\ncalculated\n$1,500.00\nNeeded\n\nProjected top-up:\nUnavailable\nthis period\nInfo >\n\nInvented second goal\nUnavailable\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\nUnavailable\nthis period\nInfo >\n\nAccounts & evidence",
+      "second": "OCT 30–NOV 12\n\nSavings goals\nInvented first goal\nUnavailable\nNeeded $1,500.00\nInvented second goal\nUnavailable\nNeeded $1,000.00\nSaving for\n\nForecast Savings at close: Unavailable. If eligible surplus is saved.\n\nInvented first goal\nUnavailable\nForecast\n/\ncalculated\n$1,500.00\nNeeded\n\nProjected top-up:\nUnavailable\nthis period\nInfo >\n\nInvented second goal\nUnavailable\nForecast\n/\ncalculated\n$1,000.00\nNeeded\n\nProjected top-up:\nUnavailable\nthis period\nInfo >\n\nAccounts & evidence",
+      "inventory": "One savings pot\n\nStock for this selected period: Unknown. Forecast combined savings at close 2026-11-12: Unknown. If eligible surplus is saved. Forecast amounts follow unpaid planning dates across both reserves.\n\nSavings movement provenance is unavailable in this legacy or missing observation packet. Bank backing and new contributions are withheld.\n\nINVENTED FIRST GOAL\nForecast\nUnknown\nunknown\nNeeded\n$1,500.00\ncalculated\nProjected this period\nUnknown\nunknown\nINVENTED SECOND GOAL\nForecast\nUnknown\nunknown\nNeeded\n$1,000.00\ncalculated\nProjected this period\nUnknown\nunknown\nAccounts & evidence\nInvented club pool: $30.00\n2026-10-07\nInvented home pool: $89.00\n2026-10-07\n\nActual future balances, contributions and settlement are unknown. Forecast costs are consumed once; this scenario grants no money movement permission.",
+      "replay": true,
+      "currentRestored": true,
+      "immutable": true
+    }
+  ],
+  "served": {
+    "public/index.html": "4bede53185ea5b67c39e218f8d53e673bdd13daf3284e6c0cf471d55a14ddff9",
+    "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
+    "public/fonts.css": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
+    "public/styles.css": "7099e011ff78e828a90cbd7e644b78e9ffdb092157d4a4f9d870f6711c79b973",
+    "public/household-view.css": "e5cb08cfe7d5663fab76da2eb51f68d4890b1c4b550cf80eb1f61930a749620e",
+    "public/budget-polish.css": "29be9b313c3c7b4d402ff730abe76dfd09e07f38df4dfd04a26a12fa479d16fe",
+    "public/bill-detail.css": "df5e707892d09bded4516822edd1c8a056b472e092c353062a645d7a79ef69c0",
+    "public/savings-inventory.css": "39591b0f8fbb0c8109f5f2fe71dd707067dbaf54e85d467989ed96342e4e1a58",
+    "public/running-build.css": "1121433390812139a1c0fc810a882a7b97903e17a6d42f19dcc93fa05a5327d5",
+    "public/budget-surface.css": "0e372751e431960210cfcf97812d4e5d0be7d51480e7898daf8dd4d37329e714",
+    "public/budget-blend.css": "a140d486912b15b2df01f8ffc093237771ecc46ca6a3762f48bc52e1fe4b0e7c",
+    "public/budget-gface.css": "9cda7168d7949ddf2a754ed8e9115169c115ef877ea7bdd819e250ca47f498de",
+    "public/budget-sheet-motion.css": "31fbea5e07e133925d3f357c62ddf6d7f38d84e7bc0b654d8473070e5d1ed2c4",
+    "public/transaction-review.css": "d9ea9e8b896400cf7284d7f48739bde6ae968c3fbfce5f7e5b929f9dda42431a",
+    "public/app.js": "87cbf944b3b2b95e86b9d98e3821937381ae6e7dabb6e0e2483ba42422c76888",
+    "public/forecast-card-period.js": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20",
+    "public/forecast.js": "24934e78f25aedcbdf234ccbd2ca4e024931700342286dc6043d8168c0a89df8",
+    "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
+    "public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
+    "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
+    "public/savings-inventory.js": "93b7b74fe1ad76e4fdce153924fa7a4d681f183d7743648539a50f523a4f0156",
+    "public/budget-surface.js": "af32d9e29d1487496365a1025a0bfb65d2dc062f2534392b8095675857f9552b",
+    "public/budget-card-movements.js": "d1d9f97c636779ce45658c6ffb7b05b694cb8fa9c52bbed32306bd2542219505",
+    "public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
+    "public/transaction-review.js": "5dc2c26f2be9ee3c0e5715656e16c0113167213d2bb1bd46c48ee27457fb0106",
+    "public/plan.js": "cb9d5e324953f8222e5fddf42144f1afcb822f1c10798caac3bcd6ffaf1f5557",
+    "public/household-view.js": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
+    "public/budget-polish.js": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
+    "public/aurora.js": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
+    "public/budget-river.js": "dbff4d71770e510d65a1f79f8a3eaf489a42885dc286e66630b375b661818418",
+    "public/budget-blend.js": "802282f1082d06a93552024f7cfef419c77044b5e151e5f3d35bb626675876f5",
+    "public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010"
+  },
+  "errors": [],
+  "external": [],
+  "writes": [],
+  "baseline": "73b73b2b22b2dee2b367a04ba386de201bbae5bd",
+  "sourceBlobsVerified": true,
+  "acceptance": {
+    "focusedFinancialCases": 23,
+    "currentReportedCases": 88,
+    "browserCases": 12,
+    "completeNativeRecommendationsUnchanged": 5,
+    "physicalSafari": false,
+    "systemsReview": "required-pending"
+  },
+  "testBindings": {
+    "test/test-savings-future-closing.js": "81824517813e388681e91b1c740aea33effc9238663750e70757f7d633e6a5bb",
+    "test/browser-savings-future-closing.js": "24acf4cf7f5b5468a199998c08c6bc197e584081b3850c67c9786bab7da992b8",
+    "test/fixtures/savings-future-closing-data.js": "c84a4680a04c3b77185c092f9d4baa5140a46ddfc724a85ed4f3fc336624c17f",
+    "test/test-savings-group-members.js": "3827d0d0261c818a28a20163c4a73bf04f09d7ea67ecb661533d2fe140675220"
+  },
+  "screenshotHashes": {
+    "ready-320.png": "874cea72461fbb3b1711005734dbe675bffa0cf4b155aa153b08b71575bbfbb0",
+    "group-320.png": "8eda858a7d58b34f3c7c30c270648d2cef0d5e2e4146be758c554290122c6c8d",
+    "expense-390.png": "3a3483ab8d633b2bd70eeac098b30e82b92edc62b5a24996d651dbc2e2d95545",
+    "unknown-320.png": "6628464c9a0427d0077ec210b3c7e9a72faaca8b0ae264726edef6fa68580632"
+  }
+}
