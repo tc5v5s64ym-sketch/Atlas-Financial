@@ -19,6 +19,9 @@ for (const account of ['9003', '9004']) for (const mode of ['recognized', 'plain
   'unrelated-card-credit', 'reference-card-credit']) test('real source qualified ' + account + ':' + mode, () => {
   const x = source(mode, account); reported(x);
   assert.equal(x.advice.savingsFunding.backing.status, 'ready', x.advice.savingsFunding.backing.reason);
+  if (['plain-debit', 'cash-pair'].includes(mode))
+    assert.ok(x.report.currentPeriodActuals.transactions.every(r => !Object.hasOwn(r, 'tdCardPaymentIdentity')),
+      'untyped incumbent packets acquire no false recipient marker');
   if (!['plain-debit', 'cash-pair'].includes(mode)) {
     const row = x.report.currentPeriodActuals.transactions[0];
     assert.equal(row.tdCardPaymentIdentity, true, 'recorded recipient class survives observer and overlay');
@@ -36,6 +39,8 @@ for (const mode of ['ordinary-transfer', 'unknown-destination', 'payee-lookalike
   'suffix-unknown', 'prefix-unknown', 'hint-only',
   'wrong-direction', 'wrong-sign', 'reference-replay', 'cash-contradiction']) test('ambiguous source holds ' + mode, () => {
   const x = source(mode); reported(x);
+  if (!['reference-replay', 'cash-contradiction'].includes(mode))
+    assert.ok(x.report.currentPeriodActuals.transactions.every(r => !Object.hasOwn(r, 'tdCardPaymentIdentity')));
   assert.equal(x.advice.savingsFunding.backing.status, 'unavailable');
   assert.match(x.advice.savingsFunding.backing.reason, unknown);
   assert.equal(x.advice.savingsFunding.period.proposal, null);

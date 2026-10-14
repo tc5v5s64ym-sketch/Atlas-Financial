@@ -15,12 +15,6 @@ old.require = name => name === '../public/forecast.js' ? B : ordinaryRequire(nam
 old._compile(git('scripts/provider-observe.js'), filename);
 const L = require('../scripts/live-plan'), { source } = require('./fixtures/savings-card-recipient-data');
 const proofs = [];
-const withoutAddedFlag = value => {
-  if (Array.isArray(value)) return value.map(withoutAddedFlag);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'tdCardPaymentIdentity')
-    .map(([key, child]) => [key, withoutAddedFlag(child)]));
-};
 for (const mode of ['recognized', 'ordinary-transfer', 'unknown-destination', 'payee-lookalike',
   'note-lookalike', 'plain-debit', 'cash-pair', 'pending', 'same-day-cutoff', 'window-incomplete',
   'unrelated-card-credit', 'reference-replay', 'cash-contradiction']) {
@@ -55,11 +49,11 @@ for (const mode of ['recognized', 'ordinary-transfer', 'unknown-destination', 'p
     'transactionWindow', 'pendingCoverage', 'reconciliation'])
     assert.deepEqual(JSON.parse(JSON.stringify(x.report[key] ?? null)),
       JSON.parse(JSON.stringify(report[key] ?? null)), mode + ': source/settlement ' + key);
-  if (!recipientTyped) assert.deepEqual(withoutAddedFlag(next), withoutAddedFlag(prior),
-    mode + ': entire native advice unchanged except additive false recipient flag');
+  if (!recipientTyped) assert.deepEqual(next, prior,
+    mode + ': entire native advice unchanged, including original transaction packet bytes');
   assert.equal(JSON.stringify(x.input), original);
   proofs.push({ mode, intendedSavingsQualificationChanged: changed,
-    entireAdviceEqualAfterRemovingOnlyAddedFalseFlag: !recipientTyped,
+    entireAdviceAndUntypedPacketEqual: !recipientTyped,
     knownRecipientClassificationDelta: recipientTyped,
     contradictoryCashPairNowWithheld: mode === 'cash-contradiction',
     originalBalanceAndSettlementEvidenceEqual: true, inputImmutable: true });
