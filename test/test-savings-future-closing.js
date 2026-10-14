@@ -4,6 +4,7 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const path = require('node:path');
 const F = require(path.join(process.env.ATLAS_TEST_APP_ROOT || path.resolve(__dirname, '..'), 'public/forecast'));
 const input = require('./fixtures/savings-future-closing-data');
+const ownerModel = require('./fixtures/savings-owner-closing-data');
 const copy = x => JSON.parse(JSON.stringify(x));
 function advice(x) {
   const before = JSON.stringify(x), result = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [] });
@@ -18,6 +19,37 @@ function closing(a, start) {
   return p.forecastClosing;
 }
 function values(p) { assert.equal(p.status, 'ready', p.reason); return p.items.map(i => Math.round(i.forecastSaved * 100)); }
+for (const operating of [80, 1000]) test('owner closing 300 + 400 - 500 = 200 is independent of operating opening ' + operating, () => {
+  const x = ownerModel(operating), a = advice(x);
+  const first = closing(a, '2026-10-16'), second = closing(a, '2026-10-30');
+  assert.equal(first.status, 'ready', first.reason); assert.equal(second.status, 'ready', second.reason);
+  assert.equal(first.stock, 200); assert.equal(second.stock, 200);
+  assert.equal(first.operatingCash, operating); assert.equal(second.operatingCash, operating);
+  assert.deepEqual(first.items.map(i => [i.id, i.forecastSaved]), [['b', 200]]);
+  assert.deepEqual(second.items, []);
+  assert.equal(30000 + 40000 - 50000, 20000); assert.equal(20000 + 40000 - 40000, 20000);
+  assert.equal(a.savingsFunding.stock.amount, 300); assert.ok(x.plan.commitments.every(c => c.settledOn === undefined));
+});
+for (const operating of [80, 1000]) test('full signed Savings -100/-400 is not replaced by operating support ' + operating, () => {
+  const a = advice(ownerModel(operating, 100));
+  const first = closing(a, '2026-10-16'), second = closing(a, '2026-10-30');
+  for (const [p, expected] of [[first, -100], [second, -400]]) {
+    assert.equal(p.status, 'unavailable'); assert.equal(p.stock, null);
+    assert.equal(p.diagnostics.signedSavings, expected);
+    assert.deepEqual(p.items, []); assert.deepEqual(p.rows, []);
+  }
+  assert.equal(30000 + 10000 - 50000, -10000); assert.equal(-10000 + 10000 - 40000, -40000);
+});
+test('positive signed closing arithmetic does not authorize a cost before its income arrives', () => {
+  const x = ownerModel(); x.plan.income[1].date = '2026-10-24'; x.plan.commitments[0].date = '2026-10-16';
+  const a = advice(x), p = closing(a, '2026-10-16');
+  assert.equal(30000 + 40000 - 50000, 20000);
+  assert.equal(p.diagnostics.signedSavings, 200);
+  assert.equal(p.status, 'unavailable'); assert.equal(p.stock, null);
+  assert.equal(p.gap.date, '2026-10-16'); assert.equal(p.gap.signedOperatingCash, -120);
+  assert.equal(p.gap.cashFloor, 20); assert.equal(p.gap.shortBy, 140);
+  assert.equal(a.savingsFunding.period.status, 'ready', 'incumbent zero-tail condition is preserved');
+});
 test('two future periods of 1000 add exactly 2000 at the second close, spilling into the next requirement', () => {
   const a = advice(input()), first = closing(a, '2026-10-16'), second = closing(a, '2026-10-30');
   assert.equal(first.end, '2026-10-29'); assert.equal(first.stock, 1119);
@@ -172,7 +204,7 @@ test('native unavoidable later gap preserves affordable earlier closes and withh
   assert.equal(80000 + 60000 - 50000 - 60000 - 40000, -10000, 'independent economic shortage, no invented funding');
   assert.deepEqual(copy(closing(a, '2026-10-16')), copy(first));
 });
-test('zero location close is valid only when native operating cash covers the full remaining expense', () => {
+test('operating support cannot zero-clamp a -100 signed Savings close', () => {
   const x = input(); x.plan.defaults.targetBuffer = 0;
   x.plan.startingCash.breakdown[0].value = x.plan.opening.paydaySnapshot.opening = 100;
   x.plan.savingsPoolObservation.accounts[0].value = x.plan.startingCash.breakdown[2].value = 800;
@@ -184,10 +216,45 @@ test('zero location close is valid only when native operating cash covers the fu
     { id: 'b', label: 'Invented second cost', date: '2026-11-12', amount: 600, confidence: 'confirmed', sinkingFund: true },
     { id: 'c', label: 'Invented third cost', date: '2026-11-26', amount: 400, confidence: 'confirmed', sinkingFund: true }];
   const a = advice(x), p = closing(a, '2026-11-13');
-  assert.equal(p.status, 'ready', p.reason); assert.equal(p.cashBasis, 'native-location-projection');
-  assert.equal(p.stock, 0); assert.equal(p.operatingCash, 0); assert.deepEqual(p.rows, []);
+  assert.equal(p.status, 'unavailable'); assert.equal(p.stock, null); assert.deepEqual(p.rows, []);
+  assert.equal(p.diagnostics.signedSavings, -100); assert.equal(p.diagnostics.nativeOperatingCash, 0);
   assert.equal(10000 + 80000 + 60000 - 50000 - 60000 - 40000, 0, 'full 1500 expenses consume household cash once');
   assert.ok(x.plan.commitments.every(c => c.settledOn === undefined));
+});
+test('an exact zero Savings ledger is published without spending operating carry', () => {
+  const x = ownerModel(1000, 300);
+  x.plan.commitments[1].amount = 400;
+  const a = advice(x), p = closing(a, '2026-10-30');
+  assert.equal(30000 + 30000 - 50000 + 30000 - 40000, 0);
+  assert.equal(p.status, 'ready', p.reason); assert.equal(p.stock, 0); assert.equal(p.operatingCash, 1000);
+  assert.equal(p.cashBasis, 'opening-savings-plus-eligible-surplus-minus-goal-costs');
+  assert.deepEqual(p.items, []);
+});
+for (const destination of ['chequing-a', 'savings']) test('current-tail annual goal bill is debited once with proved income destination ' + destination, () => {
+  const x = ownerModel(1000);
+  x.plan.bills = [{ id: 'current-annual', label: 'Invented current annual bill', frequency: 'yearly', month: 10, day: 10,
+    firstDue: '2026-10-10', amount: 200, confidence: 'confirmed', jointCash: false }];
+  x.plan.income.push({ id: 'current-gift', label: 'Invented current income', frequency: 'once', date: '2026-10-04', amount: 1000, confidence: 'confirmed' });
+  x.opts.currentPeriodActuals.representedActuals.push({ id: 'current-gift', date: '2026-10-04', actual: 1000, transactionId: 'current-income' });
+  x.opts.currentPeriodActuals.transactions.push({ id: 'current-income', date: '2026-10-04', amount: -1000,
+    currency: 'CAD', pending: false, isIncome: true, incomeId: 'current-gift', savingsPostingEvidence: 'posted',
+    atlasAccountId: destination, accountRole: destination === 'savings' ? 'household-reserve' : 'household-cash', displayedPayee: 'Invented current income' });
+  if (destination === 'savings') {
+    x.plan.savingsPoolObservation.accounts[0].value += 1000;
+    x.plan.startingCash.breakdown[2].value += 1000;
+  } else x.plan.startingCash.breakdown[0].value += 1000;
+  const a = advice(x), p = closing(a, '2026-10-30');
+  assert.equal(p.status, 'ready', p.reason); assert.equal(p.stock, 1000);
+  assert.equal(30000 + 100000 - 20000 + 40000 - 50000 + 40000 - 40000, 100000);
+  assert.equal(a.savingsFunding.period.alreadySavedIncome, destination === 'savings' ? 1000 : 0);
+});
+test('a future annual goal already deducted by Budget is not subtracted a second time', () => {
+  const x = ownerModel(); x.plan.commitments.shift();
+  x.plan.bills = [{ id: 'a', label: 'Invented annual goal', frequency: 'yearly', month: 10, day: 21,
+    firstDue: '2026-10-21', amount: 500, confidence: 'confirmed', jointCash: false }];
+  const a = advice(x);
+  for (const start of ['2026-10-16', '2026-10-30']) { const p = closing(a, start);
+    assert.equal(p.status, 'ready', p.reason); assert.equal(p.stock, 200); assert.equal(p.operatingCash, 80); }
 });
 test('an unavailable native current-tail path is never overridden by schedule funding-gap acceptance', () => {
   const x = input(); x.plan.commitments[0].amount = 4000;

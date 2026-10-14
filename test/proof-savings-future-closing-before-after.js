@@ -3,6 +3,7 @@
 // node test/proof-savings-future-closing-before-after.js <exact-main-checkout>
 const assert = require('node:assert/strict'), path = require('node:path');
 const F = require('../public/forecast'), fixture = require('./fixtures/savings-future-closing-data');
+const ownerModel = require('./fixtures/savings-owner-closing-data');
 const base = require(path.join(path.resolve(process.argv[2]), 'public/forecast'));
 const clone = x => JSON.parse(JSON.stringify(x));
 function withoutNewPublication(advice) {
@@ -12,8 +13,10 @@ function withoutNewPublication(advice) {
   return value;
 }
 let cases = 0;
-for (const mode of ['ready', 'expense', 'deficit', 'missing-receipts', 'group', 'gap']) {
-  const x = fixture();
+for (const mode of ['ready', 'expense', 'deficit', 'missing-receipts', 'group', 'gap', 'owner80', 'owner1000', 'owner-deficit', 'timing']) {
+  const x = mode.startsWith('owner') || mode === 'timing'
+    ? ownerModel(mode === 'owner80' || mode === 'timing' ? 80 : 1000, mode === 'owner-deficit' ? 100 : 400) : fixture();
+  if (mode === 'timing') { x.plan.income[1].date = '2026-10-24'; x.plan.commitments[0].date = '2026-10-16'; }
   if (mode === 'expense') { x.plan.commitments[0].date = '2026-11-03'; x.plan.commitments[0].amount = 80; }
   if (mode === 'deficit') { x.plan.commitments[0].date = '2027-01-03'; x.plan.income[2].amount = 0;
     x.plan.bills = [{ id: 'deficit', label: 'Invented bill', frequency: 'once', date: '2026-11-03', amount: 20, confidence: 'confirmed' }]; }

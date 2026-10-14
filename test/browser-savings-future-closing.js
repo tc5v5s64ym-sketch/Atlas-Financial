@@ -4,6 +4,7 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
 const crypto = require('node:crypto'), cp = require('node:child_process');
 const { chromium } = require('playwright');
 const fixture = require('./fixtures/savings-future-closing-data');
+const ownerModel = require('./fixtures/savings-owner-closing-data');
 const shell = require('./fixtures/savings-daily-consumer-data');
 const root = path.resolve(__dirname, '..'), assets = path.join(root, 'public');
 const out = process.env.ATLAS_FUTURE_SAVINGS_PROOF || path.join(require('node:os').tmpdir(), 'atlas-future-savings-proof');
@@ -18,8 +19,11 @@ async function step(page, direction) {
 }
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
-  try { for (const width of [1440, 390, 320]) for (const mode of ['ready', 'group', 'installments', 'gap', 'zero', 'expense', 'unknown']) {
-    const x = fixture(), data = shell('ready'); data.meta.asOf = x.asOf; data.plan = x.plan;
+  try { for (const width of [1440, 390, 320]) for (const mode of ['ready', 'group', 'installments', 'gap', 'zero', 'expense', 'unknown', 'owner80', 'owner1000', 'owner-deficit', 'timing']) {
+    const owner = mode.startsWith('owner') || mode === 'timing';
+    const x = owner ? ownerModel(mode === 'owner80' || mode === 'timing' ? 80 : 1000, mode === 'owner-deficit' ? 100 : 400) : fixture();
+    if (mode === 'timing') { x.plan.income[1].date = '2026-10-24'; x.plan.commitments[0].date = '2026-10-16'; }
+    const data = shell('ready'); data.meta.asOf = x.asOf; data.plan = x.plan;
     data.plan.groups = [];
     if (mode === 'group') { data.plan.groups = [{ id: 'shared', label: 'Invented shared group', planSpendSummary: true }];
       data.plan.commitments.forEach(c => { c.group = 'shared'; }); }
@@ -33,7 +37,7 @@ async function step(page, direction) {
     if (mode === 'gap' || mode === 'zero') {
       data.plan.defaults.targetBuffer = 0;
       data.plan.startingCash.breakdown[0].value = data.plan.opening.paydaySnapshot.opening = mode === 'zero' ? 100 : 0;
-      data.plan.savingsPoolObservation.accounts[0].value = data.plan.startingCash.breakdown[2].value = 800;
+      data.plan.savingsPoolObservation.accounts[0].value = data.plan.startingCash.breakdown[2].value = mode === 'zero' ? 900 : 800;
       data.plan.savingsPoolObservation.accounts[1].value = data.plan.startingCash.heldElsewhere[0].value = 0;
       data.plan.income[1].amount = data.plan.income[2].amount = 200;
       data.plan.income.push({ id: 'p3', label: 'Invented third receipt', frequency: 'once', date: '2026-11-13', amount: 200, confidence: 'confirmed' });
@@ -70,10 +74,13 @@ async function step(page, direction) {
     const first = await tile.innerText(); assert.match(first, /Savings at period close/);
     assert.doesNotMatch(first, /\bForecast\b|\bActual\b|estimated|assumptions|If eligible surplus/i);
     if (mode === 'unknown') assert.match(first, /Unavailable/);
+    else if (mode === 'owner-deficit' || mode === 'timing') { assert.match(first, /Unavailable/);
+      assert.match(first, mode === 'timing' ? /Funding gap on 2026-10-16: \$140\.00/ : /Funding gap on 2026-10-29: \$100\.00/); }
+    else if (owner) assert.match(first, /200\.00/);
     else if (mode === 'installments') {
       assert.match(first, /1,039\.00/); assert.match(first, /Invented installment two/i);
       assert.doesNotMatch(first, /Invented installment one/i);
-    } else if (mode === 'gap' || mode === 'zero') assert.match(first, /500\.00/);
+    } else if (mode === 'gap' || mode === 'zero') assert.match(first, mode === 'zero' ? /600\.00/ : /500\.00/);
     else assert.match(first, /1,119\.00/);
     await step(page, 1);
     const second = await tile.innerText();
@@ -83,6 +90,9 @@ async function step(page, direction) {
     if (mode === 'gap') assert.match(second, /100\.00/);
     if (mode === 'zero') assert.match(second, /200\.00/);
     if (mode === 'unknown') assert.match(second, /Unavailable/);
+    if (mode === 'owner80' || mode === 'owner1000') { assert.match(second, /200\.00/); assert.match(second, /No remaining Savings requirements/); }
+    if (mode === 'owner-deficit') { assert.match(second, /Unavailable/); assert.match(second, /Funding gap on 2026-11-12: \$400\.00/); }
+    if (mode === 'timing') { assert.match(second, /Unavailable/); assert.match(second, /Funding gap on 2026-10-16: \$140\.00/); }
     await tile.locator('[data-budget-funding-inventory]').focus(); await page.keyboard.press('Enter');
     const dialog = page.locator('[data-budget-detail-sheet]'); await dialog.waitFor({ state: 'visible' });
     const info = dialog.locator('[data-budget-savings-info] > summary');
@@ -99,6 +109,8 @@ async function step(page, direction) {
     if (mode === 'gap') assert.match(inventory, /100\.00/);
     if (mode === 'zero') assert.match(inventory, /200\.00/);
     if (mode === 'unknown') assert.match(inventory, /Unknown/);
+    if (mode === 'owner80' || mode === 'owner1000') assert.match(inventory, /200\.00/);
+    if (mode === 'owner-deficit' || mode === 'timing') { assert.match(inventory, /Unknown|Unavailable/); assert.match(inventory, /Funding gap/); }
     const trust = await page.evaluate(() => {
       const d = App.data, advice = Forecast.recommend(d.plan, d.meta.asOf,
         { ...d.plan.defaults, ...d.liveOverlay, weeklyVariable: 0, debts: d.debts || [] });
@@ -108,11 +120,16 @@ async function step(page, direction) {
         { asOf: d.meta.asOf, advice, periodId: selected.id });
       return { trust: packet.forecastClosing?.trust, actualSaved: packet.forecastClosing?.actualSaved,
         nature: packet.forecastClosing?.nature, basis: packet.forecastClosing?.cashBasis,
-        action: packet.forecastClosing?.actionPermission };
+        action: packet.forecastClosing?.actionPermission, status: packet.forecastClosing?.status,
+        stock: packet.forecastClosing?.stock, diagnostics: packet.forecastClosing?.diagnostics,
+        operating: packet.forecastClosing?.operatingCash };
     });
     assert.equal(trust.actualSaved, null); assert.equal(trust.action, 'not-granted');
-    if (mode !== 'unknown') { assert.equal(trust.trust, 'estimated'); assert.equal(trust.nature, 'if-eligible-surplus-saved');
-      assert.equal(trust.basis, 'native-location-projection'); }
+    if (!['unknown', 'owner-deficit', 'timing'].includes(mode)) { assert.equal(trust.trust, 'estimated'); assert.equal(trust.nature, 'if-eligible-surplus-saved');
+      assert.equal(trust.basis, 'opening-savings-plus-eligible-surplus-minus-goal-costs'); }
+    if (mode === 'owner80' || mode === 'owner1000') { assert.equal(trust.stock, 200); assert.equal(trust.operating, mode === 'owner80' ? 80 : 1000); }
+    if (mode === 'owner-deficit') { assert.equal(trust.stock, null); assert.equal(trust.diagnostics.signedSavings, -400); }
+    if (mode === 'timing') { assert.equal(trust.stock, null); assert.equal(trust.diagnostics.signedSavings, 200); }
     await dialog.screenshot({ path: path.join(out, `${mode}-${width}.png`), animations: 'disabled' });
     await page.keyboard.press('Escape');
     if (mode === 'gap') {
@@ -125,6 +142,7 @@ async function step(page, direction) {
       await step(page, 1); const empty = await tile.innerText();
       assert.match(empty, /\$0\.00/); assert.match(empty, /No remaining Savings requirements/i);
       assert.doesNotMatch(empty, /Unavailable|Funding gap/);
+      await tile.screenshot({ path: path.join(out, `zero-closing-${width}.png`), animations: 'disabled' });
       await step(page, -1); assert.equal(await tile.innerText(), second);
     }
     await step(page, -1); await step(page, -1); assert.equal(await tile.innerText(), current);
@@ -132,7 +150,7 @@ async function step(page, direction) {
     await page.evaluate(() => App.rerender()); assert.equal(await tile.innerText(), second);
     assert.equal(await page.evaluate(() => JSON.stringify(App.data)), before);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-    cases.push({ width, mode, first, second, inventory, replay: true, currentRestored: true, immutable: true });
+    cases.push({ width, mode, first, second, inventory, internalPublication: trust, replay: true, currentRestored: true, immutable: true });
     console.log('PASS ' + mode + ' ' + width); await page.close();
   } } finally { await browser.close(); }
   assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(writes, []);
