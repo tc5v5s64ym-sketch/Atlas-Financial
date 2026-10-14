@@ -1,6 +1,6 @@
 {
   "synthetic": true,
-  "head": "a528c7dcfa02c472d1f9832997b7a13569c6ef7a",
+  "head": "e2a24554805ca2a8ef0aa6f3669361f8d2011154",
   "served": {
     "public/index.html": "4bede53185ea5b67c39e218f8d53e673bdd13daf3284e6c0cf471d55a14ddff9",
     "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
@@ -18,7 +18,7 @@
     "public/transaction-review.css": "d9ea9e8b896400cf7284d7f48739bde6ae968c3fbfce5f7e5b929f9dda42431a",
     "public/app.js": "10eec681b00b50202152ec8f8d7490d05d1facc90bc11fad4d559bde91b7ef7b",
     "public/forecast-card-period.js": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20",
-    "public/forecast.js": "6341b31f75ad6523824946b9ee34b75d24250cccfce2413d75e811a673ed3959",
+    "public/forecast.js": "d322c46eb8ed75c38a81772a4b9d0f9decfdceb25d39d77ca1db2066aa29f911",
     "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
     "public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
     "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
@@ -130,14 +130,14 @@
   "errors": [],
   "external": [],
   "writes": [],
-  "sourceHead": "a528c7dcfa02c472d1f9832997b7a13569c6ef7a",
+  "sourceHead": "e2a24554805ca2a8ef0aa6f3669361f8d2011154",
   "base": "76aacf6f57824ab253a018e3e3012951b4315533",
   "testBindings": {
     "scripts/provider-observe.js": "abe31dd4c0ec6a072224722c7dc08091f5aa6a1e25b5be270d8dbfcd083db245",
     "scripts/live-plan.js": "af461c8e9a23068952c61aa9bd68c6ab4123fdaf0fdfab71c3dceea695acc59d",
     "test/test.js": "e0d9d7a0b3d617d149f404ceba7fa55169fb30f2002014899683a70fad891ce8",
     "test/browser-savings-card-recipient.js": "5d30d5c83f0fc0d939f9a7905141c087f0f444862cdd285548372c24bcb2b04b",
-    "test/test-savings-card-recipient.js": "17e11dc349cba3228d8587ae2e43b7baf366afe1db9315ed5162f1c5eda55208",
+    "test/test-savings-card-recipient.js": "bbb1e2e7e4b8db359fbd9d8cdee4a0329006f5c3fdd282e0b6458479dc030237",
     "test/proof-savings-card-recipient-before-after.js": "ea52adad02f63db2b14fa6aedc9533425bedd54f43cc5552d87a083d8af1657c",
     "test/fixtures/savings-card-recipient-data.js": "13319a3c499ee69a0f09dd811cf7e43f6718670168bfad4409a4705bb08942b9",
     "test/fixtures/savings-v2-observation-data.js": "047944e82845244330602378382ae3569c69b479ad8ac668a2fa41a9e4b4d9cc",
@@ -159,10 +159,15 @@
     "recognized-390.png": "0c99f9421c986acae68f6748efec97c40c0c0ccc851ed52c1ed52c17b8bd217b"
   },
   "tests": {
-    "cases": 44,
-    "repairedPassed": 44,
-    "releasedPassed": 34,
-    "releasedFailed": 10
+    "cases": 47,
+    "repairedPassed": 47,
+    "releasedPassed": 37,
+    "releasedFailed": 10,
+    "supersededIncomeBoundary": {
+      "head": "4a1111de51ca9f25858c1d198982051506f79884",
+      "passed": 46,
+      "failed": 1
+    }
   },
   "nativeComparison": {
     "synthetic": true,

@@ -4,7 +4,7 @@ All amounts, dates, labels, references and provider rows in this proof are
 invented. No owner screenshot or private source payload is published.
 
 Released base: `76aacf6f57824ab253a018e3e3012951b4315533`.
-Implementation/test source: `a528c7dcfa02c472d1f9832997b7a13569c6ef7a`.
+Implementation/test source: `e2a24554805ca2a8ef0aa6f3669361f8d2011154`.
 The proof commit adds only this directory; its runtime/test blobs remain bound
 to that source commit by the SHA256 digests in `proof.json`.
 
@@ -14,9 +14,13 @@ payment to a known card. It does not identify an individual card, payment purpos
 or expense settlement. Source normalization retains that class as a boolean;
 Forecast still qualifies the posted debit and its own balance cutoff.
 
-Run `node --test test/test-savings-card-recipient.js`: 44/44 cases pass. Run the
+Run `node --test test/test-savings-card-recipient.js`: 47/47 cases pass. Run the
 same candidate test against a base checkout using `ATLAS_TEST_APP_ROOT`: 10 fail
-and 34 controls pass. Invented expected cents are independent: reports95 +24
+and37 controls pass. Superseded candidate4a1111de fails the new mislabeled-income
+control with46 controls passing. The Savings exception is now confined to
+Savings qualification and its current-cycle basis; generic transfer exclusions
+continue to prevent an outgoing card debit from becoming a benefit receipt.
+Invented expected cents are independent: reports95 +24
 sum119; a qualified future receipt1000 yields closing1119, with no historical
 7.25 debit deducted again, no invented goal cost, and no actual settlement.
 Projected trust remains estimated and money movement remains not granted.
