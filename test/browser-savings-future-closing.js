@@ -18,11 +18,18 @@ async function step(page, direction) {
 }
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
-  try { for (const width of [1440, 390, 320]) for (const mode of ['ready', 'group', 'expense', 'unknown']) {
+  try { for (const width of [1440, 390, 320]) for (const mode of ['ready', 'group', 'installments', 'expense', 'unknown']) {
     const x = fixture(), data = shell('ready'); data.meta.asOf = x.asOf; data.plan = x.plan;
     data.plan.groups = [];
     if (mode === 'group') { data.plan.groups = [{ id: 'shared', label: 'Invented shared group', planSpendSummary: true }];
       data.plan.commitments.forEach(c => { c.group = 'shared'; }); }
+    if (mode === 'installments') {
+      data.plan.groups = [{ id: 'installments', label: 'Invented installment group', planSpendSummary: true }];
+      data.plan.commitments = [
+        { id: 'one', label: 'Invented installment one', group: 'installments', date: '2026-10-29', amount: 80, confidence: 'confirmed', sinkingFund: true },
+        { id: 'two', label: 'Invented installment two', group: 'installments', date: '2026-11-12', amount: 60, confidence: 'confirmed', sinkingFund: true },
+        { id: 'later', label: 'Invented later requirement', date: '2027-01-04', amount: 3000, confidence: 'confirmed', sinkingFund: true }];
+    }
     if (mode === 'expense') { data.plan.commitments[0].date = '2026-11-03'; data.plan.commitments[0].amount = 80; }
     if (mode === 'unknown') delete x.opts.currentPeriodActuals;
     data.liveOverlay = { applied: true, operatingPlan: 'live', ...x.opts,
@@ -49,11 +56,16 @@ async function step(page, direction) {
     assert.doesNotMatch(current, /Forecast Savings at close/);
     await step(page, 1);
     const first = await tile.innerText(); assert.match(first, /Forecast Savings at close/);
-    if (mode === 'unknown') assert.match(first, /Unavailable/); else assert.match(first, /1,119\.00/);
+    if (mode === 'unknown') assert.match(first, /Unavailable/);
+    else if (mode === 'installments') {
+      assert.match(first, /1,039\.00/); assert.match(first, /Invented installment two/i);
+      assert.doesNotMatch(first, /Invented installment one/i);
+    } else assert.match(first, /1,119\.00/);
     await step(page, 1);
     const second = await tile.innerText();
     if (mode === 'ready' || mode === 'group') { assert.match(second, /2,119\.00/); assert.match(second, /1,500\.00/); assert.match(second, /619\.00/); }
-    if (mode === 'expense') { assert.match(second, /2,039\.00/); assert.doesNotMatch(second, /Invented first goal/); }
+    if (mode === 'expense') { assert.match(second, /2,039\.00/); assert.doesNotMatch(second, /Invented first goal/i); }
+    if (mode === 'installments') { assert.match(second, /1,979\.00/); assert.doesNotMatch(second, /Invented installment/i); }
     if (mode === 'unknown') assert.match(second, /Unavailable/);
     await tile.locator('[data-budget-funding-inventory]').focus(); await page.keyboard.press('Enter');
     const dialog = page.locator('[data-budget-detail-sheet]'); await dialog.waitFor({ state: 'visible' });
@@ -67,6 +79,7 @@ async function step(page, direction) {
     if (mode === 'ready' || mode === 'group') assert.match(inventory, /2,119\.00/);
     if (mode === 'group') { assert.match(inventory, /1,500\.00/); assert.match(inventory, /619\.00/); }
     if (mode === 'expense') assert.match(inventory, /2,039\.00/);
+    if (mode === 'installments') { assert.match(inventory, /1,979\.00/); assert.doesNotMatch(inventory, /Invented installment/i); }
     if (mode === 'unknown') assert.match(inventory, /Unknown/);
     await dialog.screenshot({ path: path.join(out, `${mode}-${width}.png`), animations: 'disabled' });
     await page.keyboard.press('Escape');

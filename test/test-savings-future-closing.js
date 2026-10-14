@@ -137,3 +137,41 @@ for (const fault of ['date', 'source', 'permission', 'currency', 'items', 'stock
   if (fault === 'saved') c.items[0].saved = 1500;
   assert.equal(F.savingsFundingPublication(publication, { asOf: x.asOf, advice: a, periodId: view.id }), null);
 });
+
+function installments() {
+  const x = input();
+  x.plan.commitments = [
+    { id: 'one', label: 'Invented installment one', group: 'installments', date: '2026-10-29', amount: 80, confidence: 'confirmed', sinkingFund: true },
+    { id: 'two', label: 'Invented installment two', group: 'installments', date: '2026-11-12', amount: 60, confidence: 'confirmed', sinkingFund: true },
+    { id: 'later', label: 'Invented later requirement', date: '2027-01-04', amount: 3000, confidence: 'confirmed', sinkingFund: true }];
+  x.plan.groups = [{ id: 'installments', label: 'Invented installment group', planSpendSummary: true }];
+  return x;
+}
+test('installment groups retain only future members, then disappear at the final payment close', () => {
+  const x = installments(), a = advice(x), current = a.savingsFunding;
+  assert.deepEqual(current.backing.items.map(i => [i.id, i.saved]), [['one', 80], ['two', 39], ['later', 0]]);
+  const first = closing(a, '2026-10-16'), second = closing(a, '2026-10-30');
+  assert.equal(first.stock, 1039); assert.equal(first.projectedDraws, 80);
+  assert.deepEqual(first.items.map(i => [i.id, i.forecastSaved]), [['two', 60], ['later', 979]]);
+  assert.deepEqual(first.rows.find(r => r.key === 'group:installments').members, ['two@2026-11-12']);
+  assert.equal(second.stock, 1979); assert.equal(second.projectedDraws, 140);
+  assert.deepEqual(second.items.map(i => [i.id, i.forecastSaved]), [['later', 1979]]);
+  assert.ok(!second.rows.some(r => r.key === 'group:installments'));
+  assert.equal(11900 + 200000 - 8000 - 6000, 197900, 'both costs consumed once, exact cents');
+  assert.deepEqual(current.backing.items.map(i => [i.id, i.saved]), [['one', 80], ['two', 39], ['later', 0]]);
+  assert.ok(x.plan.commitments.every(c => c.settledOn === undefined), 'date passage never creates actual settlement');
+});
+for (const [date, present, stock] of [['2026-10-28', false, 1039], ['2026-10-29', false, 1039], ['2026-10-30', true, 1119]])
+  test('selected closing boundary includes planned payment dated ' + date, () => {
+    const x = input(); x.plan.commitments[0].date = date; x.plan.commitments[0].amount = 80;
+    const a = advice(x), before = copy(a.savingsFunding), first = closing(a, '2026-10-16');
+    assert.equal(first.stock, stock); assert.equal(first.items.some(i => i.id === 'a'), present);
+    assert.equal(first.projectedDraws, present ? 0 : 80);
+    const second = copy(closing(a, '2026-10-30'));
+    for (let n = 0; n < 3; n++) {
+      assert.deepEqual(copy(closing(a, '2026-10-16')), copy(first));
+      assert.deepEqual(copy(closing(a, '2026-10-30')), second);
+    }
+    assert.equal(second.stock, 2039); assert.equal(second.projectedDraws, 80);
+    assert.deepEqual(copy(a.savingsFunding), before);
+  });
