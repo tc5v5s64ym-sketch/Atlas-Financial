@@ -329,6 +329,61 @@ function watchStackableTables() {
   }).observe(document.body, { childList: true, subtree: true });
 }
 
+// A resumed Budget document can keep earlier scripts even with no-store HTTP
+// responses. Compare its response-bound build label with the incumbent HTML;
+// never replace that label with the probe's identity or refresh financial data.
+function watchBudgetRelease() {
+  const buildFrom = doc => {
+    const text = doc.querySelector('.running-build')?.textContent;
+    return /^Running (?:commit |PR #[1-9]\d* \u00b7 )([0-9a-f]{7})$/i.exec(typeof text === 'string' ? text.trim() : '')?.[1].toLowerCase();
+  };
+  const loadedBuild = buildFrom(document);
+  if (!loadedBuild) return; // Only Budget has a response-bound build identity.
+  let inFlight = false, lastCheck = -Infinity, hidden = document.visibilityState === 'hidden';
+  let notice = null;
+  async function checkRelease() {
+    if (document.visibilityState === 'hidden' || inFlight || Date.now() - lastCheck < 15000) return;
+    inFlight = true;
+    lastCheck = Date.now();
+    const controller = new AbortController();
+    // Render's free instance may need about a minute to wake. Keep the open
+    // document usable while waiting; a missed deadline is still non-destructive.
+    const timeout = setTimeout(() => controller.abort(), 60000);
+    try {
+      // HTML only: no /data.json request and no provider observation. A login
+      // redirect, timeout, offline/error or unknown identity leaves this page.
+      const response = await fetch('/index.html', { credentials: 'same-origin',
+        cache: 'no-store', redirect: 'error', signal: controller.signal });
+      if (!response.ok || !response.headers.get('content-type')?.includes('text/html')) return;
+      const currentBuild = buildFrom(new DOMParser().parseFromString(await response.text(), 'text/html'));
+      if (!currentBuild) return;
+      if (currentBuild === loadedBuild) { notice?.remove(); notice = null; return; }
+      if (notice) return;
+      notice = document.createElement('aside');
+      notice.className = 'app-release-notice';
+      notice.setAttribute('data-app-release', '');
+      notice.setAttribute('aria-label', 'Atlas update');
+      const message = document.createElement('p');
+      message.setAttribute('role', 'status');
+      message.textContent = 'An Atlas update is available. Finish any unsaved work before reloading.';
+      const reload = document.createElement('button');
+      reload.type = 'button';
+      reload.textContent = 'Reload Atlas';
+      reload.addEventListener('click', () => {
+        if (confirm('Reload Atlas now? Unsaved input and pending work on this page will be cleared. Cancel to finish it first.')) location.reload();
+      });
+      notice.append(message, reload);
+      document.body.append(notice); // Does not remount views, close sheets or move focus.
+    } catch { /* An unavailable release check does not change app/data/auth state. */ }
+    finally { clearTimeout(timeout); inFlight = false; }
+  }
+  addEventListener('pageshow', event => { if (event.persisted) checkRelease(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') hidden = true;
+    else if (hidden) { hidden = false; checkRelease(); }
+  });
+}
+
 /* ------------------------------------------------------------------ boot */
 // Pages register render callbacks; the core fetches the data, applies the
 // theme, and re-runs the callbacks whenever the theme changes.
@@ -619,6 +674,7 @@ const App = (() => {
       }).finally(() => { loading = false; refresh.disabled = false; clearTimeout(timer); });
     }
     load();
+    watchBudgetRelease();
   }
 
   return {
