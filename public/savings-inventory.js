@@ -29,7 +29,8 @@
     if (keys.length < 2) return null;
     const closing = packet?.period?.kind === 'projected' && packet.forecastClosing?.status === 'ready';
     const published = closing ? packet.forecastClosing.items.map(item => ({ ...item,
-      saved: item.forecastSaved, trust: item.forecastTrust })) : [...(packet?.backing?.items || []), ...(packet?.unresolved || [])];
+      saved: item.forecastSaved, trust: item.forecastTrust })) : packet?.period?.kind === 'projected' && packet.plannedRequirements
+      ? packet.plannedRequirements.items : [...(packet?.backing?.items || []), ...(packet?.unresolved || [])];
     const byKey = new Map();
     for (const item of published) {
       if (!item?.key) continue;
@@ -44,7 +45,7 @@
         identityCounts.set(identity, (identityCounts.get(identity) || 0) + 1);
     }
     const allocations = new Map();
-    for (const part of (closing ? packet.forecastClosing.allocations : packet?.period?.cycleAllocations) || []) {
+    for (const part of (closing ? packet.forecastClosing.allocations : projected && packet.plannedRequirements ? [] : packet?.period?.cycleAllocations) || []) {
       if (typeof part?.id !== 'string') continue;
       allocations.set(part.id, allocations.has(part.id) ? null : part);
     }
@@ -102,7 +103,7 @@
       const projected = packet.period?.kind === 'projected';
       const closing = projected && packet.forecastClosing?.status === 'ready';
       const publishedRows = projected && packet.forecastClosing != null
-        ? (closing ? packet.forecastClosing.rows : packet.forecastClosing?.gap ? [] : packet.rows || []).map(row => ({ ...row,
+        ? (closing ? packet.forecastClosing.rows : packet.forecastClosing?.gap ? [] : packet.plannedRequirements?.rows || []).map(row => ({ ...row,
           saved: row.forecastSaved ?? null, savedTrust: row.forecastSaved == null ? 'unknown' : 'estimated',
           thisPeriod: row.forecastContribution ?? null, thisPeriodTrust: row.forecastContribution == null ? 'unknown' : 'estimated' }))
         : packet.rows || [];

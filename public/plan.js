@@ -5085,7 +5085,7 @@ function budgetDailySavingsRows(packet, inventory, roster = []) {
   let rows;
   if (packet?.rows?.length) {
     rows = packet.period?.kind === 'projected' && packet.forecastClosing != null
-      ? (packet.forecastClosing?.status === 'ready' ? packet.forecastClosing.rows : packet.forecastClosing?.gap ? [] : packet.rows).map(row => ({ ...row,
+      ? (packet.forecastClosing?.status === 'ready' ? packet.forecastClosing.rows : packet.forecastClosing?.gap ? [] : packet.plannedRequirements?.rows || []).map(row => ({ ...row,
         saved: row.forecastSaved ?? null, savedTrust: row.forecastSaved == null ? 'unknown' : 'estimated',
         thisPeriod: row.forecastContribution ?? null, thisPeriodTrust: row.forecastContribution == null ? 'unknown' : 'estimated' }))
       : packet.rows;
@@ -5137,7 +5137,8 @@ function budgetSavingsRowMembers(packet, row) {
   if (keys.length < 2) return null;
   const closing = packet?.period?.kind === 'projected' && packet.forecastClosing?.status === 'ready';
   const published = closing ? packet.forecastClosing.items.map(item => ({ ...item,
-    saved: item.forecastSaved, trust: item.forecastTrust })) : [...(packet?.backing?.items || []), ...(packet?.unresolved || [])];
+      saved: item.forecastSaved, trust: item.forecastTrust })) : packet?.period?.kind === 'projected' && packet.plannedRequirements
+      ? packet.plannedRequirements.items : [...(packet?.backing?.items || []), ...(packet?.unresolved || [])];
   const byKey = new Map();
   for (const item of published) {
     if (!item?.key) continue;
@@ -5152,7 +5153,7 @@ function budgetSavingsRowMembers(packet, row) {
       identityCounts.set(identity, (identityCounts.get(identity) || 0) + 1);
   }
   const allocations = new Map();
-  for (const part of (closing ? packet.forecastClosing.allocations : packet?.period?.cycleAllocations) || []) {
+  for (const part of (closing ? packet.forecastClosing.allocations : projected && packet.plannedRequirements ? [] : packet?.period?.cycleAllocations) || []) {
     if (typeof part?.id !== 'string') continue;
     allocations.set(part.id, allocations.has(part.id) ? null : part);
   }
@@ -5214,7 +5215,7 @@ function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null,
   const period = projected ? { ...packet.period, proposal: packet.forecastClosing?.contribution ?? null,
     trust: packet.forecastClosing?.trust || 'unknown' } : packet.period;
   return `<section data-budget-planned-savings-summary data-budget-daily-savings${projected ? ' data-budget-savings-forecast-evidence' : ''}>
-    <ul class="budget-savings-contributions">${rows || (projected && packet.forecastClosing?.status === 'ready' ? '<li>No remaining Savings requirements.</li>' : '<li>Named savings unavailable.</li>')}</ul>${annualBillNote}
+    <ul class="budget-savings-contributions">${rows || (projected && (packet.forecastClosing?.status === 'ready' || packet.plannedRequirements?.rows.length === 0 && !packet.forecastClosing?.gap) ? '<li>No remaining Savings requirements.</li>' : '<li>Named savings unavailable.</li>')}</ul>${annualBillNote}
     <p class="operating-line"><span>${projected ? 'Added this period' : 'Unsent top-up today'}</span><strong data-budget-daily-proposal>${value(period?.proposal, period?.trust)}</strong></p>
     <details class="budget-savings-info" data-budget-savings-info><summary>Info</summary><div>
       ${projected ? packet.forecastClosing?.status !== 'ready' ? '<p>' + budgetV3Escape(packet.forecastClosing?.reason || 'Closing Savings data is unavailable.') + '</p>' : ''
@@ -7173,7 +7174,7 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
       <p class="budget-goal-context">${value(row.thisPeriod, row.thisPeriodTrust)} this period<span class="budget-goal-evidence">Info <span aria-hidden="true">></span></span></p>${members}
     </button></li>`;
     }).join('');
-    return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3>${projected ? '<p data-budget-savings-forecast-stock>Savings at period close: ' + value(daily.forecastClosing?.stock, daily.forecastClosing?.trust) + '.</p>' : ''}${daily.forecastClosing?.gap ? '<p>' + budgetV3Escape(daily.forecastClosing.reason) + '</p>' : ''}<ul>${named || (projected && daily.forecastClosing?.status === 'ready' ? '<li>No remaining Savings requirements.</li>' : '<li>Named savings unavailable.</li>')}</ul>${annualBillNote}
+    return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3>${projected ? '<p data-budget-savings-forecast-stock>Savings at period close: ' + value(daily.forecastClosing?.stock, daily.forecastClosing?.trust) + '.</p>' : ''}${daily.forecastClosing?.gap ? '<p>' + budgetV3Escape(daily.forecastClosing.reason) + '</p>' : ''}<ul>${named || (projected && (daily.plannedRequirements?.rows.length === 0 && !daily.forecastClosing?.gap || daily.forecastClosing?.status === 'ready') ? '<li>No remaining Savings requirements.</li>' : '<li>Named savings unavailable.</li>')}</ul>${annualBillNote}
       <button type="button" class="budget-surface-link" data-budget-funding-inventory aria-haspopup="dialog">Accounts &amp; evidence</button>
       <div data-budget-funding-savings hidden>${daily ? budgetDailySavingsHtml(daily, '', ctx.advice?.savingsInventory, { asOf: ctx.asOf || ctx.advice?.defaultView?.asOf, period }) : 'Daily savings unavailable.'}</div></div>`;
   }

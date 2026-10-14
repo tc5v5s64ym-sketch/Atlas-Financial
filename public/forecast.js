@@ -3613,6 +3613,22 @@
     const asOf = context.asOf || context.advice?.defaultView?.asOf;
     const periods = Array.isArray(context.advice?.payPeriodViews) ? context.advice.payPeriodViews : [];
     const current = context.period || periods.find(row => row.timelineRole === 'current');
+    const plannedValid = (packet, period) => packet.plannedRequirements == null ? packet.forecastClosing == null : (() => {
+      const p = packet.plannedRequirements;
+      return packet.period?.kind === 'projected' && p.source === 'Forecast.recommend.savingsFunding'
+        && p.basis === 'planned-requirements-after-period-close' && p.asOf === asOf && p.currency === 'CAD'
+        && p.start === period?.start && p.end === period?.end && p.actualSaved === null
+        && p.actionPermission === 'not-granted' && p.moneyMovementPermission === 'not-granted'
+        && Array.isArray(p.items) && Array.isArray(p.rows)
+        && p.items.every(i => typeof i.key === 'string' && i.saved === null && i.actualSaved === null
+          && i.forecastSaved === null && i.forecastContribution === null && i.contribution === null)
+        && new Set(p.items.map(i => i.key)).size === p.items.length
+        && new Set(p.rows.map(r => r.key)).size === p.rows.length
+        && p.rows.every(r => Array.isArray(r.members) && r.saved === null && r.thisPeriod === null
+          && r.forecastSaved === null && r.forecastContribution === null && r.actualContribution === null
+          && new Set(r.members).size === r.members.length
+          && r.members.every(key => p.items.some(i => i.key === key)));
+    })();
     const closingValid = (packet, period) => packet.forecastClosing == null || (() => {
       const c = packet.forecastClosing;
       if (packet.period?.kind !== 'projected' || c.asOf !== asOf || c.currency !== 'CAD'
@@ -3640,6 +3656,7 @@
       && ['ready', 'unavailable'].includes(packet.status) && Array.isArray(packet.rows)
       && Array.isArray(packet.backing?.items) && Array.isArray(packet.backing?.pools)
       && closingValid(packet, period)
+      && plannedValid(packet, period)
       && (packet.periodViews == null || Array.isArray(packet.periodViews))
       && (packet.schedule == null || packet.schedule.status === 'unavailable'
         || ['ready', 'funding-gap'].includes(packet.schedule.status)
@@ -14134,6 +14151,8 @@
               trust: ready ? 'estimated' : 'unknown', proposal: ready ? payday.contribution : null,
               actualSaved: null, allocations: ready ? payday.allocations : [], cycleAllocations: ready ? payday.allocations : [],
               reason: ready ? null : projected ? 'This selected period has no qualified projected top-up.' : 'Historical saved evidence is unknown.' } };
+          if (projected) view.packet.plannedRequirements = savingsPlannedRequirements(
+            savingsFunding, knowledgeSim.events, asOf, view);
           if (projected) view.packet.forecastClosing = closingSavings.get(view.end) || {
             status: 'unavailable', stock: null, items: [], rows: [], actualSaved: null,
             trust: 'unknown', start: view.start, end: view.end, asOf, currency: 'CAD',
@@ -19649,6 +19668,41 @@
       basis: 'policy-derived-observed-backing', trust: reason ? 'unknown' : 'calculated', actualTransferred: null,
       funding: { status: reason ? 'unavailable' : 'ready', reason, asOf: day, revision: inventory.revision,
         source: 'Forecast.savingsDailyFunding', payments } };
+  }
+
+  // Planned identities survive independently of cash qualification. A unique
+  // native expense retires at this inclusive future close in the plan only:
+  // it is neither actual settlement nor evidence of funded/available money.
+  // Undated, ambiguous and overdue unproved requirements remain visible.
+  function savingsPlannedRequirements(funding, events, asOf, period) {
+    const all = [...funding.backing.items, ...funding.unresolved];
+    const counts = new Map();
+    for (const item of all) counts.set(item.key, (counts.get(item.key) || 0) + 1);
+    const items = all.filter(item => {
+      if (counts.get(item.key) !== 1 || !savingsDate(item.date) || item.date < asOf
+          || item.date > period.end || savingsCents(item.needed) == null) return true;
+      const matches = events.filter(e => e.id === item.id && e.date === item.date
+        && ['commitment', 'bill', 'reserve'].includes(e.kind));
+      return matches.length !== 1 || savingsCents(-matches[0].amount) !== savingsCents(item.needed);
+    }).map(item => ({ ...item, saved: null, savedTrust: 'unknown', actualSaved: null,
+      contribution: null, forecastSaved: null, forecastContribution: null }));
+    const rows = funding.rows.filter(row => row.members.some(key => items.some(i => i.key === key))).map(row => {
+      const members = row.members.filter(key => items.some(i => i.key === key));
+      const selected = members.map(key => items.find(i => i.key === key));
+      const needed = selected.every(i => savingsCents(i.needed) != null)
+        ? selected.reduce((sum, i) => sum + savingsCents(i.needed), 0) / 100 : null;
+      const result = { ...row, members, label: selected.length === 1 ? selected[0].label : row.label,
+        needed, saved: null, savedTrust: 'unknown', thisPeriod: null, thisPeriodTrust: 'unknown',
+        remainingThisPeriod: null, actualContribution: null, forecastSaved: null, forecastContribution: null };
+      delete result.neededRange;
+      if (needed == null && selected.every(i => savingsCents(i.needed) != null || i.neededRange)) result.neededRange = {
+        min: selected.reduce((sum, i) => sum + Math.round((i.needed ?? i.neededRange.min) * 100), 0) / 100,
+        max: selected.reduce((sum, i) => sum + Math.round((i.needed ?? i.neededRange.max) * 100), 0) / 100 };
+      return result;
+    });
+    return { source: 'Forecast.recommend.savingsFunding', basis: 'planned-requirements-after-period-close',
+      asOf, start: period.start, end: period.end, currency: 'CAD', items, rows, actualSaved: null,
+      actionPermission: 'not-granted', moneyMovementPermission: 'not-granted' };
   }
 
   // Owner's closing Savings ledger, qualified by the incumbent Budget walk.
