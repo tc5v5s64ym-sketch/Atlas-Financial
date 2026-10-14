@@ -137,6 +137,7 @@ const suites = [
   ['owner-approved unpaid Burrards team-fee inputs', 'test-burrards-team-fee-inputs.js'],
   ['exact deployed PR provenance', 'test-build-provenance.js'],
   ['Budget running build identity', 'test-running-build.js'],
+  ['Budget release detection on resume', 'test-app-release-resume.js'],
   ['current-period actuals stay in the Seaspan spending cycle', 'test-current-period-cycle-actuals.js'],
   ['settled commitments do not reappear in the action lookback', 'test-settled-cost-lookback-action.js'],
   ['static sanity', 'test-static.js'],
