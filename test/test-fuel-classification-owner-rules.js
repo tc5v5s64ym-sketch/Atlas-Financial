@@ -268,6 +268,49 @@ console.log('\n=== precedence kept: owner categories and Business still beat the
     describe(business));
 }
 
+console.log('\n=== regression pins (Atlas Systems Review BLOCK on 7042c9a3): exclusion / non-purchase precedence ===');
+{
+  // The amount gate originally sat ahead of two incumbent resolutions
+  // that live after it in the flow: the unmatched exclude-from-totals
+  // transfer identity and the personal-shopping owner branch. On base
+  // both classify before any purchase-category rule; the gate must not
+  // sweep them into Fuel.
+  const exclTransferRaw = classify(rawTx({ categoryLabel: null, excludeFromTotals: true, amount: 50.00 }));
+  ok(exclTransferRaw.kind === 'transfer' && exclTransferRaw.reason === 'exclude-from-totals',
+    'raw: 7-Eleven $50.00 excluded transfer row (no category) -> transfer, NOT Fuel',
+    describe(exclTransferRaw));
+  const exclTransferPacket = classify(packetTx({ categoryLabel: null, excludeFromTotals: true, amount: 50.00 }));
+  ok(exclTransferPacket.kind === 'transfer' && exclTransferPacket.reason === 'exclude-from-totals',
+    'packet: 7-Eleven $50.00 excluded transfer row (no category) -> transfer, NOT Fuel',
+    describe(exclTransferPacket));
+  const exclShoppingRaw = classify(rawTx({ categoryLabel: 'Shopping', personalOwner: 'excluded', amount: 50.00 }));
+  ok(exclShoppingRaw.kind === 'business' && exclShoppingRaw.reason === 'personal-excluded',
+    'raw: 7-Eleven $50.00 Shopping with excluded owner evidence -> Business, NOT Fuel',
+    describe(exclShoppingRaw));
+  const exclShoppingPacket = classify(packetTx({ categoryLabel: 'Shopping', personalOwner: 'excluded', amount: 50.00 }));
+  ok(exclShoppingPacket.kind === 'business' && exclShoppingPacket.reason === 'personal-excluded',
+    'packet: 7-Eleven $50.00 Shopping with excluded owner evidence -> Business, NOT Fuel',
+    describe(exclShoppingPacket));
+  const exclPersonalAlias = classify(rawTx({ categoryLabel: 'Personal', personalOwner: 'excluded', amount: 50.00 }));
+  ok(exclPersonalAlias.kind === 'business' && exclPersonalAlias.reason === 'personal-excluded',
+    'raw: 7-Eleven $50.00 Personal (shopping alias) with excluded owner evidence -> Business, NOT Fuel',
+    describe(exclPersonalAlias));
+  const daleEvidence = classify(rawTx({ categoryLabel: 'Shopping', personalOwner: 'dale', amount: 50.00 }));
+  ok(daleEvidence.kind === 'spend' && daleEvidence.categoryId === 'dale-guilt-free'
+      && daleEvidence.includeReason === 'owner-evidence-dale',
+    'raw: 7-Eleven $50.00 Shopping with Dale owner evidence -> Dale guilt-free, NOT Fuel',
+    describe(daleEvidence));
+  const amandaEvidence = classify(rawTx({ categoryLabel: 'Shopping', personalOwner: 'amanda', amount: 50.00 }));
+  ok(amandaEvidence.kind === 'spend' && amandaEvidence.categoryId === 'amanda-guilt-free'
+      && amandaEvidence.includeReason === 'owner-evidence-amanda',
+    'raw: 7-Eleven $50.00 Shopping with Amanda owner evidence -> Amanda guilt-free, NOT Fuel',
+    describe(amandaEvidence));
+  const exclFlagMatchedPurchase = classify(rawTx({ categoryLabel: 'Shopping', excludeFromTotals: true, amount: 50.00 }));
+  ok(isFuel(exclFlagMatchedPurchase) && exclFlagMatchedPurchase.includeReason === 'seven-eleven-over-threshold-fuel',
+    'control: an exclude-from-totals flag alone never reclassified a matched purchase row on base either (it classified by category) -> the amount rule still applies',
+    describe(exclFlagMatchedPurchase));
+}
+
 if (failures) {
   console.error(`\n${failures} failed`);
   process.exit(1);

@@ -5290,6 +5290,41 @@
     if (isCanadianTireMerchant(tx)) {
       return confirmationResult('canadian-tire-unconfirmed', 'canadian-tire-unconfirmed');
     }
+    // Atlas Systems Review (PR #614): two incumbent resolutions live
+    // after this point in the flow and keep their precedence over the
+    // amount rule below — the personal-shopping owner branch (a
+    // Business-excluded row stays Business; owner-attributed guilt-free
+    // shopping stays guilt-free) and the unmatched exclude-from-totals
+    // transfer identity. Resolve them here, in the incumbent order,
+    // before the amount rule can classify the row as Fuel.
+    {
+      const cats = (plan && plan.budget && plan.budget.categories) || [];
+      let match = null, ambiguous = false;
+      for (const c of cats) {
+        if (!c || !c.id) continue;
+        const aliases = [c.id, c.label].concat(c.from || []);
+        if (!aliases.some(a => normalizeCategoryLabel(a) === label)) continue;
+        if (match && match.id !== c.id) ambiguous = true;
+        match = match || c;
+      }
+      if (!ambiguous && match && match.id === PERSONAL_SHOPPING_ID) {
+        const owner = personalSpendOwner(tx);
+        if (owner === 'excluded') {
+          return {
+            kind: 'business', categoryId: null, householdSpending: false,
+            reason: 'personal-excluded', includeReason: 'personal-excluded',
+          };
+        }
+        if (owner === 'dale') return spendResult(DALE_GUILT_FREE_ID, 'owner-evidence-dale');
+        if (owner === 'amanda') return spendResult(AMANDA_GUILT_FREE_ID, 'owner-evidence-amanda');
+      }
+      if (!match && tx.excludeFromTotals === true) {
+        return {
+          kind: 'transfer', categoryId: null, householdSpending: false,
+          reason: 'exclude-from-totals',
+        };
+      }
+    }
     // Dale 2026-10-14: a 7-Eleven purchase over $30 is Fuel. For this
     // merchant the amount rule takes precedence over the transaction's
     // other purchase category (Shopping, Fast Food, Household, ...).
