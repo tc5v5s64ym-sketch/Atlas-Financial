@@ -408,6 +408,153 @@ console.log('=== L2. bounded transaction window is paged and truncated pages fai
     'Atlas cannot claim precise remaining from an incomplete posted page');
 }
 
+console.log('=== L3. ATLAS-067 FR1: a 200 page without a transactions array fails closed ===');
+{
+  // A malformed page must never pose as a genuine empty window: a missing,
+  // null, object or string `transactions` field is unproven, so the window
+  // is truncated — exactly like a missing has_more. A genuine empty array
+  // stays a valid complete empty window, and genuine pagination still works.
+  const pagedHarness = [
+    "'use strict';",
+    "const https = require('https');",
+    "const { EventEmitter } = require('events');",
+    'https.request = (url, options, cb) => {',
+    '  const href = url && url.href ? url.href : String(url);',
+    '  const parsed = new URL(href);',
+    '  const req = new EventEmitter();',
+    '  req.end = () => {',
+    '    process.nextTick(() => {',
+    '      const res = new EventEmitter();',
+    '      res.statusCode = 200;',
+    '      cb(res);',
+    "      const scenario = parsed.searchParams.get('scenario');",
+    "      let body = { has_more: false, transactions: [] };",
+    "      if (scenario === 'missing') body = { has_more: false };",
+    "      else if (scenario === 'null') body = { has_more: false, transactions: null };",
+    "      else if (scenario === 'object') body = { has_more: false, transactions: {} };",
+    "      else if (scenario === 'string') body = { has_more: false, transactions: 'oops' };",
+    "      else if (scenario === 'paged') {",
+    "        const offset = Number(parsed.searchParams.get('offset') || 0);",
+    '        body = offset === 0',
+    "          ? { has_more: true, transactions: [{ id: 1, date: '2026-08-15', amount: 10 }] }",
+    "          : { has_more: false, transactions: [{ id: 2, date: '2026-08-16', amount: 11 }] };",
+    '      }',
+    "      res.emit('data', Buffer.from(JSON.stringify(body)));",
+    "      res.emit('end');",
+    '    });',
+    '  };',
+    '  return req;',
+    '};',
+    `const O = require(${JSON.stringify(path.join(ROOT, 'scripts', 'provider-observe.js'))});`,
+    "const scenarios = ['missing', 'null', 'object', 'string', 'empty', 'paged'];",
+    '(async () => {',
+    '  const out = {};',
+    '  for (const scenario of scenarios) {',
+    '    try {',
+    "      const url = new URL('https://lm.test/v2/transactions?scenario=' + scenario);",
+    "      const page = await O.fetchLunchMoneyTransactionsPaged(url, 'test-token');",
+    '      out[scenario] = {',
+    '        complete: page.complete, truncated: page.truncated,',
+    '        ids: page.transactions.map(t => t && t.id),',
+    '        rows: page.transactions.length,',
+    '      };',
+    '    } catch (err) {',
+    '      out[scenario] = { error: String(err && err.message || err) };',
+    '    }',
+    '  }',
+    '  process.stdout.write(JSON.stringify(out));',
+    '})().catch((err) => {',
+    "  process.stderr.write(String(err && err.message || err));",
+    '  process.exit(1);',
+    '});',
+  ].join('\n');
+  const paged = JSON.parse(execFileSync(process.execPath, ['-e', pagedHarness], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  }));
+  for (const scenario of ['missing', 'null', 'object', 'string']) {
+    ok(paged[scenario] && !paged[scenario].error
+      && paged[scenario].complete === false && paged[scenario].truncated === true,
+      `a 200 page whose transactions field is ${scenario} is truncated, never complete`,
+      JSON.stringify(paged[scenario]));
+  }
+  ok(paged.string && paged.string.rows === 0,
+    'a string transactions field yields no character rows', JSON.stringify(paged.string));
+  ok(paged.empty && paged.empty.complete === true && paged.empty.truncated === false
+    && paged.empty.rows === 0,
+    'a genuine empty array stays a valid complete empty window', JSON.stringify(paged.empty));
+  ok(paged.paged && paged.paged.complete === true && paged.paged.truncated === false
+    && JSON.stringify(paged.paged.ids) === '[1,2]',
+    'genuine two-page pagination still completes with every row', JSON.stringify(paged.paged));
+
+  // Through the live fetch: both the posted window and the pending universe
+  // page through the same function, so a malformed page on either query must
+  // fail that side closed while the healthy side keeps its verdict.
+  const liveHarness = (malformed) => [
+    "'use strict';",
+    "const https = require('https');",
+    "const { EventEmitter } = require('events');",
+    'https.request = (url, options, cb) => {',
+    '  const href = url && url.href ? url.href : String(url);',
+    '  const parsed = new URL(href);',
+    '  const req = new EventEmitter();',
+    '  req.end = () => {',
+    '    process.nextTick(() => {',
+    '      const res = new EventEmitter();',
+    '      res.statusCode = 200;',
+    '      cb(res);',
+    "      let body = { has_more: false, transactions: [] };",
+    "      if (parsed.pathname === '/v2/me' || parsed.pathname === '/v2/plaid_accounts'",
+    "        || parsed.pathname === '/v2/manual_accounts' || parsed.pathname === '/v2/assets') {",
+    '        body = {};',
+    "      } else if (parsed.pathname === '/v2/categories') {",
+    '        body = { categories: [] };',
+    "      } else if (parsed.pathname === '/v2/tags') {",
+    '        body = { tags: [] };',
+    "      } else if (parsed.searchParams.get('include_pending') === 'true') {",
+    ...(malformed === 'posted' ? ["        body = { has_more: false };"] : []),
+    "      } else if (parsed.searchParams.get('is_pending') === 'true') {",
+    ...(malformed === 'pending' ? ["        body = { has_more: false, transactions: null };"] : []),
+    '      }',
+    "      res.emit('data', Buffer.from(JSON.stringify(body)));",
+    "      res.emit('end');",
+    '    });',
+    '  };',
+    '  return req;',
+    '};',
+    `const O = require(${JSON.stringify(path.join(ROOT, 'scripts', 'provider-observe.js'))});`,
+    "O.fetchLunchMoneyLive('test-token', '2026-08-16T18:00:00.000Z').then((payload) => {",
+    '  process.stdout.write(JSON.stringify({',
+    '    window: payload.transactionWindow,',
+    '    pending: payload.pendingCoverage,',
+    '  }));',
+    '}).catch((err) => {',
+    '  process.stderr.write(String(err && err.message || err));',
+    '  process.exit(1);',
+    '});',
+  ].join('\n');
+  const badPosted = JSON.parse(execFileSync(process.execPath, ['-e', liveHarness('posted')], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  }));
+  ok(badPosted.window && badPosted.window.complete === false && badPosted.window.truncated === true,
+    'a malformed posted page makes the published window truncated, not complete',
+    JSON.stringify(badPosted.window));
+  ok(badPosted.pending && badPosted.pending.complete === true,
+    'a healthy pending page still proves the pending universe beside a malformed posted page',
+    JSON.stringify(badPosted.pending));
+  const badPending = JSON.parse(execFileSync(process.execPath, ['-e', liveHarness('pending')], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  }));
+  ok(badPending.pending && badPending.pending.complete === false && badPending.pending.truncated === true,
+    'a malformed pending page leaves pending coverage unproven — never proven-zero pending',
+    JSON.stringify(badPending.pending));
+  ok(badPending.window && badPending.window.complete === true,
+    'a healthy posted window still completes beside a malformed pending page',
+    JSON.stringify(badPending.window));
+}
+
 console.log('=== M. unobserved live account IDs cannot match fixture mappings ===');
 {
   const liveMap = JSON.parse(fs.readFileSync(LIVE_MAP, 'utf8'));
