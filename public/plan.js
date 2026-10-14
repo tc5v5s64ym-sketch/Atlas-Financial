@@ -5078,7 +5078,11 @@ const BUDGET_SAVINGS_ANNUAL_BILL_NOTE = 'Travel Visa annual fee is treated as a 
 function budgetDailySavingsRows(packet, inventory, roster = []) {
   let rows;
   if (packet?.rows?.length) {
-    rows = packet.rows;
+    rows = packet.period?.kind === 'projected' && packet.forecastClosing != null
+      ? (packet.forecastClosing?.status === 'ready' ? packet.forecastClosing.rows : packet.rows).map(row => ({ ...row,
+        saved: row.forecastSaved ?? null, savedTrust: row.forecastSaved == null ? 'unknown' : 'estimated',
+        thisPeriod: row.forecastContribution ?? null, thisPeriodTrust: row.forecastContribution == null ? 'unknown' : 'estimated' }))
+      : packet.rows;
   } else {
     // Preserve published goal names even when policy/evidence withholds amounts.
     // This roster supplies labels only; no old proposal/backing is substituted.
@@ -5125,14 +5129,16 @@ function budgetSavingsAnnualBillNoteHtml(listed) {
 function budgetSavingsRowMembers(packet, row) {
   const keys = Array.isArray(row?.members) ? row.members : [];
   if (keys.length < 2) return null;
-  const published = [...(packet?.backing?.items || []), ...(packet?.unresolved || [])];
+  const closing = packet?.period?.kind === 'projected' && packet.forecastClosing?.status === 'ready';
+  const published = closing ? packet.forecastClosing.items.map(item => ({ ...item,
+    saved: item.forecastSaved, trust: item.forecastTrust })) : [...(packet?.backing?.items || []), ...(packet?.unresolved || [])];
   const byKey = new Map();
   for (const item of published) {
     if (!item?.key) continue;
     byKey.set(item.key, byKey.has(item.key) ? null : item);
   }
   const projected = packet?.period?.kind === 'projected';
-  const identityOf = item => projected ? item?.id : item?.key;
+  const identityOf = item => projected && !closing ? item?.id : item?.key;
   const identityCounts = new Map();
   for (const item of published) {
     const identity = identityOf(item);
@@ -5140,7 +5146,7 @@ function budgetSavingsRowMembers(packet, row) {
       identityCounts.set(identity, (identityCounts.get(identity) || 0) + 1);
   }
   const allocations = new Map();
-  for (const part of packet?.period?.cycleAllocations || []) {
+  for (const part of (closing ? packet.forecastClosing.allocations : packet?.period?.cycleAllocations) || []) {
     if (typeof part?.id !== 'string') continue;
     allocations.set(part.id, allocations.has(part.id) ? null : part);
   }
@@ -5178,6 +5184,7 @@ function budgetSavingsMemberFigures(member, thisPeriodTrust, historical = false)
 }
 
 function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null, context = {}) {
+  const projected = packet.period?.kind === 'projected';
   const value = (amount, trust) => budgetV3Money(amount, trust);
   const listed = budgetDailySavingsRows(packet, inventory);
   const annualBillNote = budgetSavingsAnnualBillNoteHtml(listed);
@@ -5188,30 +5195,34 @@ function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null,
       const figures = budgetSavingsMemberFigures(member, row.thisPeriodTrust, group.historical);
       return `<li data-budget-savings-member="${budgetV3Escape(member.key)}">
       <span>${budgetV3Escape(figures.name)}${figures.date ? ` <small>${budgetV3Escape(fmtDate(figures.date))}</small>` : ''}</span>
-      <span><span data-budget-savings-member-saved>${figures.saved}</span> / <span data-budget-savings-member-needed>${figures.needed}</span><small>Saved / needed</small></span>
+      <span><span data-budget-savings-member-saved>${figures.saved}</span> / <span data-budget-savings-member-needed>${figures.needed}</span><small>${projected ? 'Forecast' : 'Saved'} / needed</small></span>
       <span><span data-budget-savings-member-proposed>${figures.proposed}</span><small>This period</small></span>
     </li>`;
     }).join('')}</ul>` : '';
     return `<li data-budget-savings-total-goal="${budgetV3Escape(row.key)}">
       <span>${budgetV3Escape(group ? group.title : row.label)}</span>
-      <span><span data-budget-savings-total-saved>${value(row.saved, row.savedTrust)}</span> / <span data-budget-savings-total-needed>${needed}</span><small>Saved / needed</small></span>
+      <span><span data-budget-savings-total-saved>${value(row.saved, row.savedTrust)}</span> / <span data-budget-savings-total-needed>${needed}</span><small>${projected ? 'Forecast' : 'Saved'} / needed</small></span>
       <span><span data-budget-savings-proposed>${value(row.thisPeriod, row.thisPeriodTrust)}</span><small>This period</small></span>${members}
     </li>`;
   }).join('');
-  const period = packet.period;
-  return `<section data-budget-planned-savings-summary data-budget-daily-savings>
+  const period = projected ? { ...packet.period, proposal: packet.forecastClosing?.contribution ?? null,
+    trust: packet.forecastClosing?.trust || 'unknown' } : packet.period;
+  return `<section data-budget-planned-savings-summary data-budget-daily-savings${projected ? ' data-budget-savings-forecast-evidence' : ''}>
     <ul class="budget-savings-contributions">${rows || '<li>Named savings unavailable.</li>'}</ul>${annualBillNote}
-    <p class="operating-line"><span>Unsent top-up today</span><strong data-budget-daily-proposal>${value(period?.proposal, period?.trust)}</strong></p>
+    <p class="operating-line"><span>${projected ? 'Forecast added at period close' : 'Unsent top-up today'}</span><strong data-budget-daily-proposal>${value(period?.proposal, period?.trust)}</strong></p>
     <details class="budget-savings-info" data-budget-savings-info><summary>Info</summary><div>
-      <p>${budgetV3Escape(packet.allocationDescription || 'Savings allocation evidence is unavailable.')} These figures are replaced on refresh. Saved amounts are reported earmarks, not money moved or bills paid. New Bills contributions are qualified separately.</p>
-      ${packet.period?.reason || packet.backing?.reason ? '<p>' + budgetV3Escape(packet.period?.reason || packet.backing?.reason) + '</p>' : ''}
-      <div class="operating-line"><span>Period balance before proposals</span><span>${value(period?.nativePeriodSurplus, period?.trust)}</span></div>
+      <p>${budgetV3Escape(projected ? packet.forecastClosing?.reason || 'Closing Forecast is unavailable.' : packet.allocationDescription || 'Savings allocation evidence is unavailable.')} ${projected ? 'Actual future balances and transfers remain unknown.' : 'These figures are replaced on refresh. Saved amounts are reported earmarks, not money moved or bills paid. New Bills contributions are qualified separately.'}</p>
+      ${!projected && (packet.period?.reason || packet.backing?.reason) ? '<p>' + budgetV3Escape(packet.period?.reason || packet.backing?.reason) + '</p>' : ''}
+      ${projected ? `<div class="operating-line"><span>Forecast Savings at period close</span><span>${value(packet.forecastClosing?.stock, packet.forecastClosing?.trust)}</span></div>
+      <div class="operating-line"><span>Forecast surplus saved since this opening</span><span>${value(packet.forecastClosing?.projectedContributions, packet.forecastClosing?.trust)}</span></div>
+      <div class="operating-line"><span>Forecast goal costs paid</span><span>${value(packet.forecastClosing?.projectedDraws, packet.forecastClosing?.trust)}</span></div>
+      <div class="operating-line"><span>Forecast unallocated Savings</span><span>${value(packet.forecastClosing?.unallocated, packet.forecastClosing?.trust)}</span></div>` : `<div class="operating-line"><span>Period balance before proposals</span><span>${value(period?.nativePeriodSurplus, period?.trust)}</span></div>
       <div class="operating-line"><span>Funding entitlement</span><span>${value(period?.entitlement, period?.trust)}</span></div>
       <p>Income proved already deposited into Savings is excluded from entitlement. These two figures can differ.</p>
       <div class="operating-line"><span>Proved transfers this cycle</span><span>${value(period?.transferred, period?.trust)}</span></div>
       <div class="operating-line"><span>Remaining entitlement</span><span>${value(period?.remainingEntitlement, period?.trust)}</span></div>
       <div class="operating-line"><span>Unassigned capacity</span><span>${value(period?.unassigned, period?.trust)}</span></div>
-      <p>Only matched settled transfers count. Pending or unmatched movement stays unresolved. Proposals grant no permission to move money.</p>
+      <p>Only matched settled transfers count. Pending or unmatched movement stays unresolved. Proposals grant no permission to move money.</p>`}
       ${inventory && typeof SavingsInventory !== 'undefined' ? SavingsInventory.html(packet, context) : ''}
       <details data-budget-savings-legacy-evidence><summary>Earlier planning calculation &amp; obligation evidence</summary>${retainedEvidence}</details>
     </div></details></section>`;
@@ -5502,6 +5513,7 @@ function budgetDetailSheetController(mount) {
     item.parent.insertBefore(item.source, item.next?.parentNode === item.parent ? item.next : null);
     item.source.hidden = item.hidden;
     item.source.inert = item.inert;
+    if (item.forecastClipped) item.source.classList.add('blend-goals-source');
     if (item.expanded != null || item.trigger.hasAttribute('aria-expanded'))
       item.trigger.setAttribute('aria-expanded', item.expanded ?? 'false');
     const opener = openerFor(item);
@@ -5521,6 +5533,7 @@ function budgetDetailSheetController(mount) {
     dialog.classList.toggle('budget-surface-period', !item.today);
     item.source.hidden = false;
     item.source.inert = item.inert;
+    if (item.forecastClipped) item.source.classList.remove('blend-goals-source');
     backButton.hidden = parents.length === 0;
   };
   const close = (restoreFocus = true) => {
@@ -5567,6 +5580,9 @@ function budgetDetailSheetController(mount) {
       opener: visibleOpener, openerSelector: options.openerSelector || identity(visibleOpener, false),
       label, focusSelector, parent: source.parentNode, next: source.nextSibling,
       hidden: source.hidden, inert: source.inert, expanded: trigger.getAttribute('aria-expanded'),
+      forecastClipped: source.hasAttribute('data-budget-funding-savings')
+        && source.classList.contains('blend-goals-source')
+        && !!source.querySelector('[data-budget-savings-forecast-evidence]'),
       today: !!source.closest('.budget-surface-today'), scrollTop: 0,
       origin: nested ? parents[0].origin : motion('origin', visibleOpener) };
     body.appendChild(source);
@@ -7124,6 +7140,7 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
   if (period?.timelineRole === 'current' || ctx.plan?.savingsEarmarks?.allocationPolicy != null
       || ctx.advice?.savingsFunding != null) {
     const daily = budgetDailySavingsFor(ctx, period.id);
+    const projected = daily.period?.kind === 'projected';
     const roster = [...(period.plannedCostFunding?.items || []), ...(period.plannedCostFunding?.unscheduled || [])];
     const listed = budgetDailySavingsRows(daily, ctx.advice?.savingsInventory, roster);
     const annualBillNote = budgetSavingsAnnualBillNoteHtml(listed);
@@ -7139,15 +7156,15 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
       const group = budgetSavingsRowMembers(daily, row);
       const members = group ? `<div class="budget-goal-members">${group.members.map(member => {
         const figures = budgetSavingsMemberFigures(member, row.thisPeriodTrust, group.historical);
-        return `<div class="budget-goal-member" data-budget-savings-member="${budgetV3Escape(member.key)}"><span>${budgetV3Escape(figures.name)}${figures.date ? ` <small>${budgetV3Escape(fmtDate(figures.date))}</small>` : ''}</span><span><span data-budget-savings-member-saved>${figures.saved}</span> / <span data-budget-savings-member-needed>${figures.needed}</span><small>Saved / needed</small></span><span><span data-budget-savings-member-proposed>${figures.proposed}</span><small>This period</small></span></div>`;
+        return `<div class="budget-goal-member" data-budget-savings-member="${budgetV3Escape(member.key)}"><span>${budgetV3Escape(figures.name)}${figures.date ? ` <small>${budgetV3Escape(fmtDate(figures.date))}</small>` : ''}</span><span><span data-budget-savings-member-saved>${figures.saved}</span> / <span data-budget-savings-member-needed>${figures.needed}</span><small>${projected ? 'Forecast' : 'Saved'} / needed</small></span><span><span data-budget-savings-member-proposed>${figures.proposed}</span><small>This period</small></span></div>`;
       }).join('')}</div>` : '';
       return `<li data-budget-savings-goal="${budgetV3Escape(row.key)}"${savedStamp}${requiredStamp}><button type="button" class="budget-goal-row" data-budget-goal-open="${budgetV3Escape(row.key)}" aria-haspopup="dialog">
       <div class="budget-goal-heading"><strong>${budgetV3Escape(group ? group.title : row.label)}</strong></div>
-      <div class="budget-goal-amounts"><span><span class="budget-goal-amount">${budgetV3Money(row.saved, row.savedTrust)}</span><small>Saved</small></span><span aria-hidden="true">/</span><span><span class="budget-goal-amount">${budgetDailyNeededHtml(row)}</span><small>Needed</small></span></div>
+      <div class="budget-goal-amounts"><span><span class="budget-goal-amount">${budgetV3Money(row.saved, row.savedTrust)}</span><small>${projected ? 'Forecast' : 'Saved'}</small></span><span aria-hidden="true">/</span><span><span class="budget-goal-amount">${budgetDailyNeededHtml(row)}</span><small>Needed</small></span></div>
       <p class="budget-goal-context">${daily.period?.kind === 'projected' ? 'Projected top-up: ' : ''}${budgetV3Money(row.thisPeriod, row.thisPeriodTrust)} this period<span class="budget-goal-evidence">Info <span aria-hidden="true">></span></span></p>${members}
     </button></li>`;
     }).join('');
-    return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3><ul>${named || '<li>Named savings unavailable.</li>'}</ul>${annualBillNote}
+    return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3>${projected ? '<p data-budget-savings-forecast-stock>Forecast Savings at close: ' + budgetV3Money(daily.forecastClosing?.stock, daily.forecastClosing?.trust) + '. If eligible surplus is saved.</p>' : ''}<ul>${named || '<li>Named savings unavailable.</li>'}</ul>${annualBillNote}
       <button type="button" class="budget-surface-link" data-budget-funding-inventory aria-haspopup="dialog">Accounts &amp; evidence</button>
       <div data-budget-funding-savings hidden>${daily ? budgetDailySavingsHtml(daily, '', ctx.advice?.savingsInventory, { asOf: ctx.asOf || ctx.advice?.defaultView?.asOf, period }) : 'Daily savings unavailable.'}</div></div>`;
   }
@@ -7335,7 +7352,9 @@ function wireBudgetFunding(mount, sheet) {
       if (disclosure) disclosure.open = true;
       sheet.open(source, button, button.hasAttribute('data-budget-goal-open') ? goalSource ? button.querySelector('strong')?.textContent || 'Goal contribution evidence' : 'Period contribution evidence'
         : button.hasAttribute('data-budget-month-funding-open') ? 'Month-input exact funding plan' : key === 'today' ? 'Today: complete funding evidence'
-        : key === 'payday' ? 'Exact payday funding plan' : button.hasAttribute('data-budget-funding-inventory') ? 'Savings assignments and backing' : 'Current cash and funding scopes');
+        : key === 'payday' ? 'Exact payday funding plan' : button.hasAttribute('data-budget-funding-inventory')
+          ? source.querySelector('[data-budget-savings-forecast-evidence]') ? 'Forecast Savings at period close' : 'Savings assignments and backing'
+          : 'Current cash and funding scopes');
     });
   });
 }

@@ -54,6 +54,7 @@ const suites = [
   ['one chronological savings publication and independent allocation oracle', 'test-chronological-savings-publication.js'],
   ['latest reported Savings allocations with unchanged native funding gates', 'test-savings-latest-known-allocation.js'],
   ['present reported Savings earmarks independent of historical reconciliation', 'test-reported-savings-earmarks.js'],
+  ['future Savings closing surplus, native cash conservation and receipt inclusion', 'test-savings-future-closing.js'],
   ['real observer Savings movement provenance and legacy fail-closed contract', 'test-savings-observer-contract.js'],
   ['combined savings location conservation and publication gates', 'test-chronological-savings-conservation.js'],
   ['independent savings review boundary and pre-payday conservation controls', 'test-chronological-savings-review-boundaries.js'],

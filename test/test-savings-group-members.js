@@ -311,17 +311,16 @@ const invFigures = block => ({
   const nextRow = nextPacket.rows.find(row => row.key === 'group:club');
   assert.equal(nextRow.thisPeriod, 145, 'native next: Forecast sums the bare-id allocations into the row');
   for (const [label, html, hook, figures] of surfaces(nextView.id, nextView)) {
-    const members = memberBlocks(html, hook);
-    assert.equal(figures(members[far]).proposed.includes('135.00'), true,
-      `native next ${label}: the bare-id allocation prints for its member (was falsely unavailable)`);
-    assert.equal(figures(members[third]).proposed.includes('10.00'), true,
-      `native next ${label}: the bare-id allocation prints for its member`);
-    assert.match(figures(members[near]).proposed, /Unavailable|Unknown/, `native next ${label}: a member with no allocation stays unavailable`);
-    const printed = groupRow.members.flatMap(key => amounts(figures(members[key]).proposed));
-    assert.equal(printed.reduce((sum, n) => sum + n, 0), nextRow.thisPeriod,
-      `native next ${label}: printed member allocations reconcile exactly to the published row this-period`);
-    assert.equal(figures(members[near]).needed.includes('60.00'), true, `native next ${label}: projected packets still publish member needed`);
-    assert.match(figures(members[far]).saved, /Unavailable|Unknown/, `native next ${label}: saved is withheld in projected packets`);
+    // Current-tail 80 and opening stock 119 are consumed by the native
+    // 60/24/170 costs once. Only 25 of the next native 80 surplus can
+    // remain in Savings while the operating walk preserves its 20 floor.
+    // The deadline-minimum packet above is unchanged; the future face now
+    // prints the separately published closing scenario, with paid members gone.
+    assert.equal(nextPacket.forecastClosing.stock, 25);
+    assert.deepEqual(nextPacket.forecastClosing.items.map(i => [i.id, i.forecastSaved]), [['third', 25]]);
+    assert.match(html, /Forecast/); assert.match(html, /25\.00/);
+    assert.match(html, /Invented third club cost/);
+    assert.doesNotMatch(html, /Invented first club cost|Invented second club cost/);
   }
 
   // Historical packet: rows withhold needed while items retain it (Finding 1).

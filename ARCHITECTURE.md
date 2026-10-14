@@ -854,6 +854,24 @@ store. Dale's October 12 transaction-view direction
 (`Sentinel_60223df7f05481918e81b31b1d972fe8`) does not require obtaining card
 statements again and does not establish an empty card-coverage opening.
 
+**Future Savings closing projection - owner direction 2026-10-13.**
+`Forecast.recommend.savingsFunding.periodViews[].packet.forecastClosing` owns
+the selected future period's closing pot and per-requirement allocations if
+eligible surplus is saved. It consumes the incumbent Budget forward cash walk,
+its income/bill/Household Budget deductions and protected floor. The generic
+deadline-minimum scheduler remains that scheduler; it does not supply this
+surplus scenario. Positive period surplus moves location at close. Native
+goal expenses occur once and leave the projected queue; routine deficits use
+only supported operating carry. No reserve withdrawal or loan is invented.
+Remaining current-period capacity is included only through the existing
+`savingsDailyFunding` receipt, posted-transfer and opening reconciliation gates.
+A reported increase is never evidence of its income source. Missing inclusion
+proof, native cash coverage, required amounts/dates or income authority keeps
+the closing projection unknown. Current Saved remains the reported earmark;
+future actual Saved, transfers and settlement remain unknown. Forecast labels
+and estimated scenario trust do not promote them. Both renderers copy this
+publication, qualified by `savingsFundingPublication`, without financial math.
+
 **Every concept has one owner.** A new piece of work either consumes an existing
 owner or explicitly replaces it; it never quietly becomes a second one.
 
