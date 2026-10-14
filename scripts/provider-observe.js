@@ -4500,6 +4500,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       amazonMerchant: flags.amazonMerchant,
       cardPaymentIdentity: flags.cardPaymentIdentity,
       outgoingETransferIdentity,
+      ...(flags.tdCardPaymentIdentity === true ? { tdCardPaymentIdentity: true } : {}),
       cardFinanceChargeIdentity: flags.cardFinanceChargeIdentity,
       internalTransferIdentity: flags.internalTransferIdentity,
       externalCashDeposit: flags.externalCashDeposit,

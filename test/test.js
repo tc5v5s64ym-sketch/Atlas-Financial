@@ -57,6 +57,7 @@ const suites = [
   ['future Savings closing surplus, native cash conservation and receipt inclusion', 'test-savings-future-closing.js'],
   ['selected future Savings requirement roster independent of monetary qualification', 'test-savings-selected-roster.js'],
   ['real observer Savings movement provenance and legacy fail-closed contract', 'test-savings-observer-contract.js'],
+  ['Savings TD card recipient class with unchanged posted/source/cutoff qualification', 'test-savings-card-recipient.js'],
   ['combined savings location conservation and publication gates', 'test-chronological-savings-conservation.js'],
   ['independent savings review boundary and pre-payday conservation controls', 'test-chronological-savings-review-boundaries.js'],
   ['scheduled fee actual cost, reserve and bounded bill recognition', 'test-scheduled-fee-routing.js'],
