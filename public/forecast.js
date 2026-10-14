@@ -3613,11 +3613,33 @@
     const asOf = context.asOf || context.advice?.defaultView?.asOf;
     const periods = Array.isArray(context.advice?.payPeriodViews) ? context.advice.payPeriodViews : [];
     const current = context.period || periods.find(row => row.timelineRole === 'current');
+    const closingValid = (packet, period) => packet.forecastClosing == null || (() => {
+      const c = packet.forecastClosing;
+      if (packet.period?.kind !== 'projected' || c.asOf !== asOf || c.currency !== 'CAD'
+          || c.start !== period?.start || c.end !== period?.end
+          || c.source !== 'Forecast.recommend.savingsFunding' || c.actualSaved !== null
+          || c.actionPermission !== 'not-granted' || c.moneyMovementPermission !== 'not-granted'
+          || !Array.isArray(c.items) || !Array.isArray(c.rows)) return false;
+      if (c.status === 'unavailable') return c.stock === null && c.trust === 'unknown'
+        && c.items.length === 0 && c.rows.length === 0
+        && (c.gap == null || savingsDate(c.gap.date) && savingsCents(c.gap.shortBy) != null && c.gap.trust === 'estimated');
+      return c.status === 'ready' && c.trust === 'estimated' && c.nature === 'if-eligible-surplus-saved'
+        && c.cashBasis === 'opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits'
+        && [c.stock, c.contribution, c.unallocated, c.projectedContributions, c.projectedDraws, c.projectedDeficitCoverage].every(n => savingsCents(n) != null)
+        && savingsCents(c.operatingCash, true) != null && Array.isArray(c.allocations)
+        && c.items.every(i => typeof i.key === 'string' && savingsCents(i.forecastSaved) != null
+          && savingsCents(i.needed) != null && i.forecastSaved <= i.needed && i.saved === null)
+        && new Set(c.items.map(i => i.key)).size === c.items.length
+        && c.rows.every(r => Array.isArray(r.members) && savingsCents(r.forecastSaved) != null
+          && savingsCents(r.forecastContribution) != null && r.saved === null)
+        && c.allocations.every(a => typeof a.id === 'string' && savingsCents(a.amount) != null);
+    })();
     const valid = (packet, period) => packet?.source === 'Forecast.savingsDailyFunding'
       && savingsDate(asOf) && packet.asOf === asOf && packet.currency === 'CAD'
       && packet.actionPermission === 'not-granted' && packet.moneyMovementPermission === 'not-granted'
       && ['ready', 'unavailable'].includes(packet.status) && Array.isArray(packet.rows)
       && Array.isArray(packet.backing?.items) && Array.isArray(packet.backing?.pools)
+      && closingValid(packet, period)
       && (packet.periodViews == null || Array.isArray(packet.periodViews))
       && (packet.schedule == null || packet.schedule.status === 'unavailable'
         || ['ready', 'funding-gap'].includes(packet.schedule.status)
@@ -13166,6 +13188,8 @@
   // income / bill-load / category-hold publications. No cap or recent-spend
   // estimate substitutes for those holds. This is a projection, not saved cash
   // or a reconstruction of the original payday plan.
+  // Private handoff of the incumbent Budget walk, never a page calculation.
+  const savingsClosingWalks = new WeakMap();
   function publishBudgetPeriodFunding(plan, asOf, periods, opts) {
     const coverage = cardCoverageState(plan, asOf, opts);
     const reserves = savingsEarmarksEnabled(plan) ? reserveFundingState(plan, asOf, opts) : null;
@@ -13533,6 +13557,8 @@
             additionalIncomeEvents: walkOpts.additionalIncomeEvents.filter(e => e.date > asOf),
           });
           const forwardSim = simulateModel(plan, asOf, forwardOpts);
+          savingsClosingWalks.set(periods, { sim: forwardSim, periods: ordered,
+            through: end, trust: basisTrust });
           const forwardBasis = new Map(basis);
           const { cash, income, walkCapacity, capacity, deductions, bills } =
             budgetSavingsCashSeed(plan, asOf, current.end, remaining, forwardSim, seq);
@@ -14016,6 +14042,8 @@
         ];
         savingsFunding.periodViews = payPeriodTimelinePack.views.map(period => ({ id: period.id, start: period.start,
           end: period.end, role: period.timelineRole, funding: period.plannedCostFunding, progress: period.budgetProgress }));
+        const closingSavings = savingsClosingProjection(savingsFunding,
+          savingsClosingWalks.get(payPeriodTimelinePack.views), asOf);
         // A location reprint of this same native walk and serial schedule. New
         // projected top-ups move cash between locations; expenses remain once.
         const projectionShell = { source: 'Forecast.savingsFundingTimeline', asOf, currency: 'CAD',
@@ -14106,6 +14134,11 @@
               trust: ready ? 'estimated' : 'unknown', proposal: ready ? payday.contribution : null,
               actualSaved: null, allocations: ready ? payday.allocations : [], cycleAllocations: ready ? payday.allocations : [],
               reason: ready ? null : projected ? 'This selected period has no qualified projected top-up.' : 'Historical saved evidence is unknown.' } };
+          if (projected) view.packet.forecastClosing = closingSavings.get(view.end) || {
+            status: 'unavailable', stock: null, items: [], rows: [], actualSaved: null,
+            trust: 'unknown', start: view.start, end: view.end, asOf, currency: 'CAD',
+            source: 'Forecast.recommend.savingsFunding', actionPermission: 'not-granted', moneyMovementPermission: 'not-granted',
+            reason: 'This closing period lies beyond the supported native cash and income projection.' };
         }
       }
       return withholdCurrentOperatingClaims({
@@ -19618,6 +19651,188 @@
         source: 'Forecast.savingsDailyFunding', payments } };
   }
 
+  // Owner's closing Savings ledger, qualified by the incumbent Budget walk.
+  // Operating carry is never an addition to this headline. Full goal costs
+  // debit once; negative diagnostics are not publishable bank balances.
+  function savingsClosingProjection(funding, context, asOf) {
+    const result = new Map();
+    const periods = (context?.periods || funding.periodViews || []).filter(p => p.end >= asOf);
+    const hold = reason => {
+      for (const p of periods) result.set(p.end, { status: 'unavailable', reason,
+        stock: null, items: [], rows: [], actualSaved: null, trust: 'unknown', start: p.start, end: p.end,
+        asOf, currency: 'CAD', source: 'Forecast.recommend.savingsFunding',
+        actionPermission: 'not-granted', moneyMovementPermission: 'not-granted' });
+      return result;
+    };
+    if (funding.allocationMode !== 'combined' || funding.backing.status !== 'ready'
+        || funding.period.status !== 'ready') return hold(funding.period.reason || funding.backing.reason
+          || 'Current-period receipt inclusion is not proved; a remaining surplus cannot be added to reported savings.');
+    if (!context || !['calculated', 'estimated'].includes(context.trust))
+      return hold('The native Budget cash walk is unavailable.');
+    const { sim, through } = context;
+    const stock = savingsCents(funding.stock.amount), floor = savingsCents(simulationCashFloor(sim), true);
+    const tail = savingsCents(funding.period.projectedRemainingCapacity);
+    if (stock == null || floor == null || tail == null)
+      return hold('Reported stock, remaining current-period receipt evidence or cash floor is unavailable.');
+    const items = funding.backing.items;
+    if (funding.unresolved.length || items.some(i => savingsCents(i.needed) == null || !savingsDate(i.date)))
+      return hold('A required Savings amount or planning date is unavailable.');
+    const events = [];
+    for (const item of items.filter(i => i.date <= through)) {
+      const matches = sim.events.filter(e => e.id === item.id && e.date === item.date
+        && ['commitment', 'bill', 'reserve'].includes(e.kind));
+      if (matches.length !== 1 || savingsCents(-matches[0].amount) !== savingsCents(item.needed))
+        return hold('A Savings requirement has no unique matching native expense.');
+      const e = matches[0], seeded = e.reserveFunding ? savingsCents(e.reserveFunding.amount) : 0;
+      if (seeded == null) return hold('A native Savings payment has unavailable cents.');
+      events.push({ key: item.key, id: item.id, date: cashWalkDate(e, asOf),
+        amount: savingsCents(item.needed), seeded });
+    }
+    if (sim.events.some(e => e.reserveFunding && !events.some(p => p.id === e.id && p.date === cashWalkDate(e, asOf))))
+      return hold('A native reserve draw cannot be located uniquely in this Savings pot.');
+    const days = sim.daily.filter(d => d.date <= through);
+    if (!days.length || days.at(-1).date !== through || days.some(d => savingsCents(d.balance, true) == null))
+      return hold('The native closing cash path is incomplete.');
+    const transfers = new Map();
+    const futureStart = periods.filter(p => p.start > asOf).sort((a,b) => a.start.localeCompare(b.start))[0]?.start;
+    // This is an allocation ledger, not physical withdrawal routing. Debit
+    // each full native cost, including its unbacked portion, and retain signed
+    // deficits. The native household total supplies the operating residual;
+    // it is not a source of additional Savings contributions.
+    const walk = (selectedTransfers, fixedCoverage) => {
+      let pot = stock, sent = 0, draws = 0, restored = 0, nativeStockDrawn = 0;
+      let deficitCoverage = 0, supportedCoverage = 0;
+      const paid = new Set(), daily = [], payments = [], coveragePlan = new Map(); let gap = null, cashGap = null;
+      for (const day of days) {
+        for (const payment of events.filter(p => p.date === day.date)) {
+          const draw = payment.amount;
+          pot -= draw; draws += draw; restored += draw - payment.seeded;
+          nativeStockDrawn += payment.seeded; paid.add(payment.key);
+          payments.push({ ...payment, draw });
+        }
+        const addition = selectedTransfers.get(day.date) || 0;
+        pot += addition; sent += addition;
+        const native = savingsCents(day.balance, true);
+        let operating = native - sent + restored + deficitCoverage;
+        // Plan only the remainder after all Bills/prior surplus is retained.
+        // Capacity probes reuse that fixed plan: saving more cannot manufacture
+        // a larger fallback or allocate the same prior surplus twice.
+        const needed = fixedCoverage ? fixedCoverage.get(day.date) || 0
+          : futureStart && day.date >= futureStart ? Math.max(0, floor - operating) : 0;
+        const supported = Math.min(needed, Math.max(0, pot));
+        if (needed) coveragePlan.set(day.date, needed);
+        pot -= needed; deficitCoverage += needed; supportedCoverage += supported; operating += needed;
+        if (![pot, sent, draws, operating, nativeStockDrawn, deficitCoverage, supportedCoverage].every(Number.isSafeInteger)
+            || !Number.isSafeInteger(operating + pot) || !Number.isSafeInteger(native + stock - nativeStockDrawn)
+            || operating + pot !== native + stock - nativeStockDrawn) return null;
+        if (!gap && operating < floor) gap = { date: day.date, shortBy: (floor - operating) / 100,
+          signedOperatingCash: operating / 100, cashFloor: floor / 100, trust: 'estimated' };
+        // Unsupported signed coverage is never spendable cash. Bound the
+        // qualified path by native cash plus funded coverage and the conserved
+        // household total, preventing reuse of stock consumed by goal costs.
+        const qualifiedCash = Math.min(native + supportedCoverage, operating + Math.min(0, pot));
+        if (!Number.isSafeInteger(native + supportedCoverage) || !Number.isSafeInteger(qualifiedCash)) return null;
+        if (!cashGap && qualifiedCash < floor) cashGap = { date: day.date, shortBy: (floor - qualifiedCash) / 100,
+          signedOperatingCash: qualifiedCash / 100, cashFloor: floor / 100, trust: 'estimated' };
+        daily.push({ date: day.date, pot, operating, sent, draws, deficitCoverage, qualifiedCash, paid: new Set(paid) });
+      }
+      return { daily, payments, gap, cashGap, coveragePlan };
+    };
+    let path = walk(transfers);
+    if (!path) return hold('The Savings ledger cannot conserve supported cash cents.');
+    const coveragePlan = path.coveragePlan;
+    const operatingGap = path.gap;
+    for (const period of periods.filter(p => p.end <= through).sort((a,b) => a.end.localeCompare(b.end))) {
+      const current = period.start <= asOf;
+      let overlap = 0;
+      for (const payment of events.filter(p => p.date >= (current ? asOf : period.start) && p.date <= period.end)) {
+        const deducted = (period.bills || []).filter(b => b.id === payment.id && b.date === payment.date
+          && billBelongsOnPaydayWaterfall(b, period.openingAsOf, period.openingSource));
+        if (deducted.length > 1) return hold('A goal cost has ambiguous native Budget deductions.');
+        if (deducted.length) {
+          const cents = savingsCents(deducted[0].planned != null ? deducted[0].planned : deducted[0].amount);
+          if (cents == null) return hold('A goal cost has an unavailable native Budget deduction.');
+          overlap += cents;
+        }
+      }
+      // Budget already deducts annual goal bills. Restore that exact deduction
+      // to the pre-goal quota, then debit the full cost once in this ledger.
+      // Current-tail inclusion still comes only from qualified receipt/transfer
+      // evidence and its existing native cash bound, never a report-date split.
+      const net = savingsCents(current ? funding.period.nativePeriodSurplus : period.balanceAfterDeductions, true);
+      const saved = current ? savingsCents(funding.period.alreadySavedIncome) : 0;
+      const transferred = current ? savingsCents(funding.period.transferred) : 0;
+      if ([net, saved, transferred].some(n => n == null) || !Number.isSafeInteger(overlap))
+        return hold('A native period surplus or receipt inclusion is unavailable.');
+      let eligible = current ? Math.min(tail + overlap, Math.max(0, net + overlap - saved - transferred)) : net + overlap;
+      if (!Number.isSafeInteger(eligible)) return hold('A native period surplus is unavailable.');
+      eligible = Math.max(0, eligible);
+      if (!Number.isSafeInteger(eligible)) return hold('Projected contribution cents exceed exact arithmetic.');
+      // Existing native future balances protect later deficits and payments.
+      // Search exact cents, using that same location reprint, for the largest
+      // supported surplus. Future income is never used before it lands.
+      let low = 0, high = eligible;
+      while (low < high) {
+        const mid = low + Math.ceil((high - low) / 2), probe = new Map(transfers);
+        probe.set(period.end, mid);
+        const trial = walk(probe, coveragePlan);
+        const feasible = trial && (!trial.gap || operatingGap && trial.gap.date >= operatingGap.date
+          && trial.gap.shortBy <= operatingGap.shortBy);
+        if (feasible) low = mid; else high = mid - 1;
+      }
+      transfers.set(period.end, low); path = walk(transfers, coveragePlan);
+      const closing = path.daily.find(d => d.date === period.end);
+      if (!closing) return hold('The selected native closing date is unavailable.');
+      const nativeClosing = savingsCents(days.find(d => d.date === period.end).balance, true);
+      const diagnostics = { signedSavings: closing.pot / 100, operatingResidual: closing.operating / 100,
+        nativeOperatingCash: nativeClosing / 100, qualifiedOperatingCash: closing.qualifiedCash / 100,
+        deficitCoverage: closing.deficitCoverage / 100, trust: 'estimated' };
+      const nativeUnavailable = path.cashGap && period.end >= path.cashGap.date;
+      if (closing.pot < 0 || nativeUnavailable || closing.operating < floor) {
+        const shortBy = closing.pot < 0 ? -closing.pot : nativeUnavailable
+          ? Math.round(path.cashGap.shortBy * 100) : floor - closing.operating;
+        const date = closing.pot < 0 ? period.end : nativeUnavailable ? path.cashGap.date : period.end;
+        result.set(period.end, { status: 'unavailable', stock: null, items: [], rows: [], actualSaved: null,
+          trust: 'unknown', start: period.start, end: period.end, asOf, currency: 'CAD', diagnostics,
+          source: 'Forecast.recommend.savingsFunding', actionPermission: 'not-granted', moneyMovementPermission: 'not-granted',
+          gap: { date, shortBy: shortBy / 100, signedOperatingCash: nativeUnavailable
+            ? path.cashGap.signedOperatingCash : nativeClosing / 100,
+            signedSavings: closing.pot / 100, cashFloor: floor / 100, trust: 'estimated' },
+          reason: 'Funding gap on ' + date + ': $' + (shortBy / 100).toFixed(2) + '.' });
+        continue;
+      }
+      const active = items.filter(i => !closing.paid.has(i.key));
+      const amounts = new Map(); let left = closing.pot;
+      for (const item of active) { const amount = Math.min(left, savingsCents(item.needed)); amounts.set(item.key, amount); left -= amount; }
+      const projectedItems = active.map(i => ({ ...i, saved: null, forecastSaved: amounts.get(i.key) / 100,
+        savedTrust: 'unknown', forecastTrust: 'estimated' }));
+      const costs = active.map(i => ({ id: i.key, label: i.label, baseRequirement: savingsCents(i.needed) }));
+      const beforeAddition = new Map(costs.map(c => [c.id, 0]));
+      serialFundingAllocations(costs, beforeAddition, closing.pot - low);
+      const allocations = serialFundingAllocations(costs, beforeAddition, low).allocations;
+      const rows = funding.rows.filter(r => r.members.some(key => amounts.has(key))).map(r => {
+        const members = r.members.filter(key => amounts.has(key));
+        return { ...r, members, label: members.length === 1 ? active.find(i => i.key === members[0]).label : r.label,
+          saved: null, savedTrust: 'unknown', forecastTrust: 'estimated',
+          forecastSaved: members.reduce((sum,key) => sum + amounts.get(key), 0) / 100,
+          needed: active.filter(i => members.includes(i.key)).reduce((sum,i) => sum + savingsCents(i.needed),0) / 100,
+          neededTrust: r.neededTrust, forecastContribution: allocations.filter(a => members.includes(a.id))
+            .reduce((sum,a) => sum + savingsCents(a.amount),0) / 100 };
+      });
+      result.set(period.end, { status: 'ready', source: 'Forecast.recommend.savingsFunding',
+        asOf, currency: 'CAD',
+        nature: 'if-eligible-surplus-saved', cashBasis: 'opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits',
+        trust: 'estimated', start: period.start, end: period.end,
+        stock: closing.pot / 100, operatingCash: closing.operating / 100, diagnostics,
+        contribution: low / 100, projectedContributions: closing.sent / 100,
+        projectedDraws: closing.draws / 100, projectedDeficitCoverage: closing.deficitCoverage / 100, unallocated: left / 100,
+        items: projectedItems, rows, allocations, actualSaved: null,
+        actionPermission: 'not-granted', moneyMovementPermission: 'not-granted',
+        reason: 'Forecast at period close if eligible surplus is saved. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.' });
+    }
+    return result;
+  }
+
   // Replacement funding packet only. An observation/earmark is never transfer
   // evidence; no canonical history, observations or real money are changed.
   function savingsDailyFunding(plan, debts, asOf, opts) {
@@ -19827,6 +20042,7 @@
       nativePeriodSurplus: nativePeriodSurplus / 100, alreadySavedIncome: alreadySavedIncome / 100,
       remainingEntitlement: remainingEntitlement / 100, availableNow: availableNow / 100,
       proposal: (availableNow - today.remaining) / 100, unassigned: today.remaining / 100,
+      projectedRemainingCapacity: plannedCapacity / 100,
       currentCash: seed.cash, futureIncome: seed.income, cashCapacity: Math.max(0, capacity) / 100,
       trust: fundingTrust, cashThrough: end, incomeAuthorityThrough: bound.through, completeness: 'bounded',
       allocations: today.allocations, cycleAllocations: planned.allocations, actualSaved: null, originalPaydayPlan: null } };

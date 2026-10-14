@@ -854,6 +854,56 @@ store. Dale's October 12 transaction-view direction
 (`Sentinel_60223df7f05481918e81b31b1d972fe8`) does not require obtaining card
 statements again and does not establish an empty card-coverage opening.
 
+**Future Savings closing projection - owner direction 2026-10-13.**
+`Forecast.recommend.savingsFunding.periodViews[].packet.forecastClosing` owns
+the selected future period's closing pot and per-requirement allocations if
+eligible surplus is saved. It consumes the incumbent Budget forward cash walk,
+its income/bill/Household Budget deductions and protected floor. The generic
+deadline-minimum scheduler remains that scheduler; it does not supply this
+surplus scenario. Positive period surplus moves location at close. Native
+goal expenses occur once and leave the projected queue. Routine deficits use
+available Bills cash and retained prior-period surplus first. Dale's clarification
+`Sentinel_98d4486829848191b933e14411bbc3cd` permits the qualified hypothetical
+Savings remainder in this forecast calculation only. It authorizes no real
+transfer, reserve withdrawal, loan or native/current money movement.
+Remaining current-period capacity is included only through the existing
+`savingsDailyFunding` receipt, posted-transfer and opening reconciliation gates.
+A reported increase is never evidence of its income source. Missing inclusion
+proof, native cash coverage, required amounts/dates or income authority keeps
+the closing projection unknown. Current Saved remains the reported earmark;
+future actual Saved, transfers and settlement remain unknown. Estimated scenario
+trust and provenance stay internal. The selected period supplies visible context;
+Dale's 2026-10-14 UTC direction (`Sentinel_fd7dfe558f4c8191ad91f6f2379ad41d`)
+supersedes added Forecast/Actual labels, badges and ordinary assumption reminders.
+Genuine unavailable-data failures remain visible. Both renderers copy this
+publication, qualified by `savingsFundingPublication`, without financial math.
+Native planned payments on or before the inclusive close consume their costs
+once and remove their requirements only from that projection. Installment groups
+retain their remaining members, then disappear. Earlier affordable closes survive
+a later unavoidable native funding gap; the failing close withholds allocations
+and reports that same gap. Navigation never mutates actual settlement or balances.
+The closing stock's internal basis is
+`opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits`:
+qualified opening Savings plus eligible period surplus less full due goal costs
+and only deficits uncovered by Bills/prior surplus. Operating opening
+cash cannot inflate this headline or replace a signed Savings shortage. Goal bills
+already deducted by native Budget contribute only their exact unique deduction
+to the pre-goal quota before the full cost debit. Signed Savings diagnostics
+continue across closes; negative Savings withholds stock and allocations. A positive
+closing arithmetic total also withholds publication if the daily qualified cash
+path breaches its floor before funds are available. The new publication fixes
+its minimum coverage plan with all prior surplus retained, then reuses that plan
+when testing Savings contributions: it cannot increase fallback to save the same
+money allocated to deficit coverage. Only qualified available Savings supports
+the cash path; negative signed or insufficient coverage remains unavailable.
+Native reserve events cannot reuse stock already consumed by fallback. A later
+receipt never retrospectively qualifies an earlier shortage. Existing positive
+net-surplus eligibility is unchanged; late non-surplus receipts remain Bills carry,
+without an automatic repayment to Savings. The full native economic
+expense, actuals and operating publications remain unchanged. The existing
+current-tail unavailable gate is unchanged, including its positive-planned-capacity
+condition, and a schedule funding-gap status cannot override it.
+
 **Every concept has one owner.** A new piece of work either consumes an existing
 owner or explicitly replaces it; it never quietly becomes a second one.
 
