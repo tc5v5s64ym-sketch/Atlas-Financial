@@ -1089,6 +1089,25 @@ console.log('\n=== 10. Designated savings in the gap does not change spendable p
   ok(JSON.stringify({canonical,payload,map:i.accountMap})===original
       && result.data.liveOverlay.writesCanonicalState===false,
     'synthetic source pipeline preserves inputs and has no canonical write permission');
+  for (const id of ['chequing-a','chequing-b']) {
+    const duplicate=fixture.input();
+    duplicate.plan.startingCash.breakdown.push(fixture.clone(duplicate.plan.startingCash.breakdown.find(r=>r.id===id)));
+    const duplicateOriginal=JSON.stringify(duplicate);
+    const duplicateResult=Live.fromObservation({data:{meta:{asOf:'2026-09-29'},plan:duplicate.plan,debts:[]},
+      payload:fixture.payload(duplicate),accountMap:duplicate.accountMap});
+    const duplicateOptions={...options,currentPeriodActuals:duplicateResult.data.liveOverlay.currentPeriodActuals,
+      observedCash:duplicateResult.data.liveOverlay.observedCash,operatingPlan:duplicateResult.data.liveOverlay.operatingPlan};
+    const duplicateAdvice=F.recommend(duplicateResult.data.plan,duplicate.asOf,duplicateOptions);
+    ok(!duplicateResult.data.plan.opening.paydaySnapshot
+        && duplicateAdvice.savingsFunding.period.status==='unavailable'
+        && JSON.stringify(duplicate)===duplicateOriginal,
+      'duplicate original '+id+' cannot publish a reconstructed payday opening or known current funding');
+    duplicate.plan.opening.paydaySnapshot={periodStart:'2026-10-02',asOf:'2026-10-02',opening:independent};
+    const duplicateFrozen=Live.fromObservation({data:{meta:{asOf:'2026-09-29'},plan:duplicate.plan,debts:[]},
+      payload:fixture.payload(duplicate),accountMap:duplicate.accountMap});
+    ok(duplicateFrozen.data.plan.opening.paydaySnapshot?.opening===independent,
+      'valid recorded snapshot remains frozen despite duplicate original '+id+' reconstruction rows');
+  }
   for (const [label,value] of [['null',null],['missing',undefined],['blank',''],['whitespace',' '],
     ['boolean',false],['NaN',NaN],['object',{}],['array',[]],['invalid string','not-cash']]) {
     const invalid=fixture.input();invalid.plan.startingCash.breakdown.find(r=>r.id==='chequing-a').value=value;

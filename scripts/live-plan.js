@@ -944,6 +944,9 @@ function paydayOpeningCashKnown(plan) {
   if (!Array.isArray(rows) || !rows.length) return finite(cash && cash.amount);
   const chequingIds = ['chequing-a', 'chequing-b'];
   const hasChequing = rows.some(row => row && chequingIds.includes(row.id));
+  // Reconstruction needs each required operating observation exactly once.
+  // Duplicate rows would let Forecast sum the same original cash twice.
+  if (hasChequing && chequingIds.some(id => rows.filter(row => row && row.id === id).length !== 1)) return false;
   const pools = Array.isArray(plan.savingsEarmarks && plan.savingsEarmarks.pools)
     ? plan.savingsEarmarks.pools : [];
   const spendable = rows.filter(row => row && (hasChequing ? chequingIds.includes(row.id)

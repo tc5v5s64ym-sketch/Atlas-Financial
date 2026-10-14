@@ -20,6 +20,9 @@ The original-cash presence guard in `live-plan.js` prevents null/blank/missing
 cash from becoming zero during the newly usable reconstruction path. A matching
 valid frozen snapshot remains independently usable. Forecast is unchanged:
 its snapshot, original-to-current reconciliation and all other gates remain.
+Reconstruction also requires exactly one original row for each required operating
+identity. Duplicate observations cannot manufacture a larger known opening;
+a valid existing frozen snapshot still takes precedence.
 
 ## Independent reconciliation
 
@@ -36,11 +39,19 @@ No canonical input, transaction, settlement or history is changed.
 ## Before and after
 
 The exact expanded `test/test-payday-opening-authority.js` test text run against
-the frozen base runtime fails9 checks. The repair passes all111 authority checks,
-including40 new checks. Controls retain missing/wrong operating mappings,
+the frozen base runtime fails9 checks. The repair passes all115 authority checks,
+including44 new checks. Controls retain missing/wrong operating mappings,
 truncated/incomplete/short windows, unknown pending coverage, pending cash,
 unmapped rows, untrusted amounts, missing original cash and conflicting snapshots.
 Numeric zero, numeric strings and valid retained snapshots remain supported.
+
+Independent review found duplicate canonical operating rows could produce a
+false known opening on candidate `d8489f70f55464310efcadfe6d24be1ada5e87c0`.
+The same expanded test text fails the duplicate-A and duplicate-B real-pipeline
+checks on that runtime, while the narrow identity guard repairs both. The tests
+verify no reconstructed snapshot and unavailable current funding, plus unchanged
+inputs. Two separate controls preserve valid frozen snapshots with duplicate
+original rows. No next-period diagnostic or Forecast policy changed.
 
 ```powershell
 node test/test-payday-opening-authority.js

@@ -158,7 +158,7 @@
     },
     "after": {
       "scripts/provider-observe.js": "a80c1584e7c88c34a0723b943cf8be130b0e0c5c88642f4a451d035cb931aa1d",
-      "scripts/live-plan.js": "05b33ff7b4ec80897d7e790376c1dbfdf85d0cfc57e6e9e317a1e8556fd020b2",
+      "scripts/live-plan.js": "72725b95033be6ef0b7a30c93975095994025bd7fd5a77ab1a40bbaa3588029a",
       "test/fixtures/payday-gap-reserve-data.js": "7ea65e6b939b1057593be91f7a43e0ecda4859fef935e63f9a7c39380de08450"
     }
   },
