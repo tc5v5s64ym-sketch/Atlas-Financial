@@ -934,6 +934,26 @@ function paydayGapCashFromReport(report, canonicalPlan, paydayDate) {
   };
 }
 
+// Presence guard for the original opening's spendable rows. Scope follows
+// Forecast.startingCashAmount; this does not calculate a cash amount.
+function paydayOpeningCashKnown(plan) {
+  const finite = value => typeof value === 'number' ? Number.isFinite(value)
+    : typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value));
+  const cash = plan && plan.startingCash;
+  const rows = cash && cash.breakdown;
+  if (!Array.isArray(rows) || !rows.length) return finite(cash && cash.amount);
+  const chequingIds = ['chequing-a', 'chequing-b'];
+  const hasChequing = rows.some(row => row && chequingIds.includes(row.id));
+  // Reconstruction needs each required operating observation exactly once.
+  // Duplicate rows would let Forecast sum the same original cash twice.
+  if (hasChequing && chequingIds.some(id => rows.filter(row => row && row.id === id).length !== 1)) return false;
+  const pools = Array.isArray(plan.savingsEarmarks && plan.savingsEarmarks.pools)
+    ? plan.savingsEarmarks.pools : [];
+  const spendable = rows.filter(row => row && (hasChequing ? chequingIds.includes(row.id)
+    : row.id !== 'savings' && !pools.some(pool => pool && pool.accountId === row.id)));
+  return spendable.length > 0 && spendable.every(row => row.unknown !== true && finite(row.value));
+}
+
 // Retain Forecast's payday-morning figure on the live clone. Use the
 // pre-overlay dated plan, never the post-overlay live cash. An already
 // matching snapshot stays frozen. A walk is retained only when
@@ -957,6 +977,9 @@ function retainPaydaySnapshot(next, canonicalPlan, liveAsOf, report) {
     });
     return;
   }
+  // Earn from recorded original cash, never Number(null/blank) -> zero.
+  // A valid frozen snapshot above remains independently usable.
+  if (!paydayOpeningCashKnown(canonicalPlan)) return;
   const snap = Forecast.establishPaydaySnapshot(canonicalPlan, cycle.start, {
     representedEvents: (next.plan.opening && next.plan.opening.representedEvents) || [],
     paydayGapCash: paydayGapCashFromReport(report, canonicalPlan, cycle.start),
