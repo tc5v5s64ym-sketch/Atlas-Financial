@@ -4493,6 +4493,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       amazonMerchant: flags.amazonMerchant,
       cardPaymentIdentity: flags.cardPaymentIdentity,
       outgoingETransferIdentity,
+      tdCardPaymentIdentity: flags.tdCardPaymentIdentity,
       cardFinanceChargeIdentity: flags.cardFinanceChargeIdentity,
       internalTransferIdentity: flags.internalTransferIdentity,
       externalCashDeposit: flags.externalCashDeposit,

@@ -5081,6 +5081,10 @@
         reason: 'unmapped-account',
       };
     }
+    if (isTdCardPaymentIdentity(tx)) {
+      return { kind: 'card-payment', categoryId: null, householdSpending: false,
+        reason: 'td-card-recipient-identity' };
+    }
     const proven = provenInternalMovementForTx(tx, opts || {});
     if (proven && proven.movement) {
       const movement = proven.movement;
@@ -8105,6 +8109,9 @@
   // movement is a higher bar than TFR identity: unique opposite TO/FR legs
   // of the same reference, matching amount, both household cash locations.
   const TD_INTERNAL_TRANSFER_RE = /\b([A-Z]{2}\d{3})\s+TFR-(TO|FR)\b/i;
+  // Dale's recorded Q2 answer identifies this bank form as payment to a known
+  // card. It identifies recipient class only, never an individual card/purpose.
+  const TD_CARD_RECIPIENT_RE = /^\s*([A-Z]{2}\d{3})\s+TFR-TO\s+C\/C\s*$/i;
   const TD_ATM_DEPOSIT_RE = /\bATM\s*DEP\b/i;
   const TD_CASH_WITHDRAWAL_RE = /\bATM\s*W\/D\b|\bCASH\s+WITHDRA/i;
   const internalMovementIndexCache = new WeakMap();
@@ -8138,6 +8145,20 @@
     return !!parseTdInternalTransferIdentity(tx);
   }
 
+  function isTdCardPaymentIdentity(tx) {
+    const parsed = parseTdInternalTransferIdentity(tx);
+    if (!parsed || parsed.tfrDirection !== 'TO' || !(Number(tx.amount) > EPSILON)) return false;
+    // Raw source normalization has original_name/Name. A displayed payee or
+    // note cannot establish this class. Sanitized packets carry only the flag.
+    const original = tx.original_name ?? tx.originalName;
+    if (original != null) {
+      const match = typeof original === 'string' && TD_CARD_RECIPIENT_RE.exec(original);
+      return !!match && match[1].toUpperCase() === parsed.tfrReference
+        && (!Object.hasOwn(tx, 'tdCardPaymentIdentity') || tx.tdCardPaymentIdentity === true);
+    }
+    return tx.tdCardPaymentIdentity === true;
+  }
+
   function householdCashLocationId(tx) {
     if (!tx) return null;
     if (tx.accountRole === 'household-external' || tx.accountRole === 'unmapped') {
@@ -8155,6 +8176,7 @@
     const groups = new Map();
     for (const tx of transactions || []) {
       if (!tx || tx.pending === true) continue;
+      if (isTdCardPaymentIdentity(tx)) continue;
       if (tx.id == null || tx.id === '') continue;
       const loc = householdCashLocationId(tx);
       if (!loc) continue;
@@ -8244,6 +8266,7 @@
 
   function isInternalHouseholdTransfer(tx) {
     if (!tx) return false;
+    if (isTdCardPaymentIdentity(tx)) return false;
     if (isInternalTransferIdentity(tx)) return true;
     const hint = normalizeCategoryLabel(tx.kindHint);
     if ((hint === 'transfer' || hint === 'internal-transfer')
@@ -8887,6 +8910,7 @@
       daleGuiltFreeMerchant: false,
       amazonMerchant: false,
       cardPaymentIdentity: false,
+      tdCardPaymentIdentity: false,
       cardFinanceChargeIdentity: false,
       internalTransferIdentity: false,
       externalCashDeposit: false,
@@ -8902,6 +8926,7 @@
     const amandaAmazonTravelVisa = amazonMerchant && isTravelVisaAccount(tx);
     const parsedTfr = parseTdInternalTransferIdentity(tx);
     const internalTransferIdentity = isInternalTransferIdentity(tx);
+    const tdCardPaymentIdentity = isTdCardPaymentIdentity(tx);
     const cashWithdrawalIdentity = isCashWithdrawalIdentity(tx);
     const externalCashDeposit = isExternalCashDepositIdentity(tx);
     return {
@@ -8916,7 +8941,8 @@
       confirmedFuel: isConfirmedFuelMerchant(tx),
       daleGuiltFreeMerchant,
       amazonMerchant,
-      cardPaymentIdentity: isCanadianTireMastercardPayment(tx),
+      cardPaymentIdentity: isCanadianTireMastercardPayment(tx) || tdCardPaymentIdentity,
+      tdCardPaymentIdentity,
       cardFinanceChargeIdentity: isRevolvingCardAccount(tx)
         && revolvingCardFinanceChargeEvidence(tx),
       internalTransferIdentity,
@@ -19273,6 +19299,13 @@
         continue;
       }
       if (!qualified(tx, accountId)) return unknown;
+      if (isTdCardPaymentIdentity(tx)) {
+        // A repeated reference at another cash location contradicts this typed
+        // recipient. Do not reinterpret it as a pair or admit a replayed debit.
+        const reference = parseTdInternalTransferIdentity(tx).tfrReference;
+        if (transactions.some(other => other !== tx && householdCashLocationId(other)
+          && parseTdInternalTransferIdentity(other)?.tfrReference === reference)) return unknown;
+      }
       if (!isInternalHouseholdTransfer(tx)) {
         if (inclusion(tx, accountId) !== true) return uncertain;
         continue;
