@@ -1,0 +1,168 @@
+{
+  "synthetic": true,
+  "base": "52532e1719e39643b048a8783609719220ad2ddf",
+  "cases": [
+    {
+      "mode": "before",
+      "width": 390,
+      "dates": [
+        "2026-10-23",
+        "2026-11-06",
+        "2026-11-20"
+      ],
+      "publication": {
+        "start": "2026-11-20",
+        "end": "2026-12-03",
+        "status": "unavailable",
+        "stock": null,
+        "reason": "No original payday cash observation supports the cycle bridge.",
+        "actualSaved": null,
+        "permission": "not-granted"
+      },
+      "inputUnchanged": true
+    },
+    {
+      "mode": "after",
+      "width": 390,
+      "dates": [
+        "2026-10-23",
+        "2026-11-06",
+        "2026-11-20"
+      ],
+      "publication": {
+        "start": "2026-11-20",
+        "end": "2026-12-03",
+        "status": "ready",
+        "stock": 3119,
+        "operating": 113,
+        "reason": "Forecast at period close if eligible surplus is saved. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.",
+        "actualSaved": null,
+        "permission": "not-granted"
+      },
+      "inputUnchanged": true
+    },
+    {
+      "mode": "before",
+      "width": 1440,
+      "dates": [
+        "2026-10-23",
+        "2026-11-06",
+        "2026-11-20"
+      ],
+      "publication": {
+        "start": "2026-11-20",
+        "end": "2026-12-03",
+        "status": "unavailable",
+        "stock": null,
+        "reason": "No original payday cash observation supports the cycle bridge.",
+        "actualSaved": null,
+        "permission": "not-granted"
+      },
+      "inputUnchanged": true
+    },
+    {
+      "mode": "after",
+      "width": 1440,
+      "dates": [
+        "2026-10-23",
+        "2026-11-06",
+        "2026-11-20"
+      ],
+      "publication": {
+        "start": "2026-11-20",
+        "end": "2026-12-03",
+        "status": "ready",
+        "stock": 3119,
+        "operating": 113,
+        "reason": "Forecast at period close if eligible surplus is saved. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.",
+        "actualSaved": null,
+        "permission": "not-granted"
+      },
+      "inputUnchanged": true
+    }
+  ],
+  "served": {
+    "before": {
+      "public/index.html": "4bede53185ea5b67c39e218f8d53e673bdd13daf3284e6c0cf471d55a14ddff9",
+      "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
+      "public/fonts.css": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
+      "public/styles.css": "7099e011ff78e828a90cbd7e644b78e9ffdb092157d4a4f9d870f6711c79b973",
+      "public/household-view.css": "e5cb08cfe7d5663fab76da2eb51f68d4890b1c4b550cf80eb1f61930a749620e",
+      "public/budget-polish.css": "29be9b313c3c7b4d402ff730abe76dfd09e07f38df4dfd04a26a12fa479d16fe",
+      "public/bill-detail.css": "df5e707892d09bded4516822edd1c8a056b472e092c353062a645d7a79ef69c0",
+      "public/savings-inventory.css": "39591b0f8fbb0c8109f5f2fe71dd707067dbaf54e85d467989ed96342e4e1a58",
+      "public/running-build.css": "67e3b3487a50f3f9e2a778b4d9f56262291393e8874a0fde11c5f2fffff88423",
+      "public/budget-surface.css": "0e372751e431960210cfcf97812d4e5d0be7d51480e7898daf8dd4d37329e714",
+      "public/budget-blend.css": "a140d486912b15b2df01f8ffc093237771ecc46ca6a3762f48bc52e1fe4b0e7c",
+      "public/budget-gface.css": "9cda7168d7949ddf2a754ed8e9115169c115ef877ea7bdd819e250ca47f498de",
+      "public/budget-sheet-motion.css": "31fbea5e07e133925d3f357c62ddf6d7f38d84e7bc0b654d8473070e5d1ed2c4",
+      "public/transaction-review.css": "d9ea9e8b896400cf7284d7f48739bde6ae968c3fbfce5f7e5b929f9dda42431a",
+      "public/app.js": "10eec681b00b50202152ec8f8d7490d05d1facc90bc11fad4d559bde91b7ef7b",
+      "public/forecast-card-period.js": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20",
+      "public/forecast.js": "d322c46eb8ed75c38a81772a4b9d0f9decfdceb25d39d77ca1db2066aa29f911",
+      "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
+      "public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
+      "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
+      "public/savings-inventory.js": "20a003ac79ce5c965389b02ba53268f4dcb2da2bf9a4b6ea945912fb1dbdb480",
+      "public/budget-surface.js": "af32d9e29d1487496365a1025a0bfb65d2dc062f2534392b8095675857f9552b",
+      "public/budget-card-movements.js": "d1d9f97c636779ce45658c6ffb7b05b694cb8fa9c52bbed32306bd2542219505",
+      "public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
+      "public/transaction-review.js": "5dc2c26f2be9ee3c0e5715656e16c0113167213d2bb1bd46c48ee27457fb0106",
+      "public/plan.js": "7ff890bb631c420cf41b300c1d220038757c0d65260b4f9dfb55b4c87ef48ef1",
+      "public/household-view.js": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
+      "public/budget-polish.js": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
+      "public/aurora.js": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
+      "public/budget-river.js": "dbff4d71770e510d65a1f79f8a3eaf489a42885dc286e66630b375b661818418",
+      "public/budget-blend.js": "802282f1082d06a93552024f7cfef419c77044b5e151e5f3d35bb626675876f5",
+      "public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010"
+    },
+    "after": {
+      "public/index.html": "b6993d9e59d6b1fcc4a9b5efe279202bf51edbb3d9ccb318860de0af380b0fa2",
+      "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
+      "public/fonts.css": "7c7202cc767d7a250b5258f1b69c6983002074866ba823aad71f1b891a4f65f1",
+      "public/styles.css": "ed9b1967512cb519064d7f3d58de1eaa243d5828a346b0ef0b8e81affb2092b1",
+      "public/household-view.css": "f4324dd684521eaf13ce60db2fef463ba3ba481e53d679bcfb4264072a0813be",
+      "public/budget-polish.css": "69da1882731742fe034b28f12a4170575f7105ca1a25882670a3e1c5c9f17e5d",
+      "public/bill-detail.css": "00b2e7a54a9ffca3a3d69b27eccf10300e0b812b8508863d366d5fedd66fee0c",
+      "public/savings-inventory.css": "1636e1bf709ad4f6092a5a13817d6fdb70efd3efe6f7d3dab1bb13aace716d47",
+      "public/running-build.css": "410a9973793d115e0ee9ae31978849a4569659c6ea0dfda2cd7436ecaf86a72b",
+      "public/budget-surface.css": "46aa8a226b94f5f109d03110f5c9f5ec08fcce3519863c81c7c1b0e35161ca64",
+      "public/budget-blend.css": "bcd6d50a4c888573b3b1756e5262ebdd61f75759b8051b3a95d815749050376a",
+      "public/budget-gface.css": "686c11b4554b91b45f27b6e79dc990416fd78e66ee0ff109e10dff09d99f64ea",
+      "public/budget-sheet-motion.css": "8fcb3344fa525fe0bf0303dd80ae8bb7cddeb3bfd75cf6bb392d24f61b6497bb",
+      "public/transaction-review.css": "6ccadc146cd1efb2055f144a141466f63e81b22c9df1a148e44c6afcab181282",
+      "public/app.js": "6bc2244d7f749dc2c79cf1e66df7e62bdf524c7b970d096125858b17bcdadc31",
+      "public/forecast-card-period.js": "0bf0af719bca9903439a5c679d3a892fa745657d0947e55286bfba809a85b55d",
+      "public/forecast.js": "0bf163521b658fea67be3873064360f8f4fc40eab8d238750af169117e210347",
+      "public/forecast-chequing.js": "e98c4c5b4e66a1545e4698091d452475055e89302cca991e12d0ae349c89f96d",
+      "public/balance-history.js": "63428b2543786be24f358e9c0b8b6098e9ef8598ee05b9587eb6d16360276d93",
+      "public/bill-detail.js": "71498018a3f7d2640f8985c2269018b67176f532b770e59afb41578f441788f1",
+      "public/savings-inventory.js": "01b9830afb62e02bc283010b8bdcedacbd11ee7c46a8981a61926315bcdf9030",
+      "public/budget-surface.js": "e0d9a6234d42caee3e9825af1618583ec105bfea1e33fa965dee24e20660e56a",
+      "public/budget-card-movements.js": "ca9cb43c068459c391a8489b1133eb7c9019588c12a2c796ab2c1a62099a3423",
+      "public/budget-sheet-motion.js": "be6590402930ba48434b0321016952d20655a09e296aa96be087824162a06fa4",
+      "public/transaction-review.js": "3bb0f34de7b8c661fe17319fca348d08231c86726d9fe533fedcd277e3c1ab9a",
+      "public/plan.js": "42a7105d7849364941f5ba6c8058113e9ba635e2e626003cc07f108e9fc82df6",
+      "public/household-view.js": "23bd7587650ce808fd95553bf143d3eef907a00d18348438c05be35c92601997",
+      "public/budget-polish.js": "932e4de314307fd03f1286af19c710923e5e4a95048feb5706b371066febb109",
+      "public/aurora.js": "1df7b0506c8ce28f6ffd417d16bea536d40da42e80e976dd37da132f01a59599",
+      "public/budget-river.js": "c7223b1f41de0082e83010466a97224a16eea6c5ce655c4c2c92487091580995",
+      "public/budget-blend.js": "020ba6cd558f523b8d67dc06a1fc73c161db75a1c5e10f3ec319aa7b48559b67",
+      "public/nav-glass.css": "89bce592ad6f9de9d2a5edd6919e415df2772cdc025afd3552331eb5276a59a9"
+    }
+  },
+  "bindings": {
+    "before": {
+      "scripts/provider-observe.js": "5973562e1930593c5630e2d6b92f387afc70009306e6fc1dc7b1c0e48d8c3c78",
+      "scripts/live-plan.js": "af461c8e9a23068952c61aa9bd68c6ab4123fdaf0fdfab71c3dceea695acc59d"
+    },
+    "after": {
+      "scripts/provider-observe.js": "a80c1584e7c88c34a0723b943cf8be130b0e0c5c88642f4a451d035cb931aa1d",
+      "scripts/live-plan.js": "05b33ff7b4ec80897d7e790376c1dbfdf85d0cfc57e6e9e317a1e8556fd020b2",
+      "test/fixtures/payday-gap-reserve-data.js": "7ea65e6b939b1057593be91f7a43e0ecda4859fef935e63f9a7c39380de08450"
+    }
+  },
+  "errors": [],
+  "external": [],
+  "writes": []
+}

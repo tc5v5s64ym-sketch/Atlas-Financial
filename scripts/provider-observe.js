@@ -3791,11 +3791,18 @@ function currentPeriodActualsLooksSanitized(packet) {
 
 function householdCashIdsFromPlan(plan) {
   const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+  // Match Forecast.startingCashAmount / gapMovementAffectsSpendableOpening:
+  // when canonical chequing identities exist, only those rows open spendable
+  // cash. A correctly mapped Savings reserve is not a missing cash mapping.
+  // Keep the existing generic-row requirement for plans without those ids.
+  const chequingIds = ['chequing-a', 'chequing-b'];
+  const hasChequing = rows.some(row => row && chequingIds.includes(row.id));
   const ids = [];
   const seen = new Set();
   for (const row of rows) {
     if (!row || !row.id) continue;
     const id = String(row.id);
+    if (hasChequing && !chequingIds.includes(id)) continue;
     if (seen.has(id)) continue;
     seen.add(id);
     ids.push(id);

@@ -1017,6 +1017,112 @@ console.log('\n=== 10. Designated savings in the gap does not change spendable p
     'observe→overlay still applies a chequing transfer outflow; the savings credit leg does not cancel it');
 }
 
+// The mixed breakdown retains reported reserve stock, while Forecast's
+// spendable opening is chequing-only. A reserve mapping must stay a reserve.
+{
+  const fixture = require('./fixtures/payday-gap-reserve-data');
+  const cases = [
+    ['mixed purpose reserve', () => {}, true],
+    ['large reserve cannot rescue the opening', i => { i.plan.startingCash.breakdown.find(r=>r.id==='savings').value=999999; }, true],
+    ['legacy savings cash mapping remains compatible', i => { i.accountMap.mappings.find(m=>m.canonical.id==='savings').atlasRole='household-cash'; }, true],
+    ['missing operating A mapping', i => { i.accountMap.mappings=i.accountMap.mappings.filter(m=>m.canonical.id!=='chequing-a'); }, false],
+    ['missing operating B mapping', i => { i.accountMap.mappings=i.accountMap.mappings.filter(m=>m.canonical.id!=='chequing-b'); }, false],
+    ['operating account mapped as reserve', i => { i.accountMap.mappings.find(m=>m.canonical.id==='chequing-a').atlasRole='household-reserve'; }, false],
+    ['configured reserve cannot relabel operating identity', i => { i.plan.savingsEarmarks.pools.push({accountId:'chequing-a',role:'purpose-reserve'}); i.accountMap.mappings.find(m=>m.canonical.id==='chequing-a').atlasRole='household-reserve'; }, false],
+    ['posted window incomplete', i => { i.window.complete=false; }, false],
+    ['posted window truncated', i => { i.window.truncated=true; }, false],
+    ['posted window has more rows', i => { i.window.hasMore=true; }, false],
+    ['first gap day missing', i => { i.window.startDate='2026-10-01'; }, false],
+    ['last gap day missing', i => { i.window.endDate='2026-09-30'; }, false],
+    ['pending coverage unknown', i => { i.pendingCoverage='unknown'; }, false],
+    ['unresolved pending cash in gap', i => { i.transactions[0].pending=true; }, false],
+    ['unmapped row still blocks gap proof', i => { i.transactions.push({date:'2026-09-30',amount:1,accountRole:'unmapped'}); }, false],
+    ['untrusted cash amount still blocks gap proof', i => { i.transactions[0].amount='not-cents'; }, false],
+    ['missing original date', i => { delete i.plan.opening.asOf; }, false],
+    ['legacy generic cash retains mapping requirement', i => { i.plan.startingCash.breakdown=[{id:'invented-generic-cash',value:100}]; i.transactions=[]; i.accountMap.mappings.push({canonical:{collection:'cash',id:'invented-generic-cash'},atlasRole:'household-cash'}); }, true],
+    ['legacy generic cash unmapped remains held', i => { i.plan.startingCash.breakdown=[{id:'invented-generic-cash',value:100}]; i.transactions=[]; }, false],
+  ];
+  for (const [label, edit, expected] of cases) {
+    const i=fixture.input(); edit(i); const before=JSON.stringify(i);
+    const earned=O.paydayGapCompleteFromEvidence(i);
+    ok(earned===expected && JSON.stringify(i)===before, 'reserve gap boundary: '+label);
+  }
+  const i=fixture.input(), canonical={meta:{asOf:'2026-09-29'},plan:i.plan,debts:[]};
+  const payload=fixture.payload(i), original=JSON.stringify({canonical,payload,map:i.accountMap});
+  const result=Live.fromObservation({data:canonical,payload,accountMap:i.accountMap});
+  const snap=result.data.plan.opening.paydaySnapshot;
+  // Independent cents: dated operating70+30, posted credit20, posted debit7.
+  const independent=70+30+20-7;
+  ok(result.report.currentPeriodActuals.paydayGapComplete===true && snap
+      && snap.periodStart==='2026-10-02' && snap.asOf==='2026-10-02'
+      && snap.opening===independent && F.startingCashAmount(result.data.plan)===independent,
+    'real observe-to-overlay path earns113 from complete operating evidence without adding reported reserve119');
+  const options={...i.x.opts,weeklyVariable:0,debts:[],
+    currentPeriodActuals:result.data.liveOverlay.currentPeriodActuals,
+    observedCash:result.data.liveOverlay.observedCash,operatingPlan:result.data.liveOverlay.operatingPlan};
+  const a=F.recommend(result.data.plan,i.asOf,options);
+  const close=(advice,start)=>{
+    const view=advice.savingsFunding.periodViews.find(v=>v.start===start);
+    return F.savingsFundingPublication(advice.savingsFunding,{asOf:i.asOf,advice,periodId:view.id}).forecastClosing;
+  };
+  ok(a.savingsFunding.stock.amount===119 && a.savingsFunding.goalAllocation.status==='ready'
+      && a.savingsFunding.period.status==='ready', 'reported reserve119 stays known while the legitimately earned bridge qualifies funding');
+  for (const [start, receipts] of [['2026-10-16',1000],['2026-10-30',2000]]) {
+    const c=close(a,start);
+    ok(c.status==='ready' && Number.isFinite(c.stock) && Number.isFinite(c.operatingCash)
+        && c.stock+c.operatingCash===119+independent+receipts
+        && c.items.reduce((sum,row)=>sum+row.forecastSaved,0)+c.unallocated===c.stock
+        && c.actualSaved===null && c.actionPermission==='not-granted' && c.moneyMovementPermission==='not-granted',
+      'earned snapshot restores conserved hypothetical future Savings at '+start);
+  }
+  const absent=fixture.clone(result.data.plan); delete absent.opening.paydaySnapshot;
+  const absentAdvice=F.recommend(absent,i.asOf,options), absentClose=close(absentAdvice,'2026-10-16');
+  ok(absentClose.status==='unavailable' && absentClose.stock===null
+      && absentClose.reason==='No original payday cash observation supports the cycle bridge.',
+    'missing original evidence still withholds future Savings; no from-today bypass');
+  const conflict=fixture.clone(result.data.plan);
+  conflict.opening.paydaySnapshot={periodStart:'2026-10-02',asOf:'2026-10-02',opening:independent+1};
+  const conflictClose=close(F.recommend(conflict,i.asOf,options),'2026-10-16');
+  ok(conflictClose.status==='unavailable' && conflictClose.stock===null
+      && conflictClose.reason==='The original payday opening and posted operating legs do not reconcile to current cash.',
+    'contradictory original cash still withholds future Savings');
+  ok(JSON.stringify({canonical,payload,map:i.accountMap})===original
+      && result.data.liveOverlay.writesCanonicalState===false,
+    'synthetic source pipeline preserves inputs and has no canonical write permission');
+  for (const [label,value] of [['null',null],['missing',undefined],['blank',''],['whitespace',' '],
+    ['boolean',false],['NaN',NaN],['object',{}],['array',[]],['invalid string','not-cash']]) {
+    const invalid=fixture.input();invalid.plan.startingCash.breakdown.find(r=>r.id==='chequing-a').value=value;
+    const held=Live.fromObservation({data:{meta:{asOf:'2026-09-29'},plan:invalid.plan,debts:[]},
+      payload:fixture.payload(invalid),accountMap:invalid.accountMap});
+    ok(!held.data.plan.opening.paydaySnapshot,
+      'original '+label+' cash stays unknown despite a complete ledger and reported live cash');
+  }
+  const unknown=fixture.input();unknown.plan.startingCash.breakdown[0].unknown=true;
+  const unknownResult=Live.fromObservation({data:{meta:{asOf:'2026-09-29'},plan:unknown.plan,debts:[]},
+    payload:fixture.payload(unknown),accountMap:unknown.accountMap});
+  ok(!unknownResult.data.plan.opening.paydaySnapshot,'explicitly unknown original cash cannot earn an inferred zero');
+  const legacyUnknown=fixture.input();delete legacyUnknown.plan.savingsEarmarks;delete legacyUnknown.plan.savingsPoolObservation;
+  legacyUnknown.plan.startingCash.breakdown[0].value=null;legacyUnknown.plan.startingCash.breakdown[1].value=20;
+  legacyUnknown.accountMap.mappings.find(m=>m.canonical.id==='savings').atlasRole='household-cash';
+  const legacyUnknownResult=Live.fromObservation({data:{meta:{asOf:'2026-09-29'},plan:legacyUnknown.plan,debts:[]},
+    payload:fixture.payload(legacyUnknown),accountMap:legacyUnknown.accountMap});
+  ok(!legacyUnknownResult.data.plan.opening.paydaySnapshot,
+    'legacy complete cash map cannot turn missing A plus B20 into an original opening33');
+  const numeric=fixture.input();numeric.plan.startingCash.breakdown[0].value='70';
+  const numericResult=Live.fromObservation({data:{meta:{asOf:'2026-09-29'},plan:numeric.plan,debts:[]},
+    payload:fixture.payload(numeric),accountMap:numeric.accountMap});
+  ok(numericResult.data.plan.opening.paydaySnapshot?.opening===independent,'known numeric original cash remains compatible');
+  const zero=fixture.input();zero.plan.startingCash.breakdown.filter(r=>r.id.startsWith('chequing')).forEach(r=>{r.value=0;});
+  const zeroPayload=fixture.payload(zero);zeroPayload.accounts[0].balance=13;zeroPayload.accounts[1].balance=0;
+  const zeroResult=Live.fromObservation({data:{meta:{asOf:'2026-09-29'},plan:zero.plan,debts:[]},payload:zeroPayload,accountMap:zero.accountMap});
+  ok(zeroResult.data.plan.opening.paydaySnapshot?.opening===0+20-7,'explicit known zero plus complete movements remains a known opening');
+  const frozen=fixture.input();frozen.plan.startingCash.breakdown[0].value=null;
+  frozen.plan.opening.paydaySnapshot={periodStart:'2026-10-02',asOf:'2026-10-02',opening:independent};
+  const frozenResult=Live.fromObservation({data:{meta:{asOf:'2026-09-29'},plan:frozen.plan,debts:[]},
+    payload:fixture.payload(frozen),accountMap:frozen.accountMap});
+  ok(frozenResult.data.plan.opening.paydaySnapshot?.opening===independent,'a valid recorded payday snapshot remains usable without a new original-cash reconstruction');
+}
+
 if (failures) {
   console.log(`\nFAILED ${failures}`);
   process.exit(1);
