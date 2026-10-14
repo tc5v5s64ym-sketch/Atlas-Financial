@@ -719,7 +719,14 @@ async function fetchLunchMoneyTransactionsPaged(url, token, opts) {
   let truncated = false;
   while (pages < maxPages) {
     const payload = await httpsGetJson(withPage(url, offset, limit), token, opts);
-    const txs = (payload && payload.transactions) || [];
+    if (!payload || !Array.isArray(payload.transactions)) {
+      // A 200 page without a transactions array is malformed, not a genuine
+      // empty window: fail closed exactly like the missing-has_more path.
+      hasMore = null;
+      truncated = true;
+      break;
+    }
+    const txs = payload.transactions;
     all.push(...txs);
     pages += 1;
     if (payload && payload.has_more === true) {
