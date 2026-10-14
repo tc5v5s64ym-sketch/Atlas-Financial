@@ -4,7 +4,7 @@ All amounts, dates, labels, references and provider rows in this proof are
 invented. No owner screenshot or private source payload is published.
 
 Released base: `76aacf6f57824ab253a018e3e3012951b4315533`.
-Implementation/test source: `726b39e3be8e53da1f66c44ca4a08377839637b1`.
+Implementation/test source: `a528c7dcfa02c472d1f9832997b7a13569c6ef7a`.
 The proof commit adds only this directory; its runtime/test blobs remain bound
 to that source commit by the SHA256 digests in `proof.json`.
 
@@ -23,8 +23,9 @@ Projected trust remains estimated and money movement remains not granted.
 
 Run `node test/proof-savings-card-recipient-before-after.js`: 13 exact-base
 comparisons preserve source balances and settlement evidence. Six untyped
-controls preserve entire native advice after removing only the added false
-recipient flag. Recognized types deliberately change classification diagnostics;
+controls preserve entire native advice and original packet bytes exactly.
+Only proven recipients acquire the boolean; unrelated packets acquire no false
+marker. Recognized types deliberately change classification diagnostics;
 qualifying Savings backing can also change its existing proposals and cash-plan
 consumers. Those downstream figures are not claimed unchanged. A contradictory
 cash destination now holds rather than being accepted as a generic cash pair.

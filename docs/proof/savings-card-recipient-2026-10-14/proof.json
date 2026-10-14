@@ -1,6 +1,6 @@
 {
   "synthetic": true,
-  "head": "726b39e3be8e53da1f66c44ca4a08377839637b1",
+  "head": "a528c7dcfa02c472d1f9832997b7a13569c6ef7a",
   "served": {
     "public/index.html": "4bede53185ea5b67c39e218f8d53e673bdd13daf3284e6c0cf471d55a14ddff9",
     "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
@@ -130,15 +130,15 @@
   "errors": [],
   "external": [],
   "writes": [],
-  "sourceHead": "726b39e3be8e53da1f66c44ca4a08377839637b1",
+  "sourceHead": "a528c7dcfa02c472d1f9832997b7a13569c6ef7a",
   "base": "76aacf6f57824ab253a018e3e3012951b4315533",
   "testBindings": {
-    "scripts/provider-observe.js": "c898b8efd61263d38fdc7326ac0ea4549bd65d613bcf21133bec24cba7c67644",
+    "scripts/provider-observe.js": "abe31dd4c0ec6a072224722c7dc08091f5aa6a1e25b5be270d8dbfcd083db245",
     "scripts/live-plan.js": "af461c8e9a23068952c61aa9bd68c6ab4123fdaf0fdfab71c3dceea695acc59d",
     "test/test.js": "e0d9d7a0b3d617d149f404ceba7fa55169fb30f2002014899683a70fad891ce8",
     "test/browser-savings-card-recipient.js": "5d30d5c83f0fc0d939f9a7905141c087f0f444862cdd285548372c24bcb2b04b",
-    "test/test-savings-card-recipient.js": "c4896d56e82b22c38487f8c20fe39ec6d3d5cdf15e454ac4a9d612ba71450016",
-    "test/proof-savings-card-recipient-before-after.js": "5a55d3cd710b0c29c200cff9fb71fb271bd1a51536101bdfdcf19f7452159eb2",
+    "test/test-savings-card-recipient.js": "17e11dc349cba3228d8587ae2e43b7baf366afe1db9315ed5162f1c5eda55208",
+    "test/proof-savings-card-recipient-before-after.js": "ea52adad02f63db2b14fa6aedc9533425bedd54f43cc5552d87a083d8af1657c",
     "test/fixtures/savings-card-recipient-data.js": "13319a3c499ee69a0f09dd811cf7e43f6718670168bfad4409a4705bb08942b9",
     "test/fixtures/savings-v2-observation-data.js": "047944e82845244330602378382ae3569c69b479ad8ac668a2fa41a9e4b4d9cc",
     "test/fixtures/savings-daily-consumer-data.js": "a05c6770871598e3103aec9f72de4621669e726f8e37c6134c095e338cd1b314",
@@ -172,7 +172,7 @@
       {
         "mode": "recognized",
         "intendedSavingsQualificationChanged": true,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": false,
+        "entireAdviceAndUntypedPacketEqual": false,
         "knownRecipientClassificationDelta": true,
         "contradictoryCashPairNowWithheld": false,
         "originalBalanceAndSettlementEvidenceEqual": true,
@@ -181,7 +181,7 @@
       {
         "mode": "ordinary-transfer",
         "intendedSavingsQualificationChanged": false,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": true,
+        "entireAdviceAndUntypedPacketEqual": true,
         "knownRecipientClassificationDelta": false,
         "contradictoryCashPairNowWithheld": false,
         "originalBalanceAndSettlementEvidenceEqual": true,
@@ -190,7 +190,7 @@
       {
         "mode": "unknown-destination",
         "intendedSavingsQualificationChanged": false,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": true,
+        "entireAdviceAndUntypedPacketEqual": true,
         "knownRecipientClassificationDelta": false,
         "contradictoryCashPairNowWithheld": false,
         "originalBalanceAndSettlementEvidenceEqual": true,
@@ -199,7 +199,7 @@
       {
         "mode": "payee-lookalike",
         "intendedSavingsQualificationChanged": false,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": true,
+        "entireAdviceAndUntypedPacketEqual": true,
         "knownRecipientClassificationDelta": false,
         "contradictoryCashPairNowWithheld": false,
         "originalBalanceAndSettlementEvidenceEqual": true,
@@ -208,7 +208,7 @@
       {
         "mode": "note-lookalike",
         "intendedSavingsQualificationChanged": false,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": true,
+        "entireAdviceAndUntypedPacketEqual": true,
         "knownRecipientClassificationDelta": false,
         "contradictoryCashPairNowWithheld": false,
         "originalBalanceAndSettlementEvidenceEqual": true,
@@ -217,7 +217,7 @@
       {
         "mode": "plain-debit",
         "intendedSavingsQualificationChanged": false,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": true,
+        "entireAdviceAndUntypedPacketEqual": true,
         "knownRecipientClassificationDelta": false,
         "contradictoryCashPairNowWithheld": false,
         "originalBalanceAndSettlementEvidenceEqual": true,
@@ -226,7 +226,7 @@
       {
         "mode": "cash-pair",
         "intendedSavingsQualificationChanged": false,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": true,
+        "entireAdviceAndUntypedPacketEqual": true,
         "knownRecipientClassificationDelta": false,
         "contradictoryCashPairNowWithheld": false,
         "originalBalanceAndSettlementEvidenceEqual": true,
@@ -235,7 +235,7 @@
       {
         "mode": "pending",
         "intendedSavingsQualificationChanged": false,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": false,
+        "entireAdviceAndUntypedPacketEqual": false,
         "knownRecipientClassificationDelta": true,
         "contradictoryCashPairNowWithheld": false,
         "originalBalanceAndSettlementEvidenceEqual": true,
@@ -244,7 +244,7 @@
       {
         "mode": "same-day-cutoff",
         "intendedSavingsQualificationChanged": false,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": false,
+        "entireAdviceAndUntypedPacketEqual": false,
         "knownRecipientClassificationDelta": true,
         "contradictoryCashPairNowWithheld": false,
         "originalBalanceAndSettlementEvidenceEqual": true,
@@ -253,7 +253,7 @@
       {
         "mode": "window-incomplete",
         "intendedSavingsQualificationChanged": false,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": false,
+        "entireAdviceAndUntypedPacketEqual": false,
         "knownRecipientClassificationDelta": true,
         "contradictoryCashPairNowWithheld": false,
         "originalBalanceAndSettlementEvidenceEqual": true,
@@ -262,7 +262,7 @@
       {
         "mode": "unrelated-card-credit",
         "intendedSavingsQualificationChanged": true,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": false,
+        "entireAdviceAndUntypedPacketEqual": false,
         "knownRecipientClassificationDelta": true,
         "contradictoryCashPairNowWithheld": false,
         "originalBalanceAndSettlementEvidenceEqual": true,
@@ -271,7 +271,7 @@
       {
         "mode": "reference-replay",
         "intendedSavingsQualificationChanged": false,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": false,
+        "entireAdviceAndUntypedPacketEqual": false,
         "knownRecipientClassificationDelta": true,
         "contradictoryCashPairNowWithheld": false,
         "originalBalanceAndSettlementEvidenceEqual": true,
@@ -280,7 +280,7 @@
       {
         "mode": "cash-contradiction",
         "intendedSavingsQualificationChanged": false,
-        "entireAdviceEqualAfterRemovingOnlyAddedFalseFlag": false,
+        "entireAdviceAndUntypedPacketEqual": false,
         "knownRecipientClassificationDelta": true,
         "contradictoryCashPairNowWithheld": true,
         "originalBalanceAndSettlementEvidenceEqual": true,
