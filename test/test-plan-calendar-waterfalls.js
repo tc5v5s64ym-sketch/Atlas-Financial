@@ -1242,8 +1242,8 @@ console.log('\n=== 13c. classification: Surrey Meat, eating out, Canadian Tire, 
     date: '2026-08-28', amount: 40, categoryLabel: 'Fuel',
     displayedPayee: '7-Eleven', originalMerchant: '7-Eleven',
   }, syntheticPlan());
-  ok(seven.needsConfirmation && seven.categoryId !== 'fuel',
-    '7-Eleven Fuel without tx-level fuel evidence is confirmation, not Fuel');
+  ok(seven.kind === 'spend' && seven.categoryId === 'fuel',
+    '7-Eleven Fuel is Fuel by its category (Dale 2026-10-14: the exact Fuel category is tx-level fuel evidence)');
 
   const txs = [
     { date: '2026-08-28', amount: 12, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash', displayedPayee: 'SURREY MEAT PKR _F', originalMerchant: 'SURREY MEAT PKR _F' },
@@ -1280,19 +1280,19 @@ console.log('\n=== 13c. classification: Surrey Meat, eating out, Canadian Tire, 
     'Restaurants + Fast Food + Food Delivery spend Eating out once each');
   ok(hh && near(hh.spent, 0),
     'Canadian Tire is not Household spent');
-  ok(fuel && near(fuel.spent, 55) && !near(fuel.spent, 55 + 40) && !near(fuel.spent, 55 + 100),
-    'Fuel is the in-cycle evidenced Shell only; 7-Eleven and Aug 16 do not leak');
+  ok(fuel && near(fuel.spent, 55 + 40) && !near(fuel.spent, 55 + 40 + 100),
+    'Fuel is the in-cycle Shell plus the 7-Eleven Fuel-category row (Dale 2026-10-14); Aug 16 does not leak');
   ok(confirm && confirm.otherSpending === true && confirm.label === 'Other spending'
       && confirm.note === 'Not yet assigned to a budget category'
       && confirm.needsConfirmation === true
-      && near(confirm.spent, 78.38 + 96.30 + 40)
-      && near(confirm.hold, 78.38 + 96.30 + 40),
-    'Canadian Tire and unconfirmed 7-Eleven sit on unassigned Other spending, deducted at actual',
+      && near(confirm.spent, 78.38 + 96.30)
+      && near(confirm.hold, 78.38 + 96.30),
+    'Canadian Tire rows sit on unassigned Other spending, deducted at actual',
     confirm && String(confirm.spent));
   ok(near(p2.budgetHold, roundCent(
-    Math.max(CYCLE_PLANNED.groceries, 0) + Math.max(325, 55) + Math.max(37.50, 0)
+    Math.max(CYCLE_PLANNED.groceries, 0) + Math.max(325, 55 + 40) + Math.max(37.50, 0)
     + Math.max(100, 39) + Math.max(200, 60) + 150 + 150
-    + (78.38 + 96.30 + 40)
+    + (78.38 + 96.30)
   )),
     'hold is max(planned, spent) per planned row plus Other spending actual',
     String(p2.budgetHold));

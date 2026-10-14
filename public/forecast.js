@@ -4518,6 +4518,10 @@
   const DOG_FOOD_MERCHANT_RE = /\bSURREY\s+MEAT\b/;
   const CONVENIENCE_STORE_RE =
     /7[\s-]*eleven|\b7-11\b|\b7eleven\b|circle\s*k|mac'?s\s*(convenience)?|on\s*the\s*run/i;
+  const SEVEN_ELEVEN_RE = /7[\s-]*eleven|\b7-11\b|\b7eleven\b/i;
+  // Dale 2026-10-14: a 7-Eleven purchase over $30 is Fuel. The rule is
+  // strictly over the threshold; exactly $30 keeps the prior behaviour.
+  const SEVEN_ELEVEN_FUEL_THRESHOLD = 30;
   const FUEL_EVIDENCE_RE = /\b(fuel|gas|petrol|gasoline)\b/i;
   const CANADIAN_TIRE_RE = /canadian\s*tire/i;
   const EATING_OUT_LABELS = new Set(['restaurants', 'fast food', 'food delivery']);
@@ -4578,6 +4582,11 @@
 
   function hasExplicitFuelEvidence(tx) {
     if (tx && tx.fuelEvidence === true) return true;
+    // Dale 2026-10-14: an exact Lunch Money "Fuel" category is itself
+    // explicit fuel evidence. This supersedes the 2026-09-23 rule that
+    // held a convenience-store Fuel row for confirmation unless a note,
+    // tag, MCC, or kind hint corroborated it.
+    if (normalizeCategoryLabel(tx && tx.categoryLabel) === 'fuel') return true;
     const hint = normalizeCategoryLabel(tx && tx.kindHint);
     if (hint === 'gas' || hint === 'fuel' || hint === 'petrol') return true;
     const mcc = String((tx && tx.mcc) || '');
@@ -4590,6 +4599,22 @@
       return String(v);
     }).join(' ');
     return FUEL_EVIDENCE_RE.test(blob);
+  }
+
+  function isSevenElevenMerchant(tx) {
+    // Merchant identity fields only: a note or tag mentioning 7-Eleven
+    // does not make another merchant 7-Eleven, and the packet-level
+    // convenienceStore flag cannot distinguish 7-Eleven from Circle K.
+    // Canonical packet rows carry the sanitized displayedPayee /
+    // originalMerchant, so this holds for raw and packet shapes alike.
+    return SEVEN_ELEVEN_RE.test(txMerchantExact(tx));
+  }
+
+  function isSevenElevenOverThresholdPurchase(tx) {
+    if (!tx) return false;
+    const amt = Number(tx.amount);
+    if (!isFinite(amt) || amt <= SEVEN_ELEVEN_FUEL_THRESHOLD) return false;
+    return isSevenElevenMerchant(tx);
   }
 
   function isUncertainGroceryMerchant(tx) {
@@ -5060,10 +5085,14 @@
   // (Dale 2026-09-03) is Amanda guilt-free when the Lunch Money category
   // is not Dale, never a Prime bill, and never Amanda merely because the
   // card is MBNA. Eating out is Restaurants + Fast Food + Food Delivery.
-  // Ordinary Canadian Tire retail is not Household. 7-Eleven is not
-  // confirmed Fuel without tx-level fuel evidence, except the two exact
-  // owner-confirmed September 2026 transactions. Uncertain txs go to
-  // confirmation, not a named household-budget row.
+  // Ordinary Canadian Tire retail is not Household. An exact Lunch
+  // Money Fuel category is itself tx-level fuel evidence
+  // (Dale 2026-10-14, superseding the 2026-09-23 convenience-store
+  // hold), and a 7-Eleven purchase over $30 is Fuel ahead of its other
+  // purchase category; exactly $30 keeps the prior behaviour. The two
+  // exact owner-confirmed September 2026 transactions remain Fuel by
+  // identity. Other uncertain txs go to confirmation, not a named
+  // household-budget row.
   function classifyCurrentPeriodTransaction(tx, plan, opts) {
     if (!tx) {
       return { kind: 'unclassified', categoryId: null, householdSpending: false, reason: 'missing' };
@@ -5260,6 +5289,17 @@
     }
     if (isCanadianTireMerchant(tx)) {
       return confirmationResult('canadian-tire-unconfirmed', 'canadian-tire-unconfirmed');
+    }
+    // Dale 2026-10-14: a 7-Eleven purchase over $30 is Fuel. For this
+    // merchant the amount rule takes precedence over the transaction's
+    // other purchase category (Shopping, Fast Food, Household, ...).
+    // Non-purchase identities (income, refunds, transfers, card
+    // payments, represented bills) and the owner guilt-free categories
+    // have already returned above; an exact Fuel category keeps the
+    // fuel-row path below so its evidence wording is unchanged, and
+    // exactly $30 does not fire the rule.
+    if (label !== 'fuel' && isSevenElevenOverThresholdPurchase(tx)) {
+      return spendResult('fuel', 'seven-eleven-over-threshold-fuel');
     }
     if (EATING_OUT_LABELS.has(label)) {
       return spendResult('restaurants', 'eating-out-category');

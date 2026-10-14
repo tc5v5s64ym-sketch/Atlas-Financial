@@ -2194,8 +2194,8 @@ console.log('\n=== 14. historical authority agrees; preserved rules; one bucket 
     id: 'tx-fuel-no-merchant', date: '2026-08-31', amount: 40, categoryLabel: 'Fuel',
     accountRole: 'household-cash',
   }, plan);
-  ok(noMerchantFuel.reason === 'fuel-merchant-missing' && noMerchantFuel.needsConfirmation === true,
-    'a Fuel-labelled tx with no merchant identity still fails closed; the identity rule did not loosen Fuel');
+  ok(noMerchantFuel.kind === 'spend' && noMerchantFuel.categoryId === 'fuel',
+    'a Fuel-labelled tx classifies as Fuel by its category even with no merchant identity (Dale 2026-10-14: the exact category is the evidence; supersedes the fuel-merchant-missing hold)');
 
   // 16. One transaction cannot sit in its correct bucket and Other at once.
   const packet = actualsPacket([
