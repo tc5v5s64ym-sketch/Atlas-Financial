@@ -3624,6 +3624,7 @@
         && c.items.length === 0 && c.rows.length === 0
         && (c.gap == null || savingsDate(c.gap.date) && savingsCents(c.gap.shortBy) != null && c.gap.trust === 'estimated');
       return c.status === 'ready' && c.trust === 'estimated' && c.nature === 'if-eligible-surplus-saved'
+        && c.cashBasis === 'native-location-projection'
         && [c.stock, c.contribution, c.unallocated, c.projectedContributions, c.projectedDraws].every(n => savingsCents(n) != null)
         && savingsCents(c.operatingCash, true) != null && Array.isArray(c.allocations)
         && c.items.every(i => typeof i.key === 'string' && savingsCents(i.forecastSaved) != null
@@ -19715,7 +19716,8 @@
             || pot < 0
             || operating + pot !== native + stock - nativeStockDrawn) return null;
         if (operating < floor) return { daily, payments,
-          gap: { date: day.date, shortBy: (floor - operating) / 100, trust: 'estimated' } };
+          gap: { date: day.date, shortBy: (floor - operating) / 100, signedOperatingCash: operating / 100,
+            cashFloor: floor / 100, trust: 'estimated' } };
         daily.push({ date: day.date, pot, operating, sent, draws, paid: new Set(paid) });
       }
       return { daily, payments };
@@ -19775,7 +19777,8 @@
       });
       result.set(period.end, { status: 'ready', source: 'Forecast.recommend.savingsFunding',
         asOf, currency: 'CAD',
-        nature: 'if-eligible-surplus-saved', trust: 'estimated', start: period.start, end: period.end,
+        nature: 'if-eligible-surplus-saved', cashBasis: 'native-location-projection',
+        trust: 'estimated', start: period.start, end: period.end,
         stock: closing.pot / 100, operatingCash: closing.operating / 100,
         contribution: low / 100, projectedContributions: closing.sent / 100,
         projectedDraws: closing.draws / 100, unallocated: left / 100,

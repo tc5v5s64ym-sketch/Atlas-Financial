@@ -167,9 +167,60 @@ test('native unavoidable later gap preserves affordable earlier closes and withh
   const third = closing(a, '2026-11-13');
   assert.equal(third.status, 'unavailable'); assert.equal(third.stock, null);
   assert.equal(third.gap.date, '2026-11-26'); assert.equal(third.gap.shortBy, 100);
+  assert.equal(third.gap.signedOperatingCash, -100); assert.equal(third.gap.cashFloor, 0);
   assert.deepEqual(third.items, []); assert.deepEqual(third.rows, []);
   assert.equal(80000 + 60000 - 50000 - 60000 - 40000, -10000, 'independent economic shortage, no invented funding');
   assert.deepEqual(copy(closing(a, '2026-10-16')), copy(first));
+});
+test('zero location close is valid only when native operating cash covers the full remaining expense', () => {
+  const x = input(); x.plan.defaults.targetBuffer = 0;
+  x.plan.startingCash.breakdown[0].value = x.plan.opening.paydaySnapshot.opening = 100;
+  x.plan.savingsPoolObservation.accounts[0].value = x.plan.startingCash.breakdown[2].value = 800;
+  x.plan.savingsPoolObservation.accounts[1].value = x.plan.startingCash.heldElsewhere[0].value = 0;
+  x.plan.income[1].amount = x.plan.income[2].amount = 200;
+  x.plan.income.push({ id: 'p3', label: 'Invented third receipt', frequency: 'once', date: '2026-11-13', amount: 200, confidence: 'confirmed' });
+  x.plan.commitments = [
+    { id: 'a', label: 'Invented first cost', date: '2026-10-29', amount: 500, confidence: 'confirmed', sinkingFund: true },
+    { id: 'b', label: 'Invented second cost', date: '2026-11-12', amount: 600, confidence: 'confirmed', sinkingFund: true },
+    { id: 'c', label: 'Invented third cost', date: '2026-11-26', amount: 400, confidence: 'confirmed', sinkingFund: true }];
+  const a = advice(x), p = closing(a, '2026-11-13');
+  assert.equal(p.status, 'ready', p.reason); assert.equal(p.cashBasis, 'native-location-projection');
+  assert.equal(p.stock, 0); assert.equal(p.operatingCash, 0); assert.deepEqual(p.rows, []);
+  assert.equal(10000 + 80000 + 60000 - 50000 - 60000 - 40000, 0, 'full 1500 expenses consume household cash once');
+  assert.ok(x.plan.commitments.every(c => c.settledOn === undefined));
+});
+test('an unavailable native current-tail path is never overridden by schedule funding-gap acceptance', () => {
+  const x = input(); x.plan.commitments[0].amount = 4000;
+  x.plan.income.push({ id: 'current-gift', label: 'Invented operating receipt', frequency: 'once', date: '2026-10-04', amount: 200, confidence: 'confirmed' });
+  x.plan.startingCash.breakdown[0].value += 200;
+  x.opts.currentPeriodActuals.representedActuals.push({ id: 'current-gift', date: '2026-10-04', actual: 200, transactionId: 'gift-receipt' });
+  x.opts.currentPeriodActuals.transactions.push({ id: 'gift-receipt', date: '2026-10-04', amount: -200, currency: 'CAD',
+    pending: false, isIncome: true, incomeId: 'current-gift', savingsPostingEvidence: 'posted',
+    atlasAccountId: 'chequing-a', accountRole: 'household-cash', displayedPayee: 'Invented operating receipt' });
+  const a = advice(x);
+  assert.equal(a.savingsFunding.backing.status, 'ready');
+  assert.equal(a.savingsFunding.period.status, 'unavailable');
+  assert.match(a.savingsFunding.period.reason, /cannot preserve the existing cash\/card floor/);
+  const p = closing(a, '2026-10-16'); assert.equal(p.status, 'unavailable'); assert.equal(p.stock, null);
+});
+test('signed native diagnostics carry -100 forward to -200 without resetting deficits or publishing zero Savings', () => {
+  const x = input(); x.plan.defaults.targetBuffer = 0;
+  x.plan.startingCash.breakdown[0].value = x.plan.opening.paydaySnapshot.opening = 0;
+  x.plan.savingsPoolObservation.accounts[0].value = x.plan.startingCash.breakdown[2].value = 300;
+  x.plan.savingsPoolObservation.accounts[1].value = x.plan.startingCash.heldElsewhere[0].value = 0;
+  x.plan.income[1].amount = 0; x.plan.income[2].amount = 100;
+  x.plan.commitments = [
+    { id: 'a', label: 'Invented first cost', date: '2026-10-29', amount: 400, confidence: 'confirmed', sinkingFund: true },
+    { id: 'b', label: 'Invented second cost', date: '2026-11-12', amount: 200, confidence: 'confirmed', sinkingFund: true }];
+  const a = advice(x), sim = F.simulate(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, horizonDays: 50, viewDays: 50, targetBuffer: 0 });
+  assert.equal(sim.daily.find(r => r.date === '2026-10-29').balance, -100);
+  assert.equal(sim.daily.find(r => r.date === '2026-11-12').balance, -200);
+  assert.equal(30000 - 40000, -10000); assert.equal(-10000 + 10000 - 20000, -20000);
+  assert.equal(a.savingsFunding.period.status, 'ready', 'a zero-capacity path does not broaden the existing unavailable gate');
+  for (const start of ['2026-10-16', '2026-10-30']) {
+    const p = closing(a, start); assert.equal(p.stock, null); assert.equal(p.status, 'unavailable');
+    assert.equal(p.gap.signedOperatingCash, -100, 'earliest native failure is a diagnostic, not published Savings');
+  }
 });
 test('installment groups retain only future members, then disappear at the final payment close', () => {
   const x = installments(), a = advice(x), current = a.savingsFunding;

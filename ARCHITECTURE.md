@@ -879,6 +879,12 @@ once and remove their requirements only from that projection. Installment groups
 retain their remaining members, then disappear. Earlier affordable closes survive
 a later unavoidable native funding gap; the failing close withholds allocations
 and reports that same gap. Navigation never mutates actual settlement or balances.
+The closing stock's internal basis is `native-location-projection`. A partial
+reserve draw is Savings' share of a full native expense, never partial settlement;
+the remaining expense stays in operating cash. Signed native cash diagnostics are
+not publishable Savings. The existing current-tail unavailable gate is unchanged,
+including its positive-planned-capacity condition, and a schedule funding-gap
+status cannot override it.
 
 **Every concept has one owner.** A new piece of work either consumes an existing
 owner or explicitly replaces it; it never quietly becomes a second one.

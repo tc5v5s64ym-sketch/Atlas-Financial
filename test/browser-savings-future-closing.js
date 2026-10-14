@@ -18,7 +18,7 @@ async function step(page, direction) {
 }
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
-  try { for (const width of [1440, 390, 320]) for (const mode of ['ready', 'group', 'installments', 'gap', 'expense', 'unknown']) {
+  try { for (const width of [1440, 390, 320]) for (const mode of ['ready', 'group', 'installments', 'gap', 'zero', 'expense', 'unknown']) {
     const x = fixture(), data = shell('ready'); data.meta.asOf = x.asOf; data.plan = x.plan;
     data.plan.groups = [];
     if (mode === 'group') { data.plan.groups = [{ id: 'shared', label: 'Invented shared group', planSpendSummary: true }];
@@ -30,9 +30,9 @@ async function step(page, direction) {
         { id: 'two', label: 'Invented installment two', group: 'installments', date: '2026-11-12', amount: 60, confidence: 'confirmed', sinkingFund: true },
         { id: 'later', label: 'Invented later requirement', date: '2027-01-04', amount: 3000, confidence: 'confirmed', sinkingFund: true }];
     }
-    if (mode === 'gap') {
+    if (mode === 'gap' || mode === 'zero') {
       data.plan.defaults.targetBuffer = 0;
-      data.plan.startingCash.breakdown[0].value = data.plan.opening.paydaySnapshot.opening = 0;
+      data.plan.startingCash.breakdown[0].value = data.plan.opening.paydaySnapshot.opening = mode === 'zero' ? 100 : 0;
       data.plan.savingsPoolObservation.accounts[0].value = data.plan.startingCash.breakdown[2].value = 800;
       data.plan.savingsPoolObservation.accounts[1].value = data.plan.startingCash.heldElsewhere[0].value = 0;
       data.plan.income[1].amount = data.plan.income[2].amount = 200;
@@ -73,7 +73,7 @@ async function step(page, direction) {
     else if (mode === 'installments') {
       assert.match(first, /1,039\.00/); assert.match(first, /Invented installment two/i);
       assert.doesNotMatch(first, /Invented installment one/i);
-    } else if (mode === 'gap') assert.match(first, /500\.00/);
+    } else if (mode === 'gap' || mode === 'zero') assert.match(first, /500\.00/);
     else assert.match(first, /1,119\.00/);
     await step(page, 1);
     const second = await tile.innerText();
@@ -81,6 +81,7 @@ async function step(page, direction) {
     if (mode === 'expense') { assert.match(second, /2,039\.00/); assert.doesNotMatch(second, /Invented first goal/i); }
     if (mode === 'installments') { assert.match(second, /1,979\.00/); assert.doesNotMatch(second, /Invented installment/i); }
     if (mode === 'gap') assert.match(second, /100\.00/);
+    if (mode === 'zero') assert.match(second, /200\.00/);
     if (mode === 'unknown') assert.match(second, /Unavailable/);
     await tile.locator('[data-budget-funding-inventory]').focus(); await page.keyboard.press('Enter');
     const dialog = page.locator('[data-budget-detail-sheet]'); await dialog.waitFor({ state: 'visible' });
@@ -96,6 +97,7 @@ async function step(page, direction) {
     if (mode === 'expense') assert.match(inventory, /2,039\.00/);
     if (mode === 'installments') { assert.match(inventory, /1,979\.00/); assert.doesNotMatch(inventory, /Invented installment/i); }
     if (mode === 'gap') assert.match(inventory, /100\.00/);
+    if (mode === 'zero') assert.match(inventory, /200\.00/);
     if (mode === 'unknown') assert.match(inventory, /Unknown/);
     const trust = await page.evaluate(() => {
       const d = App.data, advice = Forecast.recommend(d.plan, d.meta.asOf,
@@ -105,16 +107,24 @@ async function step(page, direction) {
       const packet = Forecast.savingsFundingPublication(advice.savingsFunding,
         { asOf: d.meta.asOf, advice, periodId: selected.id });
       return { trust: packet.forecastClosing?.trust, actualSaved: packet.forecastClosing?.actualSaved,
-        nature: packet.forecastClosing?.nature, action: packet.forecastClosing?.actionPermission };
+        nature: packet.forecastClosing?.nature, basis: packet.forecastClosing?.cashBasis,
+        action: packet.forecastClosing?.actionPermission };
     });
     assert.equal(trust.actualSaved, null); assert.equal(trust.action, 'not-granted');
-    if (mode !== 'unknown') { assert.equal(trust.trust, 'estimated'); assert.equal(trust.nature, 'if-eligible-surplus-saved'); }
+    if (mode !== 'unknown') { assert.equal(trust.trust, 'estimated'); assert.equal(trust.nature, 'if-eligible-surplus-saved');
+      assert.equal(trust.basis, 'native-location-projection'); }
     await dialog.screenshot({ path: path.join(out, `${mode}-${width}.png`), animations: 'disabled' });
     await page.keyboard.press('Escape');
     if (mode === 'gap') {
       await step(page, 1); const failure = await tile.innerText();
       assert.match(failure, /Funding gap on 2026-11-26: \$100\.00/);
       assert.match(failure, /Unavailable/); assert.doesNotMatch(failure, /Invented first cost|Invented second cost/i);
+      await step(page, -1); assert.equal(await tile.innerText(), second);
+    }
+    if (mode === 'zero') {
+      await step(page, 1); const empty = await tile.innerText();
+      assert.match(empty, /\$0\.00/); assert.match(empty, /No remaining Savings requirements/i);
+      assert.doesNotMatch(empty, /Unavailable|Funding gap/);
       await step(page, -1); assert.equal(await tile.innerText(), second);
     }
     await step(page, -1); await step(page, -1); assert.equal(await tile.innerText(), current);

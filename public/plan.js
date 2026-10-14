@@ -5214,7 +5214,7 @@ function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null,
   const period = projected ? { ...packet.period, proposal: packet.forecastClosing?.contribution ?? null,
     trust: packet.forecastClosing?.trust || 'unknown' } : packet.period;
   return `<section data-budget-planned-savings-summary data-budget-daily-savings${projected ? ' data-budget-savings-forecast-evidence' : ''}>
-    <ul class="budget-savings-contributions">${rows || '<li>Named savings unavailable.</li>'}</ul>${annualBillNote}
+    <ul class="budget-savings-contributions">${rows || (projected && packet.forecastClosing?.status === 'ready' ? '<li>No remaining Savings requirements.</li>' : '<li>Named savings unavailable.</li>')}</ul>${annualBillNote}
     <p class="operating-line"><span>${projected ? 'Added this period' : 'Unsent top-up today'}</span><strong data-budget-daily-proposal>${value(period?.proposal, period?.trust)}</strong></p>
     <details class="budget-savings-info" data-budget-savings-info><summary>Info</summary><div>
       ${projected ? packet.forecastClosing?.status !== 'ready' ? '<p>' + budgetV3Escape(packet.forecastClosing?.reason || 'Closing Savings data is unavailable.') + '</p>' : ''
@@ -5222,7 +5222,7 @@ function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null,
       ${!projected && (packet.period?.reason || packet.backing?.reason) ? '<p>' + budgetV3Escape(packet.period?.reason || packet.backing?.reason) + '</p>' : ''}
       ${projected ? `<div class="operating-line"><span>Savings at period close</span><span>${value(packet.forecastClosing?.stock, packet.forecastClosing?.trust)}</span></div>
       <div class="operating-line"><span>Added since this opening</span><span>${value(packet.forecastClosing?.projectedContributions, packet.forecastClosing?.trust)}</span></div>
-      <div class="operating-line"><span>Goal costs paid</span><span>${value(packet.forecastClosing?.projectedDraws, packet.forecastClosing?.trust)}</span></div>
+      <div class="operating-line"><span>Savings used for goal costs</span><span>${value(packet.forecastClosing?.projectedDraws, packet.forecastClosing?.trust)}</span></div>
       <div class="operating-line"><span>Unallocated Savings</span><span>${value(packet.forecastClosing?.unallocated, packet.forecastClosing?.trust)}</span></div>` : `<div class="operating-line"><span>Period balance before proposals</span><span>${value(period?.nativePeriodSurplus, period?.trust)}</span></div>
       <div class="operating-line"><span>Funding entitlement</span><span>${value(period?.entitlement, period?.trust)}</span></div>
       <p>Income proved already deposited into Savings is excluded from entitlement. These two figures can differ.</p>
@@ -7172,7 +7172,7 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
       <p class="budget-goal-context">${value(row.thisPeriod, row.thisPeriodTrust)} this period<span class="budget-goal-evidence">Info <span aria-hidden="true">></span></span></p>${members}
     </button></li>`;
     }).join('');
-    return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3>${projected ? '<p data-budget-savings-forecast-stock>Savings at period close: ' + value(daily.forecastClosing?.stock, daily.forecastClosing?.trust) + '.</p>' : ''}${daily.forecastClosing?.gap ? '<p>' + budgetV3Escape(daily.forecastClosing.reason) + '</p>' : ''}<ul>${named || '<li>Named savings unavailable.</li>'}</ul>${annualBillNote}
+    return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3>${projected ? '<p data-budget-savings-forecast-stock>Savings at period close: ' + value(daily.forecastClosing?.stock, daily.forecastClosing?.trust) + '.</p>' : ''}${daily.forecastClosing?.gap ? '<p>' + budgetV3Escape(daily.forecastClosing.reason) + '</p>' : ''}<ul>${named || (projected && daily.forecastClosing?.status === 'ready' ? '<li>No remaining Savings requirements.</li>' : '<li>Named savings unavailable.</li>')}</ul>${annualBillNote}
       <button type="button" class="budget-surface-link" data-budget-funding-inventory aria-haspopup="dialog">Accounts &amp; evidence</button>
       <div data-budget-funding-savings hidden>${daily ? budgetDailySavingsHtml(daily, '', ctx.advice?.savingsInventory, { asOf: ctx.asOf || ctx.advice?.defaultView?.asOf, period }) : 'Daily savings unavailable.'}</div></div>`;
   }

@@ -52,6 +52,16 @@ allocations. This case failed on the initial PR head because a later gap hid
 all earlier closes; the bounded native-prefix repair now preserves those
 affordable closes without worsening the gap or inventing funding.
 
+Closing stock uses the native reserve-location basis. With an additional 100
+operating opening, the same full 1,500 costs leave known Savings 0 and operating
+0: 800 + 100 + 600 - 1,500 = 0. Without that operating cash, the failing close
+is unknown with a signed -100 native diagnostic, never a clamped zero. A second
+diagnostic ledger carries -100 + 100 - 200 = -200 through the unmodified master
+walk. Current-tail unavailable gates still apply when planned capacity is
+positive and the native daily floor is breached; schedule funding-gap acceptance
+does not override that path. Partial protected consumption never reduces a
+scheduled expense's amount or marks an actual payment.
+
 ## Reproduction
 
 `node --test test/test-savings-future-closing.js`
