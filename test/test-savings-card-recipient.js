@@ -92,7 +92,11 @@ test('qualified historical card debit is already inside reports, never deducted 
   const first = ready.savingsFunding.periodViews.find(v => v.start === '2026-10-16');
   const close = F.savingsFundingPublication(ready.savingsFunding,
     { asOf: x.asOf, advice: ready, periodId: first.id }).forecastClosing;
-  assert.equal(close.stock, 119 + 1000, 'reported stock plus one future receipt; historic debit already included');
+  assert.equal(close.stock, 119, 'reported stock at the first close; the future receipt surplus sweeps on the next payday (owner direction 2026-10-14)');
+  const second = ready.savingsFunding.periodViews.find(v => v.start === '2026-10-30');
+  const close2 = F.savingsFundingPublication(ready.savingsFunding,
+    { asOf: x.asOf, advice: ready, periodId: second.id }).forecastClosing;
+  assert.equal(close2.stock, 119 + 1000, 'reported stock plus one future receipt, counted once; historic debit already included');
   assert.equal(close.projectedDraws, 0); assert.equal(close.actualSaved, null);
   assert.equal(close.trust, 'estimated'); assert.equal(close.moneyMovementPermission, 'not-granted');
   assert.equal(x.opts.currentPeriodActuals.transactions.length, 1);

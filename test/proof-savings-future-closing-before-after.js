@@ -13,6 +13,12 @@ function withoutNewPublication(advice) {
   for (const period of value.savingsFunding.periodViews) if (period.packet) delete period.packet.forecastClosing;
   return value;
 }
+// 2026-10-14 (payday-surplus sweep): the base revision now carries the
+// closing publication too (the sweep changes its semantics rather than
+// introducing it), so the invariant — the native recommendation is
+// unchanged outside the closing publication — is checked by stripping
+// the publication fields from BOTH revisions. Any native difference
+// outside them still fails the comparison below.
 let cases = 0;
 for (const mode of ['ready', 'expense', 'deficit', 'missing-receipts', 'group', 'gap', 'owner80', 'owner1000', 'owner-deficit', 'timing', 'carry-first', 'fallback', 'insufficient', 'late-income']) {
   const x = ['carry-first', 'fallback', 'insufficient', 'late-income'].includes(mode)
@@ -41,7 +47,7 @@ for (const mode of ['ready', 'expense', 'deficit', 'missing-receipts', 'group', 
   }
   const before = JSON.stringify(x), opts = { ...x.opts, weeklyVariable: 0, debts: [] };
   const old = base.recommend(x.plan, x.asOf, opts), current = F.recommend(x.plan, x.asOf, opts);
-  assert.deepEqual(withoutNewPublication(current), clone(old),
+  assert.deepEqual(withoutNewPublication(current), withoutNewPublication(old),
     mode + ': entire native recommendation unchanged after removing exactly the two new publication fields');
   assert.equal(JSON.stringify(x), before);
   cases++;

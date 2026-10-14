@@ -311,17 +311,23 @@ const invFigures = block => ({
   const nextRow = nextPacket.rows.find(row => row.key === 'group:club');
   assert.equal(nextRow.thisPeriod, 145, 'native next: Forecast sums the bare-id allocations into the row');
   for (const [label, html, hook, figures] of surfaces(nextView.id, nextView)) {
-    // Current-tail 80 and opening stock 119 are consumed by the native
-    // 60/24/170 costs once. Only 25 of the next native 80 surplus can
-    // remain in Savings while the operating walk preserves its 20 floor.
-    // The deadline-minimum packet above is unchanged; the future face now
-    // prints the separately published closing scenario, with paid members gone.
-    assert.equal(nextPacket.forecastClosing.stock, 25);
-    assert.deepEqual(nextPacket.forecastClosing.items.map(i => [i.id, i.forecastSaved]), [['third', 25]]);
-    assert.match(html, /Saved/); assert.match(html, /25\.00/);
+    // Owner direction 2026-10-14 (payday sweep) supersedes the retention
+    // outcome pinned here before (closing stock 25): the current-tail 80
+    // sweeps in on 2026-10-16 and the native 60/24/170 costs are consumed
+    // once, leaving the pot signed -55 at this close
+    // (11900 + 8000 - 6000 - 2400 - 17000 = -5500). A negative closing pot
+    // is a protected deficit: the close withholds stock and member figures
+    // on every surface, and later closes recover as further surpluses land
+    // (the 2026-11-13 close publishes 15 with every cost paid).
+    // The deadline-minimum packet above is unchanged.
+    assert.equal(nextPacket.forecastClosing.status, 'unavailable');
+    assert.equal(nextPacket.forecastClosing.stock, null);
+    assert.equal(nextPacket.forecastClosing.diagnostics.signedSavings, -55);
+    assert.deepEqual(nextPacket.forecastClosing.items, []);
+    assert.match(html, /Funding gap on 2026-10-29: \$55\.00|Named savings unavailable|Unavailable/);
+    assert.doesNotMatch(html, /25\.00/);
     assert.doesNotMatch(html, />Forecast<|budget-v3-est|If eligible surplus|this scenario/);
-    assert.match(html, /Invented third club cost/);
-    assert.doesNotMatch(html, /Invented first club cost|Invented second club cost/);
+    assert.doesNotMatch(html, /Invented first club cost|Invented second club cost|Invented third club cost/);
   }
 
   // Historical packet: rows withhold needed while items retain it (Finding 1).
