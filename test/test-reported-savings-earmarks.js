@@ -124,7 +124,7 @@ for (const role of ['current', 'past', 'next', 'future'])
         assert.ok(packet.rows.every(row => row.saved === null), 'selected-period Saved is unknown');
         assert.doesNotMatch(html, /Reported combined savings|\$119\.00|Balance dates 2026-10-06 - 2026-10-08/,
           surface + ' cannot promote the retained current report into selected-period stock');
-        assert.match(html, /Stock for this selected period: Unknown\./);
+        assert.match(html, role === 'past' ? /Stock for this selected period: Unknown\./ : /Savings at period close: Unknown\./);
       }
     }
     assert.equal(JSON.stringify(advice), before, 'rendering cannot change current or selected-period publications');

@@ -868,9 +868,17 @@ Remaining current-period capacity is included only through the existing
 A reported increase is never evidence of its income source. Missing inclusion
 proof, native cash coverage, required amounts/dates or income authority keeps
 the closing projection unknown. Current Saved remains the reported earmark;
-future actual Saved, transfers and settlement remain unknown. Forecast labels
-and estimated scenario trust do not promote them. Both renderers copy this
+future actual Saved, transfers and settlement remain unknown. Estimated scenario
+trust and provenance stay internal. The selected period supplies visible context;
+Dale's 2026-10-14 UTC direction (`Sentinel_fd7dfe558f4c8191ad91f6f2379ad41d`)
+supersedes added Forecast/Actual labels, badges and ordinary assumption reminders.
+Genuine unavailable-data failures remain visible. Both renderers copy this
 publication, qualified by `savingsFundingPublication`, without financial math.
+Native planned payments on or before the inclusive close consume their costs
+once and remove their requirements only from that projection. Installment groups
+retain their remaining members, then disappear. Earlier affordable closes survive
+a later unavoidable native funding gap; the failing close withholds allocations
+and reports that same gap. Navigation never mutates actual settlement or balances.
 
 **Every concept has one owner.** A new piece of work either consumes an existing
 owner or explicitly replaces it; it never quietly becomes a second one.

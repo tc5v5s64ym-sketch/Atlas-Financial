@@ -12,7 +12,7 @@ function withoutNewPublication(advice) {
   return value;
 }
 let cases = 0;
-for (const mode of ['ready', 'expense', 'deficit', 'missing-receipts', 'group']) {
+for (const mode of ['ready', 'expense', 'deficit', 'missing-receipts', 'group', 'gap']) {
   const x = fixture();
   if (mode === 'expense') { x.plan.commitments[0].date = '2026-11-03'; x.plan.commitments[0].amount = 80; }
   if (mode === 'deficit') { x.plan.commitments[0].date = '2027-01-03'; x.plan.income[2].amount = 0;
@@ -20,6 +20,18 @@ for (const mode of ['ready', 'expense', 'deficit', 'missing-receipts', 'group'])
   if (mode === 'missing-receipts') delete x.opts.currentPeriodActuals;
   if (mode === 'group') { x.plan.groups = [{ id: 'group', label: 'Invented group', planSpendSummary: true }];
     x.plan.commitments.forEach(c => { c.group = 'group'; }); }
+  if (mode === 'gap') {
+    x.plan.defaults.targetBuffer = 0;
+    x.plan.startingCash.breakdown[0].value = x.plan.opening.paydaySnapshot.opening = 0;
+    x.plan.savingsPoolObservation.accounts[0].value = x.plan.startingCash.breakdown[2].value = 800;
+    x.plan.savingsPoolObservation.accounts[1].value = x.plan.startingCash.heldElsewhere[0].value = 0;
+    x.plan.income[1].amount = x.plan.income[2].amount = 200;
+    x.plan.income.push({ id: 'p3', label: 'Invented third receipt', frequency: 'once', date: '2026-11-13', amount: 200, confidence: 'confirmed' });
+    x.plan.commitments = [
+      { id: 'a', label: 'Invented first cost', date: '2026-10-29', amount: 500, confidence: 'confirmed', sinkingFund: true },
+      { id: 'b', label: 'Invented second cost', date: '2026-11-12', amount: 600, confidence: 'confirmed', sinkingFund: true },
+      { id: 'c', label: 'Invented third cost', date: '2026-11-26', amount: 400, confidence: 'confirmed', sinkingFund: true }];
+  }
   const before = JSON.stringify(x), opts = { ...x.opts, weeklyVariable: 0, debts: [] };
   const old = base.recommend(x.plan, x.asOf, opts), current = F.recommend(x.plan, x.asOf, opts);
   assert.deepEqual(withoutNewPublication(current), clone(old),

@@ -318,7 +318,8 @@ const invFigures = block => ({
     // prints the separately published closing scenario, with paid members gone.
     assert.equal(nextPacket.forecastClosing.stock, 25);
     assert.deepEqual(nextPacket.forecastClosing.items.map(i => [i.id, i.forecastSaved]), [['third', 25]]);
-    assert.match(html, /Forecast/); assert.match(html, /25\.00/);
+    assert.match(html, /Saved/); assert.match(html, /25\.00/);
+    assert.doesNotMatch(html, />Forecast<|budget-v3-est|If eligible surplus|this scenario/);
     assert.match(html, /Invented third club cost/);
     assert.doesNotMatch(html, /Invented first club cost|Invented second club cost/);
   }

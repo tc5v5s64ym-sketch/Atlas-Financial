@@ -147,6 +147,30 @@ function installments() {
   x.plan.groups = [{ id: 'installments', label: 'Invented installment group', planSpendSummary: true }];
   return x;
 }
+test('native unavoidable later gap preserves affordable earlier closes and withholds the failing close', () => {
+  const x = input();
+  x.plan.defaults.targetBuffer = 0;
+  x.plan.startingCash.breakdown[0].value = x.plan.opening.paydaySnapshot.opening = 0;
+  x.plan.savingsPoolObservation.accounts[0].value = x.plan.startingCash.breakdown[2].value = 800;
+  x.plan.savingsPoolObservation.accounts[1].value = x.plan.startingCash.heldElsewhere[0].value = 0;
+  x.plan.income[1].amount = x.plan.income[2].amount = 200;
+  x.plan.income.push({ id: 'p3', label: 'Invented third receipt', frequency: 'once', date: '2026-11-13', amount: 200, confidence: 'confirmed' });
+  x.plan.commitments = [
+    { id: 'a', label: 'Invented first cost', date: '2026-10-29', amount: 500, confidence: 'confirmed', sinkingFund: true },
+    { id: 'b', label: 'Invented second cost', date: '2026-11-12', amount: 600, confidence: 'confirmed', sinkingFund: true },
+    { id: 'c', label: 'Invented third cost', date: '2026-11-26', amount: 400, confidence: 'confirmed', sinkingFund: true }];
+  const a = advice(x), first = closing(a, '2026-10-16'), second = closing(a, '2026-10-30');
+  assert.equal(first.status, 'ready', first.reason); assert.equal(first.stock, 500);
+  assert.deepEqual(first.items.map(i => [i.id, i.forecastSaved]), [['b', 500], ['c', 0]]);
+  assert.equal(second.status, 'ready', second.reason); assert.equal(second.stock, 100);
+  assert.deepEqual(second.items.map(i => [i.id, i.forecastSaved]), [['c', 100]]);
+  const third = closing(a, '2026-11-13');
+  assert.equal(third.status, 'unavailable'); assert.equal(third.stock, null);
+  assert.equal(third.gap.date, '2026-11-26'); assert.equal(third.gap.shortBy, 100);
+  assert.deepEqual(third.items, []); assert.deepEqual(third.rows, []);
+  assert.equal(80000 + 60000 - 50000 - 60000 - 40000, -10000, 'independent economic shortage, no invented funding');
+  assert.deepEqual(copy(closing(a, '2026-10-16')), copy(first));
+});
 test('installment groups retain only future members, then disappear at the final payment close', () => {
   const x = installments(), a = advice(x), current = a.savingsFunding;
   assert.deepEqual(current.backing.items.map(i => [i.id, i.saved]), [['one', 80], ['two', 39], ['later', 0]]);

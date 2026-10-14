@@ -3621,7 +3621,8 @@
           || c.actionPermission !== 'not-granted' || c.moneyMovementPermission !== 'not-granted'
           || !Array.isArray(c.items) || !Array.isArray(c.rows)) return false;
       if (c.status === 'unavailable') return c.stock === null && c.trust === 'unknown'
-        && c.items.length === 0 && c.rows.length === 0;
+        && c.items.length === 0 && c.rows.length === 0
+        && (c.gap == null || savingsDate(c.gap.date) && savingsCents(c.gap.shortBy) != null && c.gap.trust === 'estimated');
       return c.status === 'ready' && c.trust === 'estimated' && c.nature === 'if-eligible-surplus-saved'
         && [c.stock, c.contribution, c.unallocated, c.projectedContributions, c.projectedDraws].every(n => savingsCents(n) != null)
         && savingsCents(c.operatingCash, true) != null && Array.isArray(c.allocations)
@@ -19711,15 +19712,25 @@
         const native = savingsCents(day.balance, true), operating = native - sent + restored;
         if (![pot, sent, draws, operating, nativeStockDrawn].every(Number.isSafeInteger)
             || !Number.isSafeInteger(operating + pot) || !Number.isSafeInteger(native + stock - nativeStockDrawn)
-            || pot < 0 || operating < floor
+            || pot < 0
             || operating + pot !== native + stock - nativeStockDrawn) return null;
+        if (operating < floor) return { daily, payments,
+          gap: { date: day.date, shortBy: (floor - operating) / 100, trust: 'estimated' } };
         daily.push({ date: day.date, pot, operating, sent, draws, paid: new Set(paid) });
       }
       return { daily, payments };
     };
     let path = walk(transfers);
-    if (!path) return hold('The native cash walk cannot preserve the protected floor without an unsupported withdrawal or loan.');
+    if (!path) return hold('The native location projection cannot conserve supported cash cents.');
+    const nativeGap = path.gap;
     for (const period of periods.filter(p => p.end <= through).sort((a,b) => a.end.localeCompare(b.end))) {
+      if (nativeGap && period.end >= nativeGap.date) {
+        result.set(period.end, { status: 'unavailable', stock: null, items: [], rows: [], actualSaved: null,
+          trust: 'unknown', start: period.start, end: period.end, asOf, currency: 'CAD',
+          source: 'Forecast.recommend.savingsFunding', actionPermission: 'not-granted', moneyMovementPermission: 'not-granted',
+          gap: nativeGap, reason: 'Funding gap on ' + nativeGap.date + ': $' + nativeGap.shortBy.toFixed(2) + '.' });
+        continue;
+      }
       const current = period.start <= asOf;
       let eligible = current ? tail : savingsCents(period.balanceAfterDeductions, true);
       if (eligible == null) return hold('A native period surplus is unavailable.');
@@ -19736,7 +19747,10 @@
       while (low < high) {
         const mid = low + Math.ceil((high - low) / 2), probe = new Map(transfers);
         probe.set(period.end, mid);
-        if (walk(probe)) low = mid; else high = mid - 1;
+        const trial = walk(probe);
+        const feasible = trial && (!trial.gap || nativeGap && trial.gap.date >= nativeGap.date
+          && trial.gap.shortBy <= nativeGap.shortBy);
+        if (feasible) low = mid; else high = mid - 1;
       }
       transfers.set(period.end, low); path = walk(transfers);
       const closing = path.daily.find(d => d.date === period.end);

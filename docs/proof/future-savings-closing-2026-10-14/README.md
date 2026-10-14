@@ -4,9 +4,11 @@ All numerical examples, fixtures and screenshots are invented. No provider
 reads, household amounts, credentials or source documents enter this proof.
 
 The outcome is a Forecast-owned closing Savings pot and chronological remaining
-requirement allocation for the selected future pay period, if eligible surplus
-is saved. Current reported allocation and the generic deadline-minimum funding
-schedule retain their authorities.
+requirement allocation for the selected future pay period. Current reported
+allocation and the generic deadline-minimum funding schedule retain their
+authorities. Provenance and estimated scenario trust remain internal; the selected
+period supplies context, with no added Forecast/Actual badges or ordinary
+assumption reminders. Genuine missing-data and native funding-gap failures remain.
 
 On released main `73b73b2b22b2dee2b367a04ba386de201bbae5bd`, the final 23-case
 acceptance specification fails 22 cases, with the existing outside-income-bound

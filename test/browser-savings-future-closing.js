@@ -18,7 +18,7 @@ async function step(page, direction) {
 }
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
-  try { for (const width of [1440, 390, 320]) for (const mode of ['ready', 'group', 'installments', 'expense', 'unknown']) {
+  try { for (const width of [1440, 390, 320]) for (const mode of ['ready', 'group', 'installments', 'gap', 'expense', 'unknown']) {
     const x = fixture(), data = shell('ready'); data.meta.asOf = x.asOf; data.plan = x.plan;
     data.plan.groups = [];
     if (mode === 'group') { data.plan.groups = [{ id: 'shared', label: 'Invented shared group', planSpendSummary: true }];
@@ -29,6 +29,18 @@ async function step(page, direction) {
         { id: 'one', label: 'Invented installment one', group: 'installments', date: '2026-10-29', amount: 80, confidence: 'confirmed', sinkingFund: true },
         { id: 'two', label: 'Invented installment two', group: 'installments', date: '2026-11-12', amount: 60, confidence: 'confirmed', sinkingFund: true },
         { id: 'later', label: 'Invented later requirement', date: '2027-01-04', amount: 3000, confidence: 'confirmed', sinkingFund: true }];
+    }
+    if (mode === 'gap') {
+      data.plan.defaults.targetBuffer = 0;
+      data.plan.startingCash.breakdown[0].value = data.plan.opening.paydaySnapshot.opening = 0;
+      data.plan.savingsPoolObservation.accounts[0].value = data.plan.startingCash.breakdown[2].value = 800;
+      data.plan.savingsPoolObservation.accounts[1].value = data.plan.startingCash.heldElsewhere[0].value = 0;
+      data.plan.income[1].amount = data.plan.income[2].amount = 200;
+      data.plan.income.push({ id: 'p3', label: 'Invented third receipt', frequency: 'once', date: '2026-11-13', amount: 200, confidence: 'confirmed' });
+      data.plan.commitments = [
+        { id: 'a', label: 'Invented first cost', date: '2026-10-29', amount: 500, confidence: 'confirmed', sinkingFund: true },
+        { id: 'b', label: 'Invented second cost', date: '2026-11-12', amount: 600, confidence: 'confirmed', sinkingFund: true },
+        { id: 'c', label: 'Invented third cost', date: '2026-11-26', amount: 400, confidence: 'confirmed', sinkingFund: true }];
     }
     if (mode === 'expense') { data.plan.commitments[0].date = '2026-11-03'; data.plan.commitments[0].amount = 80; }
     if (mode === 'unknown') delete x.opts.currentPeriodActuals;
@@ -53,19 +65,22 @@ async function step(page, direction) {
     await page.goto('http://future-savings.test/');
     const tile = page.locator('[data-budget-savings-goals]'); await tile.waitFor();
     const current = await tile.innerText(), before = await page.evaluate(() => JSON.stringify(App.data));
-    assert.doesNotMatch(current, /Forecast Savings at close/);
+    assert.doesNotMatch(current, /Savings at period close/);
     await step(page, 1);
-    const first = await tile.innerText(); assert.match(first, /Forecast Savings at close/);
+    const first = await tile.innerText(); assert.match(first, /Savings at period close/);
+    assert.doesNotMatch(first, /\bForecast\b|\bActual\b|estimated|assumptions|If eligible surplus/i);
     if (mode === 'unknown') assert.match(first, /Unavailable/);
     else if (mode === 'installments') {
       assert.match(first, /1,039\.00/); assert.match(first, /Invented installment two/i);
       assert.doesNotMatch(first, /Invented installment one/i);
-    } else assert.match(first, /1,119\.00/);
+    } else if (mode === 'gap') assert.match(first, /500\.00/);
+    else assert.match(first, /1,119\.00/);
     await step(page, 1);
     const second = await tile.innerText();
     if (mode === 'ready' || mode === 'group') { assert.match(second, /2,119\.00/); assert.match(second, /1,500\.00/); assert.match(second, /619\.00/); }
     if (mode === 'expense') { assert.match(second, /2,039\.00/); assert.doesNotMatch(second, /Invented first goal/i); }
     if (mode === 'installments') { assert.match(second, /1,979\.00/); assert.doesNotMatch(second, /Invented installment/i); }
+    if (mode === 'gap') assert.match(second, /100\.00/);
     if (mode === 'unknown') assert.match(second, /Unavailable/);
     await tile.locator('[data-budget-funding-inventory]').focus(); await page.keyboard.press('Enter');
     const dialog = page.locator('[data-budget-detail-sheet]'); await dialog.waitFor({ state: 'visible' });
@@ -74,15 +89,34 @@ async function step(page, direction) {
     await dialog.locator('[data-savings-inventory]').waitFor({ state: 'visible' });
     await dialog.locator('[data-savings-inventory] > details > summary').click();
     const inventory = await dialog.locator('[data-savings-inventory]').innerText();
-    assert.match(inventory, /Forecast combined savings at close/);
-    assert.match(inventory, /Actual future balances/);
+    assert.match(inventory, /Savings at period close/);
+    if (mode !== 'unknown') assert.doesNotMatch(inventory, /\bForecast\b|\bActual\b|estimated|assumptions|If eligible surplus|this scenario/i);
     if (mode === 'ready' || mode === 'group') assert.match(inventory, /2,119\.00/);
     if (mode === 'group') { assert.match(inventory, /1,500\.00/); assert.match(inventory, /619\.00/); }
     if (mode === 'expense') assert.match(inventory, /2,039\.00/);
     if (mode === 'installments') { assert.match(inventory, /1,979\.00/); assert.doesNotMatch(inventory, /Invented installment/i); }
+    if (mode === 'gap') assert.match(inventory, /100\.00/);
     if (mode === 'unknown') assert.match(inventory, /Unknown/);
+    const trust = await page.evaluate(() => {
+      const d = App.data, advice = Forecast.recommend(d.plan, d.meta.asOf,
+        { ...d.plan.defaults, ...d.liveOverlay, weeklyVariable: 0, debts: d.debts || [] });
+      const start = document.querySelector('[data-budget-window-progress]').dataset.start;
+      const selected = advice.payPeriodViews.find(p => p.start === start);
+      const packet = Forecast.savingsFundingPublication(advice.savingsFunding,
+        { asOf: d.meta.asOf, advice, periodId: selected.id });
+      return { trust: packet.forecastClosing?.trust, actualSaved: packet.forecastClosing?.actualSaved,
+        nature: packet.forecastClosing?.nature, action: packet.forecastClosing?.actionPermission };
+    });
+    assert.equal(trust.actualSaved, null); assert.equal(trust.action, 'not-granted');
+    if (mode !== 'unknown') { assert.equal(trust.trust, 'estimated'); assert.equal(trust.nature, 'if-eligible-surplus-saved'); }
     await dialog.screenshot({ path: path.join(out, `${mode}-${width}.png`), animations: 'disabled' });
     await page.keyboard.press('Escape');
+    if (mode === 'gap') {
+      await step(page, 1); const failure = await tile.innerText();
+      assert.match(failure, /Funding gap on 2026-11-26: \$100\.00/);
+      assert.match(failure, /Unavailable/); assert.doesNotMatch(failure, /Invented first cost|Invented second cost/i);
+      await step(page, -1); assert.equal(await tile.innerText(), second);
+    }
     await step(page, -1); await step(page, -1); assert.equal(await tile.innerText(), current);
     await step(page, 1); await step(page, 1); assert.equal(await tile.innerText(), second);
     await page.evaluate(() => App.rerender()); assert.equal(await tile.innerText(), second);
