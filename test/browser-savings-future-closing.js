@@ -5,6 +5,7 @@ const crypto = require('node:crypto'), cp = require('node:child_process');
 const { chromium } = require('playwright');
 const fixture = require('./fixtures/savings-future-closing-data');
 const ownerModel = require('./fixtures/savings-owner-closing-data');
+const deficitModel = require('./fixtures/savings-deficit-coverage-data');
 const shell = require('./fixtures/savings-daily-consumer-data');
 const root = path.resolve(__dirname, '..'), assets = path.join(root, 'public');
 const out = process.env.ATLAS_FUTURE_SAVINGS_PROOF || path.join(require('node:os').tmpdir(), 'atlas-future-savings-proof');
@@ -19,9 +20,11 @@ async function step(page, direction) {
 }
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
-  try { for (const width of [1440, 390, 320]) for (const mode of ['ready', 'group', 'installments', 'gap', 'zero', 'expense', 'unknown', 'owner80', 'owner1000', 'owner-deficit', 'timing']) {
+  try { for (const width of [1440, 390, 320]) for (const mode of ['ready', 'group', 'installments', 'gap', 'zero', 'expense', 'unknown', 'owner80', 'owner1000', 'owner-deficit', 'timing', 'carry', 'fallback', 'fallback-short']) {
     const owner = mode.startsWith('owner') || mode === 'timing';
-    const x = owner ? ownerModel(mode === 'owner80' || mode === 'timing' ? 80 : 1000, mode === 'owner-deficit' ? 100 : 400) : fixture();
+    const deficit = ['carry', 'fallback', 'fallback-short'].includes(mode);
+    const x = deficit ? deficitModel(mode === 'carry' ? 400 : 100, 200, mode === 'fallback-short' ? 50 : 500)
+      : owner ? ownerModel(mode === 'owner80' || mode === 'timing' ? 80 : 1000, mode === 'owner-deficit' ? 100 : 400) : fixture();
     if (mode === 'timing') { x.plan.income[1].date = '2026-10-24'; x.plan.commitments[0].date = '2026-10-16'; }
     const data = shell('ready'); data.meta.asOf = x.asOf; data.plan = x.plan;
     data.plan.groups = [];
@@ -77,6 +80,7 @@ async function step(page, direction) {
     else if (mode === 'owner-deficit' || mode === 'timing') { assert.match(first, /Unavailable/);
       assert.match(first, mode === 'timing' ? /Funding gap on 2026-10-16: \$140\.00/ : /Funding gap on 2026-10-29: \$100\.00/); }
     else if (owner) assert.match(first, /200\.00/);
+    else if (deficit) assert.match(first, mode === 'carry' ? /700\.00/ : mode === 'fallback-short' ? /50\.00/ : /500\.00/);
     else if (mode === 'installments') {
       assert.match(first, /1,039\.00/); assert.match(first, /Invented installment two/i);
       assert.doesNotMatch(first, /Invented installment one/i);
@@ -93,6 +97,9 @@ async function step(page, direction) {
     if (mode === 'owner80' || mode === 'owner1000') { assert.match(second, /200\.00/); assert.match(second, /No remaining Savings requirements/); }
     if (mode === 'owner-deficit') { assert.match(second, /Unavailable/); assert.match(second, /Funding gap on 2026-11-12: \$400\.00/); }
     if (mode === 'timing') { assert.match(second, /Unavailable/); assert.match(second, /Funding gap on 2026-10-16: \$140\.00/); }
+    if (mode === 'carry') assert.match(second, /700\.00/);
+    if (mode === 'fallback') assert.match(second, /400\.00/);
+    if (mode === 'fallback-short') { assert.match(second, /Unavailable/); assert.match(second, /Funding gap.*\$50\.00/); }
     await tile.locator('[data-budget-funding-inventory]').focus(); await page.keyboard.press('Enter');
     const dialog = page.locator('[data-budget-detail-sheet]'); await dialog.waitFor({ state: 'visible' });
     const info = dialog.locator('[data-budget-savings-info] > summary');
@@ -111,6 +118,9 @@ async function step(page, direction) {
     if (mode === 'unknown') assert.match(inventory, /Unknown/);
     if (mode === 'owner80' || mode === 'owner1000') assert.match(inventory, /200\.00/);
     if (mode === 'owner-deficit' || mode === 'timing') { assert.match(inventory, /Unknown|Unavailable/); assert.match(inventory, /Funding gap/); }
+    if (mode === 'carry') assert.match(inventory, /700\.00/);
+    if (mode === 'fallback') { assert.match(inventory, /400\.00/); assert.match(await dialog.innerText(), /Deficit coverage\s*\$100\.00/); }
+    if (mode === 'fallback-short') { assert.match(inventory, /Unknown|Unavailable/); assert.match(inventory, /Funding gap.*\$50\.00/); }
     const trust = await page.evaluate(() => {
       const d = App.data, advice = Forecast.recommend(d.plan, d.meta.asOf,
         { ...d.plan.defaults, ...d.liveOverlay, weeklyVariable: 0, debts: d.debts || [] });
@@ -122,14 +132,17 @@ async function step(page, direction) {
         nature: packet.forecastClosing?.nature, basis: packet.forecastClosing?.cashBasis,
         action: packet.forecastClosing?.actionPermission, status: packet.forecastClosing?.status,
         stock: packet.forecastClosing?.stock, diagnostics: packet.forecastClosing?.diagnostics,
-        operating: packet.forecastClosing?.operatingCash };
+        operating: packet.forecastClosing?.operatingCash, coverage: packet.forecastClosing?.projectedDeficitCoverage };
     });
     assert.equal(trust.actualSaved, null); assert.equal(trust.action, 'not-granted');
-    if (!['unknown', 'owner-deficit', 'timing'].includes(mode)) { assert.equal(trust.trust, 'estimated'); assert.equal(trust.nature, 'if-eligible-surplus-saved');
-      assert.equal(trust.basis, 'opening-savings-plus-eligible-surplus-minus-goal-costs'); }
+    if (!['unknown', 'owner-deficit', 'timing', 'fallback-short'].includes(mode)) { assert.equal(trust.trust, 'estimated'); assert.equal(trust.nature, 'if-eligible-surplus-saved');
+      assert.equal(trust.basis, 'opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits'); }
     if (mode === 'owner80' || mode === 'owner1000') { assert.equal(trust.stock, 200); assert.equal(trust.operating, mode === 'owner80' ? 80 : 1000); }
     if (mode === 'owner-deficit') { assert.equal(trust.stock, null); assert.equal(trust.diagnostics.signedSavings, -400); }
     if (mode === 'timing') { assert.equal(trust.stock, null); assert.equal(trust.diagnostics.signedSavings, 200); }
+    if (mode === 'carry' || mode === 'fallback') { assert.equal(trust.stock, mode === 'carry' ? 700 : 400);
+      assert.equal(trust.operating, 20); assert.equal(trust.coverage, mode === 'carry' ? 0 : 100); }
+    if (mode === 'fallback-short') { assert.equal(trust.stock, null); assert.equal(trust.diagnostics.signedSavings, -50); }
     await dialog.screenshot({ path: path.join(out, `${mode}-${width}.png`), animations: 'disabled' });
     await page.keyboard.press('Escape');
     if (mode === 'gap') {

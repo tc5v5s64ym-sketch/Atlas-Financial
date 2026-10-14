@@ -5,6 +5,7 @@ const path = require('node:path');
 const F = require(path.join(process.env.ATLAS_TEST_APP_ROOT || path.resolve(__dirname, '..'), 'public/forecast'));
 const input = require('./fixtures/savings-future-closing-data');
 const ownerModel = require('./fixtures/savings-owner-closing-data');
+const deficitModel = require('./fixtures/savings-deficit-coverage-data');
 const copy = x => JSON.parse(JSON.stringify(x));
 function advice(x) {
   const before = JSON.stringify(x), result = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [] });
@@ -19,6 +20,57 @@ function closing(a, start) {
   return p.forecastClosing;
 }
 function values(p) { assert.equal(p.status, 'ready', p.reason); return p.items.map(i => Math.round(i.forecastSaved * 100)); }
+test('carry-first retains prior surplus200 for deficit200 without allocating it to goals', () => {
+  const a = advice(deficitModel(400)), first = closing(a, '2026-10-16'), second = closing(a, '2026-10-30');
+  assert.equal(first.stock, 700); assert.equal(first.contribution, 200); assert.equal(first.operatingCash, 220);
+  assert.equal(second.stock, 700); assert.equal(second.operatingCash, 20); assert.equal(second.projectedDeficitCoverage ?? 0, 0);
+  assert.equal(50000 + 40000 - 20000, 70000);
+});
+test('carry-first Savings covers only the100 remainder after prior surplus100 is exhausted', () => {
+  const a = advice(deficitModel()), first = closing(a, '2026-10-16'), second = closing(a, '2026-10-30');
+  assert.equal(first.stock, 500); assert.equal(first.contribution, 0); assert.equal(first.operatingCash, 120);
+  assert.equal(second.status, 'ready', second.reason); assert.equal(second.stock, 400); assert.equal(second.operatingCash, 20);
+  assert.equal(second.projectedDeficitCoverage, 100); assert.equal(second.projectedDraws, 0);
+  assert.equal(second.items.reduce((sum,i) => sum + i.forecastSaved, 0) + second.unallocated, 400);
+  assert.equal(second.actualSaved, null); assert.equal(second.moneyMovementPermission, 'not-granted');
+  assert.equal(50000 + 10000 - 20000, 40000);
+});
+test('ample Bills carry covers a deficit without charging Savings', () => {
+  const p = closing(advice(deficitModel(100, 200, 500, 1000)), '2026-10-30');
+  assert.equal(p.stock, 600); assert.equal(p.operatingCash, 800); assert.equal(p.projectedDeficitCoverage ?? 0, 0);
+});
+test('insufficient Savings remains signed and withheld rather than becoming a ready zero', () => {
+  const p = closing(advice(deficitModel(100, 200, 50)), '2026-10-30');
+  assert.equal(p.status, 'unavailable'); assert.equal(p.stock, null); assert.deepEqual(p.rows, []);
+  assert.equal(p.diagnostics.signedSavings, -50); assert.equal(p.gap.shortBy, 50);
+});
+test('a later receipt cannot retrospectively qualify an unsupported earlier deficit', () => {
+  const x = deficitModel(100, 200, 50); x.plan.income[2].amount = 300; x.plan.income[2].date = '2026-11-10';
+  const p = closing(advice(x), '2026-10-30');
+  assert.equal(p.status, 'unavailable'); assert.equal(p.stock, null); assert.equal(p.gap.date, '2026-11-03');
+  assert.equal(p.gap.shortBy, 50);
+});
+test('qualified fallback and a full400 goal cost consume separate dollars once', () => {
+  const x = deficitModel(); x.plan.commitments[0].date = '2026-11-04'; x.plan.commitments[0].amount = 400;
+  const p = closing(advice(x), '2026-10-30');
+  assert.equal(p.status, 'ready', p.reason); assert.equal(p.stock, 0); assert.equal(p.operatingCash, 20);
+  assert.equal(p.projectedDraws, 400); assert.equal(p.projectedDeficitCoverage, 100);
+  assert.ok(p.items.every(i => i.id !== 'a')); assert.equal(50000 + 10000 - 20000 - 40000, 0);
+});
+test('stock reused by a native reserve event cannot mask an earlier full-goal cash shortfall', () => {
+  const x = deficitModel(); x.plan.commitments[0].date = '2026-11-04'; x.plan.commitments[0].amount = 500;
+  x.plan.income[2].amount = 300; x.plan.income[2].date = '2026-11-10';
+  const p = closing(advice(x), '2026-10-30');
+  assert.equal(p.status, 'unavailable'); assert.equal(p.stock, null);
+  assert.equal(p.gap.date, '2026-11-04'); assert.equal(p.gap.shortBy, 100);
+});
+test('supported due-day fallback does not anticipate a later non-surplus receipt', () => {
+  const x = deficitModel(); x.plan.income[2].amount = 100; x.plan.income[2].date = '2026-11-10';
+  const p = closing(advice(x), '2026-10-30');
+  assert.equal(p.status, 'ready', p.reason); assert.equal(p.stock, 400);
+  assert.equal(p.operatingCash, 120); assert.equal(p.projectedDeficitCoverage, 100);
+  assert.equal(p.contribution, 0, 'negative period net grants no additional Savings contribution');
+});
 for (const operating of [80, 1000]) test('owner closing 300 + 400 - 500 = 200 is independent of operating opening ' + operating, () => {
   const x = ownerModel(operating), a = advice(x);
   const first = closing(a, '2026-10-16'), second = closing(a, '2026-10-30');
@@ -227,7 +279,7 @@ test('an exact zero Savings ledger is published without spending operating carry
   const a = advice(x), p = closing(a, '2026-10-30');
   assert.equal(30000 + 30000 - 50000 + 30000 - 40000, 0);
   assert.equal(p.status, 'ready', p.reason); assert.equal(p.stock, 0); assert.equal(p.operatingCash, 1000);
-  assert.equal(p.cashBasis, 'opening-savings-plus-eligible-surplus-minus-goal-costs');
+  assert.equal(p.cashBasis, 'opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits');
   assert.deepEqual(p.items, []);
 });
 for (const destination of ['chequing-a', 'savings']) test('current-tail annual goal bill is debited once with proved income destination ' + destination, () => {

@@ -4,7 +4,8 @@ All amounts, fixtures and screenshots are invented. No provider payloads,
 household figures, credentials or source documents enter this proof.
 
 Forecast publishes qualified opening Savings plus eligible period surplus less
-full due goal costs once. Both Savings renderers copy the selected future closing
+full due goal costs once and only routine deficits uncovered by Bills/prior surplus.
+Both Savings renderers copy the selected future closing
 pot and chronological remaining requirements. Current reported allocation, native
 operating results and the generic minimum scheduler retain their contracts. Actual
 future balances/payments/contributions remain unknown. Estimated provenance stays
@@ -49,25 +50,55 @@ once. Current-tail Bills/Savings receipt controls prove no duplicate income.
 Unknown stock, pending movement, missing amounts/dates/receipts, ambiguous expenses
 and unsupported periods stay unavailable. Malformed typed packets are rejected.
 
+## Carry-first clarification and bounded fallback
+
+Dale's `Sentinel_98d4486829848191b933e14411bbc3cd` clarification permits the forecast
+to use retained prior-period surplus for a later deficit, then qualified Savings
+for only the uncovered remainder. It grants no actual transfer permission.
+Opening Savings500/Bills20/floor20, prior surplus400 and next deficit200 retains
+200 in Bills and adds200 to Savings: the closes are Savings700/700, Bills220/20.
+The same with prior surplus100 retains that100, then covers only the remaining100
+from Savings: closes500/400, Bills120/20. Coverage dollars cannot also fund goals.
+
+The fixed minimum coverage plan is computed with all prior surplus retained and
+reused by contribution-capacity probes. A probe cannot increase fallback merely
+to save more surplus. The cash path uses only supported coverage, bounded by
+the conserved household total so a native reserve event cannot reuse stock.
+Insufficient Savings50 carries signed-50 and withholds; late income cannot cure
+its earlier50 cash gap. Separate goal400 plus uncovered deficit100 consumes500
+once; a goal500 before later income remains withheld on its earlier100 shortage.
+The original current-tail unavailable predicate remains unchanged.
+
+Timing control: if the next100 receipt lands after the200 bill, qualified Savings
+covers100 on its due day. Under the incumbent positive-net contribution rule,
+the later receipt stays in Bills: closing Savings400/Bills120. This bounded
+repair introduces no automatic repayment to Savings; the fresh reviewer receives
+this explicit timing result. Actual balances and settlement remain unknown.
+
+Eight literal carry/fallback controls on frozen4b9 have six failures and two
+passing carry controls before repair. All eight pass afterward.
+
 ## Reproduction and source binding
 
 `node --test test/test-savings-future-closing.js test/test-reported-savings-earmarks.js`
 
-40 financial cases and 88 released current-report cases pass. For red reproduction
+48 financial cases and 88 released current-report cases pass. For the earlier goal-cost red reproduction
 set `ATLAS_TEST_APP_ROOT` to exact `6f0f486c1fdf6197cf7a42b21cb9533e459dfd7c`
 and use `--test-name-pattern='owner closing|full signed Savings'` with the current
-closing suite. Same inputs/oracles; only the producing revision changes.
+closing suite. Same inputs/oracles; only the producing revision changes. The new
+fallback red producer is exact4b9a536e6f31314d9c64a4eabc605dd07f14bfff; select
+the carry/fallback controls in the current suite against that isolated checkout.
 
 `node test/proof-savings-future-closing-before-after.js <exact-main-checkout>`
 
-Ten complete recommendations equal released main
+Fourteen complete recommendations equal released main
 `a722031e0e7bc936426695066f2723420f8d64ff` after removing exactly the two new
 publication fields named in the script. Released #607 App/resume bytes are retained.
 
 `NODE_PATH=<Playwright runtime> CHROME_PATH=<Edge/Chromium> node test/browser-savings-future-closing.js`
 
 The real App uses the visible river timeline, both Savings renderers, disclosures,
-back/forward and rerender at 1,440/390/320 pixels. Eleven modes produce 33 cases.
+back/forward and rerender at 1,440/390/320 pixels. Fourteen modes produce42 cases.
 Intercepted invented GETs serve one synthetic origin; external requests, writes,
 page errors, input mutation and horizontal overflow fail. Cases record internal
 trust separately from visible copy. The [receipt](proof.json) binds exact served
@@ -75,6 +106,8 @@ Git bytes, tests and screenshot hashes to the repaired code head; the artifact
 commit preserves those blobs.
 
 Screenshots: [operating 80](owner80-320.png), [operating 1,000](owner1000-320.png),
+[carry first](carry-320.png), [qualified remainder](fallback-320.png),
+[insufficient remainder](fallback-short-320.png),
 [signed shortage](owner-deficit-320.png), [payment before income](timing-320.png),
 [true final zero](zero-closing-320.png), [group](group-320.png),
 [installments](installments-320.png), [last affordable close](gap-320.png),
@@ -83,6 +116,8 @@ Screenshots: [operating 80](owner80-320.png), [operating 1,000](owner1000-320.pn
 Historical receipts: [initial](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/blob/25470fd1f14d82709be07323f3ebf6eefa631656/docs/proof/future-savings-closing-2026-10-14/proof.json),
 [inclusive close](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/blob/34c891f043b1434158b098230ae4a6c9bad71d97/docs/proof/future-savings-closing-2026-10-14/proof.json),
 [blocked integration](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/blob/6f0f486c1fdf6197cf7a42b21cb9533e459dfd7c/docs/proof/future-savings-closing-2026-10-14/proof.json).
+The [full-goal-cost repair](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/blob/4b9a536e6f31314d9c64a4eabc605dd07f14bfff/docs/proof/future-savings-closing-2026-10-14/proof.json)
+also remains historical. Its380/380 CI results do not bind the new fallback head.
 These do not establish acceptance for the repaired head.
 
 Fresh exact-head Systems Review, full CI, owner figures reconciliation and signed-in

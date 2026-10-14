@@ -861,8 +861,11 @@ eligible surplus is saved. It consumes the incumbent Budget forward cash walk,
 its income/bill/Household Budget deductions and protected floor. The generic
 deadline-minimum scheduler remains that scheduler; it does not supply this
 surplus scenario. Positive period surplus moves location at close. Native
-goal expenses occur once and leave the projected queue; routine deficits use
-only supported operating carry. No reserve withdrawal or loan is invented.
+goal expenses occur once and leave the projected queue. Routine deficits use
+available Bills cash and retained prior-period surplus first. Dale's clarification
+`Sentinel_98d4486829848191b933e14411bbc3cd` permits the qualified hypothetical
+Savings remainder in this forecast calculation only. It authorizes no real
+transfer, reserve withdrawal, loan or native/current money movement.
 Remaining current-period capacity is included only through the existing
 `savingsDailyFunding` receipt, posted-transfer and opening reconciliation gates.
 A reported increase is never evidence of its income source. Missing inclusion
@@ -880,14 +883,23 @@ retain their remaining members, then disappear. Earlier affordable closes surviv
 a later unavoidable native funding gap; the failing close withholds allocations
 and reports that same gap. Navigation never mutates actual settlement or balances.
 The closing stock's internal basis is
-`opening-savings-plus-eligible-surplus-minus-goal-costs`: qualified opening Savings
-plus eligible period surplus less full due goal costs once. Operating opening
+`opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits`:
+qualified opening Savings plus eligible period surplus less full due goal costs
+and only deficits uncovered by Bills/prior surplus. Operating opening
 cash cannot inflate this headline or replace a signed Savings shortage. Goal bills
 already deducted by native Budget contribute only their exact unique deduction
 to the pre-goal quota before the full cost debit. Signed Savings diagnostics
 continue across closes; negative Savings withholds stock and allocations. A positive
-closing arithmetic total also withholds publication if the incumbent daily native
-cash walk breaches its floor before income arrives. The full native economic
+closing arithmetic total also withholds publication if the daily qualified cash
+path breaches its floor before funds are available. The new publication fixes
+its minimum coverage plan with all prior surplus retained, then reuses that plan
+when testing Savings contributions: it cannot increase fallback to save the same
+money allocated to deficit coverage. Only qualified available Savings supports
+the cash path; negative signed or insufficient coverage remains unavailable.
+Native reserve events cannot reuse stock already consumed by fallback. A later
+receipt never retrospectively qualifies an earlier shortage. Existing positive
+net-surplus eligibility is unchanged; late non-surplus receipts remain Bills carry,
+without an automatic repayment to Savings. The full native economic
 expense, actuals and operating publications remain unchanged. The existing
 current-tail unavailable gate is unchanged, including its positive-planned-capacity
 condition, and a schedule funding-gap status cannot override it.

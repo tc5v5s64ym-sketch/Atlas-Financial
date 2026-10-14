@@ -5223,6 +5223,7 @@ function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null,
       ${projected ? `<div class="operating-line"><span>Savings at period close</span><span>${value(packet.forecastClosing?.stock, packet.forecastClosing?.trust)}</span></div>
       <div class="operating-line"><span>Added since this opening</span><span>${value(packet.forecastClosing?.projectedContributions, packet.forecastClosing?.trust)}</span></div>
       <div class="operating-line"><span>Goal costs</span><span>${value(packet.forecastClosing?.projectedDraws, packet.forecastClosing?.trust)}</span></div>
+      ${packet.forecastClosing?.projectedDeficitCoverage > 0 ? `<div class="operating-line"><span>Deficit coverage</span><span>${value(packet.forecastClosing.projectedDeficitCoverage, packet.forecastClosing.trust)}</span></div>` : ''}
       <div class="operating-line"><span>Unallocated Savings</span><span>${value(packet.forecastClosing?.unallocated, packet.forecastClosing?.trust)}</span></div>` : `<div class="operating-line"><span>Period balance before proposals</span><span>${value(period?.nativePeriodSurplus, period?.trust)}</span></div>
       <div class="operating-line"><span>Funding entitlement</span><span>${value(period?.entitlement, period?.trust)}</span></div>
       <p>Income proved already deposited into Savings is excluded from entitlement. These two figures can differ.</p>
