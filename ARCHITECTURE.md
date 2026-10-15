@@ -854,15 +854,27 @@ store. Dale's October 12 transaction-view direction
 (`Sentinel_60223df7f05481918e81b31b1d972fe8`) does not require obtaining card
 statements again and does not establish an empty card-coverage opening.
 
-**Future Savings closing projection - owner direction 2026-10-13.**
+**Future Savings closing projection - owner direction 2026-10-13, amended by
+owner direction 2026-10-14 (payday-surplus sweep; Dale-confirmed, assigned via
+Atlas). Where the two directions differ, the 2026-10-14 semantics govern.**
 `Forecast.recommend.savingsFunding.periodViews[].packet.forecastClosing` owns
 the selected future period's closing pot and per-requirement allocations if
 eligible surplus is saved. It consumes the incumbent Budget forward cash walk,
 its income/bill/Household Budget deductions and protected floor. The generic
 deadline-minimum scheduler remains that scheduler; it does not supply this
-surplus scenario. Positive period surplus moves location at close. Native
-goal expenses occur once and leave the projected queue. Routine deficits use
-available Bills cash and retained prior-period surplus first. Dale's clarification
+surplus scenario. Positive period surplus moves location on the following
+payday: a period's eligible surplus is swept into projected Savings at the
+start of the next period, in full, and the new period's own income is never
+part of that sweep. Eligibility is bounded by the Bills cash that actually
+exists at the period's close: a positive period net first absorbs any
+carried Bills deficit, and only cash that remains can move (Systems Review
+2026-10-14 — this bound is availability, not future-needs retention). Native
+goal expenses occur once and leave the projected queue. Routine deficits stay
+in Bills and are published explicitly on the close (signed operating cash
+plus the period's first floor breach); projected Savings is never drawn to
+cover them, and no part of a surplus is retained in Bills for future
+operating need. Whether a deficit is funded from Savings or a bill is
+rescheduled is the owner's decision. Dale's clarification
 `Sentinel_98d4486829848191b933e14411bbc3cd` permits the qualified hypothetical
 Savings remainder in this forecast calculation only. It authorizes no real
 transfer, reserve withdrawal, loan or native/current money movement.
@@ -883,20 +895,20 @@ retain their remaining members, then disappear. Earlier affordable closes surviv
 a later unavoidable native funding gap; the failing close withholds allocations
 and reports that same gap. Navigation never mutates actual settlement or balances.
 The closing stock's internal basis is
-`opening-savings-plus-eligible-surplus-minus-goal-costs-and-uncovered-deficits`:
-qualified opening Savings plus eligible period surplus less full due goal costs
-and only deficits uncovered by Bills/prior surplus. Operating opening
+`opening-savings-plus-eligible-surplus-minus-goal-costs`:
+qualified opening Savings plus eligible period surplus swept on following
+paydays, less full due goal costs. Operating opening
 cash cannot inflate this headline or replace a signed Savings shortage. Goal bills
 already deducted by native Budget contribute only their exact unique deduction
 to the pre-goal quota before the full cost debit. Signed Savings diagnostics
-continue across closes; negative Savings withholds stock and allocations. A positive
-closing arithmetic total also withholds publication if the daily qualified cash
-path breaches its floor before funds are available. The new publication fixes
-its minimum coverage plan with all prior surplus retained, then reuses that plan
-when testing Savings contributions: it cannot increase fallback to save the same
-money allocated to deficit coverage. Only qualified available Savings supports
-the cash path; negative signed or insufficient coverage remains unavailable.
-Native reserve events cannot reuse stock already consumed by fallback. A later
+continue across closes; negative Savings withholds stock and allocations. A routine
+Bills floor breach no longer withholds publication (superseded 2026-10-14):
+the close publishes its stock with the signed operating position, and the
+former retention search, minimum coverage plan and daily qualified-cash
+floor gate are retired — the sweep is the full eligible surplus, Savings
+never covers a Bills deficit, and the qualified cash path is diagnostic
+only. Native reserve events cannot reuse stock already consumed by goal
+costs. A later
 receipt never retrospectively qualifies an earlier shortage. Existing positive
 net-surplus eligibility is unchanged; late non-surplus receipts remain Bills carry,
 without an automatic repayment to Savings. The full native economic
