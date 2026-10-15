@@ -10461,6 +10461,22 @@
         .filter(e => isSavingsFundedPaydayBillEvent(e, plan)) : [];
     const representedSavings = representedKeySet(plan, opts, asOf);
     const observedSavings = representedActualMap(opts);
+    // S1 repair (Systems Review 2026-10-15, PR #620 blocker 1): the Savings
+    // ledger's goal payments, read from the same backing context recommend
+    // computed for this plan, so a goal bill Budget deducts inside a
+    // period's bill load can be restored to that period's available
+    // remainder here — where the sweep is published — instead of only
+    // inside Savings after Budget has consumed its own remainder. When
+    // the context is absent the combined closing projection cannot run
+    // either, and no restoration is claimed.
+    const goalPayments = [];
+    const backingContext = savingsDailyBackingContexts.get(plan);
+    if (backingContext && Array.isArray(backingContext.items)) {
+      for (const item of backingContext.items) {
+        if (!item || !item.event || !savingsDate(item.date)) continue;
+        goalPayments.push({ id: item.id, date: cashWalkDate(item.event, asOf) });
+      }
+    }
     const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
     const liveCurrentBalance = publishedCurrentBalanceAmount(plan, alloc);
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
@@ -10471,6 +10487,7 @@
     const periods = [];
     let previousEnding = null;
     let unavailableOpeningLost = false;
+    let openingChainLost = false;
     const heldCycleStarts = new Set();
     const sectionById = {};
     // Future, next, and current windows that can hold a 2027 Dale date.
@@ -10576,6 +10593,13 @@
             source: 'dated-opening',
           }
           : { opening: null, openingKnown: false, openingAsOf: null, source: null })
+        : openingChainLost && role === 'future'
+          // S1 repair (blocker 3): once a period's cash leftover is unknown
+          // (an unamounted bill in its load, an unrestorable goal overlap,
+          // or an unestablished Bills share of the pooled opening), no
+          // later opening may be re-derived from the pooled walk — the
+          // chain stays unknown rather than fabricating a figure.
+          ? { opening: null, openingKnown: false, openingAsOf: null, source: null }
         : resolvePaydayPeriodOpening(
           plan, asOf, window, opts, previousEnding, opts.sim);
       const opening = snapshot.opening;
@@ -10618,7 +10642,30 @@
       // remains visibly unproven for settlement. Opening cash is not added
       // to Payday balance.
       const available = planUnavailable ? null : incomeTotal;
-      const periodBillLoad = planUnavailable
+      // S1 repair (blocker 3): a bill that belongs on this waterfall with
+      // no finite amount makes the period's bill load unknown — never a
+      // fabricated zero — so the leftover, the sweep and the next opening
+      // all go unknown with it (unknown is not zero). The second arm
+      // covers a plan bill whose amount is unavailable and whose
+      // occurrences land in this window but which never reaches the
+      // section rows at all (the section builder drops it upstream, so
+      // its absence from the load is exactly the fabricated zero).
+      // Savings-funded provision bills are exempt here: their unknown
+      // amount already nulls the cash leftover through the provision
+      // gate. Sealed lookback rows keep their incumbent treatment.
+      const billLoadUnknown = !planUnavailable && !lookback && ((assignedBillRows || []).some(row =>
+        billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)
+        && (row.scheduledFeeAllowance
+          ? !Number.isFinite(Number(row.scheduledFeeAllowance.periodCost))
+          : !(row.planned != null && Number.isFinite(Number(row.planned)))
+            && !(row.amount != null && Number.isFinite(Number(row.amount)))))
+        || (plan.bills || []).some(b => b && !(opts.disabled || []).includes(b.id)
+          && (b.amount == null || savingsCents(b.amount) == null)
+          && !(b.jointCash === false && !b.cardPaid)
+          && !isSavingsFundedPaydayBill(b, plan)
+          && (role === 'active' ? outflowDates(b, window.start, window.end)
+            : occurrences(b, window.start, window.end)).length > 0));
+      const periodBillLoad = planUnavailable || billLoadUnknown
         ? null
         : periodWaterfallBillLoad(assignedBillRows, openingAsOf, openingSource);
       const paidBills = planUnavailable ? null : periodPaidBillDisclosure(bills);
@@ -10678,8 +10725,34 @@
       // negative remainder sweeps nothing and stays visible in Bills; no
       // Savings draw covers it. When the cash leftover is unknown the
       // sweep is unknown (null), never an invented zero.
-      const availableRemainder = cashAfterHouseholdBudget != null
-        ? roundCent(cashAfterHouseholdBudget + annualSavingsNeed) : null;
+      // S1 repair (blocker 1): restore to this period's available
+      // remainder the goal bills the Savings ledger pays — the closing
+      // projection's overlap rule, applied here where the sweep is
+      // published. Budget deducted the goal bill inside the period's bill
+      // load; the ledger debits the full cost once as a goal cost, so the
+      // physical Bills remainder excludes the deduction. Restoring it
+      // only inside Savings (the pre-repair shape) let the first
+      // overlap-adjusted credit differ from Budget's published sweep and
+      // moved every later sweep basis. An ambiguous or unamounted goal
+      // deduction makes the remainder unknown, mirroring the closing
+      // projection's hold.
+      let goalOverlap = 0;
+      let goalOverlapUnknown = false;
+      if (goalPayments.length && periodBillLoad != null && role !== 'lookback') {
+        for (const payment of goalPayments) {
+          if (payment.date < (role === 'active' ? asOf : window.start) || payment.date > window.end) continue;
+          const deducted = (assignedBillRows || []).filter(b => b.id === payment.id && b.date === payment.date
+            && billBelongsOnPaydayWaterfall(b, openingAsOf, openingSource));
+          if (deducted.length > 1) { goalOverlapUnknown = true; break; }
+          if (deducted.length) {
+            const cents = savingsCents(deducted[0].planned != null ? deducted[0].planned : deducted[0].amount);
+            if (cents == null) { goalOverlapUnknown = true; break; }
+            goalOverlap = roundCent(goalOverlap + cents / 100);
+          }
+        }
+      }
+      const availableRemainder = cashAfterHouseholdBudget != null && !goalOverlapUnknown
+        ? roundCent(cashAfterHouseholdBudget + annualSavingsNeed + goalOverlap) : null;
       const paydaySweep = !planUnavailable && role === 'future'
         && availableRemainder != null
         ? roundCent(Math.max(0, availableRemainder)) : null;
@@ -10732,9 +10805,78 @@
         // Budget opening consumes exactly the sweep the Savings closing
         // projection credits. A negative leftover carries in full (the
         // sweep is zero), staying visible.
-        previousEnding = paydaySweep != null
-          ? roundCent(availableRemainder - paydaySweep)
-          : cashAfterHouseholdBudget;
+        if (role === 'active') {
+          // S1 repair (blockers 1b and 2): the seed the first future
+          // period opens from is the Bills account's remainder after the
+          // amounts that leave (or never enter) Bills at this payday:
+          // (a) the other household chequing accounts' share of the pooled
+          // opening — the sweep basis is Bills-only, so that share is
+          // excluded when the starting-cash breakdown establishes the
+          // split (its per-account rows reconcile to the pooled opening,
+          // or every other account's evidenced cash is zero); when the
+          // share cannot be established the seed is unknown rather than
+          // pooled; and (b) the current period's boundary deduction,
+          // which recommend computes from the funding builder and passes
+          // in (opts): the boundary credit the Savings closing projection
+          // will land at the next payday, plus any part of this period's
+          // remainder already saved or transferred out of Bills. When the
+          // deduction is established the seed is figured on the period's
+          // full available remainder (the walk basis the closing
+          // projection uses, goal overlap and provision restored), so the
+          // first future opening and sweep are computed on the cash that
+          // will actually be there; without it the seed is the incumbent
+          // full carry on the cash-after-budget basis.
+          const boundaryDeduction = typeof opts.s1CurrentBoundaryDeductionCents === 'number'
+            && Number.isFinite(opts.s1CurrentBoundaryDeductionCents)
+            ? opts.s1CurrentBoundaryDeductionCents / 100 : null;
+          let seed = boundaryDeduction != null ? availableRemainder : cashAfterHouseholdBudget;
+          let shareUnknown = false;
+          if (seed != null && openingKnown && opening != null) {
+            const cashRows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+            const chequingRows = cashRows.filter(r => r && HOUSEHOLD_CHEQUING_IDS.includes(r.id));
+            const otherIds = HOUSEHOLD_CHEQUING_IDS.filter(id => id !== BILLS_ACCOUNT_ID);
+            const inAccounts = id => Array.isArray(plan.accounts)
+              && plan.accounts.some(a => a && a.id === id);
+            const rowOf = id => chequingRows.find(r => r.id === id);
+            const otherPresent = id => !!rowOf(id) || inAccounts(id);
+            if (otherIds.some(otherPresent)) {
+              const billsRow = rowOf(BILLS_ACCOUNT_ID);
+              const finiteRow = r => r && r.value != null && Number.isFinite(Number(r.value));
+              // The account split of the pooled opening is established
+              // when the breakdown's per-account rows are complete and
+              // reconcile to the pooled opening itself.
+              const splitKnown = finiteRow(billsRow)
+                && otherIds.every(id => !otherPresent(id) || finiteRow(rowOf(id)))
+                && chequingRows.every(finiteRow)
+                && roundCent(chequingRows.reduce((s, r) => s + Number(r.value), 0)) === roundCent(opening);
+              // When the breakdown describes a later moment than the
+              // opening (a receipt that landed in the Bills account during
+              // the current period is the usual cause), the split is not
+              // established — but the other accounts' share is still known
+              // to be zero when every other account's evidenced cash is
+              // exactly zero at that later moment too.
+              const othersZero = otherIds.every(id => {
+                const r = rowOf(id);
+                return r ? Number(r.value) === 0 : !inAccounts(id);
+              });
+              if (splitKnown) seed = roundCent(seed - (opening - Number(billsRow.value)));
+              else if (!othersZero) shareUnknown = true;
+            }
+          }
+          if (shareUnknown || goalOverlapUnknown) seed = null;
+          if (seed != null && boundaryDeduction != null) {
+            seed = roundCent(seed - boundaryDeduction);
+          }
+          previousEnding = seed;
+          if (seed == null && (shareUnknown || goalOverlapUnknown || periodBillLoad == null)) {
+            openingChainLost = true;
+          }
+        } else {
+          previousEnding = paydaySweep != null
+            ? roundCent(availableRemainder - paydaySweep)
+            : goalOverlapUnknown ? null : cashAfterHouseholdBudget;
+          if (periodBillLoad == null || goalOverlapUnknown) openingChainLost = true;
+        }
       } else {
         previousEnding = null;
       }
@@ -14093,6 +14235,83 @@
       const action = currentPeriodAction(plan, asOf, Object.assign({}, paydayOpts, {
         paydayAllocation: alloc,
       }));
+      // S1 repair (Systems Review 2026-10-15, PR #620 blocker 1b): the
+      // current period's boundary deduction — the boundary credit the
+      // Savings closing projection will land at the first future payday
+      // for the current period, plus the parts of the current remainder
+      // already saved or transferred out of Bills — is computed here from
+      // the funding builder, before the Budget waterfalls run, and passed
+      // to them (paydayOpts) so the chain seed the first future period
+      // opens from is net of it. The formula and
+      // gates mirror savingsClosingProjection's current-period entitlement
+      // (receipt-qualified remaining capacity, native surplus, amounts
+      // already saved or transferred, and this period's goal-bill overlap
+      // restored — the same overlap rule, over the active window's own
+      // bill section), so the deducted figure is the figure the ledger
+      // credits. The funding result itself is reused by the savings block
+      // below, computed from exactly the inputs it has always had. When
+      // any gate fails the credit stays unknown and the waterfalls keep
+      // the incumbent full carry; the closing projection publishes
+      // unavailable in those cases, so neither side claims an agreement
+      // the other does not hold.
+      let earlySavingsFunding;
+      if (plan.savingsEarmarks?.allocationPolicy != null) {
+        earlySavingsFunding = savingsDailyFunding(plan, paydayOpts.debts || base.debts, asOf, { ...paydayOpts, savingsAllocationPolicy: undefined });
+      }
+      if (earlySavingsFunding && earlySavingsFunding.backing?.status === 'ready'
+        && earlySavingsFunding.period?.status === 'ready'
+        && !(earlySavingsFunding.unresolved || []).length) {
+        const fp = earlySavingsFunding.period;
+        const combinedPolicy = savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf);
+        const historicalPolicy = !combinedPolicy
+          || plan.savingsEarmarks.allocationPolicy.effectiveFrom > asOf;
+        const creditBound = payPeriodTimelineBound(plan, asOf, paydayOpts);
+        if (!historicalPolicy && creditBound && creditBound.through && fp.end <= creditBound.through) {
+          const backingItems = savingsDailyBackingContexts.get(plan)?.items || [];
+          const itemsMatchable = backingItems.every(item => item
+            && savingsDate(item.date) && savingsCents(item.needed) != null
+            && (item.date > creditBound.through || item.event));
+          const activeWindow = (operatingPayPeriodWindows(plan, asOf) || [])
+            .find(w => w && w.role === 'active');
+          let overlapCents = 0;
+          let overlapKnown = !!activeWindow && itemsMatchable;
+          if (activeWindow && itemsMatchable) {
+            const section = (calendarBillSections(plan, asOf, Object.assign({}, paydayOpts, {
+              periodWindows: [activeWindow] })).billSections || []).find(s => s && s.id === activeWindow.id);
+            const openingBasis = resolvePaydayPeriodOpening(plan, asOf, activeWindow, paydayOpts, null, null);
+            for (const item of backingItems) {
+              if (!item.event) continue;
+              const date = cashWalkDate(item.event, asOf);
+              if (date < asOf || date > activeWindow.end) continue;
+              const deducted = ((section && section.rows) || []).filter(b => b.id === item.id && b.date === date
+                && billBelongsOnPaydayWaterfall(b, openingBasis.openingAsOf, openingBasis.source));
+              if (deducted.length > 1) { overlapKnown = false; break; }
+              if (deducted.length) {
+                const cents = savingsCents(deducted[0].planned != null ? deducted[0].planned : deducted[0].amount);
+                if (cents == null) { overlapKnown = false; break; }
+                overlapCents += cents;
+              }
+            }
+          }
+          const tail = savingsCents(fp.projectedRemainingCapacity);
+          const net = savingsCents(fp.nativePeriodSurplus);
+          const saved = savingsCents(fp.alreadySavedIncome);
+          const transferred = savingsCents(fp.transferred);
+          if (overlapKnown && [tail, net, saved, transferred].every(n => n != null)) {
+            const creditCents = Math.min(tail + overlapCents,
+              Math.max(0, net + overlapCents - saved - transferred));
+            if (Number.isSafeInteger(creditCents)) {
+              // The full boundary deduction: the credit the ledger lands
+              // at the payday, plus the parts of the current remainder
+              // that are not Bills cash at the next opening at all —
+              // receipts proven to have landed outside Bills (already
+              // saved) and amounts already transferred.
+              paydayOpts.s1CurrentBoundaryDeductionCents = Math.max(0,
+                Math.max(0, creditCents) + saved + transferred);
+            }
+          }
+        }
+      }
       const pastPeriodViews = planPastPeriodViews(plan, asOf, alloc, plans,
         paydayOpts.debts || base.debts, Object.assign({}, paydayOpts, {
           sim: knowledgeSim,
@@ -14112,7 +14331,9 @@
       publishBudgetBillDisplayTrust(asOf, payPeriodTimelinePack.views, paydayOpts);
       let savingsFunding, savingsSchedule = planSpendFunding;
       if (plan.savingsEarmarks?.allocationPolicy != null) {
-        savingsFunding = savingsDailyFunding(plan, paydayOpts.debts || base.debts, asOf, { ...paydayOpts, savingsAllocationPolicy: undefined });
+        // Reuse the funding built before the waterfalls (S1 repair: the
+        // boundary-credit pass above); identical inputs, one computation.
+        savingsFunding = earlySavingsFunding;
         const savingsBound = payPeriodTimelineBound(plan, asOf, paydayOpts);
         const combinedPolicy = savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf);
         savingsSchedule = combinedPolicy && planSpendFunding.status !== 'unavailable' ? {
@@ -19939,24 +20160,27 @@
       // waterfall published on the period (paydaySweep — its full positive
       // available remainder, inherited opening cash included), so Savings
       // credits the sweep the Budget opening deducted; the two
-      // publications cannot disagree. The ledger's overlap restoration
-      // still applies on top of it, for the same reason as under PR #616:
-      // a goal bill Budget already deducted inside that remainder is
-      // debited here once as a goal cost, so the deducted amount is
-      // restored to the sweep — the physical-cash bound below then caps
-      // the total at the Bills cash that actually exists at the close, so
-      // no phantom remainder can sweep. (The waterfall's own basis
-      // already restores the savings-funded provision, which never enters
-      // the bill load the overlap reads, so the two restorations cover
-      // disjoint deductions.) When the waterfall published no sweep for
-      // the period (its cash leftover was unknown), the prior net-surplus
-      // quota remains this close's fallback. The current period keeps its
-      // receipt-qualified entitlement path: its close has not happened,
-      // and no prior close may be inferred for it.
+      // publications cannot disagree.
+      // S1 repair (Systems Review 2026-10-15, PR #620 blockers 1 and 1b):
+      // on the published-sweep path the credit is the published sweep
+      // exactly — no overlap added and no operating cap applied here.
+      // The waterfall's remainder now restores the goal-bill overlap
+      // itself (the ledger still debits the full goal cost once, below),
+      // and the chain seed is net of the current period's boundary
+      // credit, so the walk's operating position at this close equals
+      // the remainder the sweep was published from. Adding the overlap or
+      // re-capping here (the pre-repair shape) made the accepted credit
+      // differ from the sweep Budget had already published and consumed,
+      // and the discrepancy changed the next sweep basis. When the
+      // waterfall published no sweep for the period (its cash leftover
+      // was unknown), the prior net-surplus quota remains this close's
+      // fallback. The current period keeps its receipt-qualified
+      // entitlement path: its close has not happened, and no prior close
+      // may be inferred for it.
       const publishedSweep = !current && period.paydaySweep != null
         ? savingsCents(period.paydaySweep, true) : null;
       let eligible = current ? Math.min(tail + overlap, Math.max(0, net + overlap - saved - transferred))
-        : publishedSweep != null ? publishedSweep + overlap : net + overlap;
+        : publishedSweep != null ? publishedSweep : net + overlap;
       if (!Number.isSafeInteger(eligible)) return hold('A native period surplus is unavailable.');
       eligible = Math.max(0, eligible);
       if (!Number.isSafeInteger(eligible)) return hold('Projected contribution cents exceed exact arithmetic.');
@@ -19965,10 +20189,16 @@
       // actually exists at this period's close (the walk's operating
       // position before this period's own sweep is scheduled): a carried
       // deficit absorbs later net before any of it can move. No future-needs
-      // retention is applied on top of that bound.
+      // retention is applied on top of that bound. S1 repair: this bound
+      // still governs the current period and the no-published-sweep
+      // fallback; on the published-sweep path the waterfall remainder is
+      // already that same walk-basis figure, so the credit is the
+      // published sweep unchanged (see above).
       const preClose = path.daily.find(d => d.date === period.end);
       if (!preClose) return hold('The selected native closing date is unavailable.');
-      eligible = Math.min(eligible, Math.max(0, preClose.operating));
+      if (publishedSweep == null) {
+        eligible = Math.min(eligible, Math.max(0, preClose.operating));
+      }
       if (!Number.isSafeInteger(eligible)) return hold('Projected contribution cents exceed exact arithmetic.');
       // The full eligible surplus sweeps on the next period's payday (its
       // start date), never at this period's own close and never reduced by a

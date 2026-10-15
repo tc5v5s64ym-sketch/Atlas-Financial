@@ -466,17 +466,19 @@ for (const destination of ['chequing-a', 'savings']) test('current-tail annual g
   } else x.plan.startingCash.breakdown[0].value += 1000;
   const a = advice(x), p = closing(a, '2026-10-30');
   // S1 supersession: the first future period sweeps its FULL remainder.
-  // Destination chequing: the gift lands in Bills, so the opening is 2000
-  // and the remainder is 2400; destination savings: the opening stock is
-  // 1300 and the remainder is 1400. Either way the pot lands at 1600
-  // (was 600) with every cost still debited exactly once; the second
-  // period's own remainder has not swept yet — it lands 2026-11-13.
+  // Destination chequing: the gift lands in Bills, so 2400 is credited
+  // across the seam (the current period's 1000 boundary credit plus the
+  // first period's 1400 remainder, its opening net of the credit);
+  // destination savings: the opening stock is 1300 and the remainder is
+  // 1400. Either way the pot lands at 1600 (was 600) with every cost
+  // still debited exactly once; the second period's own remainder has
+  // not swept yet — it lands 2026-11-13.
   assert.equal(p.status, 'ready', p.reason); assert.equal(p.stock, 1600);
   assert.equal(p.projectedDraws, 1100, 'the annual bill and both goal costs are each debited exactly once');
   if (destination === 'savings') assert.equal(130000 + 140000 - 110000, 160000,
     'opening stock incl. the gift + the first period full remainder - the three costs, each once');
   else assert.equal(30000 + 240000 - 110000, 160000,
-    'opening stock + the first period full remainder (gift included via Bills) - the three costs, each once');
+    'opening stock + the 2400 credited across the seam (1000 current credit + 1400 first remainder) - the three costs, each once');
   assert.equal(a.savingsFunding.period.alreadySavedIncome, destination === 'savings' ? 1000 : 0);
 });
 test('a future annual goal already deducted by Budget is not subtracted a second time', () => {
@@ -495,6 +497,13 @@ test('a future annual goal already deducted by Budget is not subtracted a second
   // 400 receipt), so the second close signs -120 (was -200). The second
   // period's remainder (380) then sweeps in full and the third close is
   // 260 (was 200): no dollar is counted twice and none is invented.
+  // S1 repair (Systems Review 2026-10-15, PR #620 blocker 1): the 260
+  // above was itself the defect — Budget published the first sweep as 0
+  // (only Savings restored the overlap, capped at 480) and chained the
+  // second period from a -20 opening, publishing 380. Budget now
+  // restores the goal deduction inside its own remainder and publishes
+  // sweeps of 480 and 400, which Savings credits exactly: the third
+  // close is 280 with the paired operating position at 0.
   const first = closing(a, '2026-10-16');
   assert.equal(first.status, 'unavailable'); assert.equal(first.stock, null);
   assert.equal(first.diagnostics.signedSavings, -200);
@@ -502,9 +511,11 @@ test('a future annual goal already deducted by Budget is not subtracted a second
   assert.equal(second.status, 'unavailable'); assert.equal(second.stock, null);
   assert.equal(second.diagnostics.signedSavings, -120);
   const third = closing(a, '2026-11-13');
-  assert.equal(third.status, 'ready', third.reason); assert.equal(third.stock, 260);
+  assert.equal(third.status, 'ready', third.reason); assert.equal(third.stock, 280);
+  assert.equal(third.projectedContributions, 880, 'the two published sweeps (480 + 400), each credited once');
+  assert.equal(third.operatingCash, 0, 'the paired Bills operating position is fully explained');
   assert.equal(third.projectedDraws, 900);
-  assert.equal(30000 + 48000 + 38000 - 50000 - 40000, 26000);
+  assert.equal(30000 + 48000 + 40000 - 50000 - 40000, 28000);
 });
 test('an unavailable native current-tail path is never overridden by schedule funding-gap acceptance', () => {
   const x = input(); x.plan.commitments[0].amount = 4000;

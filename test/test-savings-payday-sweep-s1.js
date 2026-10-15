@@ -91,22 +91,46 @@ test('negative prior remainder sweeps nothing, stays visible, and Savings is not
 });
 
 test('other chequing accounts are excluded from the sweep and unchanged by it', () => {
-  // The anchor plan carries a second chequing row (chequing-b). The
-  // published sweep and the Budget openings are computed from the Bills
-  // account chain only: they are identical whether chequing-b holds 0
-  // or 777, and no figure credits the other account to Savings. (An
-  // unevidenced 777 also fails the current-cash reconciliation and the
-  // closes withhold — the money is never treated as sweepable Bills
-  // cash, which is the same exclusion seen from the evidence side.)
+  // Unreconciled shape: the second chequing row (chequing-b) is raised
+  // to 777 WITHOUT reconciling the recorded payday opening (80). The
+  // starting-cash evidence then contradicts itself about the opening's
+  // account split, so the Bills-only basis cannot be established: the
+  // Budget chain goes unknown and the closes withhold, rather than
+  // sweeping pooled cash or inventing a split. The other account
+  // itself is never mutated. (The reconciled shape is pinned by the
+  // next test.)
   const base = advice(input());
   const x = input(); x.plan.startingCash.breakdown[1].value = 777;
   const other = advice(x);
-  for (const start of ['2026-10-16', '2026-10-30', '2026-11-13']) {
-    assert.equal(viewAt(other, start).paydaySweep, viewAt(base, start).paydaySweep, 'sweep unchanged at ' + start);
-    assert.equal(viewAt(other, start).opening, viewAt(base, start).opening, 'Budget opening unchanged at ' + start);
-  }
-  assert.equal(viewAt(base, '2026-10-16').paydaySweep, 1080, 'the sweep is the Bills remainder only');
+  assert.equal(viewAt(base, '2026-10-16').paydaySweep, 1080, 'the control sweep is the Bills remainder only');
+  assert.equal(viewAt(other, '2026-10-16').opening, null,
+    'the Bills share of the pooled opening cannot be established from contradictory evidence');
+  assert.equal(viewAt(other, '2026-10-16').paydaySweep, null, 'no sweep is published on an unestablished basis');
+  assert.equal(closing(other, '2026-10-30').status, 'unavailable', 'the closes withhold on the same evidence');
   assert.equal(x.plan.startingCash.breakdown[1].value, 777, 'the other account is not mutated');
+});
+
+test('reconciled other-chequing cash never enters the sweep (Bills-only basis)', () => {
+  // Systems Review 2026-10-15, PR #620 blocker 2: chequing-b holds 777
+  // and the household payday snapshot opening is raised by the same 777
+  // (80 → 857), keeping the historical opening and current cash
+  // reconciled. The starting-cash breakdown establishes the split, so
+  // the sweep basis is Bills-only: every published figure equals the
+  // control (chequing-b 0) exactly — none of the excluded account's
+  // cash is credited to Savings. (Pre-repair this shape swept 1857 and
+  // credited 1857, stock 1976: the pooled opening fed the sweep.)
+  const control = advice(input());
+  const x = input();
+  x.plan.startingCash.breakdown[1].value = 777;
+  x.plan.opening.paydaySnapshot.opening += 777;
+  const a = advice(x);
+  for (const start of ['2026-10-16', '2026-10-30', '2026-11-13']) {
+    assert.equal(viewAt(a, start).opening, viewAt(control, start).opening, 'Budget opening unchanged at ' + start);
+    assert.equal(viewAt(a, start).paydaySweep, viewAt(control, start).paydaySweep, 'sweep unchanged at ' + start);
+  }
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080, 'the sweep is the Bills remainder only');
+  assert.equal(closing(a, '2026-10-30').contribution, 1080, 'Savings credits the Bills remainder only');
+  assert.equal(closing(a, '2026-10-30').stock, 1199, 'identical to the control — none of the 777 is credited');
 });
 
 test('the new paycheck is excluded from its own payday sweep', () => {
@@ -122,10 +146,25 @@ test('the new paycheck is excluded from its own payday sweep', () => {
 });
 
 test('missing evidence stays unknown: no close publishes an invented sweep', () => {
+  // Systems Review 2026-10-15, PR #620 blocker 3: a bill whose amount is
+  // unavailable lands inside the 2026-10-16 period. Its load is unknown
+  // — not zero — so that period's published sweep goes unknown and the
+  // next Budget opening goes unknown with it, while Savings withholds
+  // as before. (Pre-repair the period published periodBillLoad 0 and
+  // paydaySweep 1080 and the next opening was a known 0.)
   const unknownBill = input();
   unknownBill.plan.bills = [{ id: 'unknown', frequency: 'once', date: '2026-10-20', amount: null }];
-  const p = closing(advice(unknownBill), '2026-10-30');
+  const ua = advice(unknownBill);
+  const p = closing(ua, '2026-10-30');
   assert.equal(p.status, 'unavailable'); assert.equal(p.stock, null);
+  assert.equal(viewAt(ua, '2026-10-16').periodBillLoad, null, 'the bill load is unknown, not a fabricated zero');
+  assert.equal(viewAt(ua, '2026-10-16').paydaySweep, null, 'the sweep goes unknown when the bill load is unknown');
+  assert.equal(viewAt(ua, '2026-10-30').opening, null, 'the next opening goes unknown with it — never a known zero');
+  // Genuine-zero control: with no bills at all the same period's load
+  // is a known zero and its sweep stays known.
+  const known = advice(input());
+  assert.equal(viewAt(known, '2026-10-16').periodBillLoad, 0, 'a genuinely empty load is a known zero');
+  assert.equal(viewAt(known, '2026-10-16').paydaySweep, 1080, 'the genuine-zero sweep stays known');
   const noReceipts = input(); delete noReceipts.opts.currentPeriodActuals;
   const q = closing(advice(noReceipts), '2026-10-30');
   assert.equal(q.status, 'unavailable'); assert.equal(q.stock, null);
@@ -156,19 +195,62 @@ test('goals and the sweep are each counted once', () => {
   assert.equal(last.projectedDraws, 1500);
   assert.equal(last.stock, 699);
   assert.equal(11900 + 208000 - 150000, 69900, 'opening stock + two sweeps - the one goal cost');
-  // Annual-goal shape: Budget already deducted the 500 goal bill inside
-  // the first period's remainder, and the Savings ledger debits it as a
-  // goal cost — the overlap restoration returns the deduction to the
-  // sweep (bounded by the cash that exists, 480), so the cost is paid
-  // once across both ledgers and the pot conserves to the cent.
+  // Annual-goal shape: the goal bill sits inside the first period's
+  // Budget bill load, and the Savings ledger debits it as a goal cost.
+  // S1 repair (Systems Review 2026-10-15, PR #620 blocker 1): Budget
+  // restores the deducted goal bill inside its own published remainder,
+  // so the published sweeps are 480 and 400 and Savings credits exactly
+  // those figures — the cost is paid once across both ledgers, the
+  // paired Bills operating position closes at 0, and no residual
+  // persists. Independent dated ledger: Bills 80 + Savings 300 +
+  // receipts 400 + 400 − goal costs 500 + 400 = 280, ending Bills 0 /
+  // Savings 280. (Pre-repair pins — contributions 860, stock 260,
+  // operating 20 — encoded the defect: Budget clamped its remainder to
+  // 380 on the broken chain and the 20 residual was unexplained.)
   const y = ownerModel(); y.plan.commitments.shift();
   y.plan.bills = [{ id: 'a', label: 'Invented annual goal', frequency: 'yearly', month: 10, day: 21,
     firstDue: '2026-10-21', amount: 500, confidence: 'confirmed', jointCash: false }];
-  const third = closing(advice(y), '2026-11-13');
+  const ya = advice(y);
+  const third = closing(ya, '2026-11-13');
   assert.equal(third.projectedDraws, 900, 'the annual goal (500) and commitment b (400) are each debited once');
-  assert.equal(third.projectedContributions, 860, 'the two credited sweeps (480 + 380), each once');
-  assert.equal(third.stock, 260);
-  assert.equal(30000 + 48000 + 38000 - 50000 - 40000, 26000);
+  assert.equal(third.projectedContributions, 880, 'the two credited sweeps (480 + 400), each once');
+  assert.equal(third.stock, 280);
+  assert.equal(third.operatingCash, 0, 'the paired Bills operating position is fully explained — no residual');
+  assert.equal(30000 + 48000 + 40000 - 50000 - 40000, 28000);
+  assert.equal(viewAt(ya, '2026-10-16').paydaySweep, 480, 'Budget publishes the overlap-restored sweep');
+  assert.equal(viewAt(ya, '2026-10-30').paydaySweep, 400);
+  assert.equal(viewAt(ya, '2026-10-30').opening, 0, 'the next Budget opening consumes the same 480 sweep');
+});
+
+test('the current-period credit and the first future sweep are the same money, counted once', () => {
+  // Systems Review 2026-10-15, PR #620 blocker 1b — the current-tail
+  // shape from the future-closing suite: a reconciled 200 receipt
+  // landed in the Bills account during the current period. The closing
+  // projection credits that 200 at the first payday (the current
+  // period's boundary credit); the first future period therefore opens
+  // on the remainder net of the credit (280 − 200 = 80) and publishes
+  // the sweep Savings will credit at the next payday (80 + 1000 =
+  // 1080) — the published sweep and the accepted credit are the same
+  // number, and the 200 is counted once across the two boundaries.
+  // (Pre-repair the period opened on the full 280, published a 1280
+  // sweep, and Savings accepted only 1080 of it.)
+  const x = input();
+  x.plan.income.push({ id: 'current-gift', label: 'Invented operating receipt', frequency: 'once',
+    date: '2026-10-04', amount: 200, confidence: 'confirmed' });
+  x.plan.startingCash.breakdown[0].value += 200;
+  x.opts.currentPeriodActuals.representedActuals.push({ id: 'current-gift', date: '2026-10-04', actual: 200, transactionId: 'gift-receipt' });
+  x.opts.currentPeriodActuals.transactions.push({ id: 'gift-receipt', date: '2026-10-04', amount: -200,
+    currency: 'CAD', pending: false, isIncome: true, incomeId: 'current-gift', savingsPostingEvidence: 'posted',
+    atlasAccountId: 'chequing-a', accountRole: 'household-cash', displayedPayee: 'Invented operating receipt' });
+  const a = advice(x);
+  assert.equal(closing(a, '2026-10-16').contribution, 200, 'the current-period credit lands at the first payday');
+  assert.equal(viewAt(a, '2026-10-16').opening, 80, 'the first future opening is the current remainder net of that credit');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080, 'the published sweep is the remainder that will actually move');
+  assert.equal(closing(a, '2026-10-30').contribution, 1080, 'Savings credits exactly the published sweep');
+  assert.equal(closing(a, '2026-10-30').stock, 1399);
+  assert.equal(11900 + 20000 + 108000, 139900, 'opening stock + the credit + the sweep, each counted once');
+  assert.equal(closing(a, '2026-11-13').stock, 2399, 'the whole household position lands in Savings by the last close');
+  assert.equal(closing(a, '2026-11-13').operatingCash, 0, 'no unexplained residual remains in Bills');
 });
 
 test('Budget and Savings agree across multiple future periods', () => {
