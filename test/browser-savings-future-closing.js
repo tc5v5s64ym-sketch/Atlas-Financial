@@ -132,6 +132,24 @@ async function step(page, direction) {
     if (mode === 'fallback') { assert.match(inventory, /600\.00/); assert.doesNotMatch(await dialog.innerText(), /Deficit coverage/,
       'no Deficit coverage line exists anymore: Savings never covers a routine Bills deficit'); }
     if (mode === 'fallback-short') { assert.match(inventory, /150\.00/); assert.doesNotMatch(inventory, /Funding gap/); }
+    // Systems Review 2026-10-14 (PR #616 finding 3): the ready Savings
+    // surfaces must print the Forecast-owned signed Bills position and, when
+    // one exists, the dated uncovered gap — a generic statement that
+    // deficits are shown is not sufficient. The deficit modes' anchor close
+    // is ready with Bills at -180 and a 200 gap dated 2026-11-03 (pinned at
+    // the packet level in test-savings-sweep-review-regressions.js).
+    const infoText = await dialog.locator('[data-budget-savings-info]').innerText();
+    if (mode === 'carry' || mode === 'fallback' || mode === 'fallback-short') {
+      assert.match(second, /Bills at period close/); assert.match(second, /180\.00/);
+      assert.match(second, /Bills shortfall of/); assert.match(second, /200\.00/);
+      assert.match(infoText, /Bills at period close/); assert.match(infoText, /180\.00/);
+      assert.match(infoText, /Uncovered Bills gap/); assert.match(infoText, /200\.00/);
+    }
+    if (mode === 'ready') {
+      assert.match(anchor, /Bills at period close/);
+      assert.match(infoText, /Bills at period close/); assert.match(infoText, /80\.00/);
+      assert.doesNotMatch(infoText, /Uncovered Bills gap/);
+    }
     const trust = await page.evaluate(() => {
       const d = App.data, advice = Forecast.recommend(d.plan, d.meta.asOf,
         { ...d.plan.defaults, ...d.liveOverlay, weeklyVariable: 0, debts: d.debts || [] });

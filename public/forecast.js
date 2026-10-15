@@ -3643,6 +3643,9 @@
         && c.cashBasis === 'opening-savings-plus-eligible-surplus-minus-goal-costs'
         && [c.stock, c.contribution, c.unallocated, c.projectedContributions, c.projectedDraws, c.projectedDeficitCoverage].every(n => savingsCents(n) != null)
         && savingsCents(c.operatingCash, true) != null && Array.isArray(c.allocations)
+        && (c.gap == null || savingsDate(c.gap.date) && savingsCents(c.gap.shortBy) != null
+          && savingsCents(c.gap.signedOperatingCash, true) != null && savingsCents(c.gap.cashFloor, true) != null
+          && c.gap.trust === 'estimated')
         && c.items.every(i => typeof i.key === 'string' && savingsCents(i.forecastSaved) != null
           && savingsCents(i.needed) != null && i.forecastSaved <= i.needed && i.saved === null)
         && new Set(c.items.map(i => i.key)).size === c.items.length
@@ -19820,6 +19823,10 @@
     };
     let path = walk(transfers);
     if (!path) return hold('The Savings ledger cannot conserve supported cash cents.');
+    // Pot state at the previous period's close (the opening stock before the
+    // first period): the baseline for how much of an arrived sweep a due goal
+    // has already consumed (Systems Review 2026-10-14, PR #616 finding 2).
+    let priorClose = { pot: stock, draws: 0 };
     const ordered = [...periods].sort((a,b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
     for (const [index, period] of ordered.entries()) {
       if (period.end > through) continue;
@@ -19848,6 +19855,16 @@
       if (!Number.isSafeInteger(eligible)) return hold('A native period surplus is unavailable.');
       eligible = Math.max(0, eligible);
       if (!Number.isSafeInteger(eligible)) return hold('Projected contribution cents exceed exact arithmetic.');
+      // Systems Review 2026-10-14 (PR #616): a positive period net is not by
+      // itself sweepable cash. The sweep is bounded by the Bills cash that
+      // actually exists at this period's close (the walk's operating
+      // position before this period's own sweep is scheduled): a carried
+      // deficit absorbs later net before any of it can move. No future-needs
+      // retention is applied on top of that bound.
+      const preClose = path.daily.find(d => d.date === period.end);
+      if (!preClose) return hold('The selected native closing date is unavailable.');
+      eligible = Math.min(eligible, Math.max(0, preClose.operating));
+      if (!Number.isSafeInteger(eligible)) return hold('Projected contribution cents exceed exact arithmetic.');
       // The full eligible surplus sweeps on the next period's payday (its
       // start date), never at this period's own close and never reduced by a
       // later period's operating need. Future income is never used before it
@@ -19858,6 +19875,7 @@
       if (!path) return hold('The Savings ledger cannot conserve supported cash cents.');
       const closing = path.daily.find(d => d.date === period.end);
       if (!closing) return hold('The selected native closing date is unavailable.');
+      const previousClose = priorClose; priorClose = closing;
       const arrived = transfers.get(period.start) || 0;
       const nativeClosing = savingsCents(days.find(d => d.date === period.end).balance, true);
       const diagnostics = { signedSavings: closing.pot / 100, operatingResidual: closing.operating / 100,
@@ -19885,8 +19903,15 @@
         savedTrust: 'unknown', forecastTrust: 'estimated' }));
       const costs = active.map(i => ({ id: i.key, label: i.label, baseRequirement: savingsCents(i.needed) }));
       const beforeAddition = new Map(costs.map(c => [c.id, 0]));
-      serialFundingAllocations(costs, beforeAddition, closing.pot - arrived);
-      const allocations = serialFundingAllocations(costs, beforeAddition, arrived).allocations;
+      // Only the UNSPENT sweep can be attributed to remaining goals: draws
+      // in this period consume prior funds first, and any draw beyond them
+      // (including filling a prior negative pot) consumes the arrived sweep
+      // before it can contribute. The non-sweep remainder at the close is
+      // therefore max(0, prior pot - period draws) and never negative.
+      const periodDraws = closing.draws - previousClose.draws;
+      const unspent = Math.max(0, Math.min(arrived, closing.pot - Math.max(0, previousClose.pot - periodDraws)));
+      serialFundingAllocations(costs, beforeAddition, closing.pot - unspent);
+      const allocations = serialFundingAllocations(costs, beforeAddition, unspent).allocations;
       const rows = funding.rows.filter(r => r.members.some(key => amounts.has(key))).map(r => {
         const members = r.members.filter(key => amounts.has(key));
         return { ...r, members, label: members.length === 1 ? active.find(i => i.key === members[0]).label : r.label,

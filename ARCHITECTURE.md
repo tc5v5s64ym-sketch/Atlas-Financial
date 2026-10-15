@@ -865,7 +865,10 @@ deadline-minimum scheduler remains that scheduler; it does not supply this
 surplus scenario. Positive period surplus moves location on the following
 payday: a period's eligible surplus is swept into projected Savings at the
 start of the next period, in full, and the new period's own income is never
-part of that sweep. Native
+part of that sweep. Eligibility is bounded by the Bills cash that actually
+exists at the period's close: a positive period net first absorbs any
+carried Bills deficit, and only cash that remains can move (Systems Review
+2026-10-14 — this bound is availability, not future-needs retention). Native
 goal expenses occur once and leave the projected queue. Routine deficits stay
 in Bills and are published explicitly on the close (signed operating cash
 plus the period's first floor breach); projected Savings is never drawn to
