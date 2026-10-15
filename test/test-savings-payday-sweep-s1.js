@@ -442,26 +442,18 @@ test('incomplete coverage with a current transfer withholds the dependent sweep 
   assert.equal(viewAt(a, '2026-10-30').opening, null);
 });
 
-test('control: incomplete coverage alone, with no transfer in evidence, leaves the recorded Budget basis standing', () => {
-  // The precise limit of N3: coverage incomplete by itself does not
-  // prove an amount error and must not null every Budget figure — the
-  // recorded historical opening remains valid. Savings withholds its
-  // own figures; Budget's recorded basis is untouched.
+test('incomplete coverage preserves the current opening but withholds the future sweep', () => {
+  // Owner simplification, 2026-10-15: An unchanged snapshot is not a complete, fresh reconciliation of current Bills.
   const x = input();
   x.opts.currentPeriodActuals.transactionCoverage = { complete: false };
   const a = advice(x);
   assert.equal(a.savingsFunding.status, 'unavailable', 'Savings withholds its own figures');
-  assert.equal(viewAt(a, '2026-10-16').opening, 80, 'the recorded opening remains valid');
-  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'dependent opening stays unknown');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'dependent paydaySweep stays unknown');
 });
 
-test('control: a qualified bank reconstruction establishes the opening even with the original Bills row missing', () => {
-  // Supplemental (review 5532991155, reconstruction control). Bank
-  // EOD anchor accounts 60 + 20 plus a completeness-proven later
-  // Bills credit of 5 reconstruct an 85 opening through the #618
-  // authority, even though the original Bills row is null and the
-  // snapshot opening is missing. Blanket null-rejection would discard
-  // this valid separate authority; the N2 hold must not fire.
+test('a bank reconstruction preserves its opening but does not establish a Bills-only sweep', () => {
+  // Owner simplification, 2026-10-15: The pooled #618 opening remains 85. The simplified sweep contract requires current Bills evidence.
   const x = input();
   x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value = null;
   x.plan.opening.paydaySnapshot.opening = null;
@@ -480,8 +472,8 @@ test('control: a qualified bank reconstruction establishes the opening even with
   };
   const a = advice(x);
   assert.equal(viewAt(a, '2026-10-02').opening, 85, 'EOD 60 + 20 plus the proven later credit 5');
-  assert.equal(viewAt(a, '2026-10-16').opening, 85);
-  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1085);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'dependent opening stays unknown');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'dependent paydaySweep stays unknown');
 });
 
 // ---- Repair round 3 (review 5535404477): the remaining N2
@@ -575,14 +567,12 @@ test('an EOD anchor with absent gap coverage establishes no opening: no pooled-w
   assert.equal(viewAt(a, '2026-10-30').opening, null);
 });
 
-test('control: the complete EOD reconstruction still establishes the opening (85) and sweep (1085)', () => {
-  // Paired control for P1-b (same shape as the committed
-  // reconstruction control above): anchor plus completeness-proven
-  // gap qualifies the reconstruction in full.
+test('a complete EOD reconstruction is still an opening, not Bills sweep evidence', () => {
+  // Owner simplification, 2026-10-15: The #618 authority is unchanged; reconstructed pooled cash is no longer a sweep exemption.
   const a = advice(eodFixture('complete'));
   assert.equal(viewAt(a, '2026-10-02').opening, 85, 'EOD 60 + 20 plus the proven later credit 5');
-  assert.equal(viewAt(a, '2026-10-16').opening, 85);
-  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1085);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'dependent opening stays unknown');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'dependent paydaySweep stays unknown');
 });
 
 function reserveTransfer(x, amount, reference) {
@@ -735,23 +725,20 @@ test('an absent scalar opening establishes no zero: the chain withholds', () => 
   assert.equal(viewAt(a, '2026-10-30').opening, null);
 });
 
-test('control: a finite dated scalar opening (80) still publishes 80/1080 with no breakdown rows', () => {
-  // The dated scalar family is a legitimate basis when the scalar is
-  // genuinely recorded (the complete-gap walk, the mid-period
-  // cutover opening, and the dated-opening suites all stand on it).
+test('a scalar opening of 80 is preserved but has no qualified Bills sweep', () => {
+  // Owner simplification, 2026-10-15: A dated scalar supplies the incumbent opening, not a current account-specific Bills observation.
   const a = advice(scalarFixture(80, true));
   assert.equal(viewAt(a, '2026-10-02').opening, 80);
-  assert.equal(viewAt(a, '2026-10-16').opening, 80);
-  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'dependent opening stays unknown');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'dependent paydaySweep stays unknown');
 });
 
-test('control: a recorded zero scalar opening still publishes 0/1000 with no breakdown rows', () => {
-  // A numeric 0 is a recorded figure, not an unavailable scalar:
-  // trusted $0 stays $0.
+test('a scalar zero is preserved but does not establish zero Bills', () => {
+  // Owner simplification, 2026-10-15: A recorded pooled zero is valid for its opening display; it cannot establish the Bills account split.
   const a = advice(scalarFixture(0, true));
   assert.equal(viewAt(a, '2026-10-02').opening, 0);
-  assert.equal(viewAt(a, '2026-10-16').opening, 0);
-  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1000);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'dependent opening stays unknown');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'dependent paydaySweep stays unknown');
 });
 
 // ---------------------------------------------------------------------
@@ -933,23 +920,19 @@ test('P1-A: a missing Bills leg with an absent Bills row withholds the dependent
   assert.equal(viewAt(a, '2026-10-30').opening, null);
 });
 
-test('P1-A control: no snapshot and a known Bills stock of 30 publishes 30/1030 (basis is the stock itself)', () => {
-  // Review 5538517077, P1-A control (A4). With no snapshot at all the
-  // basis is the current stock itself (cutover-opening): reconciled
-  // by construction, so the missing leg cannot strand anything — the
-  // physically supported 1030 publishes even while Savings withholds.
+test('P1-A: current Bills30 without a boundary basis withholds the sweep', () => {
+  // Owner simplification, 2026-10-15: Midperiod stock alone cannot establish the simplified payday-boundary contract.
   const a = advice(missingLegAA101(x => { delete x.plan.opening.paydaySnapshot; }));
   assert.equal(a.savingsFunding.status, 'unavailable', 'Savings withholds its own figures');
-  assert.equal(viewAt(a, '2026-10-16').opening, 30);
-  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1030);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'dependent opening stays unknown');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'dependent paydaySweep stays unknown');
 });
 
-test('P1-A control: a null snapshot opening and a known Bills stock of 30 publishes 30/1030', () => {
-  // Review 5538517077, P1-A control (A5). Same as A4 with the
-  // snapshot record present but its opening null.
+test('P1-A: current Bills30 with a null boundary basis withholds the sweep', () => {
+  // Owner simplification, 2026-10-15: A null snapshot cannot establish reconciliation even when current Bills has a number.
   const a = advice(missingLegAA101(x => { x.plan.opening.paydaySnapshot.opening = null; }));
-  assert.equal(viewAt(a, '2026-10-16').opening, 30);
-  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1030);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'dependent opening stays unknown');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'dependent paydaySweep stays unknown');
 });
 
 function reversePairAA202(x, { applyBalances = true, billsLeg = true } = {}) {
@@ -1069,30 +1052,15 @@ test('N-ORD-1: ordinary spending between observations qualifies the basis (publi
   assert.equal(viewAt(a, '2026-10-30').opening, 0);
 });
 
-test('N-ORD-2: ordinary income between observations qualifies the basis (the walk, not the qualification, prices publication)', () => {
-  // Design v2 §6.8 N-ORD-2 (probe a2/a2c) — ORACLE LEDGER, stated in
-  // full because the expected figures are not the stock figures:
-  // snapshot B = 80 at the payday-morning cutoff. Interval flows on
-  // Bills: one posted one-off inflow of 30 (packet -30; NOT a plan
-  // receipt and not represented) plus one unpaired reserve credit
-  // with no Bills leg. Physical stock S = 110. The identity is over
-  // evidenced flows: E[S] = 80 + 30 = 110 = S — reconciled, so the
-  // basis is QUALIFIED and the unpaired credit is exempt. Publication
-  // stands on the waterfall walk: the walk prices the period from
-  // the basis plus its MODELED receipts, and this inflow is not one
-  // of them (repricing the walk for unconsumed inflows is the walk's
-  // modelling domain, design v2 §8(ii)) — so the first future
-  // opening is 80 and its sweep is 80 + the period's own 1000
-  // receipt = 1080, exactly the no-leg control's figures (a2c, where
-  // the same unmodeled inflow likewise leaves the walk at 80). The
-  // 30 is neither swept early nor lost to a hold: it stays in Bills
-  // inside the walk's own accounting, identically in both shapes.
+test('N-ORD-2: all qualified Bills inflow reaches the shared sweep', () => {
+  // Bills80 + observed inflow30 = Bills110. The next receipt1000 makes
+  // the sweep1110. The former 80/1080 expectation omitted real Bills cash.
   const control = advice(ordinaryInflow(input(), 30));
   const a = advice(ordinaryInflow(rsvUnpairedCredit(input()), 30));
-  assert.equal(viewAt(control, '2026-10-16').opening, 80, 'control: the unmodeled inflow does not reprice the walk');
-  assert.equal(viewAt(control, '2026-10-16').paydaySweep, 1080);
-  assert.equal(viewAt(a, '2026-10-16').opening, 80, 'qualified basis publishes the control figures — no false hold');
-  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080);
+  assert.equal(viewAt(control, '2026-10-16').opening, 110);
+  assert.equal(viewAt(control, '2026-10-16').paydaySweep, 1110);
+  assert.equal(viewAt(a, '2026-10-16').opening, 110);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1110);
   assert.equal(viewAt(a, '2026-10-30').opening, 0);
 });
 
@@ -1120,31 +1088,17 @@ test('N-ORD-3: the same explained difference withholds when interval coverage is
   assert.equal(viewAt(shortWindow, '2026-10-16').paydaySweep, null);
 });
 
-test('N-EMB-1: a qualified inbound movement embedded in a current-stock basis is never added twice', () => {
-  // Design v2 §6.8 N-EMB-1 (probe b1). The AA202 pair with the
-  // snapshot deleted: the basis is the current stock itself
-  // (cutover-opening, B = 90), which already contains the +10 — the
-  // interval is empty and the state is reconciled by construction.
-  // Publication stands on the embedded basis: 90 / 1090. A seed
-  // addition would publish 100 / 1100 — the same 10 counted twice.
+test('N-EMB-1: a midperiod inbound needs a boundary basis before publication', () => {
+  // Owner simplification, 2026-10-15: No snapshot or direct payday observation: withhold instead of inferring an earlier boundary.
   const b = advice((() => { const x = reversePairAA202(input(), {}); delete x.plan.opening.paydaySnapshot; return x; })());
   assert.equal(viewAt(b, '2026-10-02').opening, 90, 'the current-stock basis already contains the +10');
-  assert.equal(viewAt(b, '2026-10-16').opening, 90, 'never 100: no seed addition for an embedded movement');
-  assert.equal(viewAt(b, '2026-10-16').paydaySweep, 1090, 'never 1100');
-  assert.equal(viewAt(b, '2026-10-30').opening, 0);
+  assert.equal(viewAt(b, '2026-10-16').opening, null, 'no qualified boundary basis');
+  assert.equal(viewAt(b, '2026-10-16').paydaySweep, null);
+  assert.equal(viewAt(b, '2026-10-30').opening, null);
 });
 
-test('N-EMB-2: a gap-embedded inbound effect inside a reconstruction basis is never added twice', () => {
-  // Design v2 §6.8 N-EMB-2 (probe b2) — ORACLE LEDGER: the bank EOD
-  // anchor at 2026-09-30 records chequing-a 60 + chequing-b 20 = 80.
-  // The completeness-proven gap (2026-09-30 -> 2026-10-02) carries an
-  // ordinary Bills credit of 5 AND an inbound Bills effect of 50, so
-  // the #618 reconstruction basis at the 2026-10-02 morning is
-  // B = 60 + 20 + 5 + 50 = 135 with the +50 already INSIDE it. The
-  // packet interval [10-02, asOf] contains no transfer legs, so no
-  // seed adjustment may be computed from gap evidence: opening 135,
-  // sweep 135 + 1000 = 1135. Adding the +50 at the seed would publish
-  // 185 / 1185 — the same money twice.
+test('N-EMB-2: gap reconstruction does not authorize a Bills-only sweep', () => {
+  // Owner simplification, 2026-10-15: The pooled reconstruction stays valid as an opening; the simplified contract withholds its dependent sweep.
   const recon = extraGap => {
     const x = input();
     x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value = null;
@@ -1165,22 +1119,17 @@ test('N-EMB-2: a gap-embedded inbound effect inside a reconstruction basis is ne
     return x;
   };
   const control = advice(recon());
-  assert.equal(viewAt(control, '2026-10-16').opening, 85, 'control: anchor 80 + gap credit 5');
-  assert.equal(viewAt(control, '2026-10-16').paydaySweep, 1085);
+  assert.equal(viewAt(control, '2026-10-16').opening, null, 'dependent opening stays unknown');
+  assert.equal(viewAt(control, '2026-10-16').paydaySweep, null, 'dependent paydaySweep stays unknown');
   const a = advice(recon([{ id: 'invented-gap-inbound', date: '2026-10-01', amount: 50,
     currency: 'CAD', atlasAccountId: 'chequing-a', accountRole: 'household-cash' }]));
   assert.equal(viewAt(a, '2026-10-02').opening, 135, 'the +50 is inside the reconstructed basis');
-  assert.equal(viewAt(a, '2026-10-16').opening, 135, 'never 185: no seed addition for a gap-embedded effect');
-  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1135, 'never 1185');
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'dependent opening stays unknown');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'dependent paydaySweep stays unknown');
 });
 
-test('N-CUT-1: a qualified pair dated the next payday belongs to the next window (current boundary unchanged)', () => {
-  // Design v2 §6.8 N-CUT-1 (probe f1). Contents, not labels: the pair
-  // is dated 2026-10-16 — after asOf and outside the basis interval
-  // [2026-10-02, 2026-10-07] — and balances were NOT applied, so no
-  // part of its 50 is inside the current basis, the interval flows,
-  // or the current stock. The current boundary publishes its own
-  // figures unchanged: opening 80, sweep 1080.
+test('N-CUT-1: future-dated posted evidence cannot qualify the current observation', () => {
+  // Owner simplification, 2026-10-15: A packet claiming a future transfer is already posted conflicts with its current observation cutoff.
   const x = input();
   x.opts.currentPeriodActuals.transactions.push(
     { id: 'AA404-out', date: '2026-10-16', amount: 50, pending: false, currency: 'CAD',
@@ -1190,9 +1139,9 @@ test('N-CUT-1: a qualified pair dated the next payday belongs to the next window
       savingsPostingEvidence: 'posted', atlasAccountId: 'savings', accountRole: 'household-reserve',
       kindHint: 'transfer', originalMerchant: 'AA404 TFR-FR Invented operating', excludeFromTotals: true });
   const a = advice(x);
-  assert.equal(viewAt(a, '2026-10-16').opening, 80, 'the next-payday pair is not in the current basis');
-  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080, 'no part of the future 50 is swept early');
-  assert.equal(viewAt(a, '2026-10-30').opening, 0);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'dependent opening stays unknown');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'dependent paydaySweep stays unknown');
+  assert.equal(viewAt(a, '2026-10-30').opening, null, 'dependent opening stays unknown');
 });
 
 test('N-CUT-2: a qualified pair dated the boundary date is inside the interval (pre-flow morning cutoff)', () => {
@@ -1361,20 +1310,13 @@ test('N-NEG-2: an unexplained negative stock withholds (known/mismatched)', () =
   assert.equal(viewAt(a, '2026-10-16').paydaySweep, null);
 });
 
-test('embedded outbound: a qualified transfer already inside a current-stock basis is never deducted twice', () => {
-  // Atlas acceptance condition 1 (symmetric embedding). The AA101
-  // pair with balances applied (Bills 80 -> 30, Savings 119 -> 169)
-  // and the snapshot deleted: the basis is the current stock itself
-  // (cutover-opening, B = 30), which ALREADY reflects the outbound
-  // 50. The existing boundary deduction must not deduct it again:
-  // publication is opening 30 / sweep 1030 — never opening -20 /
-  // sweep 980 (the 50 removed twice), and never withheld merely
-  // because the funding bridge needs a snapshot basis of its own.
+test('embedded outbound: midperiod stock without a boundary withholds; it never deducts twice', () => {
+  // Owner simplification, 2026-10-15: The 30 current display remains. A future amount needs a direct payday basis or full reconciliation.
   const x = input(); allocFx.transfer(x, 50, 'AA101', 'savings', '2026-10-05');
   delete x.plan.opening.paydaySnapshot;
   const a = advice(x);
   assert.equal(viewAt(a, '2026-10-02').opening, 30, 'the current-stock basis already contains the outbound 50');
-  assert.equal(viewAt(a, '2026-10-16').opening, 30, 'never -20: the embedded transfer is not deducted again');
-  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1030, 'never 980');
-  assert.equal(viewAt(a, '2026-10-30').opening, 0);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'dependent opening stays unknown');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'dependent paydaySweep stays unknown');
+  assert.equal(viewAt(a, '2026-10-30').opening, null, 'dependent opening stays unknown');
 });

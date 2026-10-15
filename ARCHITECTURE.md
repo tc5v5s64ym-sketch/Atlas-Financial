@@ -931,16 +931,26 @@ Budget opening consumes exactly the published sweep (the next period
 opens from the remainder minus the sweep), and `savingsClosingProjection`
 credits the same figure, so the two publications cannot disagree; a
 negative remainder sweeps zero and carries into the next opening in full,
-staying visible. The ledger's goal-bill overlap restoration and the
-closing walk's physical-cash bound still apply on top of the published
-sweep: a goal bill Budget already deducted inside the remainder is
-restored to the sweep and debited once as a goal cost, and no more cash
-can be credited than exists at the close. The new period's own paycheck
-and other chequing accounts are never part of a period's sweep. When a
-period's cash leftover is unknown no sweep is published for it and the
-closing projection keeps its prior fallback for that close; the current
-period's receipt-qualified entitlement path is unchanged, and no current-
-period prior close is inferred from a later observation. This supersedes
+staying visible. Goal-bill overlap is restored inside the waterfall before
+publication, and Savings credits the published sweep unchanged while debiting
+each goal cost once. The new period's own paycheck and all other accounts
+are excluded.
+
+**Owner simplification (2026-10-15 23:40:51 UTC).** Publish the dependent
+sweep chain only from a directly observed payday-boundary Bills basis or
+a fully reconciled basis with complete, fresh evidence. Current Bills cash
+already includes posted inflows and transfers; neither is applied again.
+An unknown, stale, conflicting or invalid numeric input stays unknown,
+including when a transfer pairs or an independent current funding amount
+is READY. Unknown sweep means unknown dependent Budget openings and Savings
+closes: Savings must not substitute net surplus plus overlap. Zero is valid;
+negative Bills remains a visible shortfall. Reconstructed pooled openings,
+unattributed scalar cash and midperiod stock without a qualified boundary
+may be withheld; no historical-share inference or reconstruction exemption
+is required. The #618 opening authority and independently supported current
+funding facts remain unchanged. The current period's receipt-qualified
+entitlement path remains separate; projected cash never proves settlement.
+This supersedes
 the net-surplus-only sweep measure and any pin that left Budget opening
 figures unchanged by the sweep; the rest of this section (deficits
 published, never covered from Savings; no hold-back; costs debited once;

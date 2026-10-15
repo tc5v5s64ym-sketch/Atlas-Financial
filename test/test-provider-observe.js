@@ -667,6 +667,203 @@ console.log('=== L4. ATLAS-067 FR2: a /categories 404 fails the live fetch close
     JSON.stringify(acctFallback));
 }
 
+console.log('=== L5. ATLAS-067 tags: a /tags 404 fails the live fetch closed ===');
+{
+  // Tag names are classification inputs, not display decoration: a tag
+  // named fuel/gas is explicit fuel evidence (Forecast
+  // hasExplicitFuelEvidence) and a tag named Amanda assigns the personal
+  // owner behind the guilt-free buckets. tryGetJson swallows HTTP 404 into
+  // null, so a /tags 404 used to publish tags: [] — bare-ID tags kept their
+  // ID with name: null, the fuel-evidence stamp and the Amanda owner were
+  // silently lost, both coverages still reported complete, and the
+  // poisoned payload qualified for storage and replay as a complete
+  // replacement observation. A 503 on the same endpoint already rejects
+  // the whole fetch (tryGetJson rethrows non-404) — so a tags 404 must
+  // reject identically, exactly as FR2 required for /categories. A genuine
+  // 200 (empty or nonempty) stays valid, object-embedded tag names never
+  // needed the index, and tryGetJson itself is untouched so the
+  // account-endpoint 404 fallback is preserved (pinned by L4 above).
+  const tagsHarness = (scenario) => [
+    "'use strict';",
+    "const https = require('https');",
+    "const { EventEmitter } = require('events');",
+    "const fs = require('fs');",
+    `const scenario = ${JSON.stringify(scenario)};`,
+    "const TAGS = [{ id: 501, name: 'fuel' }, { id: 502, name: 'Amanda' }];",
+    "const ACCOUNT = { id: 1001, name: 'Synthetic Chequing', type: 'cash', subtype: 'checking', institution_name: 'Synthetic Bank', balance: 1000, currency: 'cad', updated_at: '2026-08-16T17:55:00.000Z' };",
+    "const LEG1 = [",
+    "  { id: 7001, account_id: 1001, date: '2026-08-14', amount: 50, currency: 'cad', payee: 'ROUTE 66 SERVICE', category_id: 900, is_pending: false, status: 'cleared', tags: [501] },",
+    "  { id: 7002, account_id: 1001, date: '2026-08-14', amount: 25, currency: 'cad', payee: 'CHAPTERS BOOKSTORE', category_id: 900, is_pending: false, status: 'cleared', tags: [502] },",
+    "  { id: 7003, account_id: 1001, date: '2026-08-14', amount: 60, currency: 'cad', payee: 'ROUTE 66 SERVICE', category_id: 900, is_pending: false, status: 'cleared', tags: [{ id: 501, name: 'fuel' }] },",
+    "  { id: 7004, account_id: 1001, date: '2026-08-14', amount: 10, currency: 'cad', payee: 'PAPER GOODS DEPOT', category_id: 900, is_pending: false, status: 'cleared' },",
+    "];",
+    "const GATE = [",
+    "  { id: 7005, account_id: 1001, date: '2026-08-14', amount: 80, currency: 'cad', payee: null, original_name: null, category_id: 901, is_pending: false, status: 'cleared', tags: [501] },",
+    "];",
+    'https.request = (url, options, cb) => {',
+    '  const href = url && url.href ? url.href : String(url);',
+    '  const parsed = new URL(href);',
+    '  const req = new EventEmitter();',
+    '  req.end = () => {',
+    '    process.nextTick(() => {',
+    '      const res = new EventEmitter();',
+    '      let status = 200;',
+    '      let body = {};',
+    "      if (parsed.pathname === '/v2/me') {",
+    '        body = {};',
+    "      } else if (parsed.pathname === '/v2/plaid_accounts') {",
+    '        body = { plaid_accounts: [ACCOUNT] };',
+    "      } else if (parsed.pathname === '/v2/manual_accounts') {",
+    '        body = {};',
+    "      } else if (parsed.pathname === '/v2/assets') {",
+    '        body = {};',
+    "      } else if (parsed.pathname === '/v2/categories') {",
+    "        body = { categories: [{ id: 900, name: 'Shopping', is_income: false }, { id: 901, name: 'Fuel & transport', is_income: false }] };",
+    "      } else if (parsed.pathname === '/v2/tags') {",
+    "        if (scenario === 'tags404' || scenario === 'gate404') status = 404;",
+    "        else if (scenario === 'tags503') status = 503;",
+    "        else if (scenario === 'tagsEmpty') body = { tags: [] };",
+    '        else body = { tags: TAGS };',
+    "      } else if (parsed.pathname === '/v2/transactions') {",
+    "        if (parsed.searchParams.get('is_pending') === 'true') {",
+    '          body = { has_more: false, transactions: [] };',
+    '        } else {',
+    "          body = { has_more: false, transactions: scenario.indexOf('gate') === 0 ? GATE : LEG1 };",
+    '        }',
+    '      }',
+    '      res.statusCode = status;',
+    '      cb(res);',
+    "      res.emit('data', Buffer.from(JSON.stringify(body)));",
+    "      res.emit('end');",
+    '    });',
+    '  };',
+    '  return req;',
+    '};',
+    `const O = require(${JSON.stringify(path.join(ROOT, 'scripts', 'provider-observe.js'))});`,
+    `const F = require(${JSON.stringify(path.join(ROOT, 'public', 'forecast.js'))});`,
+    `const accountMap = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(ROOT, 'docs', 'connectivity', 'fixtures', 'provider-account-map.json'))}, 'utf8'));`,
+    `const data = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(ROOT, 'data.json'))}, 'utf8'));`,
+    "O.fetchLunchMoneyLive('test-token', '2026-08-16T18:00:00.000Z').then((payload) => {",
+    '  const report = O.observe({ provider: \'lunchmoney\', payload, accountMap, data });',
+    '  const packet = report.currentPeriodActuals || {};',
+    '  const rows = packet.transactions || [];',
+    '  const byAmt = (a) => rows.find(r => r && r.amount === a) || null;',
+    '  const slim = (r) => r ? {',
+    '    fuelEvidence: r.fuelEvidence === true,',
+    '    personalOwner: r.personalOwner || null,',
+    '  } : null;',
+    '  const classify = (r) => {',
+    '    if (!r) return null;',
+    '    const c = F.classifyCurrentPeriodTransaction(r, data.plan);',
+    '    return c ? { kind: c.kind, categoryId: c.categoryId, reason: c.reason || null } : null;',
+    '  };',
+    '  process.stdout.write(JSON.stringify({',
+    "    outcome: 'resolved',",
+    '    tags: (payload.tags || []).length,',
+    '    windowComplete: payload.transactionWindow && payload.transactionWindow.complete,',
+    '    pendingComplete: payload.pendingCoverage && payload.pendingCoverage.complete,',
+    '    coverage: packet.transactionCoverage,',
+    '    pending: packet.pendingCoverage,',
+    '    F: slim(byAmt(50)), A: slim(byAmt(25)), O: slim(byAmt(60)), N: slim(byAmt(10)),',
+    '    classifyA: classify(byAmt(25)),',
+    '    G: slim(byAmt(80)), classifyG: classify(byAmt(80)),',
+    '  }));',
+    '}).catch((err) => {',
+    "  process.stdout.write(JSON.stringify({ outcome: 'rejected', message: String(err && err.message || err) }));",
+    '});',
+  ].join('\n');
+  const runTags = (scenario) => JSON.parse(execFileSync(process.execPath, ['-e', tagsHarness(scenario)], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  }));
+
+  const tags404 = runTags('tags404');
+  ok(tags404.outcome === 'rejected' && /HTTP 404/.test(tags404.message || ''),
+    'a /tags 404 rejects the live fetch — no silently name-less observation is produced',
+    JSON.stringify(tags404));
+
+  const tags503 = runTags('tags503');
+  ok(tags503.outcome === 'rejected' && /HTTP 503/.test(tags503.message || ''),
+    'a /tags 503 still rejects the live fetch (the existing path this repair mirrors)',
+    JSON.stringify(tags503));
+
+  const tags200 = runTags('tags200');
+  ok(tags200.outcome === 'resolved' && tags200.tags === 2,
+    'healthy tags resolve with the full tag list', JSON.stringify(tags200));
+  ok(tags200.F && tags200.F.fuelEvidence === true,
+    'a bare-ID tag named fuel stamps fuel evidence when /tags answers',
+    JSON.stringify(tags200.F));
+  ok(tags200.A && tags200.A.personalOwner === 'amanda',
+    'a bare-ID tag named Amanda assigns the personal owner when /tags answers',
+    JSON.stringify(tags200.A));
+  ok(tags200.classifyA && tags200.classifyA.kind === 'spend'
+    && tags200.classifyA.categoryId === 'amanda-guilt-free',
+    'the Amanda-tagged row classifies into her guilt-free bucket',
+    JSON.stringify(tags200.classifyA));
+  ok(tags200.O && tags200.O.fuelEvidence === true,
+    'an object-embedded fuel tag name keeps its evidence without the index',
+    JSON.stringify(tags200.O));
+  ok(tags200.N && tags200.N.fuelEvidence === false && tags200.N.personalOwner === null,
+    'an untagged row gains no tag-derived stamps', JSON.stringify(tags200.N));
+  ok(tags200.coverage === 'complete' && tags200.pending === 'complete',
+    'healthy tags leave published coverage complete', JSON.stringify(tags200));
+
+  const tagsEmpty = runTags('tagsEmpty');
+  ok(tagsEmpty.outcome === 'resolved' && tagsEmpty.tags === 0
+    && tagsEmpty.windowComplete === true && tagsEmpty.pendingComplete === true,
+    'a genuine empty tags array stays a valid complete observation',
+    JSON.stringify(tagsEmpty));
+
+  const gate404 = runTags('gate404');
+  ok(gate404.outcome === 'rejected' && /HTTP 404/.test(gate404.message || ''),
+    'a /tags 404 rejects the fetch even when a bare-ID tag is the only fuel evidence for a missing-merchant row',
+    JSON.stringify(gate404));
+
+  const gate200 = runTags('gate200');
+  ok(gate200.outcome === 'resolved' && gate200.G && gate200.G.fuelEvidence === true
+    && gate200.classifyG && gate200.classifyG.kind === 'spend'
+    && gate200.classifyG.categoryId === 'fuel',
+    'with /tags healthy, the missing-merchant fuel row classifies as Fuel spend on its tag evidence',
+    JSON.stringify(gate200.classifyG));
+
+  // Payload leg (the investigation's leg 2): identical payloads differing
+  // only in the top-level tags list. This pins WHY tags are required — the
+  // swallowed-404 outcome (tags: []) silently holds a missing-merchant
+  // Fuel-category row out of Fuel while coverage claims complete. The
+  // fetch-level pins above make that outcome unreachable from a 404.
+  const F = require('../public/forecast.js');
+  const gateAccount = { id: 1001, name: 'Synthetic Chequing', type: 'cash', subtype: 'checking', institution_name: 'Synthetic Bank', balance: 1000, currency: 'cad', updated_at: '2026-08-16T17:55:00.000Z' };
+  const gateTx = { id: 7005, account_id: 1001, date: '2026-08-14', amount: 80, currency: 'cad', payee: null, original_name: null, category_id: 901, is_pending: false, status: 'cleared', tags: [501] };
+  const gatePayload = (tags) => ({
+    provider: 'lunchmoney',
+    fetchedAt: '2026-08-16T18:00:00.000Z',
+    accounts: [gateAccount],
+    categories: [{ id: 901, name: 'Fuel & transport', is_income: false }],
+    tags,
+    transactions: [gateTx],
+    transactionWindow: { startDate: '2026-08-02', endDate: '2026-08-16', complete: true, hasMore: false, truncated: false },
+  });
+  const gateRun = (tags) => {
+    const report = O.observe({ provider: 'lunchmoney', payload: gatePayload(tags), accountMap, data });
+    const packet = report.currentPeriodActuals || {};
+    const row = (packet.transactions || []).find(r => r && r.amount === 80) || null;
+    const cls = row ? F.classifyCurrentPeriodTransaction(row, data.plan) : null;
+    return { packet, row, cls };
+  };
+  const gateHealthy = gateRun([{ id: 501, name: 'fuel' }]);
+  ok(gateHealthy.row && gateHealthy.row.fuelEvidence === true
+    && gateHealthy.cls && gateHealthy.cls.kind === 'spend' && gateHealthy.cls.categoryId === 'fuel',
+    'payload leg: a healthy tags list lets the bare-ID fuel tag open the missing-merchant gate',
+    JSON.stringify(gateHealthy.cls));
+  const gateSwallowed = gateRun([]);
+  ok(gateSwallowed.row && gateSwallowed.row.fuelEvidence === false
+    && gateSwallowed.cls && gateSwallowed.cls.kind === 'unclassified'
+    && gateSwallowed.cls.reason === 'fuel-merchant-missing'
+    && gateSwallowed.packet.transactionCoverage === 'complete',
+    'payload leg: the post-404 tags: [] outcome silently holds the same row out of Fuel while coverage claims complete',
+    JSON.stringify(gateSwallowed.cls));
+}
+
 console.log('=== M. unobserved live account IDs cannot match fixture mappings ===');
 {
   const liveMap = JSON.parse(fs.readFileSync(LIVE_MAP, 'utf8'));
