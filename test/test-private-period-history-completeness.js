@@ -228,6 +228,14 @@ try {
         magnitude: 67.66, direction: 'left' }, 'invented original plan 80 less observed 12.34');
     assert.ok(!Object.hasOwn(record.content.publication.budgetProgress.household, 'delta'), 'frozen v1 predates the comparison');
     delete legacyPublication.budgetProgress.household.delta;
+    // S1 supersession: the regenerated publication also carries the new
+    // paydaySweep field, which the frozen v1 record predates. Sweeps
+    // publish only on future waterfall periods, so this captured closing
+    // period's value must be null; validate it concretely, then exclude
+    // only the new field — every existing field must still match exactly.
+    assert.equal(legacyPublication.paydaySweep, null,
+      'S1: a captured closing period never carries a payday sweep');
+    delete legacyPublication.paydaySweep;
     assert.deepEqual(legacyPublication, record.content.publication, 'every existing publication field remains exact');
     regenerated.content.engine = clone(record.content.engine);
     const publicationOnly = clone(regenerated);
