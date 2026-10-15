@@ -7386,6 +7386,41 @@
     return gapMovementAccountId(mov) !== '';
   }
 
+  // A separately approved bank end-of-day basis may support the cash walk
+  // without rewriting the original observation or its dated history. This
+  // receipt is reconstruction-only, same-date, and the complete A+B pool.
+  // It is neither today's cash nor a claim about the original intraday
+  // cutoff. Explicit invalid evidence holds; it cannot silently fall back.
+  function bankCashReconstructionOpening(plan, morningDate) {
+    const opening = plan && plan.opening;
+    const anchor = opening && opening.cashReconstructionAnchor;
+    if (!anchor || typeof anchor !== 'object' || Array.isArray(anchor)
+        || anchor.source !== 'bank-statement' || anchor.ownerApproved !== true
+        || typeof anchor.approvalRef !== 'string' || !anchor.approvalRef.trim()
+        || anchor.includedThrough !== 'end-of-household-day'
+        || anchor.timezone !== HOUSEHOLD_TIMEZONE || anchor.currency !== 'CAD'
+        || typeof anchor.asOf !== 'string' || !realCalendarDate(anchor.asOf) || anchor.asOf !== opening.asOf
+        || anchor.asOf >= morningDate || !Array.isArray(anchor.accounts)
+        || anchor.accounts.length !== HOUSEHOLD_CHEQUING_IDS.length) return null;
+    const original = plan.startingCash && plan.startingCash.breakdown;
+    if (!Array.isArray(original) || HOUSEHOLD_CHEQUING_IDS.some(
+      id => original.filter(row => row && row.id === id).length !== 1
+    )) return null;
+    let cents = 0;
+    for (const id of HOUSEHOLD_CHEQUING_IDS) {
+      const rows = anchor.accounts.filter(row => row && row.id === id);
+      if (rows.length !== 1) return null;
+      const row = rows[0];
+      if (row.unknown === true || typeof row.statementRef !== 'string' || !row.statementRef.trim()
+          || typeof row.value !== 'number' || !Number.isFinite(row.value)) return null;
+      const amount = Math.round(row.value * 100);
+      if (!Number.isSafeInteger(amount) || Math.abs(row.value * 100 - amount) > 0.000001) return null;
+      cents += amount;
+      if (!Number.isSafeInteger(cents)) return null;
+    }
+    return cents / 100;
+  }
+
   // Trusted dated opening plus every spendable (chequing-pool) movement in
   // the gap, only when that interval is completeness-proven. Not live cash
   // walked backward, not weekly-variable spend, not reserved-daily drain,
@@ -7399,7 +7434,10 @@
     if (!plan || !morningDate) return null;
     const openingAsOf = plan.opening && plan.opening.asOf;
     if (!openingAsOf || openingAsOf > morningDate) return null;
-    const openingCash = startingCashAmount(plan);
+    const hasBankAnchor = Object.prototype.hasOwnProperty.call(plan.opening, 'cashReconstructionAnchor');
+    const openingCash = hasBankAnchor
+      ? bankCashReconstructionOpening(plan, morningDate) : startingCashAmount(plan);
+    if (hasBankAnchor && openingCash == null) return null;
     if (!Number.isFinite(Number(openingCash))) return null;
     if (openingAsOf === morningDate) return roundCent(openingCash);
     if (!paydayGapCashComplete(plan, morningDate, opts)) return null;
