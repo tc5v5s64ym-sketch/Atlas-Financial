@@ -774,7 +774,13 @@ async function fetchLunchMoneyLive(token, now, historyDays, options) {
   const plaid = await tryGetJson(new URL(`${base}/plaid_accounts`), token, options);
   let manuals = await tryGetJson(new URL(`${base}/manual_accounts`), token, options);
   if (!manuals) manuals = await tryGetJson(new URL(`${base}/assets`), token, options);
-  const categoriesPayload = await tryGetJson(new URL(`${base}/categories`), token, options);
+  // Categories are fetched without tryGetJson's 404-to-null swallow: a
+  // transaction whose raw row carries only a category_id takes its label
+  // and income flag solely from this index, so a swallowed 404 would
+  // silently degrade classification while the observation still qualified
+  // as complete. A categories failure must reject the whole fetch, exactly
+  // like a 503 already does through tryGetJson's rethrow (ATLAS-067 FR2).
+  const categoriesPayload = await httpsGetJson(new URL(`${base}/categories`), token, options);
   const tagsPayload = await tryGetJson(new URL(`${base}/tags`), token, options);
   const txPage = await fetchLunchMoneyTransactionsPaged(txUrl, token, options);
   const pendingPage = await fetchLunchMoneyTransactionsPaged(

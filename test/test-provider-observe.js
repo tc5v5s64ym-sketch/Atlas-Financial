@@ -555,6 +555,118 @@ console.log('=== L3. ATLAS-067 FR1: a 200 page without a transactions array fail
     JSON.stringify(badPending.window));
 }
 
+console.log('=== L4. ATLAS-067 FR2: a /categories 404 fails the live fetch closed ===');
+{
+  // Category metadata is not optional decoration: a transaction whose raw
+  // row carries only a category_id takes its label and income flag solely
+  // from the category index. tryGetJson swallows HTTP 404 into null, so a
+  // /categories 404 used to publish categories: [] — the payroll row below
+  // lost 'Payroll Income' / isIncome while both coverages still reported
+  // complete. A 503 on the same endpoint already rejects the whole fetch
+  // (tryGetJson rethrows non-404), and a failed refresh must not qualify
+  // as a complete replacement observation — so a categories 404 must
+  // reject identically. A genuine 200 (empty or nonempty) stays valid,
+  // and the account-endpoint 404 fallback (manual_accounts -> assets),
+  // which legitimately relies on the same swallow, is preserved.
+  const fr2Harness = (scenario) => [
+    "'use strict';",
+    "const https = require('https');",
+    "const { EventEmitter } = require('events');",
+    `const scenario = ${JSON.stringify(scenario)};`,
+    'https.request = (url, options, cb) => {',
+    '  const href = url && url.href ? url.href : String(url);',
+    '  const parsed = new URL(href);',
+    '  const req = new EventEmitter();',
+    '  req.end = () => {',
+    '    process.nextTick(() => {',
+    '      const res = new EventEmitter();',
+    '      let status = 200;',
+    '      let body = {};',
+    "      if (parsed.pathname === '/v2/me') {",
+    '        body = {};',
+    "      } else if (parsed.pathname === '/v2/plaid_accounts') {",
+    '        body = {};',
+    "      } else if (parsed.pathname === '/v2/manual_accounts') {",
+    "        if (scenario === 'acctFallback') status = 404;",
+    '        else body = {};',
+    "      } else if (parsed.pathname === '/v2/assets') {",
+    "        body = { assets: [{ id: 7001, name: 'Fallback Asset' }] };",
+    "      } else if (parsed.pathname === '/v2/categories') {",
+    "        if (scenario === 'cat404') status = 404;",
+    "        else if (scenario === 'cat503') status = 503;",
+    "        else if (scenario === 'catEmpty') body = { categories: [] };",
+    "        else body = { categories: [{ id: 501, name: 'Payroll Income', is_income: true }] };",
+    "      } else if (parsed.pathname === '/v2/tags') {",
+    '        body = { tags: [] };',
+    "      } else if (parsed.searchParams.get('include_pending') === 'true') {",
+    "        body = { has_more: false, transactions: [{ id: 9001, account_id: 1001, date: '2026-08-15', amount: -2500, category_id: 501, is_pending: false }] };",
+    "      } else if (parsed.searchParams.get('is_pending') === 'true') {",
+    '        body = { has_more: false, transactions: [] };',
+    '      }',
+    '      res.statusCode = status;',
+    '      cb(res);',
+    "      res.emit('data', Buffer.from(JSON.stringify(body)));",
+    "      res.emit('end');",
+    '    });',
+    '  };',
+    '  return req;',
+    '};',
+    `const O = require(${JSON.stringify(path.join(ROOT, 'scripts', 'provider-observe.js'))});`,
+    "O.fetchLunchMoneyLive('test-token', '2026-08-16T18:00:00.000Z').then((payload) => {",
+    '  let payroll = null;',
+    '  try {',
+    '    const normalized = O.normalizeLunchMoneyPayload(payload);',
+    "    payroll = normalized.transactions.find(t => t.providerTransactionId === '9001') || null;",
+    '  } catch (e) { payroll = null; }',
+    '  process.stdout.write(JSON.stringify({',
+    "    outcome: 'resolved',",
+    '    categories: (payload.categories || []).length,',
+    '    accounts: (payload.accounts || []).map(a => String(a.id)),',
+    '    windowComplete: payload.transactionWindow && payload.transactionWindow.complete,',
+    '    pendingComplete: payload.pendingCoverage && payload.pendingCoverage.complete,',
+    '    payrollLabel: payroll ? payroll.categoryLabel : null,',
+    '    payrollIsIncome: payroll ? payroll.isIncome === true : false,',
+    '  }));',
+    '}).catch((err) => {',
+    "  process.stdout.write(JSON.stringify({ outcome: 'rejected', message: String(err && err.message || err) }));",
+    '});',
+  ].join('\n');
+  const runFr2 = (scenario) => JSON.parse(execFileSync(process.execPath, ['-e', fr2Harness(scenario)], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  }));
+
+  const cat404 = runFr2('cat404');
+  ok(cat404.outcome === 'rejected' && /HTTP 404/.test(cat404.message || ''),
+    'a /categories 404 rejects the live fetch — no silently degraded observation is produced',
+    JSON.stringify(cat404));
+
+  const cat503 = runFr2('cat503');
+  ok(cat503.outcome === 'rejected' && /HTTP 503/.test(cat503.message || ''),
+    'a /categories 503 still rejects the live fetch (the existing path FR2 mirrors)',
+    JSON.stringify(cat503));
+
+  const cat200 = runFr2('cat200');
+  ok(cat200.outcome === 'resolved' && cat200.categories === 1
+    && cat200.payrollLabel === 'Payroll Income' && cat200.payrollIsIncome === true,
+    'healthy categories keep the payroll label and income flag from the category index',
+    JSON.stringify(cat200));
+  ok(cat200.windowComplete === true && cat200.pendingComplete === true,
+    'healthy categories leave window and pending coverage complete',
+    JSON.stringify(cat200));
+
+  const catEmpty = runFr2('catEmpty');
+  ok(catEmpty.outcome === 'resolved' && catEmpty.categories === 0
+    && catEmpty.windowComplete === true && catEmpty.pendingComplete === true,
+    'a genuine empty categories array stays a valid complete observation',
+    JSON.stringify(catEmpty));
+
+  const acctFallback = runFr2('acctFallback');
+  ok(acctFallback.outcome === 'resolved' && acctFallback.accounts.includes('7001'),
+    'the account-endpoint 404 fallback (manual_accounts -> assets) is preserved',
+    JSON.stringify(acctFallback));
+}
+
 console.log('=== M. unobserved live account IDs cannot match fixture mappings ===');
 {
   const liveMap = JSON.parse(fs.readFileSync(LIVE_MAP, 'utf8'));
