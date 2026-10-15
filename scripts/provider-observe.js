@@ -1286,6 +1286,14 @@ function ruleHasIdentity(rule, diagnostic) {
 
 function ruleMatchesTransactionIdentity(tx, rule) {
   if (!tx || !rule) return false;
+  // An opted-in identity must have affirmative provider posting evidence.
+  // This shared boundary also excludes pending-only bill receipts. Invalid
+  // explicit qualifiers fail closed; absent qualifiers retain incumbent rules.
+  if (Object.hasOwn(rule, 'requiredPostingEvidence')
+      && (rule.requiredPostingEvidence !== 'posted'
+        || tx.pending !== false || tx.savingsPostingEvidence !== 'posted')) {
+    return false;
+  }
   if (rulePayeeExcludePatterns(rule).some(pattern =>
     anyIdentityFieldMatches(identityPayeeFields(tx), pattern)
     || anyIdentityFieldMatches(identityOriginalNameFields(tx), pattern))) {

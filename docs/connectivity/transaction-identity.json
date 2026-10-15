@@ -316,6 +316,18 @@
       "note": "Owner 2026-09-15: SHAW CABLE TV BPY / Shaw Cable on BILLS is shaw, including same-day and early pay before due. Identity is that explicit alias + BILLS + debit + early-or-covers-due. Amount is not identity. Matching confirmed-settled evidence creates representedActuals and marks PAID. Without matching evidence the bill stays still-due / unverified. Sep 14 SHAW CABLE TV BPY $78.40 settles the Shaw internet bill; it is not a Lunch Money category error. Do not owner-question Dale when evidence matches. Do not implement trust-without-evidence."
     },
     {
+      "eventId": "shaw",
+      "payeePatterns": ["Shaw"],
+      "payeeMatchMode": "exact",
+      "originalNamePatterns": ["SHAW CABLE TV BPY"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "requiredCurrency": "cad",
+      "requiredPostingEvidence": "posted",
+      "postingDateRule": "covers-early-or-due-on-or-before-posting",
+      "note": "Guarded shortened display name for the existing Shaw bill: exact payee plus approved original bank descriptor, Bills account, native CAD debit and affirmative posted evidence. Existing occurrence and uniqueness checks still apply. Neither category nor amount supplies identity; this rule cannot create a pending-only bill receipt."
+    },
+    {
       "eventId": "noble-garbage",
       "payeePattern": "Noble Dispo",
       "payeePatterns": ["Noble Dispo"],
