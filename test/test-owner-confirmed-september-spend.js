@@ -14,6 +14,15 @@
  * occurrence. Synthetic observe fixtures and independent arithmetic
  * (L-002 / L-006). No Lunch Money write.
  *
+ * Amendment (Dale 2026-10-14, superseding the 2026-09-23 rule for
+ * generic rows): an exact Lunch Money "Fuel" category is itself fuel
+ * evidence, and a 7-Eleven purchase over $30 is Fuel. The generic
+ * 7-Eleven Fuel rows below therefore classify as Fuel by their
+ * category in BOTH snapshots; what this file pins — the exact
+ * owner-confirmed identities (Spotify day 23, the Noble occurrence,
+ * the pending→posted replacement) — is unchanged. The owner-rule
+ * matrix lives in test-fuel-classification-owner-rules.js.
+ *
  * `node test/test-owner-confirmed-september-spend.js`
  */
 const fs = require('fs');
@@ -48,8 +57,8 @@ const FAST_FOOD = 3.22;
 const JOINS_FUEL = roundCent(FUEL_PENDING + FUEL_POSTED);
 const JOINS_BILLS = roundCent(SPOTIFY + NOBLE);
 const LEAVES_OTHER = roundCent(JOINS_FUEL + JOINS_BILLS);
-const SHARED_OTHER = roundCent(CORNER + OTHER_711 + OTHER_PAYPAL + OTHER_75 + OTHER_20 + STRAY_NOBLE);
-const SHARED_FUEL = PITT;
+const SHARED_OTHER = roundCent(CORNER + OTHER_PAYPAL + STRAY_NOBLE);
+const SHARED_FUEL = roundCent(PITT + OTHER_711 + OTHER_75 + OTHER_20);
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -64,8 +73,8 @@ const load = file => JSON.parse(fs.readFileSync(path.join(ROOT, file), 'utf8'));
 const clone = value => JSON.parse(JSON.stringify(value));
 
 ok(near(JOINS_FUEL, 95) && near(JOINS_BILLS, 122.72) && near(LEAVES_OTHER, 217.72)
-    && near(SHARED_OTHER, 140.23),
-  'independent cents: fuel pair $95.00, Spotify+Noble $122.72, four rows leave Other by $217.72');
+    && near(SHARED_OTHER, 36.83) && near(SHARED_FUEL, 143.40),
+  'independent cents: fuel pair $95.00, Spotify+Noble $122.72, shared rows leave $36.83 in Other and $143.40 in Fuel under the 2026-10-14 rules');
 
 function liveData() {
   return load('data.json');
@@ -413,15 +422,14 @@ console.log(`  after Fuel ${exact.fuelSpent.toFixed(2)}`);
 console.log(`  before household ${control.household.toFixed(2)}`);
 console.log(`  after household ${exact.household.toFixed(2)}`);
 
-ok(near(control.otherSpent, roundCent(SHARED_OTHER + LEAVES_OTHER))
+ok(near(control.otherSpent, roundCent(SHARED_OTHER + JOINS_BILLS))
     && near(exact.otherSpent, SHARED_OTHER)
-    && near(roundCent(control.otherSpent - exact.otherSpent), LEAVES_OTHER),
-  'Other Spending falls by $217.72 when the four rows take their identities',
+    && near(roundCent(control.otherSpent - exact.otherSpent), JOINS_BILLS),
+  'Other Spending falls by $122.72 when the Spotify and Noble rows take their identities (the 7-Eleven Fuel rows are Fuel by category in both snapshots)',
   `before=${control.otherSpent} after=${exact.otherSpent}`);
-ok(near(control.fuelSpent, SHARED_FUEL)
-    && near(exact.fuelSpent, roundCent(SHARED_FUEL + JOINS_FUEL))
-    && near(roundCent(exact.fuelSpent - control.fuelSpent), JOINS_FUEL),
-  'Fuel rises by exactly $95.00',
+ok(near(control.fuelSpent, roundCent(SHARED_FUEL + JOINS_FUEL))
+    && near(exact.fuelSpent, roundCent(SHARED_FUEL + JOINS_FUEL)),
+  'Fuel carries the generic 7-Eleven Fuel rows plus the $95.00 owner pair in both snapshots',
   `before=${control.fuelSpent} after=${exact.fuelSpent}`);
 ok(countDated(exact.fuelRecon, '2026-09-20', FUEL_PENDING) === 1
     && countDated(exact.fuelRecon, '2026-09-22', FUEL_POSTED) === 1
@@ -429,13 +437,13 @@ ok(countDated(exact.fuelRecon, '2026-09-20', FUEL_PENDING) === 1
     && countDated(exact.otherRecon, '2026-09-20', FUEL_PENDING) === 0
     && countDated(exact.otherRecon, '2026-09-22', FUEL_POSTED) === 0,
   'each owner 7-Eleven row is in Fuel once and absent from Other');
-ok(countDated(exact.otherRecon, '2026-09-14', OTHER_711) === 1
-    && countDated(exact.otherRecon, '2026-09-16', OTHER_75) === 1
-    && countDated(exact.otherRecon, '2026-09-18', OTHER_20) === 1
-    && countDated(exact.fuelRecon, '2026-09-14', OTHER_711) === 0
-    && countDated(exact.fuelRecon, '2026-09-16', OTHER_75) === 0
-    && countDated(exact.fuelRecon, '2026-09-18', OTHER_20) === 0,
-  'unrelated 7-Eleven rows stay on the ordinary convenience-store rule');
+ok(countDated(exact.fuelRecon, '2026-09-14', OTHER_711) === 1
+    && countDated(exact.fuelRecon, '2026-09-16', OTHER_75) === 1
+    && countDated(exact.fuelRecon, '2026-09-18', OTHER_20) === 1
+    && countDated(exact.otherRecon, '2026-09-14', OTHER_711) === 0
+    && countDated(exact.otherRecon, '2026-09-16', OTHER_75) === 0
+    && countDated(exact.otherRecon, '2026-09-18', OTHER_20) === 0,
+  'generic 7-Eleven Fuel rows classify as Fuel by their category (Dale 2026-10-14), not by owner identity');
 ok(near(control.restaurantSpent, FAST_FOOD) && near(exact.restaurantSpent, FAST_FOOD)
     && countDated(exact.restaurantRecon, '2026-09-12', FAST_FOOD) === 1,
   'the Fast Food 7-Eleven stays eating out');
@@ -547,11 +555,11 @@ console.log('\n=== posted replacement of the $20 pending fuel purchase counts on
   const looseSnap = budgetSnapshot(loose, AS_OF);
   const looseRows = packetTxs(loose, row => near(row.amount, REPLACEMENT) || near(row.amount, FUEL_PENDING));
   ok(looseRows.length === 2
-      && near(looseSnap.fuelSpent, FUEL_PENDING)
-      && countDated(looseSnap.otherRecon, '2026-09-22', REPLACEMENT) === 1
-      && !near(looseSnap.fuelSpent, roundCent(FUEL_PENDING + REPLACEMENT)),
-    'without a provider link the drifted posted row stays Other and the pending $20 stays one fuel purchase',
-    `fuel=${looseSnap.fuelSpent} otherHasReplacement=${countDated(looseSnap.otherRecon, '2026-09-22', REPLACEMENT)}`);
+      && near(looseSnap.fuelSpent, roundCent(FUEL_PENDING + REPLACEMENT))
+      && countDated(looseSnap.fuelRecon, '2026-09-22', REPLACEMENT) === 1
+      && countDated(looseSnap.otherRecon, '2026-09-22', REPLACEMENT) === 0,
+    'without a provider link both rows remain two rows (identity unchanged); each classifies as Fuel by its category under Dale 2026-10-14',
+    `fuel=${looseSnap.fuelSpent} fuelHasReplacement=${countDated(looseSnap.fuelRecon, '2026-09-22', REPLACEMENT)}`);
 }
 
 console.log('\n=== a $20 7-Eleven on WEEKLY is not the Travel Visa fuel transaction ===');
@@ -566,11 +574,12 @@ console.log('\n=== a $20 7-Eleven on WEEKLY is not the Travel Visa fuel transact
   const row = packetTxs(report, item => near(item.amount, FUEL_PENDING))[0];
   const cls = classify(row, report);
   ok(row && row.ownerConfirmedFuel !== true
-      && cls && cls.reason === 'convenience-store-unconfirmed-fuel'
-      && near(snap.otherSpent, FUEL_PENDING)
-      && near(snap.fuelSpent, 0),
-    'same day and amount on WEEKLY stays unconfirmed convenience-store spend',
-    cls && cls.reason);
+      && cls && cls.kind === 'spend' && cls.categoryId === 'fuel'
+      && cls.includeReason === 'fuel-category'
+      && near(snap.fuelSpent, FUEL_PENDING)
+      && near(snap.otherSpent, 0),
+    'same day and amount on WEEKLY carries no owner identity, but its Fuel category classifies it as Fuel (Dale 2026-10-14)',
+    cls && cls.includeReason);
 }
 
 if (failures) {

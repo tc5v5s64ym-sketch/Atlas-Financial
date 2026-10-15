@@ -4578,6 +4578,11 @@
 
   function hasExplicitFuelEvidence(tx) {
     if (tx && tx.fuelEvidence === true) return true;
+    // Dale 2026-10-14: an exact Lunch Money "Fuel" category is itself
+    // explicit fuel evidence. This supersedes the 2026-09-23 rule that
+    // held a convenience-store Fuel row for confirmation unless a note,
+    // tag, MCC, or kind hint corroborated it.
+    if (normalizeCategoryLabel(tx && tx.categoryLabel) === 'fuel') return true;
     const hint = normalizeCategoryLabel(tx && tx.kindHint);
     if (hint === 'gas' || hint === 'fuel' || hint === 'petrol') return true;
     const mcc = String((tx && tx.mcc) || '');
@@ -5060,10 +5065,16 @@
   // (Dale 2026-09-03) is Amanda guilt-free when the Lunch Money category
   // is not Dale, never a Prime bill, and never Amanda merely because the
   // card is MBNA. Eating out is Restaurants + Fast Food + Food Delivery.
-  // Ordinary Canadian Tire retail is not Household. 7-Eleven is not
-  // confirmed Fuel without tx-level fuel evidence, except the two exact
-  // owner-confirmed September 2026 transactions. Uncertain txs go to
-  // confirmation, not a named household-budget row.
+  // Ordinary Canadian Tire retail is not Household. An exact Lunch
+  // Money Fuel category is itself tx-level fuel evidence
+  // (Dale 2026-10-14, superseding the 2026-09-23 convenience-store
+  // hold): purchase categories are controlled in Lunch Money and Atlas
+  // reflects them — no Atlas-side merchant or amount rule reclassifies
+  // a purchase into Fuel (an earlier same-day amount override was
+  // superseded by this direction before release). The two exact
+  // owner-confirmed September 2026 transactions remain Fuel by
+  // identity. Other uncertain txs go to confirmation, not a named
+  // household-budget row.
   function classifyCurrentPeriodTransaction(tx, plan, opts) {
     if (!tx) {
       return { kind: 'unclassified', categoryId: null, householdSpending: false, reason: 'missing' };
