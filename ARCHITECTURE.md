@@ -856,7 +856,9 @@ statements again and does not establish an empty card-coverage opening.
 
 **Future Savings closing projection - owner direction 2026-10-13, amended by
 owner direction 2026-10-14 (payday-surplus sweep; Dale-confirmed, assigned via
-Atlas). Where the two directions differ, the 2026-10-14 semantics govern.**
+Atlas) and further amended the same day by the S1 payday-sweep/carry
+correction (Atlas-approved). Where they differ, the S1 semantics govern
+the sweep's measure and the Budget opening's consumption of it.**
 `Forecast.recommend.savingsFunding.periodViews[].packet.forecastClosing` owns
 the selected future period's closing pot and per-requirement allocations if
 eligible surplus is saved. It consumes the incumbent Budget forward cash walk,
@@ -915,6 +917,34 @@ without an automatic repayment to Savings. The full native economic
 expense, actuals and operating publications remain unchanged. The existing
 current-tail unavailable gate is unchanged, including its positive-planned-capacity
 condition, and a schedule funding-gap status cannot override it.
+
+**S1 amendment (2026-10-14, via Atlas).** The sweep's measure is no longer
+the period's net surplus. `calendarPeriodWaterfalls` computes one
+Forecast-owned sweep per future period — the period's full positive
+available Bills remainder, inherited opening cash included — and publishes
+it on the period as `paydaySweep`. The available remainder is the physical
+cash leftover: the internal cash-after-Household-Budget figure notionally
+deducts the period's savings-funded annual-bill provision, but that
+provision is not a Bills payment (the Savings ledger debits the goal cost
+itself), so the provisioned cash is part of the remainder. The Future
+Budget opening consumes exactly the published sweep (the next period
+opens from the remainder minus the sweep), and `savingsClosingProjection`
+credits the same figure, so the two publications cannot disagree; a
+negative remainder sweeps zero and carries into the next opening in full,
+staying visible. The ledger's goal-bill overlap restoration and the
+closing walk's physical-cash bound still apply on top of the published
+sweep: a goal bill Budget already deducted inside the remainder is
+restored to the sweep and debited once as a goal cost, and no more cash
+can be credited than exists at the close. The new period's own paycheck
+and other chequing accounts are never part of a period's sweep. When a
+period's cash leftover is unknown no sweep is published for it and the
+closing projection keeps its prior fallback for that close; the current
+period's receipt-qualified entitlement path is unchanged, and no current-
+period prior close is inferred from a later observation. This supersedes
+the net-surplus-only sweep measure and any pin that left Budget opening
+figures unchanged by the sweep; the rest of this section (deficits
+published, never covered from Savings; no hold-back; costs debited once;
+projected transfers never establish settlement) is unchanged.
 
 **Every concept has one owner.** A new piece of work either consumes an existing
 owner or explicitly replaces it; it never quietly becomes a second one.

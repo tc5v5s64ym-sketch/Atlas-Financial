@@ -10661,6 +10661,28 @@
         && calendarOccurrenceRepresented(representedSavings, observedSavings, e.id, e.date));
       const cashAfterHouseholdBudget = cashAfterBills != null && !annualSavingsUnknown && !annualSnapshotCarryUnknown
         ? roundCent(cashAfterBills - budget.hold - annualSavingsNeed) : null;
+      // S1 payday sweep (owner direction 2026-10-14 via Atlas, superseding
+      // the net-surplus-only sweep of PR #616 where they conflict): one
+      // Forecast-owned sweep per future period, published on the period
+      // here and consumed identically by the Budget opening chain below
+      // and by the Savings closing projection. The sweep is the period's
+      // full positive available Bills remainder, including inherited
+      // opening cash. The available remainder is the physical cash
+      // leftover: cashAfterHouseholdBudget notionally deducts the period's
+      // savings-funded annual-bill provision (annualSavingsNeed), but that
+      // provision is not a Bills payment — the Savings ledger debits the
+      // goal cost itself, once — so the provisioned cash is physically in
+      // Bills at period end and is part of what sweeps. The incoming
+      // period's own paycheck is not part of the sweep: it leaves Bills at
+      // the next period's payday, before that period's income lands. A
+      // negative remainder sweeps nothing and stays visible in Bills; no
+      // Savings draw covers it. When the cash leftover is unknown the
+      // sweep is unknown (null), never an invented zero.
+      const availableRemainder = cashAfterHouseholdBudget != null
+        ? roundCent(cashAfterHouseholdBudget + annualSavingsNeed) : null;
+      const paydaySweep = !planUnavailable && role === 'future'
+        && availableRemainder != null
+        ? roundCent(Math.max(0, availableRemainder)) : null;
       let extraAllocated = 0;
       let extraDebt;
       if (planUnavailable || (!lookback && (cardCoverage.status === 'unavailable' || annualSavingsUnknown))) {
@@ -10705,7 +10727,14 @@
         previousEnding = null;
         unavailableOpeningLost = true;
       } else if (role === 'active' || (role === 'future' && openingKnown)) {
-        previousEnding = cashAfterHouseholdBudget;
+        // The next period opens from this period's physical cash leftover
+        // (availableRemainder) minus the published payday sweep, so the
+        // Budget opening consumes exactly the sweep the Savings closing
+        // projection credits. A negative leftover carries in full (the
+        // sweep is zero), staying visible.
+        previousEnding = paydaySweep != null
+          ? roundCent(availableRemainder - paydaySweep)
+          : cashAfterHouseholdBudget;
       } else {
         previousEnding = null;
       }
@@ -10761,6 +10790,7 @@
           : null,
         afterHouseholdBudget,
         balanceAfterDeductions,
+        paydaySweep,
         predictedEndingBalance: afterHouseholdBudget,
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
           ? 'balance-after-deductions' : null,
@@ -19843,6 +19873,11 @@
     // Nothing is retained in Bills for future operating need, and the ledger
     // never pays a routine Bills deficit: operating keeps its signed balance
     // and the close publishes the shortfall for the owner to act on.
+    // S1 (2026-10-14, via Atlas): for future periods the eligible amount is
+    // the Budget waterfall's published paydaySweep — the period's full
+    // positive available Bills remainder, inherited opening cash included —
+    // consumed unchanged here, so this ledger and the Budget opening that
+    // deducted the same sweep agree by construction.
     const walk = (selectedTransfers) => {
       let pot = stock, sent = 0, draws = 0, restored = 0, nativeStockDrawn = 0;
       const paid = new Set(), daily = [], payments = [];
@@ -19900,7 +19935,28 @@
       const transferred = current ? savingsCents(funding.period.transferred) : 0;
       if ([net, saved, transferred].some(n => n == null) || !Number.isSafeInteger(overlap))
         return hold('A native period surplus or receipt inclusion is unavailable.');
-      let eligible = current ? Math.min(tail + overlap, Math.max(0, net + overlap - saved - transferred)) : net + overlap;
+      // S1: a future period's sweep is the single figure the Budget
+      // waterfall published on the period (paydaySweep — its full positive
+      // available remainder, inherited opening cash included), so Savings
+      // credits the sweep the Budget opening deducted; the two
+      // publications cannot disagree. The ledger's overlap restoration
+      // still applies on top of it, for the same reason as under PR #616:
+      // a goal bill Budget already deducted inside that remainder is
+      // debited here once as a goal cost, so the deducted amount is
+      // restored to the sweep — the physical-cash bound below then caps
+      // the total at the Bills cash that actually exists at the close, so
+      // no phantom remainder can sweep. (The waterfall's own basis
+      // already restores the savings-funded provision, which never enters
+      // the bill load the overlap reads, so the two restorations cover
+      // disjoint deductions.) When the waterfall published no sweep for
+      // the period (its cash leftover was unknown), the prior net-surplus
+      // quota remains this close's fallback. The current period keeps its
+      // receipt-qualified entitlement path: its close has not happened,
+      // and no prior close may be inferred for it.
+      const publishedSweep = !current && period.paydaySweep != null
+        ? savingsCents(period.paydaySweep, true) : null;
+      let eligible = current ? Math.min(tail + overlap, Math.max(0, net + overlap - saved - transferred))
+        : publishedSweep != null ? publishedSweep + overlap : net + overlap;
       if (!Number.isSafeInteger(eligible)) return hold('A native period surplus is unavailable.');
       eligible = Math.max(0, eligible);
       if (!Number.isSafeInteger(eligible)) return hold('Projected contribution cents exceed exact arithmetic.');
