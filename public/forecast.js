@@ -10617,10 +10617,21 @@
       const activeOpeningBasisMissing = role === 'active' && !planUnavailable && !lookback
         && (() => {
           const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
-          if (!rows.length) return false;
           const billsRow = rows.find(r => r && r.id === BILLS_ACCOUNT_ID);
           if (billsRow && finiteRecordedOpening(billsRow.value)) return false;
           if (paydaySnapshotRecord(plan, opts, window.start)) return false;
+          if (!rows.length) {
+            // Round 4 (review 5536953733, P1-b): with no per-account
+            // rows, the dated scalar opening IS the basis — and it
+            // stands only when genuinely established. An unavailable
+            // scalar (null or absent) is coerced to $0 by
+            // startingCashAmount, so exempting it published a
+            // fabricated known zero and swept 1000/1000 on nothing.
+            // A complete anchor reconstruction cannot supply the
+            // basis here either: its validation needs the
+            // per-account rows this plan does not carry.
+            return !finiteRecordedOpening(plan && plan.startingCash && plan.startingCash.amount);
+          }
           const hasAnchor = !!(plan.opening && Object.prototype.hasOwnProperty.call(
             plan.opening, 'cashReconstructionAnchor'));
           if (!hasAnchor) return true;
@@ -14330,7 +14341,21 @@
         && s1ActualsPacket.transactions.some(tx => {
           if (!tx || !isInternalHouseholdTransfer(tx)) return false;
           if (!(tx.date >= s1RiskWindow.start && tx.date <= asOf)) return false;
-          const loc = householdCashLocationId(tx);
+          // Round 4 (review 5536953733, P1-a): the location aliases
+          // must AGREE before a non-Bills location counts as
+          // established. householdCashLocationId selects the first
+          // nonempty alias, so a leg carrying conflicting aliases
+          // (atlasAccountId='savings', accountId='chequing-a') was
+          // resolved to the preferred alias and the Bills leg went
+          // unconsulted — the exemption granted on one alias of a
+          // contradictory pair. The funding evidence builder rejects
+          // such conflicts as unqualified; the same strictness
+          // applies here: contradictory aliases establish nothing.
+          const aliases = [tx.atlasAccountId, tx.accountId, tx.account]
+            .filter(a => a != null && String(a).trim() !== '');
+          const agreed = aliases.length <= 1
+            || aliases.every(a => String(a) === String(aliases[0]));
+          const loc = agreed ? householdCashLocationId(tx) : null;
           if (loc === BILLS_ACCOUNT_ID) return true;
           if (loc != null) return false;
           return tx.accountRole !== 'household-external'

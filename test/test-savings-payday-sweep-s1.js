@@ -646,3 +646,110 @@ test('control: an unqualified transfer WITH a Bills leg still withholds the depe
   assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never 1080');
   assert.equal(viewAt(a, '2026-10-30').opening, null);
 });
+
+// ---------------------------------------------------------------------
+// Round 4 (Systems Review 5536953733 on head e8140eb6): two residuals
+// of the round-3 repairs. P1-a: the movement-risk scoping consulted
+// householdCashLocationId, which takes the FIRST nonempty location
+// alias, so a leg with conflicting aliases was treated as established
+// on its preferred alias. P1-b: the no-breakdown-rows exemption
+// accepted an unavailable dated scalar, which startingCashAmount
+// coerces to $0. Paired controls: the round-3 reserve-only tests
+// above (unqualified T1 and qualified AA101, both preserving
+// 80/1080) and the scalar controls below.
+// ---------------------------------------------------------------------
+
+function conflictTransfer(mutate) {
+  const x = input(); allocFx.transfer(x, 50, 'T1', 'savings', '2026-10-05');
+  const out = x.opts.currentPeriodActuals.transactions.find(tx => tx.id === 'T1-out');
+  mutate(out);
+  return x;
+}
+
+test('conflicting location aliases on a Bills transfer leg withhold the dependent sweep', () => {
+  // Review 5536953733, P1-a. The outbound leg's atlasAccountId says
+  // 'savings' while its accountId says 'chequing-a'. The funding
+  // evidence builder rejects the conflict as unqualified, but the
+  // movement-risk scoping read only the preferred alias, treated the
+  // leg as an established reserve movement, and published 80/1080 —
+  // offering the missing 50 again. Contradictory aliases establish
+  // nothing: correct is 1030 or unknown, never 1080.
+  const a = advice(conflictTransfer(tx => {
+    tx.atlasAccountId = 'savings'; tx.accountId = 'chequing-a'; tx.accountRole = 'household-cash';
+  }));
+  assert.equal(a.savingsFunding.status, 'unavailable');
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'conflicting aliases establish no location');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never 1080');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
+
+test('control: the reversed alias conflict also withholds', () => {
+  // atlasAccountId names Bills while accountId names Savings: the
+  // pair is contradictory in either order.
+  const a = advice(conflictTransfer(tx => {
+    tx.atlasAccountId = 'chequing-a'; tx.accountId = 'savings'; tx.accountRole = 'household-cash';
+  }));
+  assert.equal(viewAt(a, '2026-10-16').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never 1080');
+});
+
+test('control: a Bills transfer leg with no account ID at all still withholds', () => {
+  // No aliases at all: the location cannot be established, and the
+  // household-cash role does not prove the leg stayed off Bills.
+  const a = advice(conflictTransfer(tx => {
+    tx.atlasAccountId = ''; tx.accountId = ''; tx.account = ''; tx.accountRole = 'household-cash';
+  }));
+  assert.equal(viewAt(a, '2026-10-16').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never 1080');
+});
+
+function scalarFixture(amount, present) {
+  // No per-account breakdown rows and no snapshot value: the dated
+  // scalar opening is the only claimed basis.
+  const x = input();
+  x.plan.startingCash.breakdown = [];
+  x.plan.opening.paydaySnapshot.opening = null;
+  if (present) x.plan.startingCash.amount = amount; else delete x.plan.startingCash.amount;
+  return x;
+}
+
+test('an unavailable scalar opening (null) establishes no zero: the chain withholds', () => {
+  // Review 5536953733, P1-b. startingCashAmount coerces the null
+  // scalar to $0; the no-row exemption then published active/future
+  // 0/known and swept 1000/1000 on a basis that was never recorded.
+  const a = advice(scalarFixture(null, true));
+  assert.equal(viewAt(a, '2026-10-02').opening, null, 'an unavailable scalar is not a known zero');
+  assert.equal(viewAt(a, '2026-10-16').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never the fabricated 1000');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+  assert.equal(viewAt(a, '2026-10-30').paydaySweep, null);
+});
+
+test('an absent scalar opening establishes no zero: the chain withholds', () => {
+  // Review 5536953733, P1-b variant: the amount field removed
+  // entirely — the same coercion, the same fabricated zero.
+  const a = advice(scalarFixture(undefined, false));
+  assert.equal(viewAt(a, '2026-10-02').opening, null, 'an absent scalar is not a known zero');
+  assert.equal(viewAt(a, '2026-10-16').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never the fabricated 1000');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
+
+test('control: a finite dated scalar opening (80) still publishes 80/1080 with no breakdown rows', () => {
+  // The dated scalar family is a legitimate basis when the scalar is
+  // genuinely recorded (the complete-gap walk, the mid-period
+  // cutover opening, and the dated-opening suites all stand on it).
+  const a = advice(scalarFixture(80, true));
+  assert.equal(viewAt(a, '2026-10-02').opening, 80);
+  assert.equal(viewAt(a, '2026-10-16').opening, 80);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080);
+});
+
+test('control: a recorded zero scalar opening still publishes 0/1000 with no breakdown rows', () => {
+  // A numeric 0 is a recorded figure, not an unavailable scalar:
+  // trusted $0 stays $0.
+  const a = advice(scalarFixture(0, true));
+  assert.equal(viewAt(a, '2026-10-02').opening, 0);
+  assert.equal(viewAt(a, '2026-10-16').opening, 0);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1000);
+});
