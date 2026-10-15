@@ -14326,7 +14326,8 @@
             && ['truncated', 'hasMore', 'has_more'].every(k => value[k] == null || value[k] === false);
           const fetch = packet?.savingsFetchCoverage;
           if (packet?.schema !== 'atlas-current-period-actuals/v1'
-              || packet.observationAsOf !== asOf || packet.currency !== 'CAD'
+              || packet.observationAsOf !== asOf || typeof packet.currency !== 'string'
+              || packet.currency.toUpperCase() !== 'CAD'
               || !complete(packet.transactionCoverage) || !complete(packet.pendingCoverage)
               || !complete(fetch) || !savingsDate(packet.coverageStart)
               || packet.coverageStart > s1RiskWindow.start || packet.coverageThrough !== asOf
@@ -14343,10 +14344,11 @@
           const reserves = new Set((plan.savingsEarmarks?.pools || []).map(p => p.accountId));
           let flow = 0;
           for (const tx of packet.transactions) {
-            if (!tx || !savingsDate(tx.date) || tx.date > asOf || tx.date < packet.coverageStart
+            if (!tx || !savingsDate(tx.date) || tx.date > asOf
                 || !(typeof tx.id === 'string' && tx.id.trim() === tx.id && tx.id.length
                   || typeof tx.id === 'number' && Number.isSafeInteger(tx.id) && tx.id >= 0)
-                || cents(tx.amount) == null || tx.currency !== 'CAD') return null;
+                || cents(tx.amount) == null || typeof tx.currency !== 'string'
+                || tx.currency.toUpperCase() !== 'CAD') return null;
             const aliases = [tx.atlasAccountId, tx.accountId, tx.account]
               .filter(id => id != null && id !== '');
             const id = aliases[0];
