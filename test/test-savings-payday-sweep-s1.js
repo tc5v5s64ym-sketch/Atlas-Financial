@@ -874,3 +874,507 @@ test('control: an independently reconciled Bills stock of 30 preserves 1030 whil
   assert.equal(viewAt(a, '2026-10-16').opening, 30);
   assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1030);
 });
+
+// ---------------------------------------------------------------------
+// Round 6 (Systems Review 5538517077 on head 265e5df1) and the
+// Atlas-approved qualification design v2 (Slack thread
+// 1792008359.469249, design approval ts 1792094470.590939). Atlas
+// verified the 45 committed cases and raised P1-A (a missing Bills
+// leg beside an UNKNOWN Bills stock — null or absent row — published
+// the dependent chain) and P1-B (a reverse Savings -> Bills movement
+// whose Bills credit leg is absent published 80/1080 while the
+// qualified pair also published 80/1080, stranding the 10 in Bills).
+// The repair replaces the boolean stock-vs-snapshot comparison with
+// the tri-state boundary-basis qualification of design v2: one shared
+// basis object (value, source, effective cutoff) resolved once in
+// recommend; expected stock E[S] = B_bills + F, where F sums EVERY
+// evidenced Bills-located flow in the basis interval (the funding
+// cycle bridge's accounting, Bills-scoped) and is UNDEFINED — not
+// zero — when interval coverage is incomplete. An unaccounted leg is
+// exempted only in state known/reconciled, symmetrically for credits
+// and debits; a qualified inbound (reserve -> Bills) movement is
+// added to the waterfall seed exactly once, and only when it is not
+// already embedded in the basis (payday-morning / cutover-opening
+// bases embed every in-window movement by construction).
+// ---------------------------------------------------------------------
+
+function missingLegAA101(extra) {
+  const x = input(); allocFx.transfer(x, 50, 'AA101', 'savings', '2026-10-05');
+  x.opts.currentPeriodActuals.transactions =
+    x.opts.currentPeriodActuals.transactions.filter(tx => tx.id !== 'AA101-out');
+  if (extra) extra(x);
+  return x;
+}
+
+test('P1-A: a missing Bills leg with a null Bills stock withholds the dependent chain', () => {
+  // Review 5538517077, P1-A (A1). The missing-leg shape with the
+  // Bills row's value nulled: stock is unknown, an unknown stock is
+  // never reconciled, so the dependent chain withholds. The recorded
+  // current opening (snapshot 80) may remain displayed.
+  const a = advice(missingLegAA101(x => {
+    x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value = null;
+  }));
+  assert.equal(a.savingsFunding.status, 'unavailable');
+  assert.equal(viewAt(a, '2026-10-02').opening, 80, 'the recorded current opening stands');
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'unknown stock is never reconciled');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never 1080');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
+
+test('P1-A: a missing Bills leg with an absent Bills row withholds the dependent chain', () => {
+  // Review 5538517077, P1-A (A2). The Bills row is removed outright:
+  // absence is unknown exactly like a valueless row.
+  const a = advice(missingLegAA101(x => {
+    x.plan.startingCash.breakdown =
+      x.plan.startingCash.breakdown.filter(r => r.id !== 'chequing-a');
+  }));
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'absent stock is never reconciled');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never 1080');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
+
+test('P1-A control: no snapshot and a known Bills stock of 30 publishes 30/1030 (basis is the stock itself)', () => {
+  // Review 5538517077, P1-A control (A4). With no snapshot at all the
+  // basis is the current stock itself (cutover-opening): reconciled
+  // by construction, so the missing leg cannot strand anything — the
+  // physically supported 1030 publishes even while Savings withholds.
+  const a = advice(missingLegAA101(x => { delete x.plan.opening.paydaySnapshot; }));
+  assert.equal(a.savingsFunding.status, 'unavailable', 'Savings withholds its own figures');
+  assert.equal(viewAt(a, '2026-10-16').opening, 30);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1030);
+});
+
+test('P1-A control: a null snapshot opening and a known Bills stock of 30 publishes 30/1030', () => {
+  // Review 5538517077, P1-A control (A5). Same as A4 with the
+  // snapshot record present but its opening null.
+  const a = advice(missingLegAA101(x => { x.plan.opening.paydaySnapshot.opening = null; }));
+  assert.equal(viewAt(a, '2026-10-16').opening, 30);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1030);
+});
+
+function reversePairAA202(x, { applyBalances = true, billsLeg = true } = {}) {
+  // Qualified Savings -> Bills movement of 10 on 2026-10-05 (AA202).
+  if (applyBalances) {
+    x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value += 10;
+    x.plan.startingCash.breakdown.find(r => r.id === 'savings').value -= 10;
+    x.plan.savingsPoolObservation.accounts.find(r => r.accountId === 'savings').value -= 10;
+  }
+  x.opts.currentPeriodActuals.transactions.push(
+    { id: 'AA202-out', date: '2026-10-05', amount: 10, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'savings', accountRole: 'household-reserve',
+      kindHint: 'transfer', originalMerchant: 'AA202 TFR-TO Invented operating', excludeFromTotals: true });
+  if (billsLeg) x.opts.currentPeriodActuals.transactions.push(
+    { id: 'AA202-in', date: '2026-10-05', amount: -10, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'chequing-a', accountRole: 'household-cash',
+      kindHint: 'transfer', originalMerchant: 'AA202 TFR-FR Invented reserve', excludeFromTotals: true });
+  return x;
+}
+
+test('P1-B: an absent Bills credit leg withholds (the arithmetic difference does not prove source)', () => {
+  // Review 5538517077, P1-B (B1), settled by Atlas (design Q1): only
+  // the reserve debit leg is in evidence and Bills stock is 90 —
+  // exactly 10 above the snapshot. That arithmetic match does not
+  // prove the debit's counterpart landed in Bills, so the dependent
+  // chain withholds rather than publishing a qualified 1090.
+  const a = advice(reversePairAA202(input(), { billsLeg: false }));
+  assert.equal(viewAt(a, '2026-10-02').opening, 80, 'the recorded current opening stands');
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'an arithmetic difference does not prove transfer source');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never a fabricated 1090, never the stranded 1080');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
+
+test('P1-B: the full qualified reverse pair (AA202) counts the inbound 10 exactly once', () => {
+  // Review 5538517077, P1-B (B2). Both legs posted and qualified;
+  // balances moved (Bills 80 -> 90, Savings 119 -> 109). The inbound
+  // movement is not embedded in the snapshot basis (payday-morning
+  // pre-flow cutoff), so it reaches the seed once: opening 90,
+  // sweeps 1090 then 1000, and Savings closes 2199 with no residual
+  // operating cash — the 10 is published, not stranded in Bills.
+  const a = advice(reversePairAA202(input()));
+  assert.equal(a.savingsFunding.status, 'ready');
+  assert.equal(viewAt(a, '2026-10-16').opening, 90);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1090);
+  assert.equal(viewAt(a, '2026-10-30').paydaySweep, 1000);
+  const last = closing(a, '2026-11-13');
+  assert.equal(last.stock, 2199, 'opening stock 109 + sweeps 1090 + 1000');
+  assert.equal(last.operatingCash, 0, 'no residual is stranded in Bills');
+  assert.equal(10900 + 109000 + 100000, 219900);
+});
+
+test('P1-B control: an unpaired reserve debit with Bills unchanged preserves 80/1080', () => {
+  // Review 5538517077, P1-B control (B3). The same unpaired reserve
+  // debit, but balances were NOT applied and Bills stock is still
+  // the snapshot 80: the identity reconciles (E[S] = 80 = S), so the
+  // leg is exempt — symmetrically for debits as for credits — and
+  // only Savings' own figures withhold.
+  const a = advice(reversePairAA202(input(), { applyBalances: false, billsLeg: false }));
+  assert.equal(a.savingsFunding.status, 'unavailable', 'Savings withholds its own figures');
+  assert.equal(viewAt(a, '2026-10-16').opening, 80);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080);
+});
+
+function rsvUnpairedCredit(x) {
+  // Reserve -> reserve 10 with the outbound reserve leg dropped: an
+  // unmatched reserve credit remains; Bills is untouched by the move.
+  const obs = x.plan.savingsPoolObservation.accounts;
+  obs.find(r => r.accountId === 'savings').value -= 10;
+  obs.find(r => r.accountId === 'savings-dont-touch').value += 10;
+  x.plan.startingCash.breakdown.find(r => r.id === 'savings').value -= 10;
+  x.plan.startingCash.heldElsewhere.find(r => r.id === 'savings-dont-touch').value += 10;
+  x.opts.currentPeriodActuals.transactions.push(
+    { id: 'RSV-out', date: '2026-10-05', amount: 10, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'savings', accountRole: 'household-reserve',
+      kindHint: 'transfer', originalMerchant: 'RSV1 TFR-TO Invented reserve', excludeFromTotals: true },
+    { id: 'RSV-in', date: '2026-10-05', amount: -10, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'savings-dont-touch', accountRole: 'household-reserve',
+      kindHint: 'transfer', originalMerchant: 'RSV1 TFR-FR Invented reserve', excludeFromTotals: true });
+  x.opts.currentPeriodActuals.transactions =
+    x.opts.currentPeriodActuals.transactions.filter(tx => tx.id !== 'RSV-out');
+  return x;
+}
+function ordinarySpend(x, amount) {
+  x.opts.currentPeriodActuals.transactions.push(
+    { id: 'food-2', date: '2026-10-04', amount, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'chequing-a',
+      accountRole: 'household-cash', categoryId: 'groceries', categoryLabel: 'Groceries',
+      displayedPayee: 'Invented grocer food-2' });
+  x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value -= amount;
+  return x;
+}
+function ordinaryInflow(x, amount) { // packet sign: amount < 0 is cash in
+  x.opts.currentPeriodActuals.transactions.push(
+    { id: 'misc-in-1', date: '2026-10-04', amount: -amount, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'chequing-a',
+      accountRole: 'household-cash', displayedPayee: 'Invented one-off inflow misc-in-1' });
+  x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value += amount;
+  return x;
+}
+
+test('N-ORD-1: ordinary spending between observations qualifies the basis (publish the no-leg control figures)', () => {
+  // Design v2 §6.8 N-ORD-1 (probe a1/a1c). Ledger: snapshot B = 80 at
+  // the 2026-10-02 payday-morning cutoff; in the interval a posted
+  // Bills grocery spend of 20 (packet +20) and one unpaired reserve
+  // credit (no Bills leg). F = -20 over ALL evidenced Bills flows, so
+  // E[S] = 80 - 20 = 60 = S: reconciled — the spend explains the
+  // stock difference and the unpaired credit is exempt. The walk
+  // models the grocery spend, so publication is the no-leg control's
+  // 60 / 1060 exactly. The old boolean (S != snapshot) false-held.
+  const control = advice(ordinarySpend(input(), 20));
+  const a = advice(ordinarySpend(rsvUnpairedCredit(input()), 20));
+  assert.equal(a.savingsFunding.status, 'unavailable', 'Savings withholds its own figures');
+  assert.equal(viewAt(a, '2026-10-16').opening, 60);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1060);
+  assert.equal(viewAt(a, '2026-10-16').opening, viewAt(control, '2026-10-16').opening);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, viewAt(control, '2026-10-16').paydaySweep);
+  assert.equal(viewAt(a, '2026-10-30').opening, 0);
+});
+
+test('N-ORD-2: ordinary income between observations qualifies the basis (the walk, not the qualification, prices publication)', () => {
+  // Design v2 §6.8 N-ORD-2 (probe a2/a2c) — ORACLE LEDGER, stated in
+  // full because the expected figures are not the stock figures:
+  // snapshot B = 80 at the payday-morning cutoff. Interval flows on
+  // Bills: one posted one-off inflow of 30 (packet -30; NOT a plan
+  // receipt and not represented) plus one unpaired reserve credit
+  // with no Bills leg. Physical stock S = 110. The identity is over
+  // evidenced flows: E[S] = 80 + 30 = 110 = S — reconciled, so the
+  // basis is QUALIFIED and the unpaired credit is exempt. Publication
+  // stands on the waterfall walk: the walk prices the period from
+  // the basis plus its MODELED receipts, and this inflow is not one
+  // of them (repricing the walk for unconsumed inflows is the walk's
+  // modelling domain, design v2 §8(ii)) — so the first future
+  // opening is 80 and its sweep is 80 + the period's own 1000
+  // receipt = 1080, exactly the no-leg control's figures (a2c, where
+  // the same unmodeled inflow likewise leaves the walk at 80). The
+  // 30 is neither swept early nor lost to a hold: it stays in Bills
+  // inside the walk's own accounting, identically in both shapes.
+  const control = advice(ordinaryInflow(input(), 30));
+  const a = advice(ordinaryInflow(rsvUnpairedCredit(input()), 30));
+  assert.equal(viewAt(control, '2026-10-16').opening, 80, 'control: the unmodeled inflow does not reprice the walk');
+  assert.equal(viewAt(control, '2026-10-16').paydaySweep, 1080);
+  assert.equal(viewAt(a, '2026-10-16').opening, 80, 'qualified basis publishes the control figures — no false hold');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080);
+  assert.equal(viewAt(a, '2026-10-30').opening, 0);
+});
+
+test('N-ORD-3: the same explained difference withholds when interval coverage is incomplete or short of the observation', () => {
+  // Design v2 §6.8 N-ORD-3 (probe a3). F is DEFINED only on complete
+  // evidence over the full basis-to-observation interval; equality
+  // under incomplete evidence is coincidence-grade, not
+  // reconciliation. Two shapes: the explicit incomplete claim, and a
+  // complete claim whose coverage window ends before asOf.
+  const incomplete = advice((() => {
+    const x = ordinarySpend(rsvUnpairedCredit(input()), 20);
+    x.opts.currentPeriodActuals.transactionCoverage = { complete: false };
+    return x;
+  })());
+  assert.equal(viewAt(incomplete, '2026-10-16').opening, null, 'F undefined under an incomplete claim');
+  assert.equal(viewAt(incomplete, '2026-10-16').paydaySweep, null);
+  const shortWindow = advice((() => {
+    const x = ordinarySpend(rsvUnpairedCredit(input()), 20);
+    x.opts.currentPeriodActuals.coverageThrough = '2026-10-05';
+    x.opts.currentPeriodActuals.savingsFetchCoverage.endDate = '2026-10-05';
+    return x;
+  })());
+  assert.equal(viewAt(shortWindow, '2026-10-16').opening, null,
+    'coverage ending 2026-10-05 does not establish the full interval to asOf 2026-10-07');
+  assert.equal(viewAt(shortWindow, '2026-10-16').paydaySweep, null);
+});
+
+test('N-EMB-1: a qualified inbound movement embedded in a current-stock basis is never added twice', () => {
+  // Design v2 §6.8 N-EMB-1 (probe b1). The AA202 pair with the
+  // snapshot deleted: the basis is the current stock itself
+  // (cutover-opening, B = 90), which already contains the +10 — the
+  // interval is empty and the state is reconciled by construction.
+  // Publication stands on the embedded basis: 90 / 1090. A seed
+  // addition would publish 100 / 1100 — the same 10 counted twice.
+  const b = advice((() => { const x = reversePairAA202(input(), {}); delete x.plan.opening.paydaySnapshot; return x; })());
+  assert.equal(viewAt(b, '2026-10-02').opening, 90, 'the current-stock basis already contains the +10');
+  assert.equal(viewAt(b, '2026-10-16').opening, 90, 'never 100: no seed addition for an embedded movement');
+  assert.equal(viewAt(b, '2026-10-16').paydaySweep, 1090, 'never 1100');
+  assert.equal(viewAt(b, '2026-10-30').opening, 0);
+});
+
+test('N-EMB-2: a gap-embedded inbound effect inside a reconstruction basis is never added twice', () => {
+  // Design v2 §6.8 N-EMB-2 (probe b2) — ORACLE LEDGER: the bank EOD
+  // anchor at 2026-09-30 records chequing-a 60 + chequing-b 20 = 80.
+  // The completeness-proven gap (2026-09-30 -> 2026-10-02) carries an
+  // ordinary Bills credit of 5 AND an inbound Bills effect of 50, so
+  // the #618 reconstruction basis at the 2026-10-02 morning is
+  // B = 60 + 20 + 5 + 50 = 135 with the +50 already INSIDE it. The
+  // packet interval [10-02, asOf] contains no transfer legs, so no
+  // seed adjustment may be computed from gap evidence: opening 135,
+  // sweep 135 + 1000 = 1135. Adding the +50 at the seed would publish
+  // 185 / 1185 — the same money twice.
+  const recon = extraGap => {
+    const x = input();
+    x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value = null;
+    x.plan.opening.paydaySnapshot.opening = null;
+    x.plan.opening.asOf = '2026-09-30';
+    x.plan.opening.cashReconstructionAnchor = {
+      source: 'bank-statement', asOf: '2026-09-30', includedThrough: 'end-of-household-day',
+      timezone: 'America/Vancouver', currency: 'CAD', ownerApproved: true,
+      approvalRef: 'invented-owner-approval-only',
+      accounts: [{ id: 'chequing-a', value: 60, statementRef: 'invented-bank-a' },
+        { id: 'chequing-b', value: 20, statementRef: 'invented-bank-b' }],
+    };
+    x.opts.paydayGapCash = {
+      complete: true, coverageStart: '2026-09-30', coverageThrough: '2026-10-02',
+      movements: [{ id: 'invented-gap-credit', date: '2026-10-01', amount: 5, currency: 'CAD',
+        atlasAccountId: 'chequing-a', accountRole: 'household-cash' }].concat(extraGap || []),
+    };
+    return x;
+  };
+  const control = advice(recon());
+  assert.equal(viewAt(control, '2026-10-16').opening, 85, 'control: anchor 80 + gap credit 5');
+  assert.equal(viewAt(control, '2026-10-16').paydaySweep, 1085);
+  const a = advice(recon([{ id: 'invented-gap-inbound', date: '2026-10-01', amount: 50,
+    currency: 'CAD', atlasAccountId: 'chequing-a', accountRole: 'household-cash' }]));
+  assert.equal(viewAt(a, '2026-10-02').opening, 135, 'the +50 is inside the reconstructed basis');
+  assert.equal(viewAt(a, '2026-10-16').opening, 135, 'never 185: no seed addition for a gap-embedded effect');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1135, 'never 1185');
+});
+
+test('N-CUT-1: a qualified pair dated the next payday belongs to the next window (current boundary unchanged)', () => {
+  // Design v2 §6.8 N-CUT-1 (probe f1). Contents, not labels: the pair
+  // is dated 2026-10-16 — after asOf and outside the basis interval
+  // [2026-10-02, 2026-10-07] — and balances were NOT applied, so no
+  // part of its 50 is inside the current basis, the interval flows,
+  // or the current stock. The current boundary publishes its own
+  // figures unchanged: opening 80, sweep 1080.
+  const x = input();
+  x.opts.currentPeriodActuals.transactions.push(
+    { id: 'AA404-out', date: '2026-10-16', amount: 50, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'chequing-a', accountRole: 'household-cash',
+      kindHint: 'transfer', originalMerchant: 'AA404 TFR-TO Invented reserve', excludeFromTotals: true },
+    { id: 'AA404-in', date: '2026-10-16', amount: -50, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'savings', accountRole: 'household-reserve',
+      kindHint: 'transfer', originalMerchant: 'AA404 TFR-FR Invented operating', excludeFromTotals: true });
+  const a = advice(x);
+  assert.equal(viewAt(a, '2026-10-16').opening, 80, 'the next-payday pair is not in the current basis');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080, 'no part of the future 50 is swept early');
+  assert.equal(viewAt(a, '2026-10-30').opening, 0);
+});
+
+test('N-CUT-2: a qualified pair dated the boundary date is inside the interval (pre-flow morning cutoff)', () => {
+  // Design v2 §6.8 N-CUT-2 (probe f2). Contents, not labels: the
+  // snapshot basis is the payday MORNING before any boundary-date
+  // flow (the boundary paycheck itself is excluded from it), so a
+  // movement dated 2026-10-02 is AFTER the cutoff and inside the
+  // interval: balances applied (Bills 80 -> 30), the pair is a term
+  // of F and of the boundary deduction, and publication is the
+  // physical 30 / 1030 with funding ready.
+  const x = input(); allocFx.transfer(x, 50, 'AA405', 'savings', '2026-10-02');
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'ready');
+  assert.equal(viewAt(a, '2026-10-16').opening, 30, 'the boundary-date 50 has physically left Bills');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1030);
+});
+
+test('N-CUT-3: a qualified chequing-b -> Bills pair counts its Bills-side effect and never the other balance', () => {
+  // Design v2 §6.8 N-CUT-3 (probe q3; Atlas Q3). Contents: pooled
+  // snapshot 130 = Bills 80 + chequing-b 50 at the cutoff; the pair
+  // moves 10 chequing-b -> Bills inside the interval, so the rows
+  // read Bills 90 / chequing-b 40 and the legs net to zero in F
+  // (E[S] pooled = 130 = 90 + 40, reconciled). The seed split
+  // re-bases to the Bills row: opening 90, sweep 90 + 1000 = 1090.
+  // Chequing-b's remaining 40 is never imported (the sweep is not
+  // 1130) and the +10 is never added twice (the opening is not 100).
+  const x = input();
+  x.plan.opening.paydaySnapshot.opening = 130;
+  x.plan.startingCash.breakdown.find(r => r.id === 'chequing-b').value = 40;
+  x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value = 90;
+  x.opts.currentPeriodActuals.transactions.push(
+    { id: 'BB201-out', date: '2026-10-05', amount: 10, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'chequing-b', accountRole: 'household-cash',
+      kindHint: 'transfer', originalMerchant: 'BB201 TFR-TO Invented Bills', excludeFromTotals: true },
+    { id: 'BB201-in', date: '2026-10-05', amount: -10, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'chequing-a', accountRole: 'household-cash',
+      kindHint: 'transfer', originalMerchant: 'BB201 TFR-FR Invented other chequing', excludeFromTotals: true });
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'ready');
+  assert.equal(viewAt(a, '2026-10-16').opening, 90);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1090, 'the Bills-side effect counts; the other account balance does not');
+});
+
+test('N-OFF-1: offsetting unmatched reserve credits under complete evidence publish (the stock witnesses zero net effect)', () => {
+  // Design v2 §6.8 N-OFF-1 (probe c1). Two unpaired reserve credits
+  // in opposite directions (net zero), balances applied and netting
+  // to zero everywhere, coverage complete: F = 0 and S = 80 = B, so
+  // the reconciled stock itself witnesses that neither leg moved
+  // Bills. Both legs are exempt; publication stands at 80 / 1080
+  // while Savings withholds its own figures.
+  const reverseCredit = x => {
+    x.opts.currentPeriodActuals.transactions.push(
+      { id: 'OFF-out', date: '2026-10-05', amount: 10, pending: false, currency: 'CAD',
+        savingsPostingEvidence: 'posted', atlasAccountId: 'savings-dont-touch', accountRole: 'household-reserve',
+        kindHint: 'transfer', originalMerchant: 'OFF1 TFR-TO Invented reserve', excludeFromTotals: true },
+      { id: 'OFF-in', date: '2026-10-05', amount: -10, pending: false, currency: 'CAD',
+        savingsPostingEvidence: 'posted', atlasAccountId: 'savings', accountRole: 'household-reserve',
+        kindHint: 'transfer', originalMerchant: 'OFF1 TFR-FR Invented reserve', excludeFromTotals: true });
+    x.opts.currentPeriodActuals.transactions =
+      x.opts.currentPeriodActuals.transactions.filter(tx => tx.id !== 'OFF-out');
+    return x;
+  };
+  const a = advice(reverseCredit(rsvUnpairedCredit(input())));
+  assert.equal(a.savingsFunding.status, 'unavailable', 'Savings withholds its own figures');
+  assert.equal(viewAt(a, '2026-10-16').opening, 80);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080);
+});
+
+test('N-OFF-2: offsetting unmatched reserve credits with incomplete coverage withhold', () => {
+  // Design v2 §6.8 N-OFF-2 (probe c2) — the discriminating control:
+  // identical to N-OFF-1 except transactionCoverage is incomplete.
+  // The boolean equality S == B is coincidence-grade under incomplete
+  // evidence: F is undefined, the state is unknown, and the chain
+  // withholds. (The prior head published 80/1080 here.)
+  const x = rsvUnpairedCredit(input());
+  x.opts.currentPeriodActuals.transactions.push(
+    { id: 'OFF-out', date: '2026-10-05', amount: 10, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'savings-dont-touch', accountRole: 'household-reserve',
+      kindHint: 'transfer', originalMerchant: 'OFF1 TFR-TO Invented reserve', excludeFromTotals: true },
+    { id: 'OFF-in', date: '2026-10-05', amount: -10, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'savings', accountRole: 'household-reserve',
+      kindHint: 'transfer', originalMerchant: 'OFF1 TFR-FR Invented reserve', excludeFromTotals: true });
+  x.opts.currentPeriodActuals.transactions =
+    x.opts.currentPeriodActuals.transactions.filter(tx => tx.id !== 'OFF-out');
+  x.opts.currentPeriodActuals.transactionCoverage = { complete: false };
+  const a = advice(x);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'no reconciliation without complete interval evidence');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null);
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
+
+test('N-DUP-1: a duplicated reference (four legs) pairs nothing and withholds', () => {
+  // Design v2 §6.8 N-DUP-1 (probe d1). The same physical transfer
+  // evidenced twice under ONE reference: the group carries four legs,
+  // the pair index qualifies nothing, and every leg is unaccounted.
+  // Physical stock is 30; the chain withholds.
+  const x = input(); allocFx.transfer(x, 50, 'AA101', 'savings', '2026-10-05');
+  x.opts.currentPeriodActuals.transactions.push(
+    { id: 'AA101-out2', date: '2026-10-05', amount: 50, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'chequing-a', accountRole: 'household-cash',
+      kindHint: 'transfer', originalMerchant: 'AA101 TFR-TO Invented reserve', excludeFromTotals: true },
+    { id: 'AA101-in2', date: '2026-10-05', amount: -50, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'savings', accountRole: 'household-reserve',
+      kindHint: 'transfer', originalMerchant: 'AA101 TFR-FR Invented operating', excludeFromTotals: true });
+  const a = advice(x);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'nothing pairs; the legs are unaccounted');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null);
+});
+
+test('N-DUP-2: one physical transfer under two references fails the identity and withholds', () => {
+  // Design v2 §6.8 N-DUP-2 (probe d2). Both references pair, so both
+  // are "accounted" movements — but F sums evidenced LEGS: E[S] =
+  // 80 - 50 - 50 = -20 against a physical stock of 30. The identity
+  // fails (known/mismatched) and the chain withholds even though
+  // every movement is paired; no double-counted figure is ever
+  // published and the duplication is never corrected by inference.
+  const x = input(); allocFx.transfer(x, 50, 'AA101', 'savings', '2026-10-05');
+  x.opts.currentPeriodActuals.transactions.push(
+    { id: 'AA102-out', date: '2026-10-05', amount: 50, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'chequing-a', accountRole: 'household-cash',
+      kindHint: 'transfer', originalMerchant: 'AA102 TFR-TO Invented reserve', excludeFromTotals: true },
+    { id: 'AA102-in', date: '2026-10-05', amount: -50, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'savings', accountRole: 'household-reserve',
+      kindHint: 'transfer', originalMerchant: 'AA102 TFR-FR Invented operating', excludeFromTotals: true });
+  const a = advice(x);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'E[S] = -20 != 30: a double-counted figure is never published');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null);
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
+
+test('N-NEG-1: a known negative remainder reconciles exactly and publishes signed', () => {
+  // Design v2 §6.8 N-NEG-1 (probe e1). A qualified 100 transfer out
+  // of Bills leaves S = -20; F = -100, so E[S] = 80 - 100 = -20 = S
+  // exactly: a signed negative stock is a figure, not a failure of
+  // knowledge. The first future opening publishes -20 signed, its
+  // sweep is -20 + 1000 = 980 (the deficit absorbs part of the next
+  // receipt), and Savings is never drawn to cover it.
+  const x = input(); allocFx.transfer(x, 100, 'AA101', 'savings', '2026-10-05');
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'ready');
+  assert.equal(viewAt(a, '2026-10-16').opening, -20, 'the signed negative remainder publishes');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 980);
+  const close = closing(a, '2026-10-30');
+  assert.equal(close.contribution, 980, 'Savings credits exactly the published sweep');
+  assert.equal(close.stock, 1199, 'stock 219 (after the qualified 100 landed) + the 980 sweep');
+  assert.equal(closing(a, '2026-10-16').operatingCash, 980,
+    'the signed -20 deficit absorbs part of the next 1000 receipt in the open — visible, never drawn from Savings');
+  assert.equal(closing(a, '2026-11-13').stock, 2199);
+  assert.equal(closing(a, '2026-11-13').operatingCash, 0, 'the household position fully lands; no draw occurred');
+});
+
+test('N-NEG-2: an unexplained negative stock withholds (known/mismatched)', () => {
+  // Design v2 §6.8 N-NEG-2 (probe e2). The same -20 stock with the
+  // Bills leg missing: F = 0, E[S] = 80 != -20 — the deficit is real
+  // but unexplained, so the dependent chain withholds.
+  const a = advice(missingLegTransfer('AA101', x => {
+    // rebuild at 100: balances Bills 80 -> -20, only the credit leg kept
+    x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value = -20;
+    x.plan.startingCash.breakdown.find(r => r.id === 'savings').value = 219;
+    x.plan.savingsPoolObservation.accounts.find(r => r.accountId === 'savings').value = 219;
+    const credit = x.opts.currentPeriodActuals.transactions
+      .find(tx => tx.id === 'AA101-in');
+    credit.amount = -100;
+  }));
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'an unexplained negative stock is mismatched, not reconciled');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null);
+});
+
+test('embedded outbound: a qualified transfer already inside a current-stock basis is never deducted twice', () => {
+  // Atlas acceptance condition 1 (symmetric embedding). The AA101
+  // pair with balances applied (Bills 80 -> 30, Savings 119 -> 169)
+  // and the snapshot deleted: the basis is the current stock itself
+  // (cutover-opening, B = 30), which ALREADY reflects the outbound
+  // 50. The existing boundary deduction must not deduct it again:
+  // publication is opening 30 / sweep 1030 — never opening -20 /
+  // sweep 980 (the 50 removed twice), and never withheld merely
+  // because the funding bridge needs a snapshot basis of its own.
+  const x = input(); allocFx.transfer(x, 50, 'AA101', 'savings', '2026-10-05');
+  delete x.plan.opening.paydaySnapshot;
+  const a = advice(x);
+  assert.equal(viewAt(a, '2026-10-02').opening, 30, 'the current-stock basis already contains the outbound 50');
+  assert.equal(viewAt(a, '2026-10-16').opening, 30, 'never -20: the embedded transfer is not deducted again');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1030, 'never 980');
+  assert.equal(viewAt(a, '2026-10-30').opening, 0);
+});

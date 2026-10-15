@@ -10887,6 +10887,7 @@
             ? opts.s1CurrentBoundaryDeductionCents / 100 : null;
           let seed = boundaryDeduction != null ? availableRemainder : cashAfterHouseholdBudget;
           let shareUnknown = false;
+          let seedSplitRebased = false;
           if (seed != null && openingKnown && opening != null) {
             const cashRows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
             const chequingRows = cashRows.filter(r => r && HOUSEHOLD_CHEQUING_IDS.includes(r.id));
@@ -10915,7 +10916,10 @@
                 const r = rowOf(id);
                 return r ? Number(r.value) === 0 : !inAccounts(id);
               });
-              if (splitKnown) seed = roundCent(seed - (opening - Number(billsRow.value)));
+              if (splitKnown) {
+                seed = roundCent(seed - (opening - Number(billsRow.value)));
+                seedSplitRebased = true;
+              }
               else if (!othersZero) shareUnknown = true;
             }
           }
@@ -10929,6 +10933,23 @@
           if (shareUnknown || goalOverlapUnknown || movementUnknown) seed = null;
           if (seed != null && boundaryDeduction != null) {
             seed = roundCent(seed - boundaryDeduction);
+          }
+          // Qualification design v2 §3.4 (Atlas-approved): the
+          // inbound adjustment recommend published — a qualified
+          // reserve -> Bills movement that is not embedded in the
+          // basis — is added to the seed exactly once, at the same
+          // site where the boundary deduction is subtracted (the
+          // outbound channel). Symmetric embedding protection: when
+          // the split above re-based the seed onto the CURRENT Bills
+          // row, that row already embodies every evidenced flow's
+          // Bills effect, so the adjustment is NOT applied again —
+          // an embedded movement is never counted twice, in either
+          // direction.
+          const boundaryInbound = typeof opts.s1CurrentBoundaryInboundCents === 'number'
+            && Number.isFinite(opts.s1CurrentBoundaryInboundCents)
+            ? opts.s1CurrentBoundaryInboundCents / 100 : null;
+          if (seed != null && boundaryInbound != null && !seedSplitRebased) {
+            seed = roundCent(seed + boundaryInbound);
           }
           previousEnding = seed;
           if (seed == null && (shareUnknown || goalOverlapUnknown || movementUnknown || periodBillLoad == null)) {
@@ -14353,53 +14374,228 @@
       // the carry is proven and an unmatched reserve credit
       // withholds Savings' own figures only.
       const s1MovementIndex = householdInternalMovementIndex(paydayOpts);
-      const s1SnapshotRecord = s1RiskWindow
-        ? paydaySnapshotRecord(plan, paydayOpts, s1RiskWindow.start) : null;
-      const s1BillsStockRow = (plan && plan.startingCash && plan.startingCash.breakdown || [])
-        .find(r => r && r.id === BILLS_ACCOUNT_ID);
-      const s1BillsStockUnreconciled = !!(s1SnapshotRecord && s1BillsStockRow
-        && finiteRecordedOpening(s1BillsStockRow.value)
-        && roundCent(s1BillsStockRow.value) !== s1SnapshotRecord.opening);
-      const s1BoundaryMovementRisk = !!(plan.savingsEarmarks?.allocationPolicy != null
-        && s1ActualsPacket && Array.isArray(s1ActualsPacket.transactions) && s1RiskWindow
-        && s1ActualsPacket.transactions.some(tx => {
-          if (!tx || !isInternalHouseholdTransfer(tx)) return false;
-          if (!(tx.date >= s1RiskWindow.start && tx.date <= asOf)) return false;
-          // Round 4 (review 5536953733, P1-a): the location aliases
-          // must AGREE before a non-Bills location counts as
-          // established. householdCashLocationId selects the first
-          // nonempty alias, so a leg carrying conflicting aliases
-          // (atlasAccountId='savings', accountId='chequing-a') was
-          // resolved to the preferred alias and the Bills leg went
-          // unconsulted — the exemption granted on one alias of a
-          // contradictory pair. The funding evidence builder rejects
-          // such conflicts as unqualified; the same strictness
-          // applies here: contradictory aliases establish nothing.
+      // Round 6 (reviews 5537773130 + 5538517077; qualification design
+      // v2, Atlas-approved in the sweep thread): the round-5 boolean —
+      // Bills row vs snapshot opening, consulted only for unpaired
+      // reserve credits — is replaced by the tri-state boundary-basis
+      // qualification. ONE shared basis object is computed here from
+      // the resolver the goal-overlap pass below already calls: its
+      // value, source, and effective cutoff (openingAsOf). The
+      // identity is the funding cycle bridge's own accounting,
+      // Bills-scoped: E[S] = B_bills + F, where F sums EVERY evidenced
+      // Bills-located flow in the basis interval (ordinary flows and
+      // transfer legs alike, each exactly once) and the other
+      // chequing accounts' basis shares are implied by their own
+      // stock-minus-flows. F is DEFINED only when the packet's
+      // evidence covers the full basis-to-observation interval
+      // completely (the funding builder's completeness authority);
+      // otherwise the state is unknown — never zero.
+      const s1BasisOpening = s1RiskWindow
+        ? resolvePaydayPeriodOpening(plan, asOf, s1RiskWindow, paydayOpts, null, null)
+        : null;
+      const s1Basis = s1BasisOpening && s1BasisOpening.openingKnown
+        ? { value: s1BasisOpening.opening, source: s1BasisOpening.source,
+            openingAsOf: s1BasisOpening.openingAsOf }
+        : null;
+      const s1Txs = s1ActualsPacket && Array.isArray(s1ActualsPacket.transactions)
+        ? s1ActualsPacket.transactions : [];
+      const s1InWindow = tx => !!(tx && s1RiskWindow
+        && tx.date >= s1RiskWindow.start && tx.date <= asOf);
+      // Round 4 strictness (review 5536953733, P1-a), retained: the
+      // location aliases must AGREE before a non-Bills location
+      // counts as established. householdCashLocationId selects the
+      // first nonempty alias, so a leg carrying conflicting aliases
+      // (atlasAccountId='savings', accountId='chequing-a') was
+      // resolved to the preferred alias and the Bills leg went
+      // unconsulted — the exemption granted on one alias of a
+      // contradictory pair. The funding evidence builder rejects
+      // such conflicts as unqualified; the same strictness applies
+      // here: contradictory aliases establish nothing.
+      const s1AgreedLocation = tx => {
+        const aliases = [tx.atlasAccountId, tx.accountId, tx.account]
+          .filter(a => a != null && String(a).trim() !== '');
+        const agreed = aliases.length <= 1
+          || aliases.every(a => String(a) === String(aliases[0]));
+        return agreed ? householdCashLocationId(tx) : null;
+      };
+      const s1ComputeState = () => {
+        if (!s1Basis) return 'unknown';
+        // Current Bills stock S: a finite recorded row, or — with no
+        // chequing rows at all — a genuinely established finite
+        // scalar (round 4). Anything else is unestablished, and an
+        // unestablished stock is never reconciled: unknown stock is
+        // not a reconciled zero (design Q2, settled by Atlas).
+        const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+        const billsRow = rows.find(r => r && r.id === BILLS_ACCOUNT_ID);
+        let sBills = null;
+        if (billsRow) {
+          if (finiteRecordedOpening(billsRow.value)) sBills = roundCent(billsRow.value);
+        } else if (!rows.some(r => r && HOUSEHOLD_CHEQUING_IDS.indexOf(r.id) !== -1)
+            && plan && plan.startingCash
+            && finiteRecordedOpening(plan.startingCash.amount)) {
+          sBills = roundCent(plan.startingCash.amount);
+        }
+        if (sBills == null) return 'unknown';
+        // Payday-morning and cutover-opening bases are effective AT
+        // the stock observation: the interval is empty, F = 0, and
+        // the state is reconciled by construction — every in-window
+        // movement is already embedded in the basis (design §3.4).
+        if (s1Basis.source === 'payday-morning' || s1Basis.source === 'cutover-opening') {
+          return 'reconciled';
+        }
+        if (s1Basis.source !== 'snapshot' && s1Basis.source !== 'cutover-walk') return 'unknown';
+        // Snapshot / reconstruction bases: I = [window.start, asOf].
+        // F is defined only on complete evidence over that FULL
+        // interval — the same completeness the funding builder
+        // demands of its cycle: an explicit complete transaction
+        // claim, complete pending coverage, and a coverage window
+        // covering the interval end to end. Empty results or a short
+        // window cannot become complete evidence.
+        const packet = s1ActualsPacket;
+        if (!(transactionCoverageStatus(packet) === 'complete'
+            && (packet.transactionCoverage === 'complete'
+              || (packet.transactionCoverage && packet.transactionCoverage.complete === true))
+            && pendingCoverageStatus(packet) === 'complete'
+            && savingsDate(packet.coverageStart) && packet.coverageStart <= s1RiskWindow.start
+            && savingsDate(packet.coverageThrough) && packet.coverageThrough >= asOf)) {
+          return 'unknown';
+        }
+        // Dropped-row provenance naming a chequing account leaves
+        // the interval's movement evidence unconfirmed.
+        if (Object.hasOwn(packet, 'savingsMovementUnconfirmed')) {
+          const flags = packet.savingsMovementUnconfirmed;
+          if (!Array.isArray(flags)
+              || flags.some(f => f && HOUSEHOLD_CHEQUING_IDS.indexOf(f.accountId) !== -1)) {
+            return 'unknown';
+          }
+        }
+        // Sum the interval's evidenced flows per chequing account,
+        // each exactly once: identical repeated ids dedupe (the
+        // funding builder's rule); a contradictory repeated id, a
+        // pending or unamounted chequing flow, or a chequing-touching
+        // alias conflict leaves F undefined — not zero. Defining F
+        // over LEGS rather than the movement index is what makes
+        // duplicated evidence fail the identity instead of
+        // double-counting (design §3.6).
+        const unique = new Map();
+        for (const tx of s1Txs) {
+          if (!tx || tx.id == null || tx.id === '') continue;
+          const prior = unique.get(String(tx.id));
+          if (prior && JSON.stringify(prior) !== JSON.stringify(tx)) return 'unknown';
+          unique.set(String(tx.id), tx);
+        }
+        const flowOf = new Map();
+        for (const tx of unique.values()) {
+          if (!s1InWindow(tx)) continue;
           const aliases = [tx.atlasAccountId, tx.accountId, tx.account]
             .filter(a => a != null && String(a).trim() !== '');
           const agreed = aliases.length <= 1
             || aliases.every(a => String(a) === String(aliases[0]));
-          const loc = agreed ? householdCashLocationId(tx) : null;
-          if (loc === BILLS_ACCOUNT_ID) return true;
-          if (loc != null) {
-            // Round 5 (review 5537773130): a non-Bills leg normally
-            // exempts — but an UNPAIRED credit into a reserve account
-            // (money in, no counterpart leg in the packet) cannot
-            // prove its source stayed off Bills. With Bills stock
-            // unreconciled against the snapshot carry, that missing
-            // counterpart leaves the sweep basis unproven: risk.
-            // A paired credit, a reserve debit, another chequing
-            // account's leg, and any leg while Bills stock
-            // reconciles all keep the exemption. No transfer source
-            // is inferred; the dependent figures withhold instead.
-            if (!s1BillsStockUnreconciled) return false;
-            if (HOUSEHOLD_CHEQUING_IDS.indexOf(loc) !== -1) return false;
-            if (!(Number(tx.amount) < -EPSILON)) return false;
-            return !(tx.id != null && s1MovementIndex.byTxId.has(String(tx.id)));
+          if (!agreed) {
+            if (aliases.some(a => HOUSEHOLD_CHEQUING_IDS.indexOf(String(a)) !== -1)
+                || tx.accountRole === 'household-cash') return 'unknown';
+            continue;
           }
-          return tx.accountRole !== 'household-external'
-            && tx.accountRole !== 'unmapped';
-        }));
+          const loc = householdCashLocationId(tx);
+          if (loc == null || HOUSEHOLD_CHEQUING_IDS.indexOf(loc) === -1) continue;
+          const amount = Number(tx.amount);
+          if (tx.pending === true || !Number.isFinite(amount)) return 'unknown';
+          flowOf.set(loc, roundCent((flowOf.get(loc) || 0) - amount));
+        }
+        // The other chequing accounts' basis shares are implied by
+        // their own stock minus their own flows; B_bills is what
+        // remains of the resolved pooled basis. An unestablishable
+        // other-account stock leaves the Bills share unproven.
+        let impliedOthers = 0;
+        for (const id of HOUSEHOLD_CHEQUING_IDS) {
+          if (id === BILLS_ACCOUNT_ID) continue;
+          const row = rows.find(r => r && r.id === id);
+          const listed = Array.isArray(plan.accounts)
+            && plan.accounts.some(a => a && a.id === id);
+          if (!row && !listed) {
+            impliedOthers = roundCent(impliedOthers - (flowOf.get(id) || 0));
+            continue;
+          }
+          if (!row || !finiteRecordedOpening(row.value)) return 'unknown';
+          impliedOthers = roundCent(impliedOthers
+            + roundCent(row.value) - (flowOf.get(id) || 0));
+        }
+        const expected = roundCent(roundCent(s1Basis.value - impliedOthers)
+          + (flowOf.get(BILLS_ACCOUNT_ID) || 0));
+        return expected === sBills ? 'reconciled' : 'mismatched';
+      };
+      let s1StateCache = null;
+      const s1QualificationState = () => (s1StateCache ??= s1ComputeState());
+      // The gate (design §3.3): the state is consulted whenever the
+      // window's evidence contains an internal transfer leg whose
+      // Bills involvement is not disproven, or a seed adjustment is
+      // proposed below. An accounted (paired) movement never needs an
+      // exemption, but a mismatched or unknown state withholds the
+      // dependent chain even when every movement is paired — the seed
+      // stands on B, and B's bridge to S is unproven. An UNACCOUNTED
+      // leg is exempted only when its location is established
+      // non-Bills AND the state is reconciled — symmetrically for
+      // credits and debits (the identity, not the direction, is what
+      // clears it); a Bills-located or unlocatable leg is never
+      // exempt, and no transfer source is ever inferred. With no
+      // consulted leg and no adjustment the state is never computed,
+      // and independently established bases publish untouched
+      // (design §3.3.4). The state never withdraws the basis's own
+      // publication; only the dependent chain withholds, through the
+      // existing movement-unknown route below.
+      let s1BoundaryMovementRisk = false;
+      let s1InboundCents = 0;
+      if (plan.savingsEarmarks?.allocationPolicy != null
+          && s1ActualsPacket && Array.isArray(s1ActualsPacket.transactions) && s1RiskWindow) {
+        let consulted = false;
+        let unexemptLeg = false;
+        for (const tx of s1Txs) {
+          if (!tx || !isInternalHouseholdTransfer(tx) || !s1InWindow(tx)) continue;
+          const paired = tx.id != null && s1MovementIndex.byTxId.has(String(tx.id));
+          if (paired) {
+            const movement = s1MovementIndex.byTxId.get(String(tx.id)).movement;
+            if (movement.sourceAccountId === BILLS_ACCOUNT_ID
+                || movement.destinationAccountId === BILLS_ACCOUNT_ID) consulted = true;
+            continue;
+          }
+          const loc = s1AgreedLocation(tx);
+          if (loc === BILLS_ACCOUNT_ID) { consulted = true; unexemptLeg = true; continue; }
+          if (loc == null) {
+            // Explicitly external/unmapped rows are not household
+            // cash; every other unlocatable leg keeps the hold —
+            // Bills involvement is not disproven.
+            if (tx.accountRole === 'household-external'
+                || tx.accountRole === 'unmapped') continue;
+            consulted = true; unexemptLeg = true; continue;
+          }
+          consulted = true;
+          if (s1QualificationState() !== 'reconciled') unexemptLeg = true;
+        }
+        if (unexemptLeg) s1BoundaryMovementRisk = true;
+        if (consulted && s1QualificationState() !== 'reconciled') s1BoundaryMovementRisk = true;
+        // Inbound adjustment (design §3.4): a qualified reserve ->
+        // Bills movement counts through its Bills-side effect,
+        // exactly once, when it is NOT already embedded in the
+        // basis — snapshot and reconstruction bases only (their
+        // effective cutoff is the pre-flow payday morning), and only
+        // for movements dated inside the interval. On
+        // payday-morning / cutover-opening bases the movement is
+        // embedded by construction and no adjustment is published
+        // (never counted twice). Chequing -> Bills movements are
+        // excluded here by construction: their Bills-side effect
+        // reaches the seed through the waterfall's split re-base to
+        // the current Bills row (or the chain withholds), never
+        // through this adjustment.
+        if (s1Basis && (s1Basis.source === 'snapshot' || s1Basis.source === 'cutover-walk')) {
+          for (const movement of s1MovementIndex.movements) {
+            if (movement.destinationAccountId === BILLS_ACCOUNT_ID
+                && HOUSEHOLD_CHEQUING_IDS.indexOf(movement.sourceAccountId) === -1
+                && movement.date >= s1RiskWindow.start && movement.date <= asOf) {
+              s1InboundCents += Math.round(movement.amount * 100);
+            }
+          }
+        }
+      }
       // S1 repair round 2 (Systems Review 5532745420): the native surplus
       // conversion below is SIGNED, exactly as in the closing projection
       // — a negative native surplus is a valid figure (a goal bill the
@@ -14442,7 +14638,14 @@
           if (activeWindow && itemsMatchable) {
             const section = (calendarBillSections(plan, asOf, Object.assign({}, paydayOpts, {
               periodWindows: [activeWindow] })).billSections || []).find(s => s && s.id === activeWindow.id);
-            const openingBasis = resolvePaydayPeriodOpening(plan, asOf, activeWindow, paydayOpts, null, null);
+            // The shared basis object computed for the qualification
+            // gate above IS this window's resolver result (design §5
+            // Q4: computed once in recommend) — reuse it when it
+            // names the same active window.
+            const openingBasis = s1BasisOpening && s1RiskWindow
+              && activeWindow.start === s1RiskWindow.start
+              ? s1BasisOpening
+              : resolvePaydayPeriodOpening(plan, asOf, activeWindow, paydayOpts, null, null);
             for (const item of backingItems) {
               if (!item.event) continue;
               const date = cashWalkDate(item.event, asOf);
@@ -14479,6 +14682,13 @@
       if (s1BoundaryMovementRisk
           && typeof paydayOpts.s1CurrentBoundaryDeductionCents !== 'number') {
         paydayOpts.s1CurrentBoundaryMovementUnknown = true;
+      }
+      // The inbound adjustment travels with the deduction through the
+      // same opts channel (design §5 Q4: one shared basis, computed
+      // once here; only its consequences are passed). The waterfalls
+      // apply it once at the seed, beside the deduction.
+      if (s1InboundCents > 0 && Number.isSafeInteger(s1InboundCents)) {
+        paydayOpts.s1CurrentBoundaryInboundCents = s1InboundCents;
       }
       const pastPeriodViews = planPastPeriodViews(plan, asOf, alloc, plans,
         paydayOpts.debts || base.debts, Object.assign({}, paydayOpts, {
