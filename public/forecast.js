@@ -14251,9 +14251,25 @@
       // credits. The funding result itself is reused by the savings block
       // below, computed from exactly the inputs it has always had. When
       // any gate fails the credit stays unknown and the waterfalls keep
-      // the incumbent full carry; the closing projection publishes
-      // unavailable in those cases, so neither side claims an agreement
-      // the other does not hold.
+      // the incumbent full carry.
+      // S1 repair round 2 (Systems Review 5532745420): the native surplus
+      // conversion below is SIGNED, exactly as in the closing projection
+      // — a negative native surplus is a valid figure (a goal bill the
+      // Savings ledger pays can exceed the period's own receipts), not
+      // unavailable evidence. Round 1 converted it unsigned, so the
+      // deduction was silently dropped for every negative-surplus
+      // current period while the closing projection — converting signed
+      // — still published READY: Budget seeded the first future period
+      // from the un-restored cash-after-budget figure and the two
+      // publications disagreed. The round-1 text here claimed the
+      // closing projection publishes unavailable whenever a gate fails;
+      // that was disproven by this shape and is withdrawn. With the
+      // signed conversion the deduction is established for every current
+      // period the closing projection can credit, and the gates that can
+      // still withhold it (an ambiguous or unamounted goal deduction;
+      // unavailable capacity, saved or transferred evidence) are inputs
+      // the closing projection itself holds on, so no disagreeing pair
+      // is published.
       let earlySavingsFunding;
       if (plan.savingsEarmarks?.allocationPolicy != null) {
         earlySavingsFunding = savingsDailyFunding(plan, paydayOpts.debts || base.debts, asOf, { ...paydayOpts, savingsAllocationPolicy: undefined });
@@ -14294,7 +14310,7 @@
             }
           }
           const tail = savingsCents(fp.projectedRemainingCapacity);
-          const net = savingsCents(fp.nativePeriodSurplus);
+          const net = savingsCents(fp.nativePeriodSurplus, true);
           const saved = savingsCents(fp.alreadySavedIncome);
           const transferred = savingsCents(fp.transferred);
           if (overlapKnown && [tail, net, saved, transferred].every(n => n != null)) {

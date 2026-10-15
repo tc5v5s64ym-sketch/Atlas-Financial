@@ -253,6 +253,86 @@ test('the current-period credit and the first future sweep are the same money, c
   assert.equal(closing(a, '2026-11-13').operatingCash, 0, 'no unexplained residual remains in Bills');
 });
 
+test('a negative native surplus still establishes the boundary deduction (ledger-paid current annual goal)', () => {
+  // Systems Review 5532745420 (PR #620, round 2): the owner-closing
+  // fixture with its commitments removed, Savings at 1000, and a single
+  // yearly bill of 500 due 2026-10-10 inside the CURRENT period. The
+  // bill carries no explicit goalRef: the Savings ledger identifies and
+  // pays the 500 goal itself, and Budget deducts it inside the current
+  // period's bill load, so the period's native surplus is -500 — a
+  // valid signed figure, not unavailable evidence. The closing
+  // projection converts that surplus signed and publishes READY; the
+  // boundary computation must do the same, so the deduction is
+  // established (credit 0: -500 surplus + 500 restored overlap) and the
+  // first future period seeds from the goal-restored remainder (80).
+  // Hand-derived ledger: Bills opens 80; the goal is paid once by the
+  // ledger; the two 400 receipts are the future periods' remainders
+  // (80 + 400 = 480, then 400), each sweeping in full; Savings ends
+  // 1000 - 500 + 480 + 400 = 1380 with Bills at 0.
+  // Pre-repair (head 29a07b72): the boundary computation converted the
+  // surplus unsigned, read -500 as unavailable and dropped the
+  // deduction, so Budget seeded -420 (80 - 500 unrestored), published
+  // sweeps of 0 and 380, and the Nov 13 close signed stock 880 /
+  // operatingCash 500 while Savings stayed READY — the two
+  // publications disagreed and the merge card's claim that a failed
+  // deduction gate only occurs while Savings withholds was false.
+  const x = ownerModel();
+  x.plan.commitments = [];
+  x.plan.savingsPoolObservation.accounts[0].value = 1000;
+  x.plan.startingCash.breakdown[2].value = 1000;
+  x.plan.bills = [{ id: 'a', label: 'Invented current annual goal', frequency: 'yearly', month: 10, day: 10,
+    firstDue: '2026-10-10', amount: 500, confidence: 'confirmed', jointCash: false }];
+  const a = advice(x);
+  assert.equal(a.savingsFunding.period.nativePeriodSurplus, -500,
+    'the current period native surplus is the signed -500, published not dropped');
+  assert.equal(viewAt(a, '2026-10-02').periodBillLoad, 500,
+    'Budget deducts the goal bill inside the current period load');
+  assert.equal(viewAt(a, '2026-10-16').opening, 80,
+    'the first future opening seeds from the goal-restored remainder, not the unrestored -420');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 480, 'the first future sweep is the full remainder (80 + 400)');
+  assert.equal(viewAt(a, '2026-10-30').paydaySweep, 400);
+  const second = closing(a, '2026-10-30');
+  assert.equal(second.contribution, 480, 'Savings credits exactly the published 480 sweep');
+  assert.equal(second.stock, 980, '1000 opening stock - the 500 goal paid once + the 480 sweep');
+  const third = closing(a, '2026-11-13');
+  assert.equal(third.status, 'ready');
+  assert.equal(third.projectedContributions, 880, 'the two credited sweeps (480 + 400), each once');
+  assert.equal(third.projectedDraws, 500, 'the goal cost is debited exactly once');
+  assert.equal(third.stock, 1380);
+  assert.equal(third.operatingCash, 0, 'the paired Bills operating position is fully explained — no residual');
+  assert.equal(100000 - 50000 + 48000 + 40000, 138000);
+});
+
+test('control: the same annual goal with an explicit yearly-bill goalRef agrees unchanged', () => {
+  // Passing control for the round-2 counterexample above (Systems
+  // Review 5532745420): identical fixture, except the Savings pool
+  // carries the explicit yearly-bill goalRef for the bill. The goal is
+  // then carried as a Savings-funded provision rather than a Budget
+  // bill load (current periodBillLoad 0), and the publications have
+  // always agreed: opening 80, sweeps 480 and 400, Nov 13 close stock
+  // 1380 / Bills 0. This shape passed before the round-2 repair and
+  // must keep passing.
+  const x = ownerModel();
+  x.plan.commitments = [];
+  x.plan.savingsPoolObservation.accounts[0].value = 1000;
+  x.plan.startingCash.breakdown[2].value = 1000;
+  x.plan.bills = [{ id: 'a', label: 'Invented current annual goal', frequency: 'yearly', month: 10, day: 10,
+    firstDue: '2026-10-10', amount: 500, confidence: 'confirmed', jointCash: false }];
+  x.plan.savingsEarmarks.pools[1].goalRefs = [{ kind: 'yearly-bill', id: 'a' }];
+  const a = advice(x);
+  assert.equal(viewAt(a, '2026-10-02').periodBillLoad, 0,
+    'with the explicit goalRef the goal is a Savings-funded provision, not a Budget load');
+  assert.equal(viewAt(a, '2026-10-16').opening, 80);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 480);
+  assert.equal(viewAt(a, '2026-10-30').paydaySweep, 400);
+  const third = closing(a, '2026-11-13');
+  assert.equal(third.status, 'ready');
+  assert.equal(third.stock, 1380);
+  assert.equal(third.projectedDraws, 500, 'the goal cost is debited exactly once');
+  assert.equal(third.operatingCash, 0, 'the paired Bills operating position is fully explained');
+  assert.equal(100000 - 50000 + 48000 + 40000, 138000);
+});
+
 test('Budget and Savings agree across multiple future periods', () => {
   // For every future seam in these fixtures (no goal bills inside the
   // Budget bill load, no household hold): the Savings contribution that
