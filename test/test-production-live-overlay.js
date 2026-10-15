@@ -201,6 +201,10 @@ function startMockProvider(mode) {
       ] });
       return;
     }
+    if (url.pathname === '/v2/tags') {
+      send(200, { tags: [] });
+      return;
+    }
     if (url.pathname === '/v2/transactions') {
       const pendingUniverse = url.searchParams.get('is_pending') === 'true';
       const offset = Number(url.searchParams.get('offset') || 0);

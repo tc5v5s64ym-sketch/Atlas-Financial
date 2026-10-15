@@ -781,7 +781,14 @@ async function fetchLunchMoneyLive(token, now, historyDays, options) {
   // as complete. A categories failure must reject the whole fetch, exactly
   // like a 503 already does through tryGetJson's rethrow (ATLAS-067 FR2).
   const categoriesPayload = await httpsGetJson(new URL(`${base}/categories`), token, options);
-  const tagsPayload = await tryGetJson(new URL(`${base}/tags`), token, options);
+  // Tags are fetched without tryGetJson's 404-to-null swallow either: tag
+  // names are classification inputs — a tag named fuel/gas is explicit fuel
+  // evidence and a tag named for a household member assigns the personal
+  // owner — so a swallowed 404 would silently strip that evidence from
+  // every bare-ID tag while the observation still qualified as complete.
+  // A tags failure must reject the whole fetch, exactly like a 503
+  // already does through tryGetJson's rethrow (ATLAS-067 tags).
+  const tagsPayload = await httpsGetJson(new URL(`${base}/tags`), token, options);
   const txPage = await fetchLunchMoneyTransactionsPaged(txUrl, token, options);
   const pendingPage = await fetchLunchMoneyTransactionsPaged(
     lunchMoneyPendingUniverseUrl(base),
