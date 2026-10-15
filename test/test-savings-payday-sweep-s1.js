@@ -753,3 +753,124 @@ test('control: a recorded zero scalar opening still publishes 0/1000 with no bre
   assert.equal(viewAt(a, '2026-10-16').opening, 0);
   assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1000);
 });
+
+// ---------------------------------------------------------------------
+// Round 5 (Systems Review 5537773130 on head aaf49c1b): the
+// missing-Bills-leg case. The earlier rounds withheld when a Bills
+// leg was PRESENT but unqualified; when the outbound Bills leg is
+// ABSENT from the packet and only the Savings credit remains, the
+// per-leg scoping exempted the credit's established reserve
+// location — but a credit cannot prove its absent counterpart
+// stayed off Bills, and the un-netted snapshot carry offered cash
+// that physically left Bills. The repair fires the movement risk
+// for an UNPAIRED reserve credit exactly when Bills stock is
+// unreconciled against that carry; no transfer source is inferred.
+// ---------------------------------------------------------------------
+
+function missingLegTransfer(reference, extra) {
+  const x = input(); allocFx.transfer(x, 50, reference, 'savings', '2026-10-05');
+  x.opts.currentPeriodActuals.transactions =
+    x.opts.currentPeriodActuals.transactions.filter(tx => tx.id !== reference + '-out');
+  if (extra) extra(x);
+  return x;
+}
+
+test('a missing Bills leg (T1) leaves the remainder unproven: the dependent sweep withholds', () => {
+  // Review 5537773130. Balances moved (Bills 80 -> 30, Savings
+  // 119 -> 169, snapshot stays 80) but only the Savings credit leg
+  // is in evidence. Funding withholds the deduction; Budget must
+  // not publish the un-netted carry: physical Bills 30 + the 1000
+  // receipt supports qualified 1030 or unknown — never 1080.
+  const a = advice(missingLegTransfer('T1'));
+  assert.equal(a.savingsFunding.status, 'unavailable');
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'the missing Bills leg leaves the remainder unproven');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never 1080');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
+
+test('a missing Bills leg (AA101) leaves the remainder unproven: the dependent sweep withholds', () => {
+  // The qualified reference cannot substitute for the missing leg:
+  // the same withholding with AA101.
+  const a = advice(missingLegTransfer('AA101'));
+  assert.equal(a.savingsFunding.status, 'unavailable');
+  assert.equal(viewAt(a, '2026-10-16').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never 1080');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
+
+test('a missing Bills leg with incomplete transaction coverage still withholds', () => {
+  const a = advice(missingLegTransfer('AA101', x => {
+    x.opts.currentPeriodActuals.transactionCoverage = { complete: false };
+  }));
+  assert.equal(viewAt(a, '2026-10-16').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never 1080');
+});
+
+test('a missing Bills leg with a dropped-row provenance flag still withholds', () => {
+  const a = advice(missingLegTransfer('AA101', x => {
+    x.opts.currentPeriodActuals.savingsMovementUnconfirmed =
+      [{ accountId: 'chequing-a', reason: 'transaction-amount-or-date-unconfirmed' }];
+  }));
+  assert.equal(viewAt(a, '2026-10-16').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never 1080');
+});
+
+test('control: the full AA101 pair still publishes opening 30 / sweep 1030', () => {
+  // Paired control: both legs present and qualified — the credit is
+  // paired, the deduction is established, nothing withholds.
+  const x = input(); allocFx.transfer(x, 50, 'AA101', 'savings', '2026-10-05');
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'ready');
+  assert.equal(viewAt(a, '2026-10-16').opening, 30);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1030);
+});
+
+test('control: the full T1 pair still withholds', () => {
+  // Paired control: both legs present, unqualified reference — the
+  // original N1 withholding stands.
+  const x = input(); allocFx.transfer(x, 50, 'T1', 'savings', '2026-10-05');
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'unavailable');
+  assert.equal(viewAt(a, '2026-10-16').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null);
+});
+
+test('control: an unmatched reserve-only credit with Bills unchanged preserves 80/1080', () => {
+  // A reserve -> reserve move (10) whose outbound reserve leg is
+  // dropped leaves an unmatched reserve credit, but Bills stock is
+  // unchanged (80 recorded == 80 snapshot): the carry is reconciled
+  // and stands; Savings withholds only its own figures.
+  const x = input();
+  const obs = x.plan.savingsPoolObservation.accounts;
+  obs.find(r => r.accountId === 'savings').value -= 10;
+  obs.find(r => r.accountId === 'savings-dont-touch').value += 10;
+  x.plan.startingCash.breakdown.find(r => r.id === 'savings').value -= 10;
+  x.plan.startingCash.heldElsewhere.find(r => r.id === 'savings-dont-touch').value += 10;
+  x.opts.currentPeriodActuals.transactions.push(
+    { id: 'RSV-out', date: '2026-10-05', amount: 10, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'savings', accountRole: 'household-reserve',
+      kindHint: 'transfer', originalMerchant: 'RSV1 TFR-TO Invented reserve', excludeFromTotals: true },
+    { id: 'RSV-in', date: '2026-10-05', amount: -10, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted', atlasAccountId: 'savings-dont-touch', accountRole: 'household-reserve',
+      kindHint: 'transfer', originalMerchant: 'RSV1 TFR-FR Invented reserve', excludeFromTotals: true });
+  x.opts.currentPeriodActuals.transactions =
+    x.opts.currentPeriodActuals.transactions.filter(tx => tx.id !== 'RSV-out');
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'unavailable', 'Savings withholds its own ambiguous evidence');
+  assert.equal(viewAt(a, '2026-10-16').opening, 80, 'reconciled Bills stock preserves the projection');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080);
+});
+
+test('control: an independently reconciled Bills stock of 30 preserves 1030 while Savings withholds', () => {
+  // The missing-leg shape, but the Bills opening/stock pair is
+  // independently reconciled at 30 (snapshot records 30, current
+  // stock is 30): the carry stands on the reconciled figure, so
+  // Budget publishes the physically supported 1030 even though
+  // Savings still withholds its ambiguous movement evidence.
+  const a = advice(missingLegTransfer('AA101', x => {
+    x.plan.opening.paydaySnapshot.opening = 30;
+  }));
+  assert.equal(a.savingsFunding.status, 'unavailable');
+  assert.equal(viewAt(a, '2026-10-16').opening, 30);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1030);
+});

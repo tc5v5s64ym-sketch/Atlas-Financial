@@ -14336,6 +14336,30 @@
       const s1ActualsPacket = currentPeriodActualsPacket(paydayOpts);
       const s1RiskWindow = (operatingPayPeriodWindows(plan, asOf) || [])
         .find(w => w && w.role === 'active');
+      // Round 5 (review 5537773130): the missing-Bills-leg case. When
+      // the outbound Bills leg of a Bills -> Savings transfer is
+      // absent from the packet, the remaining Savings credit's
+      // location is established and non-Bills, so the per-leg scoping
+      // above exempts it — yet the credit cannot prove its absent
+      // counterpart stayed off Bills, and the un-netted snapshot
+      // carry then offers cash that physically left Bills (opening
+      // 80 / sweep 1080 where physical Bills 30 supports 1030 or
+      // unknown). The counterpart's absence is itself the missing
+      // evidence, and it matters exactly when Bills stock is
+      // UNRECONCILED: the current recorded Bills stock differs from
+      // the snapshot opening the carry stands on, with no qualified
+      // bridge between them. When the stock reconciles (unchanged
+      // Bills, or an independently reconciled opening/stock pair),
+      // the carry is proven and an unmatched reserve credit
+      // withholds Savings' own figures only.
+      const s1MovementIndex = householdInternalMovementIndex(paydayOpts);
+      const s1SnapshotRecord = s1RiskWindow
+        ? paydaySnapshotRecord(plan, paydayOpts, s1RiskWindow.start) : null;
+      const s1BillsStockRow = (plan && plan.startingCash && plan.startingCash.breakdown || [])
+        .find(r => r && r.id === BILLS_ACCOUNT_ID);
+      const s1BillsStockUnreconciled = !!(s1SnapshotRecord && s1BillsStockRow
+        && finiteRecordedOpening(s1BillsStockRow.value)
+        && roundCent(s1BillsStockRow.value) !== s1SnapshotRecord.opening);
       const s1BoundaryMovementRisk = !!(plan.savingsEarmarks?.allocationPolicy != null
         && s1ActualsPacket && Array.isArray(s1ActualsPacket.transactions) && s1RiskWindow
         && s1ActualsPacket.transactions.some(tx => {
@@ -14357,7 +14381,22 @@
             || aliases.every(a => String(a) === String(aliases[0]));
           const loc = agreed ? householdCashLocationId(tx) : null;
           if (loc === BILLS_ACCOUNT_ID) return true;
-          if (loc != null) return false;
+          if (loc != null) {
+            // Round 5 (review 5537773130): a non-Bills leg normally
+            // exempts — but an UNPAIRED credit into a reserve account
+            // (money in, no counterpart leg in the packet) cannot
+            // prove its source stayed off Bills. With Bills stock
+            // unreconciled against the snapshot carry, that missing
+            // counterpart leaves the sweep basis unproven: risk.
+            // A paired credit, a reserve debit, another chequing
+            // account's leg, and any leg while Bills stock
+            // reconciles all keep the exemption. No transfer source
+            // is inferred; the dependent figures withhold instead.
+            if (!s1BillsStockUnreconciled) return false;
+            if (HOUSEHOLD_CHEQUING_IDS.indexOf(loc) !== -1) return false;
+            if (!(Number(tx.amount) < -EPSILON)) return false;
+            return !(tx.id != null && s1MovementIndex.byTxId.has(String(tx.id)));
+          }
           return tx.accountRole !== 'household-external'
             && tx.accountRole !== 'unmapped';
         }));
