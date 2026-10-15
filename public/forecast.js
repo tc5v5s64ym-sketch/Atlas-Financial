@@ -10584,6 +10584,28 @@
       // Unavailable is PR #254 lookback: the active window may still
       // publish dated posted cash as the last trusted opening. A later
       // half whose prior ending was lost must not invent an opening.
+      // Supplemental repair (review 5532991155, N2): the active
+      // period's opening basis is unestablished when the recorded
+      // Bills row carries no finite value and neither a valid payday
+      // snapshot nor a qualified bank reconstruction establishes the
+      // opening — the resolvers below would coerce the missing stock
+      // to a known $0 and the pooled walk would then fabricate the
+      // dependent sweep and openings. Withhold the opening and lose
+      // the chain instead. A valid snapshot or a valid reconstruction
+      // (the #618 anchor authority, consulted unmodified) establishes
+      // the basis and this hold does not fire; a genuinely recorded
+      // $0 row is finite evidence and is likewise untouched.
+      const activeOpeningBasisMissing = role === 'active' && !planUnavailable && !lookback
+        && (() => {
+          const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+          const billsRow = rows.find(r => r && r.id === BILLS_ACCOUNT_ID);
+          if (!billsRow || finiteRecordedOpening(billsRow.value)) return false;
+          if (paydaySnapshotRecord(plan, opts, window.start)) return false;
+          if (plan.opening && Object.prototype.hasOwnProperty.call(
+            plan.opening, 'cashReconstructionAnchor')
+            && bankCashReconstructionOpening(plan, window.start) != null) return false;
+          return true;
+        })();
       const snapshot = planUnavailable
         ? (role === 'active'
           ? {
@@ -10600,8 +10622,11 @@
           // later opening may be re-derived from the pooled walk — the
           // chain stays unknown rather than fabricating a figure.
           ? { opening: null, openingKnown: false, openingAsOf: null, source: null }
+        : activeOpeningBasisMissing
+          ? { opening: null, openingKnown: false, openingAsOf: null, source: null }
         : resolvePaydayPeriodOpening(
           plan, asOf, window, opts, previousEnding, opts.sim);
+      if (activeOpeningBasisMissing) openingChainLost = true;
       const opening = snapshot.opening;
       const openingKnown = snapshot.openingKnown === true;
       const openingAsOf = snapshot.openingAsOf || null;
@@ -10863,12 +10888,19 @@
               else if (!othersZero) shareUnknown = true;
             }
           }
-          if (shareUnknown || goalOverlapUnknown) seed = null;
+          // Supplemental repair (review 5532991155, N1/N3): recommend
+          // sets s1CurrentBoundaryMovementUnknown when a current-window
+          // transfer exists in the actuals but the boundary deduction
+          // could not be established — the un-netted carry would sweep
+          // cash that may already have left Bills. Withhold the seed
+          // and lose the chain, like the other unproven bases.
+          const movementUnknown = opts.s1CurrentBoundaryMovementUnknown === true;
+          if (shareUnknown || goalOverlapUnknown || movementUnknown) seed = null;
           if (seed != null && boundaryDeduction != null) {
             seed = roundCent(seed - boundaryDeduction);
           }
           previousEnding = seed;
-          if (seed == null && (shareUnknown || goalOverlapUnknown || periodBillLoad == null)) {
+          if (seed == null && (shareUnknown || goalOverlapUnknown || movementUnknown || periodBillLoad == null)) {
             openingChainLost = true;
           }
         } else {
@@ -14252,6 +14284,22 @@
       // below, computed from exactly the inputs it has always had. When
       // any gate fails the credit stays unknown and the waterfalls keep
       // the incumbent full carry.
+      // Supplemental repair (review 5532991155, N1/N3): a current-window
+      // internal household transfer in the actuals is a candidate
+      // boundary movement. If the Savings boundary deduction below
+      // cannot be established, the finite snapshot carry is not proof
+      // that no movement left Bills, so the dependent seed must
+      // withhold rather than sweep cash that may already sit in
+      // Savings. With no transfer in evidence the recorded opening
+      // basis stands on its own — coverage loss alone proves no
+      // amount error.
+      const s1ActualsPacket = currentPeriodActualsPacket(paydayOpts);
+      const s1RiskWindow = (operatingPayPeriodWindows(plan, asOf) || [])
+        .find(w => w && w.role === 'active');
+      const s1BoundaryMovementRisk = !!(plan.savingsEarmarks?.allocationPolicy != null
+        && s1ActualsPacket && Array.isArray(s1ActualsPacket.transactions) && s1RiskWindow
+        && s1ActualsPacket.transactions.some(tx => tx && isInternalHouseholdTransfer(tx)
+          && tx.date >= s1RiskWindow.start && tx.date <= asOf));
       // S1 repair round 2 (Systems Review 5532745420): the native surplus
       // conversion below is SIGNED, exactly as in the closing projection
       // — a negative native surplus is a valid figure (a goal bill the
@@ -14327,6 +14375,10 @@
             }
           }
         }
+      }
+      if (s1BoundaryMovementRisk
+          && typeof paydayOpts.s1CurrentBoundaryDeductionCents !== 'number') {
+        paydayOpts.s1CurrentBoundaryMovementUnknown = true;
       }
       const pastPeriodViews = planPastPeriodViews(plan, asOf, alloc, plans,
         paydayOpts.debts || base.debts, Object.assign({}, paydayOpts, {

@@ -17,6 +17,7 @@ const F = require(path.join(process.env.ATLAS_TEST_APP_ROOT || path.resolve(__di
 const input = require('./fixtures/savings-future-closing-data');
 const deficitModel = require('./fixtures/savings-deficit-coverage-data');
 const ownerModel = require('./fixtures/savings-owner-closing-data');
+const allocFx = require('./fixtures/savings-daily-allocation-contract');
 const copy = x => JSON.parse(JSON.stringify(x));
 function advice(x) {
   const before = JSON.stringify(x), result = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [] });
@@ -359,4 +360,126 @@ test('Budget and Savings agree across multiple future periods', () => {
     }
   }
   assert.ok(seams >= 8, 'agreement checked across at least eight payday seams, got ' + seams);
+});
+
+test('an unqualified current transfer is withheld from the sweep, never swept as if it never left Bills', () => {
+  // Supplemental (review 5532991155, N1). A posted 50 transfer out of
+  // Bills on 2026-10-05 (balances moved consistently: Bills 80 -> 30,
+  // Savings 119 -> 169) whose short reference T1 establishes no unique
+  // transfer identity. Savings correctly withholds; Budget must not
+  // publish the pre-transfer carry as a known sweep — physical Bills
+  // are 30, so the sweep is 1030 from a qualified basis or unknown,
+  // NEVER 1080.
+  const x = input(); allocFx.transfer(x, 50, 'T1', 'savings', '2026-10-05');
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'unavailable', 'Savings withholds: T1 establishes no unique transfer identity');
+  assert.equal(viewAt(a, '2026-10-02').opening, 80, 'the recorded current opening stands');
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'first future opening withholds rather than carrying the pre-transfer 80');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'no known sweep — never 1080');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+  assert.equal(viewAt(a, '2026-10-30').paydaySweep, null);
+});
+
+test('control: a qualified current transfer (AA101) nets out of the sweep exactly once', () => {
+  // Same shape with a reference that establishes unique transfer
+  // identity: funding is ready, the transferred 50 is deducted at the
+  // boundary, and the sweep equals what Savings credits.
+  const x = input(); allocFx.transfer(x, 50, 'AA101', 'savings', '2026-10-05');
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'ready');
+  assert.equal(viewAt(a, '2026-10-16').opening, 30, 'physical Bills after the transfer');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1030);
+  const close = closing(a, '2026-10-30');
+  assert.equal(close.contribution, 1030, 'Savings credits exactly the published sweep');
+  assert.equal(close.stock, 1199);
+});
+
+test('missing Bills cash and a missing snapshot establish no zero: the sweep and post-sweep openings withhold', () => {
+  // Supplemental (review 5532991155, N2). The recorded Bills row and
+  // the payday snapshot opening are both missing (null). No finite
+  // Bills stock or valid snapshot establishes a zero, so the known 0
+  // opening and the 1000/1000 sweeps the defective head published are
+  // fabricated; the whole dependent chain withholds and no later
+  // period re-enters through the pooled walk.
+  const x = input();
+  x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value = null;
+  x.plan.opening.paydaySnapshot.opening = null;
+  const a = advice(x);
+  assert.equal(viewAt(a, '2026-10-02').opening, null, 'missing cash is unknown, not a known $0');
+  assert.equal(viewAt(a, '2026-10-16').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never the fabricated 1000');
+  assert.equal(viewAt(a, '2026-10-30').opening, null, 'the chain stays lost — no pooled-walk re-entry');
+  assert.equal(viewAt(a, '2026-10-30').paydaySweep, null);
+});
+
+test('control: a genuinely recorded zero Bills stock and zero snapshot publish the same figures as known', () => {
+  // The identical published figures are valid when the zero is real
+  // evidence: both values numeric 0.
+  const x = input();
+  x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value = 0;
+  x.plan.opening.paydaySnapshot.opening = 0;
+  const a = advice(x);
+  assert.equal(viewAt(a, '2026-10-02').opening, 0);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1000);
+  assert.equal(viewAt(a, '2026-10-30').paydaySweep, 1000);
+  const close = closing(a, '2026-10-30');
+  assert.equal(close.status, 'ready');
+  assert.equal(close.stock, 1119);
+});
+
+test('incomplete coverage with a current transfer withholds the dependent sweep (the known transfer is never omitted)', () => {
+  // Supplemental (review 5532991155, N3 companion). The AA101 control
+  // plus incomplete transaction coverage: funding becomes unavailable
+  // and the transfer's inclusion can no longer be established, so the
+  // dependent opening/sweep withhold instead of dropping the known 50
+  // (defective head: opening 80, sweep 1080).
+  const x = input(); allocFx.transfer(x, 50, 'AA101', 'savings', '2026-10-05');
+  x.opts.currentPeriodActuals.transactionCoverage = { complete: false };
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'unavailable');
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'never the pre-transfer 80');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never 1080');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
+
+test('control: incomplete coverage alone, with no transfer in evidence, leaves the recorded Budget basis standing', () => {
+  // The precise limit of N3: coverage incomplete by itself does not
+  // prove an amount error and must not null every Budget figure — the
+  // recorded historical opening remains valid. Savings withholds its
+  // own figures; Budget's recorded basis is untouched.
+  const x = input();
+  x.opts.currentPeriodActuals.transactionCoverage = { complete: false };
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'unavailable', 'Savings withholds its own figures');
+  assert.equal(viewAt(a, '2026-10-16').opening, 80, 'the recorded opening remains valid');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080);
+});
+
+test('control: a qualified bank reconstruction establishes the opening even with the original Bills row missing', () => {
+  // Supplemental (review 5532991155, reconstruction control). Bank
+  // EOD anchor accounts 60 + 20 plus a completeness-proven later
+  // Bills credit of 5 reconstruct an 85 opening through the #618
+  // authority, even though the original Bills row is null and the
+  // snapshot opening is missing. Blanket null-rejection would discard
+  // this valid separate authority; the N2 hold must not fire.
+  const x = input();
+  x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value = null;
+  x.plan.opening.paydaySnapshot.opening = null;
+  x.plan.opening.asOf = '2026-09-30';
+  x.plan.opening.cashReconstructionAnchor = {
+    source: 'bank-statement', asOf: '2026-09-30', includedThrough: 'end-of-household-day',
+    timezone: 'America/Vancouver', currency: 'CAD', ownerApproved: true,
+    approvalRef: 'invented-owner-approval-only',
+    accounts: [{ id: 'chequing-a', value: 60, statementRef: 'invented-bank-a' },
+      { id: 'chequing-b', value: 20, statementRef: 'invented-bank-b' }],
+  };
+  x.opts.paydayGapCash = {
+    complete: true, coverageStart: '2026-09-30', coverageThrough: '2026-10-02',
+    movements: [{ id: 'invented-gap-credit', date: '2026-10-01', amount: 5, currency: 'CAD',
+      atlasAccountId: 'chequing-a', accountRole: 'household-cash' }],
+  };
+  const a = advice(x);
+  assert.equal(viewAt(a, '2026-10-02').opening, 85, 'EOD 60 + 20 plus the proven later credit 5');
+  assert.equal(viewAt(a, '2026-10-16').opening, 85);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1085);
 });
