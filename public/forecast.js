@@ -10595,16 +10595,36 @@
       // (the #618 anchor authority, consulted unmodified) establishes
       // the basis and this hold does not fire; a genuinely recorded
       // $0 row is finite evidence and is likewise untouched.
+      // Repair (review 5535404477, P1): two qualification paths still
+      // fabricated the zero. (a) An ABSENT Bills row bypassed the
+      // hold entirely — when the plan enumerates per-account rows,
+      // absence is unknown, exactly like a valueless row: no Bills
+      // evidence establishes a $0. (b) The anchor arm exempted the
+      // hold on the anchor sum alone; a valid anchor does not prove
+      // the gap after it. The exemption now requires the COMPLETE
+      // reconstruction through the #618 authority
+      // (completeCashAtMorning, consulted unmodified) — anchor plus
+      // the completeness-proven later movements — so an incomplete
+      // or absent gap leaves the basis unestablished, the hold
+      // fires, and the chain stays lost instead of re-entering
+      // through the pooled walk. The hold engages only where a
+      // per-account basis was claimed at all: a plan with no
+      // breakdown rows carries its opening as a dated scalar amount,
+      // and that basis stands or falls by the resolvers' own rules
+      // (the complete-gap walk, the mid-period cutover opening) —
+      // withholding it here would remove incumbent known openings
+      // the resolvers legitimately publish.
       const activeOpeningBasisMissing = role === 'active' && !planUnavailable && !lookback
         && (() => {
           const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+          if (!rows.length) return false;
           const billsRow = rows.find(r => r && r.id === BILLS_ACCOUNT_ID);
-          if (!billsRow || finiteRecordedOpening(billsRow.value)) return false;
+          if (billsRow && finiteRecordedOpening(billsRow.value)) return false;
           if (paydaySnapshotRecord(plan, opts, window.start)) return false;
-          if (plan.opening && Object.prototype.hasOwnProperty.call(
-            plan.opening, 'cashReconstructionAnchor')
-            && bankCashReconstructionOpening(plan, window.start) != null) return false;
-          return true;
+          const hasAnchor = !!(plan.opening && Object.prototype.hasOwnProperty.call(
+            plan.opening, 'cashReconstructionAnchor'));
+          if (!hasAnchor) return true;
+          return completeCashAtMorning(plan, window.start, opts) == null;
         })();
       const snapshot = planUnavailable
         ? (role === 'active'
@@ -14293,13 +14313,29 @@
       // Savings. With no transfer in evidence the recorded opening
       // basis stands on its own — coverage loss alone proves no
       // amount error.
+      // Repair (review 5535404477, P2): the risk is scoped to
+      // transfers that involve the Bills account. A transfer leg with
+      // an established cash location other than Bills — a movement
+      // entirely between reserve accounts, say — cannot have moved
+      // Bills cash, so its ambiguity withholds Savings' own figures
+      // only and the independent Bills basis stands. A leg on Bills,
+      // or one whose cash location cannot be established at all
+      // (explicitly external/unmapped rows are not household cash),
+      // keeps the hold: Bills involvement is not disproven.
       const s1ActualsPacket = currentPeriodActualsPacket(paydayOpts);
       const s1RiskWindow = (operatingPayPeriodWindows(plan, asOf) || [])
         .find(w => w && w.role === 'active');
       const s1BoundaryMovementRisk = !!(plan.savingsEarmarks?.allocationPolicy != null
         && s1ActualsPacket && Array.isArray(s1ActualsPacket.transactions) && s1RiskWindow
-        && s1ActualsPacket.transactions.some(tx => tx && isInternalHouseholdTransfer(tx)
-          && tx.date >= s1RiskWindow.start && tx.date <= asOf));
+        && s1ActualsPacket.transactions.some(tx => {
+          if (!tx || !isInternalHouseholdTransfer(tx)) return false;
+          if (!(tx.date >= s1RiskWindow.start && tx.date <= asOf)) return false;
+          const loc = householdCashLocationId(tx);
+          if (loc === BILLS_ACCOUNT_ID) return true;
+          if (loc != null) return false;
+          return tx.accountRole !== 'household-external'
+            && tx.accountRole !== 'unmapped';
+        }));
       // S1 repair round 2 (Systems Review 5532745420): the native surplus
       // conversion below is SIGNED, exactly as in the closing projection
       // — a negative native surplus is a valid figure (a goal bill the

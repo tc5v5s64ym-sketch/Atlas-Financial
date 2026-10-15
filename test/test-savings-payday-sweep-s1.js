@@ -483,3 +483,166 @@ test('control: a qualified bank reconstruction establishes the opening even with
   assert.equal(viewAt(a, '2026-10-16').opening, 85);
   assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1085);
 });
+
+// ---- Repair round 3 (review 5535404477): the remaining N2
+// qualification paths and the reserve-only over-withholding
+// regression. Atlas's extended set: 4 pass / 4 fail on head 1592e9b6;
+// the four failures are pinned here with their paired controls.
+
+test('an absent Bills row establishes no zero: the sweep and post-sweep openings withhold', () => {
+  // Review 5535404477, P1-a. The chequing-a row is REMOVED from the
+  // breakdown (not merely nulled) and the snapshot opening is null.
+  // Absence is unknown, exactly like a valueless row: no Bills
+  // evidence establishes a $0, so the fabricated known 0 opening and
+  // 1000/1000 sweeps the prior head published must withhold. The
+  // present-row shapes are the controls already pinned above (the
+  // literal-null row withholds; a genuinely recorded $0 publishes).
+  const x = input();
+  x.plan.startingCash.breakdown = x.plan.startingCash.breakdown
+    .filter(r => r.id !== 'chequing-a');
+  x.plan.opening.paydaySnapshot.opening = null;
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'unavailable', 'funding withholds');
+  assert.equal(viewAt(a, '2026-10-02').opening, null, 'absent cash is unknown, not a known $0');
+  assert.equal(viewAt(a, '2026-10-16').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never the fabricated 1000');
+  assert.equal(viewAt(a, '2026-10-30').opening, null, 'the chain stays lost — no pooled-walk re-entry');
+  assert.equal(viewAt(a, '2026-10-30').paydaySweep, null);
+});
+
+test('an absent Bills row withholds even when plan.accounts lists both chequing IDs', () => {
+  // Review 5535404477, P1-a variant: Atlas reproduced the fabricated
+  // zero with AND without plan.accounts explicitly listing the two
+  // chequing IDs. Listing the account does not establish its cash.
+  const x = input();
+  x.plan.startingCash.breakdown = x.plan.startingCash.breakdown
+    .filter(r => r.id !== 'chequing-a');
+  x.plan.opening.paydaySnapshot.opening = null;
+  x.plan.accounts = [{ id: 'chequing-a' }, { id: 'chequing-b' }];
+  const a = advice(x);
+  assert.equal(viewAt(a, '2026-10-02').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null);
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
+
+function eodFixture(gapMode) {
+  // The committed reconstruction control's shape: Bills row null,
+  // snapshot null, Sep 30 bank EOD anchor 60 + 20, and a later Bills
+  // credit of 5 in the gap. gapMode: 'complete' | 'incomplete' | 'absent'.
+  const x = input();
+  x.plan.startingCash.breakdown.find(r => r.id === 'chequing-a').value = null;
+  x.plan.opening.paydaySnapshot.opening = null;
+  x.plan.opening.asOf = '2026-09-30';
+  x.plan.opening.cashReconstructionAnchor = {
+    source: 'bank-statement', asOf: '2026-09-30', includedThrough: 'end-of-household-day',
+    timezone: 'America/Vancouver', currency: 'CAD', ownerApproved: true,
+    approvalRef: 'invented-owner-approval-only',
+    accounts: [{ id: 'chequing-a', value: 60, statementRef: 'invented-bank-a' },
+      { id: 'chequing-b', value: 20, statementRef: 'invented-bank-b' }],
+  };
+  if (gapMode !== 'absent') {
+    x.opts.paydayGapCash = {
+      complete: gapMode === 'complete', coverageStart: '2026-09-30', coverageThrough: '2026-10-02',
+      movements: [{ id: 'invented-gap-credit', date: '2026-10-01', amount: 5, currency: 'CAD',
+        atlasAccountId: 'chequing-a', accountRole: 'household-cash' }],
+    };
+  }
+  return x;
+}
+
+test('an EOD anchor with incomplete gap coverage establishes no opening: no pooled-walk re-entry', () => {
+  // Review 5535404477, P1-b. Only paydayGapCash.complete flips to
+  // false on the reconstruction control. A valid anchor alone does
+  // not prove the gap after it, so the reconstruction is not
+  // qualified: the active opening is unknown AND the chain stays
+  // lost — the prior head let Oct 16 re-enter as 0/known with a
+  // fabricated 1000 sweep.
+  const a = advice(eodFixture('incomplete'));
+  assert.equal(viewAt(a, '2026-10-02').opening, null, 'the anchor alone does not establish the opening');
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'no re-entry through the pooled walk');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never the fabricated 1000');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+  assert.equal(viewAt(a, '2026-10-30').paydaySweep, null);
+});
+
+test('an EOD anchor with absent gap coverage establishes no opening: no pooled-walk re-entry', () => {
+  // Review 5535404477, P1-b variant: paydayGapCash removed entirely.
+  const a = advice(eodFixture('absent'));
+  assert.equal(viewAt(a, '2026-10-02').opening, null);
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'no re-entry through the pooled walk');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never the fabricated 1000');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
+
+test('control: the complete EOD reconstruction still establishes the opening (85) and sweep (1085)', () => {
+  // Paired control for P1-b (same shape as the committed
+  // reconstruction control above): anchor plus completeness-proven
+  // gap qualifies the reconstruction in full.
+  const a = advice(eodFixture('complete'));
+  assert.equal(viewAt(a, '2026-10-02').opening, 85, 'EOD 60 + 20 plus the proven later credit 5');
+  assert.equal(viewAt(a, '2026-10-16').opening, 85);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1085);
+});
+
+function reserveTransfer(x, amount, reference) {
+  // Move `amount` between the two reserve accounts (savings ->
+  // savings-dont-touch) on 2026-10-05, balances moved consistently in
+  // the observation and the mirrored starting-cash rows, with posted
+  // reserve-only legs. Bills is untouched: no leg involves chequing-a.
+  const obs = x.plan.savingsPoolObservation.accounts;
+  obs.find(r => r.accountId === 'savings').value -= amount;
+  obs.find(r => r.accountId === 'savings-dont-touch').value += amount;
+  x.plan.startingCash.breakdown.find(r => r.id === 'savings').value -= amount;
+  x.plan.startingCash.heldElsewhere.find(r => r.id === 'savings-dont-touch').value += amount;
+  x.opts.currentPeriodActuals.transactions.push(
+    { id: reference + '-out', date: '2026-10-05', amount, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted',
+      atlasAccountId: 'savings', accountRole: 'household-reserve', kindHint: 'transfer',
+      originalMerchant: reference + ' TFR-TO Invented reserve', excludeFromTotals: true },
+    { id: reference + '-in', date: '2026-10-05', amount: -amount, pending: false, currency: 'CAD',
+      savingsPostingEvidence: 'posted',
+      atlasAccountId: 'savings-dont-touch', accountRole: 'household-reserve', kindHint: 'transfer',
+      originalMerchant: reference + ' TFR-FR Invented reserve', excludeFromTotals: true });
+  return x;
+}
+
+test('an unqualified reserve-only transfer does not remove the independent Bills projection', () => {
+  // Review 5535404477, P2 (regression from the N1 repair). A 10 move
+  // entirely between reserve accounts with the unqualified reference
+  // T1: Savings correctly withholds its ambiguous reserve evidence,
+  // but no Bills leg exists, so the independently valid Bills
+  // figures stand — the prior head nulled the entire future Budget
+  // chain (opening null, sweep null).
+  const x = reserveTransfer(input(), 10, 'T1');
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'unavailable', 'Savings withholds its own ambiguous reserve evidence');
+  assert.equal(viewAt(a, '2026-10-02').opening, 80, 'the recorded Bills opening stands');
+  assert.equal(viewAt(a, '2026-10-16').opening, 80, 'independent Bills projection preserved');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080);
+  assert.equal(viewAt(a, '2026-10-30').opening, 0);
+});
+
+test('control: a qualified reserve-only transfer (AA101) preserves the Bills projection', () => {
+  // Same reserve-only move with a qualified reference: funding is
+  // ready and the Bills figures are identical.
+  const x = reserveTransfer(input(), 10, 'AA101');
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'ready');
+  assert.equal(viewAt(a, '2026-10-16').opening, 80);
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, 1080);
+  const close = closing(a, '2026-10-30');
+  assert.equal(close.stock, 1199);
+});
+
+test('control: an unqualified transfer WITH a Bills leg still withholds the dependent sweep', () => {
+  // The scoping repair must not reopen N1: the same T1 reference on a
+  // transfer out of Bills (a Bills leg in the movement) still
+  // withholds the dependent opening and sweep.
+  const x = input(); allocFx.transfer(x, 50, 'T1', 'savings', '2026-10-05');
+  const a = advice(x);
+  assert.equal(a.savingsFunding.status, 'unavailable');
+  assert.equal(viewAt(a, '2026-10-16').opening, null, 'a Bills-leg movement still withholds');
+  assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'never 1080');
+  assert.equal(viewAt(a, '2026-10-30').opening, null);
+});
