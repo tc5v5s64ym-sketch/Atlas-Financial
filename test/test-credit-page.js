@@ -397,6 +397,7 @@ function mockProvider(accounts) {
       if (url.pathname === '/v2/plaid_accounts') return send(200, { plaid_accounts: accounts });
       if (url.pathname === '/v2/manual_accounts' || url.pathname === '/v2/assets') return send(200, { manual_accounts: [] });
       if (url.pathname === '/v2/categories') return send(200, { categories: [] });
+      if (url.pathname === '/v2/tags') return send(200, { tags: [] });
       if (url.pathname === '/v2/transactions') return send(200, { has_more: false, transactions: [] });
       return send(404, {});
     });
