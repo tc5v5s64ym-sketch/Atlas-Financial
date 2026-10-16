@@ -14,7 +14,15 @@
  *     fails here;
  *   - unauthenticated requests still meet the existing auth gate first
  *     (302 /login for page paths, 401 JSON for /data.json), exactly one hop;
- *   - /, /index.html, /bills.html and the /forecast.html 404 are unchanged.
+ *   - /, /index.html, /bills.html and the /forecast.html 404 are unchanged;
+ *   - the Windows-runtime alias families Systems Review 5549092124
+ *     demonstrated against the retained file (percent-encoded trailing
+ *     slash, backslash as separator, NTFS ::$DATA stream suffix, plus
+ *     their case and trailing-slash combinations) also 302 to / for
+ *     authenticated GET and HEAD. On POSIX those aliases 404 today (the
+ *     filesystem never resolves them onto the file — the 200 serving was
+ *     reproduced on the documented Windows runtime); the guard must
+ *     recognise them by canonical form so the retirement holds on both.
  *
  * public/planning.html stays on disk by design (Atlas boundary ruling);
  * this suite proves it is unreachable over HTTP, not that it is gone.
@@ -163,6 +171,23 @@ const VARIANTS = [
   ['dot-dot segment from a sibling', '/bills/../planning.html', 'redirect-root'],
 ];
 
+/* Windows-runtime alias families (Systems Review 5549092124): on the
+ * documented Windows runtime these resolve onto the retained file itself —
+ * a percent-encoded slash leaves a trailing-slash form, a backslash is a
+ * path separator, and ::$DATA names the file's default NTFS stream. Each
+ * must answer the same 302 to / as the canonical path, GET and HEAD. */
+const WINDOWS_ALIASES = [
+  ['encoded trailing slash, lowercase hex', '/planning.html%2f'],
+  ['encoded trailing slash, uppercase hex', '/planning.html%2F'],
+  ['encoded backslash separator, lowercase hex', '/%5cplanning.html'],
+  ['encoded backslash separator, uppercase hex', '/%5Cplanning.html'],
+  ['literal backslash separator', '/\\planning.html'],
+  ['NTFS stream suffix', '/planning.html::$DATA'],
+  ['NTFS stream suffix, uppercase path', '/PLANNING.HTML::$DATA'],
+  ['NTFS stream suffix, mixed case', '/Planning.Html::$Data'],
+  ['NTFS stream suffix with trailing slash', '/planning.html::$DATA/'],
+];
+
 function expectKind(res, kind) {
   if (kind === 'redirect-root') return res.status === 302 && res.headers.location === '/';
   if (kind === 'notfound') return res.status === 404;
@@ -226,6 +251,20 @@ function expectKind(res, kind) {
         `status ${res.status}, location ${res.headers.location}`);
     }
 
+    console.log('=== Windows-runtime aliases (authenticated GET + HEAD) ===');
+    for (const [label, rawPath] of WINDOWS_ALIASES) {
+      const get = await rawGet(base, rawPath, cookie);
+      ok(!isOldPage(get), `${label} (${rawPath}) GET does not serve the old page`,
+        `status ${get.status}`);
+      ok(get.status === 302 && get.headers.location === '/',
+        `${label} (${rawPath}) authenticated GET -> 302 Location: /`,
+        `status ${get.status}, location ${get.headers.location}`);
+      const head = await rawRequest(base, 'HEAD', rawPath, cookie, null);
+      ok(head.status === 302 && head.headers.location === '/',
+        `${label} (${rawPath}) authenticated HEAD -> 302 Location: /`,
+        `status ${head.status}, location ${head.headers.location}`);
+    }
+
     console.log('=== unauthenticated shape ===');
     for (const [label, rawPath] of [
       ['canonical', '/planning.html'],
@@ -238,6 +277,21 @@ function expectKind(res, kind) {
         `unauthenticated ${label} (${rawPath}) -> 302 /login at the gate`,
         `status ${res.status}, location ${res.headers.location}`);
       ok(!isOldPage(res), `unauthenticated ${label} is never the old page`);
+    }
+
+    console.log('=== unauthenticated Windows-runtime aliases ===');
+    for (const [label, rawPath] of WINDOWS_ALIASES) {
+      const res = await rawGet(base, rawPath, null);
+      ok(res.status === 302 && res.headers.location === '/login',
+        `unauthenticated ${label} (${rawPath}) -> 302 /login at the gate`,
+        `status ${res.status}, location ${res.headers.location}`);
+      ok(!isOldPage(res), `unauthenticated ${label} is never the old page`);
+    }
+    for (const rawPath of ['/planning.html%2f', '/%5cplanning.html', '/planning.html::$DATA']) {
+      const head = await rawRequest(base, 'HEAD', rawPath, null, null);
+      ok(head.status === 302 && head.headers.location === '/login',
+        `unauthenticated HEAD ${rawPath} -> 302 /login at the gate`,
+        `status ${head.status}, location ${head.headers.location}`);
     }
 
     console.log('=== preservation controls ===');

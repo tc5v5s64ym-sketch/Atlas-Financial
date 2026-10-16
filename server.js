@@ -778,13 +778,21 @@ app.get('/planning.html', (_req, res) => res.redirect('/'));
 // match the percent-encoded or dot-segment forms, which express.static
 // would decode and normalise back onto the same file — so retire those
 // here too: decode the path once, collapse duplicate slashes and resolve
-// dot segments, and redirect only on an exact canonical match.
+// dot segments, and redirect only on an exact canonical match. The
+// canonical form also folds the Windows-runtime aliases of the same file
+// (Systems Review 5549092124): a backslash acts as a path separator, a
+// trailing slash still names the file, and a trailing ::$DATA suffix
+// names the file's default NTFS stream — none of those may fall through
+// to express.static on that runtime.
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   let decoded;
   try { decoded = decodeURIComponent(req.path); } catch { return next(); }
-  const normalized = path.posix.normalize(decoded.replace(/\/{2,}/g, '/'));
-  if (normalized.toLowerCase() === '/planning.html') return res.redirect('/');
+  const slashed = decoded.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+  let canonical = path.posix.normalize(slashed).toLowerCase();
+  canonical = canonical.replace(/\/+$/, '');
+  canonical = canonical.replace(/::\$data$/, '').replace(/\/+$/, '');
+  if (canonical === '/planning.html') return res.redirect('/');
   return next();
 });
 
