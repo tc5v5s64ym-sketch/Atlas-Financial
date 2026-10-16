@@ -2697,7 +2697,7 @@
   // chequing identities exist. Designated savings is not spent here.
   function simulateModel(plan, asOf, opts) {
     opts = opts || {};
-    const coverage = cardCoverageState(plan, asOf, opts);
+    const coverage = probeCardCoverage(plan, asOf, opts);
     const days = walkDays(plan, asOf, opts);
     const viewDays = (opts.viewDays != null && opts.horizonDays != null)
       ? Math.min(opts.viewDays, days)
@@ -10428,6 +10428,28 @@
       status: 'unavailable', reason: minimums.reason, reservedCash: null,
       cardMinimumPayments: minimums };
   }
+  // One payday cent search (maxFeasiblePaydayRemoval) probes simulateModel
+  // many times with options that differ only in disabled / plannedFlows /
+  // injections. cardCoverageState reads none of those: it reads plan, asOf,
+  // opts.currentPeriodActuals, opts.debts and opts.representedEvents. The
+  // search hands its probes a holder bound to exactly those inputs, so card
+  // coverage is computed once per search. Any input that is not the identical
+  // object/value falls through to a fresh computation. The holder lives only
+  // for that one search and is never module state.
+  function probeCardCoverage(plan, asOf, opts) {
+    const reuse = opts.cardCoverageReuse;
+    if (reuse && reuse.plan === plan && reuse.asOf === asOf
+      && reuse.currentPeriodActuals === opts.currentPeriodActuals
+      && reuse.debts === opts.debts
+      && reuse.representedEvents === opts.representedEvents) {
+      if (!reuse.computed) {
+        reuse.value = cardCoverageState(plan, asOf, opts);
+        reuse.computed = true;
+      }
+      return reuse.value;
+    }
+    return cardCoverageState(plan, asOf, opts);
+  }
   function simulationCashFloor(sim) {
     return sim.requiredCashFloor != null ? sim.requiredCashFloor : sim.buffer;
   }
@@ -11716,15 +11738,24 @@
     }
     return probe;
   }
-  function paydayPlanFits(plan, asOf, masterOpts, removeAmount, extraDisabled) {
-    return protectedPlanCheck(plan, asOf,
-      paydayProbeOpts(masterOpts, asOf, removeAmount, extraDisabled)).feasible;
+  function paydayPlanFits(plan, asOf, masterOpts, removeAmount, extraDisabled, cardCoverageReuse) {
+    const probe = paydayProbeOpts(masterOpts, asOf, removeAmount, extraDisabled);
+    if (cardCoverageReuse) probe.cardCoverageReuse = cardCoverageReuse;
+    return protectedPlanCheck(plan, asOf, probe).feasible;
   }
   // Largest same-day removal at which protectedPlanCheck still holds.
   // Negative means that much cash must be added before the protected plan
   // holds. Monotonic in the removal, so the cent search is exact.
   function maxFeasiblePaydayRemoval(plan, asOf, masterOpts, loBound, hiBound, extraDisabled) {
-    const fits = cents => paydayPlanFits(plan, asOf, masterOpts, cents / 100, extraDisabled);
+    // Card coverage is identical for every probe of this one search.
+    const cardCoverageReuse = {
+      plan, asOf,
+      currentPeriodActuals: masterOpts.currentPeriodActuals,
+      debts: masterOpts.debts,
+      representedEvents: masterOpts.representedEvents,
+      computed: false, value: null,
+    };
+    const fits = cents => paydayPlanFits(plan, asOf, masterOpts, cents / 100, extraDisabled, cardCoverageReuse);
     let loC = Math.round(roundCent(loBound) * 100);
     let hiC = Math.round(roundCent(hiBound) * 100);
     if (hiC < loC) hiC = loC;

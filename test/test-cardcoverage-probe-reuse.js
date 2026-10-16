@@ -45,6 +45,7 @@ function load({ reuse }) {
     .replace(ANCHOR_COVERAGE, ANCHOR_COVERAGE + '\n    __counts.cardCoverageState++;')
     .replace(ANCHOR_SIM, ANCHOR_SIM + '\n    __counts.simulateModel++;');
   const hasReuse = SOURCE.includes(REUSE_SWITCH);
+  if (hasReuse) { once(SOURCE, '  const Forecast = {'); src = src.replace('  const Forecast = {', '  __counts.probeCardCoverage = probeCardCoverage;\n  const Forecast = {'); }
   if (!reuse && hasReuse) src = src.replace(REUSE_SWITCH, 'const reuse = null;');
   const counts = { cardCoverageState: 0, simulateModel: 0 };
   const mod = { exports: {} };
@@ -71,10 +72,13 @@ function check(name, fn) {
   catch (err) { failures++; console.log('FAIL ' + name + '\n  ' + String(err && err.message || err).split('\n').join('\n  ')); }
 }
 
-// Bound: the probe loop may compute card coverage once per search; every other
-// call site in one recommend() evaluation computes it directly. 40 is well
-// above the post-fix count on this fixture and far below one-per-probe.
-const MAX_CARD_COVERAGE_PER_EVALUATION = 40;
+// Bound: each cent search may compute card coverage once; every other call
+// site in one recommend() evaluation (master walk, funding sequence, payday
+// allocation, recommend's published coverage) still computes it directly.
+// On this fixture that is 41-45 per evaluation, independent of the probe count
+// (136-239 probes); one-per-probe was 161-265. 60 leaves margin for
+// incidental call-site changes and stays far below one-per-probe.
+const MAX_CARD_COVERAGE_PER_EVALUATION = 60;
 
 const base = evaluate(withReuse, clone(BASE));
 const baseRef = evaluate(reference, clone(BASE));
@@ -165,6 +169,36 @@ check('caller mutation of inputs and outputs between evaluations does not leak',
     assert.notStrictEqual(refX, refY);
   });
 }
+
+check('a reuse holder serves only its exact inputs; any other input is computed fresh', () => {
+  const probe = withReuse.counts.probeCardCoverage;
+  assert.strictEqual(typeof probe, 'function', 'probeCardCoverage present');
+  const i = clone(BASE);
+  const holder = { plan: i.plan, asOf: i.asOf, currentPeriodActuals: i.opts.currentPeriodActuals, debts: i.opts.debts,
+    representedEvents: i.opts.representedEvents, computed: false, value: null };
+  const optsFor = o => Object.assign({}, o, { cardCoverageReuse: holder });
+  const direct = (plan, asOf, opts) => { const o = Object.assign({}, opts); delete o.cardCoverageReuse; return ser(probe(plan, asOf, o)); };
+  withReuse.counts.cardCoverageState = 0;
+  const first = probe(i.plan, i.asOf, optsFor(i.opts));
+  const second = probe(i.plan, i.asOf, optsFor(Object.assign({}, i.opts, { disabled: ['bill0'], plannedFlows: [{ date: i.asOf, amount: -5 }] })));
+  assert.strictEqual(withReuse.counts.cardCoverageState, 1, 'matching inputs reuse one computation');
+  assert.strictEqual(first, second);
+  const cases = {
+    'other plan object (deep-equal)': [clone(i.plan), i.asOf, i.opts],
+    'other asOf': [i.plan, withReuse.F.addDays(i.asOf, 1), i.opts],
+    'other actuals object': [i.plan, i.asOf, Object.assign({}, i.opts, { currentPeriodActuals: clone(i.opts.currentPeriodActuals) })],
+    'actuals absent': [i.plan, i.asOf, Object.assign({}, i.opts, { currentPeriodActuals: null })],
+    'other debts object': [i.plan, i.asOf, Object.assign({}, i.opts, { debts: clone(i.opts.debts) })],
+    'representedEvents supplied': [i.plan, i.asOf, Object.assign({}, i.opts, { representedEvents: [] })],
+  };
+  for (const [name, [plan, asOf, opts]] of Object.entries(cases)) {
+    const before = withReuse.counts.cardCoverageState;
+    const got = probe(plan, asOf, optsFor(opts));
+    assert.strictEqual(withReuse.counts.cardCoverageState, before + 1, `${name}: must compute fresh`);
+    assert.notStrictEqual(got, first, `${name}: must not return the holder's object`);
+    assert.strictEqual(ser(got), direct(plan, asOf, opts), `${name}: equals a direct computation`);
+  }
+});
 
 if (failures) { console.log(`${failures} check(s) failed`); process.exit(1); }
 console.log('cardCoverageState probe reuse: all checks passed');
