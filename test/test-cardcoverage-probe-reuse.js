@@ -14,9 +14,10 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const { sourceText } = require('./test-source-text');
 
 const SRC_PATH = path.join(__dirname, '..', 'public', 'forecast.js');
-const SOURCE = fs.readFileSync(SRC_PATH, 'utf8');
+const SOURCE = sourceText(fs.readFileSync(SRC_PATH, 'utf8'));
 const INPUTS = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'cardcov-probe-inputs.json'), 'utf8'));
 const clone = v => structuredClone(v);
 // A confirmed synthetic commitment 20 days out makes paydayAllocation's cent
