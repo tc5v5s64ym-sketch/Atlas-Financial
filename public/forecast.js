@@ -14329,8 +14329,9 @@
             && ['truncated', 'hasMore', 'has_more'].every(k => value[k] == null || value[k] === false);
           const fetch = packet?.savingsFetchCoverage;
           if (packet?.schema !== 'atlas-current-period-actuals/v1'
-              || packet.observationAsOf !== asOf || typeof packet.currency !== 'string'
-              || packet.currency.toUpperCase() !== 'CAD'
+              || packet.observationAsOf !== asOf
+              || packet.currency != null && (typeof packet.currency !== 'string'
+                || packet.currency.toUpperCase() !== 'CAD')
               || !complete(packet.transactionCoverage) || !complete(packet.pendingCoverage)
               || !complete(fetch) || !savingsDate(packet.coverageStart)
               || packet.coverageStart > s1RiskWindow.start || packet.coverageThrough !== asOf
@@ -14379,8 +14380,8 @@
           if (!direct) {
             // A pooled snapshot can reconcile the household total without
             // inventing historical Bills shares. The current, dated Bills row
-            // supplies the account amount. EOD reconstruction is deliberately
-            // unsupported here; #618 remains the opening authority unchanged.
+            // supplies the account amount. Do not reconstruct EOD here; #618
+            // remains the unchanged authority for any snapshot already earned.
             if (s1BasisOpening.source !== 'snapshot') return null;
             const snapshot = paydayOpts.paydaySnapshot || plan.opening?.paydaySnapshot;
             if (cents(snapshot?.opening) == null) return null;

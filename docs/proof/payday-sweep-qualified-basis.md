@@ -71,8 +71,17 @@ The following previous S1 preservation expectations are intentionally replaced:
 - Future-dated rows marked posted inside today's observation: the contradictory
   packet no longer qualifies today's chain.
 - Inflow30: both paired/no-leg and reserve-only controls now use110/1110.
-- The #618 suite's future-Savings assertion now expects unknown while retaining
-  its current opening, current funding, immutability and reconstruction controls.
+- The unresolved-inbound suite's incomplete packet without a payday snapshot
+  now requires an unknown future opening/sweep instead of a walked amount; its
+  live current balance, bill, income and Budget display assertions remain.
+
+Native provider packets need not repeat the optional packet currency summary:
+each transaction still requires explicit CAD, and contradictory packet currency
+is rejected. The complete provider fixture independently reconciles Bills83 plus
+other30 to snapshot113; its opening/sweep is83/1083, with other30 excluded.
+The #618 fixture similarly keeps its original future-Savings conservation
+assertions: its earned snapshot106 reconciles current Bills83 plus other23,
+and the shared opening/sweep is83/1083. No new EOD qualification is performed.
 
 No historical-share attribution or EOD qualification subsystem was added to
 preserve those older numbers. Existing noncombined Budget displays retain their

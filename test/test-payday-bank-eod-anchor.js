@@ -24,19 +24,21 @@ test('bank EOD anchor skips both included opening-day debits and reconciles the 
   assert.notEqual(independent, 70 + 30 + 20 - 7, 'partial original opening is not reused');
   assert.notEqual(independent, 70 + 30 - 4 - 7 + 20 - 7, 'opening-day inclusion is not blanket-flipped');
 });
-test('pooled reconstruction preserves current funding but does not authorize a future Bills sweep', () => {
+test('same verified basis supports future Savings publication without inventing an actual saving or draw', () => {
   const {advice} = run();
-  // #620 owner simplification: the #618 opening and current funding remain
-  // independently supported. Its pooled reconstruction no longer exempts the
-  // dependent Bills-only sweep from complete, fresh account evidence.
+  // #618 earns the snapshot; current dated Bills83 and other23 reconcile106.
+  // #620 consumes that complete evidence without reconstructing account history.
   assert.equal(advice.savingsFunding.period.status, 'ready');
+  const nextBills=advice.payPeriodViews.find(p=>p.start==='2026-10-16');
+  assert.equal(nextBills.opening,83);
+  assert.equal(nextBills.paydaySweep,1083);
   for (const start of ['2026-10-16','2026-10-30','2026-11-13']) {
     const v = advice.savingsFunding.periodViews.find(v => v.start === start);
     assert.ok(v, start);
     const p = F.savingsFundingPublication(advice.savingsFunding,
       {asOf:'2026-10-07', advice, periodId:v.id}).forecastClosing;
-    assert.equal(p.status, 'unavailable');
-    assert.equal(p.stock, null);
+    assert.equal(p.status, 'ready', p.reason);
+    assert.equal(p.stock + p.operatingCash, 119 + independent + (start === '2026-10-16' ? 1000 : 2000));
     assert.equal(p.actualSaved, null);
     assert.equal(p.moneyMovementPermission, 'not-granted');
   }

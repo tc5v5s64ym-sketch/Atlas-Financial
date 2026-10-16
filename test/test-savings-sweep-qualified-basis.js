@@ -54,6 +54,8 @@ const invalid = {
   'boolean amount': x => ordinary(x, false),
   'numeric string amount': x => ordinary(x, '0'),
   'nonfinite amount': x => ordinary(x, Infinity),
+  'missing transaction currency': x => ordinary(x, 0, { currency: null }),
+  'conflicting packet currency': x => { x.opts.currentPeriodActuals.currency = 'USD'; },
   'missing identity': x => ordinary(x, 10, { id: null }),
   'missing location': x => ordinary(x, 10, { atlasAccountId: null }),
   'unconfigured cash location': x => ordinary(x, 10, { atlasAccountId: 'unknown-household' }),
