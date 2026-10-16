@@ -30,6 +30,10 @@ if (!isMainThread) {
   const active = new Set();
   const jobs = new Map();
   let generation = 0n, observationEpoch = 0n, activeWrites = 0;
+  // Set when a forced refresh fails: the retained observation stays in its
+  // slot, but replay is held until a later live job completes so the failure
+  // is not hidden behind the earlier success.
+  let replayHeld = false;
   function unavailable(code) {
     const error = new Error(code);
     error.code = code;
@@ -158,12 +162,33 @@ if (!isMainThread) {
         }
         job.check = result?.check;
         if (!job.evidence && result?.data) {
-          observationEpoch++;
-          observations.clear();
+          let published = false;
           if (job.cacheable && metadata.readable && matches && result.check?.qualified === true && result.check.evidence
             && Forecast.financialDate(result.check.checkedAt) === financialDay()) {
-            try { observations.publish(job.context, result.check.evidence); } catch (_) { /* Live path only. */ }
+            try { observations.publish(job.context, result.check.evidence); published = true; } catch (_) { /* Live path only. */ }
           }
+          if (published) {
+            // The new qualified observation replaces the retained one;
+            // in-flight replays of the superseded evidence cannot settle.
+            observationEpoch++;
+            replayHeld = false;
+          } else if (typeof result.check?.checkedAt === 'string') {
+            // A dated provider answer that does not qualify is the current
+            // truth: it supersedes any retained qualified observation.
+            observationEpoch++;
+            observations.clear();
+            replayHeld = [...job.waiters].some(waiter => waiter.forceRefresh);
+          } else {
+            // A failed check (no dated answer) never destroys retained
+            // qualified evidence. A failed forced refresh still holds
+            // replay until a later live job completes, so the failure is
+            // not hidden behind the earlier success.
+            replayHeld = [...job.waiters].some(waiter => waiter.forceRefresh);
+          }
+        } else if (!job.evidence) {
+          // A live job that produced no result at all follows the same
+          // retention/hold rule as a failed check.
+          replayHeld = [...job.waiters].some(waiter => waiter.forceRefresh);
         }
         if (job.evidence && result?.check?.qualified !== true) {
           observationEpoch++;
@@ -172,10 +197,16 @@ if (!isMainThread) {
         }
         return result?.data ? finishJob(job, null, result.data) : finishJob(job, unavailable('live-refresh-unavailable'));
       });
-      worker.on('error', () => finishJob(job, unavailable('live-refresh-unavailable')));
+      worker.on('error', () => {
+        if (!job.settled && !job.evidence) replayHeld = [...job.waiters].some(waiter => waiter.forceRefresh);
+        finishJob(job, unavailable('live-refresh-unavailable'));
+      });
       worker.on('exit', () => {
         active.delete(worker);
-        if (!job.settled) finishJob(job, unavailable('live-refresh-unavailable'));
+        if (!job.settled) {
+          if (!job.evidence) replayHeld = [...job.waiters].some(waiter => waiter.forceRefresh);
+          finishJob(job, unavailable('live-refresh-unavailable'));
+        }
         emitTiming(job);
       });
     } catch (_) { finishJob(job, unavailable('live-refresh-unavailable')); }
@@ -198,7 +229,7 @@ if (!isMainThread) {
       workerEnv = Object.fromEntries(Object.entries(env || process.env).map(([name, value]) => [name, String(value)]));
       context = jobKey(input, workerEnv, metadata);
       key = context + ':live';
-      if (metadata.readable && !jobs.has(key) && options.preferObservation === true && !options.forceRefresh) {
+      if (metadata.readable && !replayHeld && !jobs.has(key) && options.preferObservation === true && !options.forceRefresh) {
         evidence = observations.read(context);
         if (evidence) key = context + ':replay';
       }
@@ -208,7 +239,8 @@ if (!isMainThread) {
     // Equivalent callers can join even when the distinct-worker cap is full.
     if (fresh && active.size >= MAX_ACTIVE_LIVE_REFRESHES) return Promise.reject(unavailable('live-refresh-busy'));
     if (fresh) {
-      if (!evidence) { observationEpoch++; observations.clear(); }
+      // Starting a live job never destroys the retained observation: it is
+      // replaced only by a new qualified publish or a hard invalidator.
       job = { key, context, evidence, cacheable: metadata.readable, day: financialDay(), generation, observationEpoch,
         started: performance.now(), waiters: new Set(), waiterCount: 0,
         peakWaiters: 0, cancelledWaiters: 0, timedOutWaiters: 0, settled: false };
