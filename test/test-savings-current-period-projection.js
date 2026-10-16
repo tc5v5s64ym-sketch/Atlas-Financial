@@ -67,6 +67,30 @@ function advice(x) {
   assert.equal(JSON.stringify(x), before, 'no source balances, dates or actuals are rewritten');
   return a;
 }
+
+// Independent Systems Review fixture: the live cash overlay legitimately
+// withholds an unproved salary from cash while Budget still plans that income.
+function liveSalaryFixture({ asOf, marker = false, advanced = false, state = 'expected' }) {
+  const x = fixture({ asOf, state });
+  x.plan.opening.paydaySnapshot = { periodStart: '2026-10-30', asOf: '2026-10-30', opening: 80 };
+  x.plan.income[1] = { id: 'amandaSalaryMonthEnd', label: 'Invented monthly salary',
+    frequency: 'monthly', day: 31, amount: 200, confidence: 'confirmed' };
+  const p = x.opts.currentPeriodActuals;
+  p.coverageStart = p.savingsFetchCoverage.startDate = '2026-10-30';
+  for (const row of p.transactions) {
+    row.date = row.kindHint === 'transfer' ? '2026-11-01' : '2026-10-31';
+    if (row.incomeId) row.incomeId = 'amandaSalaryMonthEnd';
+  }
+  for (const row of p.representedActuals) { row.id = 'amandaSalaryMonthEnd'; row.date = '2026-10-31'; }
+  if (state !== 'expected') x.plan.opening.representedEvents.push({ id: 'amandaSalaryMonthEnd', date: '2026-10-31' });
+  if (marker) x.plan.opening.notReliedUponEvents = [{ id: 'amandaSalaryMonthEnd',
+    date: '2026-10-31', reason: 'same-day-inbound-unproven' }];
+  if (advanced) x.plan.opening.priorAsOf = '2026-10-30';
+  x.opts.operatingPlan = 'live';
+  x.opts.observedCash = { asOf, complete: true, accounts: x.plan.startingCash.breakdown
+    .filter(row => row.id.startsWith('chequing-')).map(row => ({ ...row, evidenceDate: asOf })) };
+  return x;
+}
 function closing(a, start = '2026-10-30') {
   const view = a.savingsFunding.periodViews.find(row => row.start === start);
   assert(view, 'native selected period exists');
@@ -113,6 +137,59 @@ test('same-day primary payroll planning is independent of transfer-now cash capa
   assert(a.savingsFunding.period.proposal >= 0 && a.savingsFunding.period.proposal <= 60,
     'actual proposal remains bounded by current cash; fully backed goals need no transfer');
   assertReady(closing(a), 319, 200);
+});
+
+for (const [label, asOf, marker, advanced] of [
+  ['before salary', '2026-10-30', false, false],
+  ['same-day without live marker', '2026-10-31', false, false],
+  ['same-day live inbound unproven', '2026-10-31', true, false],
+  ['elapsed salary with advanced live opening', '2026-11-01', false, true],
+]) test('qualified live planning includes expected salary: ' + label, () => {
+  const x = liveSalaryFixture({ asOf, marker, advanced }), a = advice(x);
+  const current = a.payPeriodViews.find(row => row.timelineRole === 'current');
+  assert.equal(a.savingsFunding.backing.status, 'ready');
+  assert.equal(current.balanceAfterDeductions, 200);
+  const salary = current.income.find(row => row.id === 'amandaSalaryMonthEnd');
+  assert.equal(salary.notReliedUpon === true, marker || advanced);
+  assert.equal(x.opts.currentPeriodActuals.transactions.length, 0);
+  assert.equal(a.savingsFunding.period.status, 'ready');
+  assert(a.savingsFunding.period.availableNow <= 60, 'bank capacity still uses actual cash80 minus floor20');
+  const c = closing(a, '2026-11-13');
+  assertReady(c, 319, 200); // independent119 + expected200, never actual income.
+  assert.equal(c.operatingCash, 80);
+  assert.equal(c.stock + c.operatingCash, 119 + 80 + 200);
+});
+
+for (const state of ['received-operating', 'received-reserve', 'received-transfer']) {
+  test('live matched salary replaces the expected credit once: ' + state, () => {
+    const a = advice(liveSalaryFixture({ asOf: '2026-11-02', advanced: true, state }));
+    assert.equal(a.savingsFunding.period.status, 'ready');
+    assertReady(closing(a, '2026-11-13'), 319, state === 'received-operating' ? 200 : 0);
+  });
+}
+
+for (const proof of ['missing-receipt-id', 'missing-receipt-row']) {
+  test('a live unproven marker does not replace ambiguous claimed receipt evidence: ' + proof, () => {
+    const x = liveSalaryFixture({ asOf: '2026-10-31', marker: true });
+    x.opts.currentPeriodActuals.representedActuals = [{ id: 'amandaSalaryMonthEnd', date: '2026-10-31', actual: 200,
+      ...(proof === 'missing-receipt-row' ? { transactionId: 'missing-receipt' } : {}) }];
+    const c = closing(advice(x), '2026-11-13');
+    assert.equal(c.status, 'unavailable'); assert.equal(c.stock, null);
+  });
+}
+
+test('an unsupported live income marker stays withheld', () => {
+  const x = liveSalaryFixture({ asOf: '2026-10-31', marker: true });
+  x.plan.opening.notReliedUponEvents[0].reason = 'income-authority-unavailable';
+  const c = closing(advice(x), '2026-11-13');
+  assert.equal(c.status, 'unavailable'); assert.equal(c.stock, null);
+});
+
+test('unsupported current salary confidence is not promoted to planning authority', () => {
+  const x = liveSalaryFixture({ asOf: '2026-11-01', advanced: true });
+  x.plan.income[1].confidence = 'unknown';
+  const c = closing(advice(x), '2026-11-13');
+  assert.equal(c.status, 'unavailable'); assert.equal(c.stock, null);
 });
 
 for (const state of ['received-operating', 'received-reserve', 'received-transfer']) {
