@@ -517,6 +517,49 @@ if (require.main === module) (async () => {
         mock.payload({ ...Fixture.payload(), tags: [] });
       } finally { await app.close(); }
     }
+    // ATLAS-069: a failed refresh retains the last qualified observation.
+    // The failed forced refresh holds replay for one live revalidation, so
+    // the failure is never hidden behind the earlier success; the retained
+    // evidence itself is not destroyed, and warm replay resumes afterwards
+    // with the original check time and a separate failed-attempt receipt.
+    mock.mode('ok'); mock.payload({ ...Fixture.payload(), tags: [] });
+    await Refresh.serve(canonical, env); await drain();
+    mock.mode('failure');
+    await reject(Refresh.serve(canonical, env, { preferObservation: true, forceRefresh: true }), 'live-refresh-unavailable'); await drain();
+    let heldCheck;
+    const heldCount = mock.calls.length;
+    const held = await Refresh.serve(canonical, env, { preferObservation: true, onCheck(value) { heldCheck = value; } }); await drain();
+    check(mock.calls.length > heldCount, true, 'read after a failed forced refresh revalidates live once');
+    check(heldCheck.source, 'provider', 'revalidation after a failed force is a provider check, not a replay');
+    check(held.liveOverlay.applied, false, 'failed revalidation does not advance cash');
+    check(receiptPacket(held, heldCheck, '2026-08-20T18:35:00.000Z').metadata.sourceCheck, {
+      outcome: 'failed', source: 'provider', qualified: false,
+      evidenceCheckedAt: null, attemptedAt: '2026-08-20T18:35:00.000Z', reason: 'provider-check-failed', cacheNote: null,
+    }, 'failed refresh keeps an explicit failed receipt with no evidence time');
+    mock.mode('ok');
+    let retainedCheck;
+    const retainedCount = mock.calls.length;
+    const retained = await Refresh.serve(canonical, env, { preferObservation: true, onCheck(value) { retainedCheck = value; } }); await drain();
+    check(mock.calls.length - retainedCount, 0, 'retained evidence replays after a failed refresh (0 provider calls)');
+    check(retainedCheck, { source: 'memory', qualified: true, checkedAt: CLOCK }, 'retained replay keeps the original check time');
+    check(retained, direct, 'retained replay conserves the qualified publication');
+    await Refresh.withProviderWrite(async () => ({ status: 'write-unverified' }));
+    const retainedWriteCount = mock.calls.length;
+    await Refresh.serve(canonical, env, { preferObservation: true }); await drain();
+    check(mock.calls.length - retainedWriteCount, 7, 'a write still invalidates retained evidence');
+    const retainedContextCount = mock.calls.length;
+    await Refresh.serve(canonical, { ...env, LUNCHMONEY_ACCESS_TOKEN: 'SYNTHETIC-DIFFERENT-TOKEN' }, { preferObservation: true }); await drain();
+    check(mock.calls.length - retainedContextCount, 7, 'a changed credential context still misses retained evidence');
+    const superseded = { ...Fixture.payload(), tags: [] };
+    superseded.accounts = superseded.accounts.filter(row => row.id !== 2001);
+    mock.payload(superseded);
+    await Refresh.serve(canonical, env); await drain();
+    const supersededCount = mock.calls.length;
+    await Refresh.serve(canonical, env, { preferObservation: true }); await drain();
+    check(mock.calls.length - supersededCount, 7, 'a dated unqualified answer still supersedes retained evidence');
+    mock.payload({ ...Fixture.payload(), tags: [] });
+    await Refresh.serve(canonical, env); await drain();
+
     originalLog('MEASURED ' + JSON.stringify({ providerFreeResponseMs: Math.round(providerFreeResponseMs * 100) / 100,
       sequentialProviderRequests: 0, proof: 'synthetic worker/HTTP; render measured separately' }));
     originalLog('PASS observation memory: ' + checks + ' checks; actual workers/routes, source-only cloning, qualification, force/failure, context, write races, calendar/DST and restart');
