@@ -38,6 +38,9 @@ uncached evaluation, including zero, negative and failed observations. They cove
 unequal replay evidence, changed date/plan/actuals/cash/debt/funding/extra/buffer/
 trust/periods, detached results, mutable inputs, unsupported cloning, exceptions,
 one-entry replacement, ordinary consumers and concurrent/later independent reads.
+Explicit adversarial controls distinguish null from NaN despite identical JSON
+text, isolate advice.simOptions references from caller mutation, and require the
+separate MCP packet to perform its own Forecast evaluation.
 The synthetic Bills stock stays the provider's invented1215; reuse supplies no
 new arithmetic or financial authority.
 

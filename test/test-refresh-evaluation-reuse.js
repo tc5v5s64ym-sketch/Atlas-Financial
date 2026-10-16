@@ -229,3 +229,53 @@ test('ordinary projectors and differing mode remain independently evaluated', t 
   evaluation.fromRefreshedState(data); evaluation.fromRefreshedState(data, { mode: 'canonical' });
   assert.equal(calls(), 4);
 });
+
+test('null and NaN cash collide in JSON text but remain distinct evaluation inputs', t => {
+  const calls = countForecast(t, (_plan, _asOf, options) => ({
+    ...stubAdvice(), paydayAllocation: { available: options.observedCash.accounts[0].value },
+  }));
+  const evaluation = OA.createRefreshEvaluation(), data = evaluationData();
+  data.liveOverlay.observedCash.accounts = [{ id: 'invented', value: null }];
+  const before = JSON.stringify(data);
+  assert.equal(evaluation.fromRefreshedState(data).moneyAvailable.value, null);
+  data.liveOverlay.observedCash.accounts[0].value = NaN;
+  assert.equal(JSON.stringify(data), before, 'a JSON-string key would collide');
+  assert(Number.isNaN(evaluation.fromRefreshedState(data).moneyAvailable.value),
+    'the native numeric distinction reaches the independent producer');
+  assert.equal(calls(), 2);
+});
+
+test('advice simOptions aliases cannot poison retained advice or bind a hit to old options', t => {
+  let produced;
+  const calls = countForecast(t, (_plan, _asOf, options) => {
+    produced = { ...stubAdvice(), simOptions: options,
+      currentPeriodAction: { remainingClaim: 'complete', coverage: options.currentPeriodActuals.coverage },
+      paydayAllocation: { protectedPath: options.fundingSources[0] } };
+    return produced;
+  });
+  const evaluation = OA.createRefreshEvaluation(), data = evaluationData();
+  data.plan.funding = { options: [{ id: 'invented', amount: 3 }] };
+  data.liveOverlay.currentPeriodActuals.coverage = { status: 'complete', nested: { count: 1 } };
+  const equalInput = clone(data);
+  evaluation.fromRefreshedState(data);
+  assert.equal(produced.simOptions.fundingSources, data.plan.funding.options, 'control has caller references');
+  produced.simOptions.fundingSources[0].amount = 999;
+  produced.simOptions.currentPeriodActuals.coverage.nested.count = 999;
+  const hit = evaluation.fromRefreshedState(equalInput);
+  assert.equal(hit.futureCostProtection.protectedPath.amount, 3);
+  assert.equal(hit.limitations.coverage.nested.count, 1);
+  assert.notEqual(hit.limitations.coverage, produced.simOptions.currentPeriodActuals.coverage);
+  hit.limitations.coverage.nested.count = 444;
+  assert.equal(evaluation.fromRefreshedState(equalInput).limitations.coverage.nested.count, 1);
+  assert.equal(calls(), 1, 'equal detached input reuses a detached snapshot, not old caller references');
+});
+
+test('MCP packet options still receive their own Forecast evaluation', async t => {
+  acquisition(t);
+  const calls = countForecast(t);
+  const served = await serve();
+  assert.equal(calls(), 1);
+  const Assistant = require(path.join(root, 'scripts/assistant-packet'));
+  Assistant.buildPacket({ data: served.data, env: {}, now: Fixture.payload().fetchedAt });
+  assert.equal(calls(), 2, 'the packet builder is outside the per-refresh evaluation');
+});
