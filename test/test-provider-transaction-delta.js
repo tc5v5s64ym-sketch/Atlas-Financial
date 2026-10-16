@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const Delta = require('../scripts/provider-transaction-delta');
+const ProviderObserve = require('../scripts/provider-observe');
 
 const SINCE = '2026-10-01T00:00:00Z';
 
@@ -38,6 +39,26 @@ async function withStub(handler, run) {
   const base = `http://127.0.0.1:${server.address().port}/v2`;
   try {
     await run(base, seenUrls);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+// Status-aware variant of withStub for provider-error cases: the handler
+// returns {status, payload} per page instead of a bare payload.
+async function withStubStatus(handler, run) {
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    const limit = Number(url.searchParams.get('limit')) || 1000;
+    const offset = Number(url.searchParams.get('offset')) || 0;
+    const out = handler(url, Math.floor(offset / limit) + 1);
+    res.writeHead(out.status || 200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(out.payload));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}/v2`;
+  try {
+    await run(base);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -151,6 +172,126 @@ async function withStub(handler, run) {
     assert.equal('transactionWindow' in result, false);
     assert.equal('pendingCoverage' in result, false);
     assert.match(result.updatedAtBehavior, /UNKNOWN/);
+  });
+
+  // 8. Cursor contract: a consumer may advance a cursor only on a
+  // page-complete read. Every incomplete shape fails closed at the envelope
+  // level a consumer actually reads: truncated reads are labelled, never
+  // silently partial, and a mid-pagination provider error rejects outright
+  // so no partial result object exists to advance on.
+  await withStub(() => ({ transactions: [tx({ id: 1 })], has_more: false }), async (base) => {
+    const result = await Delta.fetchTransactionDelta({ kind: 'updated', since: SINCE, token: 'synthetic-test-token', base });
+    assert.equal(result.pageComplete, true);
+    assert.equal(result.truncated, false);
+  });
+  let cursorPage = 0;
+  await withStub(() => {
+    cursorPage += 1;
+    return { transactions: [tx({ id: 5000 + cursorPage })], has_more: true };
+  }, async (base) => {
+    const result = await Delta.fetchTransactionDelta({ kind: 'updated', since: SINCE, token: 'synthetic-test-token', base });
+    assert.equal(result.pageComplete, false);
+    assert.equal(result.truncated, true);
+    assert.equal(result.pages, 20);
+    // Rows ARE returned with a cap-truncated read; the cursor hold rests
+    // entirely on pageComplete, never on rows-present.
+    assert.equal(result.transactions.length, 20);
+  });
+  await withStub(() => ({ transactions: [tx({ id: 1 })] }), async (base) => {
+    // has_more missing from the payload.
+    const result = await Delta.fetchTransactionDelta({ kind: 'updated', since: SINCE, token: 'synthetic-test-token', base });
+    assert.equal(result.pageComplete, false);
+    assert.equal(result.truncated, true);
+  });
+  await withStub((url, pageNum) => (pageNum === 1
+    ? { transactions: [tx({ id: 1 })], has_more: true }
+    : { transactions: [], has_more: true }), async (base) => {
+    // has_more=true answered with an empty page.
+    const result = await Delta.fetchTransactionDelta({ kind: 'updated', since: SINCE, token: 'synthetic-test-token', base });
+    assert.equal(result.pageComplete, false);
+    assert.equal(result.truncated, true);
+  });
+  await withStub(() => ({ has_more: false }), async (base) => {
+    // Malformed page: 200 with no transactions array is not a genuine
+    // empty window.
+    const result = await Delta.fetchTransactionDelta({ kind: 'updated', since: SINCE, token: 'synthetic-test-token', base });
+    assert.equal(result.pageComplete, false);
+    assert.equal(result.truncated, true);
+  });
+  await withStubStatus((url, pageNum) => (pageNum === 1
+    ? { status: 200, payload: { transactions: [tx({ id: 1 })], has_more: true } }
+    : { status: 500, payload: { error: 'synthetic provider failure' } }), async (base) => {
+    // Error mid-pagination: the call rejects; there is no partial result.
+    await assert.rejects(
+      () => Delta.fetchTransactionDelta({ kind: 'updated', since: SINCE, token: 'synthetic-test-token', base }),
+      /HTTP 500/,
+    );
+  });
+
+  // 9. Cross-pass divergence characterization: the same stable ID with
+  // conflicting payloads in the created and updated passes. Both passes
+  // report page-complete and the envelope carries NO conflict or
+  // convergence signal — each pass returns its own payload verbatim and
+  // nothing in the module reconciles them. A future consumer must define
+  // the conflict rule itself; it cannot assume the module converged the
+  // passes (e.g. a first-wins merge would silently keep the stale amount).
+  await withStub((url) => {
+    if (url.searchParams.get('created_since')) {
+      return { transactions: [tx({ id: 7, amount: '42.0000' })], has_more: false };
+    }
+    return { transactions: [tx({ id: 7, amount: '99.0000' })], has_more: false };
+  }, async (base) => {
+    const created = await Delta.fetchTransactionDelta({ kind: 'created', since: SINCE, token: 'synthetic-test-token', base });
+    const updated = await Delta.fetchTransactionDelta({ kind: 'updated', since: SINCE, token: 'synthetic-test-token', base });
+    assert.equal(created.pageComplete, true);
+    assert.equal(updated.pageComplete, true);
+    assert.equal(created.transactions[0].providerId, '7');
+    assert.equal(updated.transactions[0].providerId, '7');
+    assert.equal(created.transactions[0].amount, '42.0000');
+    assert.equal(updated.transactions[0].amount, '99.0000');
+    assert.equal('conflicts' in created, false);
+    assert.equal('conflicts' in updated, false);
+  });
+
+  // 10. Delta-vs-window divergence: changes that never advance updated_at
+  // are invisible to the delta. Here a row was deleted, another flipped
+  // pending -> cleared, and a third was re-parented under a group, none
+  // with an updated_at bump: the updated delta is page-complete and EMPTY,
+  // while the incumbent full-window read shows all three truths. The
+  // envelope disclaims exactly this in the same case (ledgerComplete
+  // false, deletion caveat, UNKNOWN updated-at behaviour), because no code
+  // performs a full-window fallback in response to a delta — the fallback
+  // is doctrine in the module header, pinned here so the gap stays visible.
+  const windowRows = [
+    tx({ id: 1, created_at: '2026-09-20T10:00:00Z', updated_at: '2026-09-20T11:00:00Z', date: '2026-09-20' }),
+    tx({ id: 3, created_at: '2026-09-20T10:00:00Z', updated_at: '2026-09-20T11:00:00Z', date: '2026-09-20', status: 'cleared', is_pending: false }),
+    tx({ id: 5, created_at: '2026-09-20T10:00:00Z', updated_at: '2026-09-20T11:00:00Z', date: '2026-09-20', group_parent_id: 6 }),
+    tx({ id: 6, created_at: '2026-09-20T10:00:00Z', updated_at: '2026-09-20T11:00:00Z', date: '2026-09-20', is_group: true, is_group_parent: true }),
+  ];
+  await withStub((url) => {
+    if (url.searchParams.get('updated_since') || url.searchParams.get('created_since')) {
+      return { transactions: [], has_more: false };
+    }
+    return { transactions: windowRows, has_more: false };
+  }, async (base) => {
+    const delta = await Delta.fetchTransactionDelta({ kind: 'updated', since: SINCE, token: 'synthetic-test-token', base });
+    assert.equal(delta.pageComplete, true);
+    assert.equal(delta.transactions.length, 0);
+    assert.equal(delta.ledgerComplete, false);
+    assert.match(delta.caveat, /Deletions are invisible/);
+    assert.match(delta.updatedAtBehavior, /UNKNOWN/);
+
+    const windowUrl = new URL(`${base}/transactions`);
+    windowUrl.searchParams.set('start_date', '2026-09-01');
+    windowUrl.searchParams.set('end_date', '2026-10-31');
+    const window = await ProviderObserve.fetchLunchMoneyTransactionsPaged(windowUrl, 'synthetic-test-token', {});
+    const windowIds = window.transactions.map((t) => String(t.id)).sort();
+    // Id 2 was deleted: only the full-window read reveals its absence.
+    assert.deepEqual(windowIds, ['1', '3', '5', '6']);
+    const row3 = window.transactions.find((t) => String(t.id) === '3');
+    assert.equal(row3.status, 'cleared');
+    const row5 = window.transactions.find((t) => String(t.id) === '5');
+    assert.equal(String(row5.group_parent_id), '6');
   });
 
   console.log('All provider-transaction-delta checks passed.');
