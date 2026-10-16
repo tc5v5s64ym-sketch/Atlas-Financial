@@ -8,12 +8,55 @@ module.exports = function incumbentAdvice(value, asOf) {
   let publications = 0;
   let comparisons = 0;
   let etransferPublications = 0;
+  // S1 supersession (authorized addition + authorized figure movement):
+  // every period publication now carries Forecast's paydaySweep, and a
+  // future Budget opening is the prior remainder minus the sweeps that
+  // landed before it. Frozen engines predate both. Validate each sweep
+  // concretely, restore the chain fields (opening, currentBalance,
+  // leftover.currentBalance) by the cumulative sweep that precedes them —
+  // the deepEqual against the frozen engine then verifies the restored
+  // values exactly, so a wrong sweep still fails this comparison — and
+  // exclude only the new field itself.
+  const cents = v => Math.round(v * 100) / 100;
+  const s1Chains = { '/payPeriodViews': { swept: 0 }, '/defaultView/calendarPeriods': { swept: 0 } };
+  let s1Validated = 0;
+  let s1NumericSweeps = 0;
   const visit = (row, path) => {
     if (Array.isArray(row)) return row.map((child, index) => visit(child, path + '/' + index));
     if (!row || typeof row !== 'object') return row;
+    if (Object.hasOwn(row, 'paydaySweep')) {
+      const chain = /^\/(payPeriodViews|defaultView\/calendarPeriods)\/\d+$/.exec(path);
+      const past = /^\/pastPeriodViews\/\d+$/.exec(path);
+      assert(chain || past, 'paydaySweep appears only on period publications: ' + path);
+      const sweep = row.paydaySweep;
+      assert(sweep === null || (typeof sweep === 'number' && Number.isFinite(sweep) && sweep >= 0
+        && Math.abs(sweep * 100 - Math.round(sweep * 100)) < 1e-6),
+        'S1 paydaySweep is null or a non-negative cent-exact amount');
+      const { paydaySweep: _omitted, ...rest } = row;
+      const copy = visit(rest, path);
+      s1Validated++;
+      if (past) {
+        assert.equal(sweep, null, 'past periods never carry a payday sweep');
+        return copy;
+      }
+      if (sweep !== null) {
+        assert.equal(typeof copy.opening, 'number', 'a known sweep requires a known opening');
+        s1NumericSweeps++;
+      }
+      const state = s1Chains['/' + chain[1]];
+      if (typeof copy.opening === 'number') copy.opening = cents(copy.opening + state.swept);
+      if (typeof copy.currentBalance === 'number') copy.currentBalance = cents(copy.currentBalance + state.swept);
+      if (copy.leftover && typeof copy.leftover === 'object'
+        && typeof copy.leftover.currentBalance === 'number') {
+        copy.leftover.currentBalance = cents(copy.leftover.currentBalance + state.swept);
+      }
+      if (typeof sweep === 'number') state.swept = cents(state.swept + sweep);
+      return copy;
+    }
     const entries = [];
     for (const [key, child] of Object.entries(row)) {
       const childPath = path + '/' + key;
+      assert.notEqual(key, 'paydaySweep', 'paydaySweep outside a period publication: ' + childPath);
       if (key === 'delta' && /\/budgetProgress\/household$/.test(path)) {
         assert.equal(row.actual.amount, null, 'these controls have no observed household spending');
         assert.deepEqual(child, { amount: null, trust: 'unavailable', completeness: 'unavailable',
@@ -52,5 +95,7 @@ module.exports = function incumbentAdvice(value, asOf) {
   assert.equal(publications, 3, 'validate the default, active calendar and current timeline publications');
   assert(comparisons > 0, 'new comparison paths were concretely checked; every existing field remains compared');
   assert.equal(etransferPublications, 1, 'validate the current-period outgoing e-transfer publication');
+  assert(s1Validated > 0, 'S1 paydaySweep publications were concretely validated before exclusion');
+  assert(s1NumericSweeps > 0, 'at least one future period publishes a numeric S1 sweep in these controls');
   return copy;
 };

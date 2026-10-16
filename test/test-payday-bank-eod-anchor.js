@@ -26,6 +26,12 @@ test('bank EOD anchor skips both included opening-day debits and reconciles the 
 });
 test('same verified basis supports future Savings publication without inventing an actual saving or draw', () => {
   const {advice} = run();
+  // #618 earns the snapshot; current dated Bills83 and other23 reconcile106.
+  // #620 consumes that complete evidence without reconstructing account history.
+  assert.equal(advice.savingsFunding.period.status, 'ready');
+  const nextBills=advice.payPeriodViews.find(p=>p.start==='2026-10-16');
+  assert.equal(nextBills.opening,83);
+  assert.equal(nextBills.paydaySweep,1083);
   for (const start of ['2026-10-16','2026-10-30','2026-11-13']) {
     const v = advice.savingsFunding.periodViews.find(v => v.start === start);
     assert.ok(v, start);

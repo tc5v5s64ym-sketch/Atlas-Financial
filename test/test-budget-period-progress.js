@@ -194,6 +194,7 @@ baselineModule._compile(require('node:child_process').execFileSync('git',
 let etransferPublications=0;
 const withoutDelta=value=>{
   if(value&&typeof value==='object'){
+    assert(!Object.hasOwn(value,'paydaySweep'),'every S1 paydaySweep publication was validated and excluded by stripS1Sweep');
     if(value.source==='Forecast.budgetPeriodProgress'&&value.household)delete value.household.delta;
     if(value.outgoingETransfers){
       // Authorized addition (outgoing e-transfer review list): validate the
@@ -213,12 +214,64 @@ const withoutDelta=value=>{
   }
   return value;
 };
+// S1 supersession: the current engine also publishes paydaySweep on every
+// period, and a future opening is the frozen-chain opening minus the
+// sweeps that landed before it. Validate each sweep against the frozen
+// baseline directly — opening (and the opening-derived balances) plus the
+// cumulative prior sweeps must reproduce the baseline figure to the cent —
+// then exclude only the new field; every other value must still agree
+// exactly with exact main.
+const stripS1Sweep=(current,baseline)=>{
+  const cents=v=>Math.round(v*100)/100;
+  let validated=0,numeric=0;
+  const chain=(nowColl,oldColl)=>{
+    assert.equal(nowColl.length,oldColl.length,'period count unchanged');
+    let swept=0;
+    nowColl.forEach((period,index)=>{
+      const old=oldColl[index];
+      assert.equal(period.start,old.start,'period identity unchanged');
+      assert(Object.hasOwn(period,'paydaySweep'),'every period publishes the S1 sweep field');
+      const sweep=period.paydaySweep;
+      assert(sweep===null||(typeof sweep==='number'&&Number.isFinite(sweep)&&sweep>=0
+        &&Math.abs(sweep*100-Math.round(sweep*100))<1e-6),
+        'S1 paydaySweep is null or a non-negative cent-exact amount');
+      for(const field of ['opening','currentBalance']){
+        if(typeof period[field]==='number'&&typeof old[field]==='number'){
+          assert.equal(cents(period[field]+swept),cents(old[field]),
+            'S1 chain identity: ' + field + ' plus cumulative prior sweeps reproduces the frozen baseline');
+          period[field]=old[field];
+        }
+      }
+      if(period.leftover&&old.leftover&&typeof period.leftover.currentBalance==='number'
+        &&typeof old.leftover.currentBalance==='number'){
+        assert.equal(cents(period.leftover.currentBalance+swept),cents(old.leftover.currentBalance),
+          'S1 chain identity: leftover balance plus cumulative prior sweeps reproduces the frozen baseline');
+        period.leftover.currentBalance=old.leftover.currentBalance;
+      }
+      if(sweep!==null){assert.equal(typeof period.opening,'number','a known sweep requires a known opening');numeric++;}
+      delete period.paydaySweep;
+      if(typeof sweep==='number')swept=cents(swept+sweep);
+      validated++;
+    });
+  };
+  chain(current.payPeriodViews,baseline.payPeriodViews);
+  chain(current.defaultView.calendarPeriods,baseline.defaultView.calendarPeriods);
+  for(const period of current.pastPeriodViews){
+    assert(Object.hasOwn(period,'paydaySweep'),'every period publishes the S1 sweep field');
+    assert.equal(period.paydaySweep,null,'past periods never carry a payday sweep');
+    delete period.paydaySweep; validated++;
+  }
+  assert(validated>0&&numeric>0,'S1 sweeps were concretely validated in this control');
+};
 const totalFixture=require('./fixtures/other-period-target');
 for(const [spent,opts] of [[137.26,{}],[618.73,{}],[1034.19,{}],[814.63,{}],
   [137.26,{pendingOther:17.43}],[137.26,{pendingCoverage:'unknown'}]]){
   const x=totalFixture.build(spent,totalFixture.asOf,opts),input=JSON.stringify(x);
   const args={debts:[],currentPeriodActuals:x.packet};
-  assert.deepEqual(withoutDelta(clone(F.recommend(x.plan,x.date,args))),baselineModule.exports.recommend(x.plan,x.date,args),
+  const currentAdvice=clone(F.recommend(x.plan,x.date,args));
+  const baselineAdvice=baselineModule.exports.recommend(x.plan,x.date,args);
+  stripS1Sweep(currentAdvice,baselineAdvice);
+  assert.deepEqual(withoutDelta(currentAdvice),baselineAdvice,
     'all pre-existing recommendation values/qualifications agree with exact main');
   assert.equal(JSON.stringify(x),input);
 }

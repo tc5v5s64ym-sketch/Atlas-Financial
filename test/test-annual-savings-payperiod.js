@@ -193,11 +193,22 @@ test('represented annual payment after the original payday snapshot cannot infla
     const native = F.simulate(i.plan, i.asOf, i.opts);
     for (const [date, expected] of [['2026-10-23', 200 - 100], ['2026-11-06', 200 - 100 + 77]]) {
       const row = period(a, date);
-      assert.equal(row.opening, expected, `${date}: snapshot minus paid cost plus subsequent receipts`);
+      // S1 supersession: the native carry is unchanged — snapshot minus
+      // the paid cost plus subsequent receipts — and the assertion below
+      // still pins it. The Budget OPENING at 2026-11-06, however, now
+      // consumes the prior period's published payday sweep: the full 177
+      // remainder sweeps on that payday, so the period opens at 0 (was
+      // 177, when the opening passed the carry through untouched). The
+      // represented payment still cannot inflate anything: the sweep
+      // pinned after this loop is exactly the uninflated 177, not 277.
+      assert.equal(row.opening, date === '2026-11-06' ? 0 : expected,
+        `${date}: snapshot minus paid cost plus subsequent receipts, less any sweep that landed on that payday`);
       assert.equal(native.daily.find(r => r.date === date).balance, expected);
       assert.equal(row.plannedCostFunding.status, 'unavailable');
       assert.equal(row.extraDebt.status, 'unavailable');
     }
+    assert.equal(period(a, '2026-10-23').paydaySweep, 200 - 100 + 77,
+      'the published sweep is the uninflated remainder: snapshot minus paid cost plus subsequent receipts');
     const marked = !!i.plan.savingsEarmarks;
     assert.equal(period(a, '2026-10-09').periodBillLoad, marked ? 0 : 100);
     assert.equal(period(a, '2026-10-23').openingSource, marked ? 'cutover-walk' : 'carry-forward');

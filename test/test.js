@@ -57,6 +57,8 @@ const suites = [
   ['future Savings closing surplus, native cash conservation and receipt inclusion', 'test-savings-future-closing.js'],
   ['separate bank EOD reconstruction anchor, historical preservation and Savings conservation', 'test-payday-bank-eod-anchor.js'],
   ['payday surplus sweep: full prior surplus lands on the next payday, routine deficits stay visible and uncovered', 'test-savings-payday-sweep.js'],
+  ['S1 payday sweep: full available remainder incl. inherited cash sweeps, Budget opening and Savings credit consume the same published sweep', 'test-savings-payday-sweep-s1.js'],
+  ['qualified Bills-only sweep: complete evidence, exact current stock and no unavailable-credit fallback', 'test-savings-sweep-qualified-basis.js'],
   ['payday sweep review regressions: available-cash bound, unspent-sweep attribution', 'test-savings-sweep-review-regressions.js'],
   ['selected future Savings requirement roster independent of monetary qualification', 'test-savings-selected-roster.js'],
   ['real observer Savings movement provenance and legacy fail-closed contract', 'test-savings-observer-contract.js'],

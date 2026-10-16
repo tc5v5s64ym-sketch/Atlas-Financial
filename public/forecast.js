@@ -10461,6 +10461,22 @@
         .filter(e => isSavingsFundedPaydayBillEvent(e, plan)) : [];
     const representedSavings = representedKeySet(plan, opts, asOf);
     const observedSavings = representedActualMap(opts);
+    // S1 repair (Systems Review 2026-10-15, PR #620 blocker 1): the Savings
+    // ledger's goal payments, read from the same backing context recommend
+    // computed for this plan, so a goal bill Budget deducts inside a
+    // period's bill load can be restored to that period's available
+    // remainder here — where the sweep is published — instead of only
+    // inside Savings after Budget has consumed its own remainder. When
+    // the context is absent the combined closing projection cannot run
+    // either, and no restoration is claimed.
+    const goalPayments = [];
+    const backingContext = savingsDailyBackingContexts.get(plan);
+    if (backingContext && Array.isArray(backingContext.items)) {
+      for (const item of backingContext.items) {
+        if (!item || !item.event || !savingsDate(item.date)) continue;
+        goalPayments.push({ id: item.id, date: cashWalkDate(item.event, asOf) });
+      }
+    }
     const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
     const liveCurrentBalance = publishedCurrentBalanceAmount(plan, alloc);
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
@@ -10471,6 +10487,7 @@
     const periods = [];
     let previousEnding = null;
     let unavailableOpeningLost = false;
+    let openingChainLost = false;
     const heldCycleStarts = new Set();
     const sectionById = {};
     // Future, next, and current windows that can hold a 2027 Dale date.
@@ -10567,6 +10584,59 @@
       // Unavailable is PR #254 lookback: the active window may still
       // publish dated posted cash as the last trusted opening. A later
       // half whose prior ending was lost must not invent an opening.
+      // Supplemental repair (review 5532991155, N2): the active
+      // period's opening basis is unestablished when the recorded
+      // Bills row carries no finite value and neither a valid payday
+      // snapshot nor a qualified bank reconstruction establishes the
+      // opening — the resolvers below would coerce the missing stock
+      // to a known $0 and the pooled walk would then fabricate the
+      // dependent sweep and openings. Withhold the opening and lose
+      // the chain instead. A valid snapshot or a valid reconstruction
+      // (the #618 anchor authority, consulted unmodified) establishes
+      // the basis and this hold does not fire; a genuinely recorded
+      // $0 row is finite evidence and is likewise untouched.
+      // Repair (review 5535404477, P1): two qualification paths still
+      // fabricated the zero. (a) An ABSENT Bills row bypassed the
+      // hold entirely — when the plan enumerates per-account rows,
+      // absence is unknown, exactly like a valueless row: no Bills
+      // evidence establishes a $0. (b) The anchor arm exempted the
+      // hold on the anchor sum alone; a valid anchor does not prove
+      // the gap after it. The exemption now requires the COMPLETE
+      // reconstruction through the #618 authority
+      // (completeCashAtMorning, consulted unmodified) — anchor plus
+      // the completeness-proven later movements — so an incomplete
+      // or absent gap leaves the basis unestablished, the hold
+      // fires, and the chain stays lost instead of re-entering
+      // through the pooled walk. The hold engages only where a
+      // per-account basis was claimed at all: a plan with no
+      // breakdown rows carries its opening as a dated scalar amount,
+      // and that basis stands or falls by the resolvers' own rules
+      // (the complete-gap walk, the mid-period cutover opening) —
+      // withholding it here would remove incumbent known openings
+      // the resolvers legitimately publish.
+      const activeOpeningBasisMissing = role === 'active' && !planUnavailable && !lookback
+        && (() => {
+          const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+          const billsRow = rows.find(r => r && r.id === BILLS_ACCOUNT_ID);
+          if (billsRow && finiteRecordedOpening(billsRow.value)) return false;
+          if (paydaySnapshotRecord(plan, opts, window.start)) return false;
+          if (!rows.length) {
+            // Round 4 (review 5536953733, P1-b): with no per-account
+            // rows, the dated scalar opening IS the basis — and it
+            // stands only when genuinely established. An unavailable
+            // scalar (null or absent) is coerced to $0 by
+            // startingCashAmount, so exempting it published a
+            // fabricated known zero and swept 1000/1000 on nothing.
+            // A complete anchor reconstruction cannot supply the
+            // basis here either: its validation needs the
+            // per-account rows this plan does not carry.
+            return !finiteRecordedOpening(plan && plan.startingCash && plan.startingCash.amount);
+          }
+          const hasAnchor = !!(plan.opening && Object.prototype.hasOwnProperty.call(
+            plan.opening, 'cashReconstructionAnchor'));
+          if (!hasAnchor) return true;
+          return completeCashAtMorning(plan, window.start, opts) == null;
+        })();
       const snapshot = planUnavailable
         ? (role === 'active'
           ? {
@@ -10576,8 +10646,18 @@
             source: 'dated-opening',
           }
           : { opening: null, openingKnown: false, openingAsOf: null, source: null })
+        : openingChainLost && role === 'future'
+          // S1 repair (blocker 3): once a period's cash leftover is unknown
+          // (an unamounted bill in its load, an unrestorable goal overlap,
+          // or an unestablished Bills share of the pooled opening), no
+          // later opening may be re-derived from the pooled walk — the
+          // chain stays unknown rather than fabricating a figure.
+          ? { opening: null, openingKnown: false, openingAsOf: null, source: null }
+        : activeOpeningBasisMissing
+          ? { opening: null, openingKnown: false, openingAsOf: null, source: null }
         : resolvePaydayPeriodOpening(
           plan, asOf, window, opts, previousEnding, opts.sim);
+      if (activeOpeningBasisMissing) openingChainLost = true;
       const opening = snapshot.opening;
       const openingKnown = snapshot.openingKnown === true;
       const openingAsOf = snapshot.openingAsOf || null;
@@ -10618,7 +10698,30 @@
       // remains visibly unproven for settlement. Opening cash is not added
       // to Payday balance.
       const available = planUnavailable ? null : incomeTotal;
-      const periodBillLoad = planUnavailable
+      // S1 repair (blocker 3): a bill that belongs on this waterfall with
+      // no finite amount makes the period's bill load unknown — never a
+      // fabricated zero — so the leftover, the sweep and the next opening
+      // all go unknown with it (unknown is not zero). The second arm
+      // covers a plan bill whose amount is unavailable and whose
+      // occurrences land in this window but which never reaches the
+      // section rows at all (the section builder drops it upstream, so
+      // its absence from the load is exactly the fabricated zero).
+      // Savings-funded provision bills are exempt here: their unknown
+      // amount already nulls the cash leftover through the provision
+      // gate. Sealed lookback rows keep their incumbent treatment.
+      const billLoadUnknown = !planUnavailable && !lookback && ((assignedBillRows || []).some(row =>
+        billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)
+        && (row.scheduledFeeAllowance
+          ? !Number.isFinite(Number(row.scheduledFeeAllowance.periodCost))
+          : !(row.planned != null && Number.isFinite(Number(row.planned)))
+            && !(row.amount != null && Number.isFinite(Number(row.amount)))))
+        || (plan.bills || []).some(b => b && !(opts.disabled || []).includes(b.id)
+          && (b.amount == null || savingsCents(b.amount) == null)
+          && !(b.jointCash === false && !b.cardPaid)
+          && !isSavingsFundedPaydayBill(b, plan)
+          && (role === 'active' ? outflowDates(b, window.start, window.end)
+            : occurrences(b, window.start, window.end)).length > 0));
+      const periodBillLoad = planUnavailable || billLoadUnknown
         ? null
         : periodWaterfallBillLoad(assignedBillRows, openingAsOf, openingSource);
       const paidBills = planUnavailable ? null : periodPaidBillDisclosure(bills);
@@ -10661,6 +10764,57 @@
         && calendarOccurrenceRepresented(representedSavings, observedSavings, e.id, e.date));
       const cashAfterHouseholdBudget = cashAfterBills != null && !annualSavingsUnknown && !annualSnapshotCarryUnknown
         ? roundCent(cashAfterBills - budget.hold - annualSavingsNeed) : null;
+      // S1 payday sweep (owner direction 2026-10-14 via Atlas, superseding
+      // the net-surplus-only sweep of PR #616 where they conflict): one
+      // Forecast-owned sweep per future period, published on the period
+      // here and consumed identically by the Budget opening chain below
+      // and by the Savings closing projection. The sweep is the period's
+      // full positive available Bills remainder, including inherited
+      // opening cash. The available remainder is the physical cash
+      // leftover: cashAfterHouseholdBudget notionally deducts the period's
+      // savings-funded annual-bill provision (annualSavingsNeed), but that
+      // provision is not a Bills payment — the Savings ledger debits the
+      // goal cost itself, once — so the provisioned cash is physically in
+      // Bills at period end and is part of what sweeps. The incoming
+      // period's own paycheck is not part of the sweep: it leaves Bills at
+      // the next period's payday, before that period's income lands. A
+      // negative remainder sweeps nothing and stays visible in Bills; no
+      // Savings draw covers it. When the cash leftover is unknown the
+      // sweep is unknown (null), never an invented zero.
+      // S1 repair (blocker 1): restore to this period's available
+      // remainder the goal bills the Savings ledger pays — the closing
+      // projection's overlap rule, applied here where the sweep is
+      // published. Budget deducted the goal bill inside the period's bill
+      // load; the ledger debits the full cost once as a goal cost, so the
+      // physical Bills remainder excludes the deduction. Restoring it
+      // only inside Savings (the pre-repair shape) let the first
+      // overlap-adjusted credit differ from Budget's published sweep and
+      // moved every later sweep basis. An ambiguous or unamounted goal
+      // deduction makes the remainder unknown, mirroring the closing
+      // projection's hold.
+      let goalOverlap = 0;
+      let goalOverlapUnknown = false;
+      if (goalPayments.length && periodBillLoad != null && role !== 'lookback') {
+        for (const payment of goalPayments) {
+          if (payment.date < (role === 'active' ? asOf : window.start) || payment.date > window.end) continue;
+          const deducted = (assignedBillRows || []).filter(b => b.id === payment.id && b.date === payment.date
+            && billBelongsOnPaydayWaterfall(b, openingAsOf, openingSource));
+          if (deducted.length > 1) { goalOverlapUnknown = true; break; }
+          if (deducted.length) {
+            const cents = savingsCents(deducted[0].planned != null ? deducted[0].planned : deducted[0].amount);
+            if (cents == null) { goalOverlapUnknown = true; break; }
+            goalOverlap = roundCent(goalOverlap + cents / 100);
+          }
+        }
+      }
+      const sweepIncomeKnown = !(plan.income || []).some(stream =>
+        occurrences(stream, window.start, window.end).length
+          && savingsCents(streamAmount(stream, opts)) == null);
+      const availableRemainder = cashAfterHouseholdBudget != null && !goalOverlapUnknown && sweepIncomeKnown
+        ? roundCent(cashAfterHouseholdBudget + annualSavingsNeed + goalOverlap) : null;
+      const paydaySweep = !planUnavailable && role === 'future'
+        && availableRemainder != null
+        ? roundCent(Math.max(0, availableRemainder)) : null;
       let extraAllocated = 0;
       let extraDebt;
       if (planUnavailable || (!lookback && (cardCoverage.status === 'unavailable' || annualSavingsUnknown))) {
@@ -10705,7 +10859,72 @@
         previousEnding = null;
         unavailableOpeningLost = true;
       } else if (role === 'active' || (role === 'future' && openingKnown)) {
-        previousEnding = cashAfterHouseholdBudget;
+        // The next period opens from this period's physical cash leftover
+        // (availableRemainder) minus the published payday sweep, so the
+        // Budget opening consumes exactly the sweep the Savings closing
+        // projection credits. A negative leftover carries in full (the
+        // sweep is zero), staying visible.
+        if (role === 'active') {
+          if (Object.hasOwn(opts, 's1CurrentBillsStockCents')) {
+            // Seed from current Bills, which already contains every observed
+            // inflow and transfer. Apply this waterfall's remaining deductions
+            // once, then the current receipt-qualified future credit. Original
+            // current-period display fields keep their existing snapshot basis.
+            const stock = opts.s1CurrentBillsStockCents;
+            const remainingBudgetKnown = budget.items.every(row =>
+              savingsCents(row.hold) != null && savingsCents(row.spent, true) != null);
+            const remainingBudget = remainingBudgetKnown ? budget.items.reduce((sum, row) =>
+              sum + Math.max(0, savingsCents(row.hold) - savingsCents(row.spent, true)), 0) : null;
+            const futureIncome = income.filter(row => row.date > asOf
+              && !row.alreadyInCash && !row.notReliedUpon
+              && !['represented', 'opening', 'not-relied-upon'].includes(row.settlement));
+            const incomeKnown = futureIncome.every(row => savingsCents(row.amount) != null);
+            const remainingBills = periodWaterfallBillLoad(assignedBillRows, asOf, 'cutover-opening');
+            const overlap = goalPayments.filter(p => p.date >= asOf && p.date <= window.end)
+              .reduce((sum, p) => sum + periodWaterfallBillLoad(assignedBillRows.filter(b =>
+                b.id === p.id && b.date === p.date), asOf, 'cutover-opening'), 0);
+            const credit = opts.s1CurrentBoundaryCreditCents;
+            // With no current credit permission, an independent zero-receipt
+            // tail can still establish Bills. Otherwise the seam is unknown.
+            const creditKnown = Number.isSafeInteger(credit) || incomeTotal === 0;
+            const seed = Number.isSafeInteger(stock) && remainingBudget != null && incomeKnown
+              && periodBillLoad != null && !goalOverlapUnknown && !annualSavingsUnknown && sweepIncomeKnown && creditKnown
+              ? stock + Math.round((futureIncome.reduce((sum, row) => sum + calendarIncomeContribution(row), 0)
+                - remainingBills + overlap) * 100) - remainingBudget - (credit || 0) : null;
+            // A receipt-qualified pooled entitlement cannot draw from another
+            // account to make this Bills-only seam work. Preserve its current
+            // funding disclosure, but withhold the dependent projection.
+            previousEnding = Number.isSafeInteger(seed) && !(credit > 0 && seed < 0) ? seed / 100 : null;
+            if (previousEnding == null) openingChainLost = true;
+          } else {
+            // Incumbent noncombined publication, with no Savings sweep consumer.
+            previousEnding = cashAfterHouseholdBudget;
+            if (previousEnding != null && openingKnown && opening != null) {
+              const rows = (plan.startingCash?.breakdown || []).filter(r =>
+                r && HOUSEHOLD_CHEQUING_IDS.includes(r.id));
+              const others = HOUSEHOLD_CHEQUING_IDS.filter(id => id !== BILLS_ACCOUNT_ID);
+              const rowOf = id => rows.find(r => r.id === id);
+              const listed = id => (plan.accounts || []).some(a => a?.id === id);
+              const present = id => !!rowOf(id) || listed(id);
+              const finite = r => r && r.value != null && Number.isFinite(Number(r.value));
+              if (others.some(present)) {
+                const bills = rowOf(BILLS_ACCOUNT_ID);
+                const split = finite(bills) && rows.every(finite)
+                  && others.every(id => !present(id) || finite(rowOf(id)))
+                  && roundCent(rows.reduce((sum, r) => sum + Number(r.value), 0)) === roundCent(opening);
+                if (split) previousEnding = roundCent(previousEnding - (opening - Number(bills.value)));
+                else if (!others.every(id => rowOf(id) ? Number(rowOf(id).value) === 0 : !listed(id))) {
+                  previousEnding = null;
+                  openingChainLost = true;
+                }
+              }
+            }
+            if (periodBillLoad == null || goalOverlapUnknown) openingChainLost = true;
+          }
+        } else {
+          previousEnding = paydaySweep != null ? roundCent(availableRemainder - paydaySweep) : null;
+          if (paydaySweep == null) openingChainLost = true;
+        }
       } else {
         previousEnding = null;
       }
@@ -10761,6 +10980,7 @@
           : null,
         afterHouseholdBudget,
         balanceAfterDeductions,
+        paydaySweep,
         predictedEndingBalance: afterHouseholdBudget,
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
           ? 'balance-after-deductions' : null,
@@ -14063,6 +14283,178 @@
       const action = currentPeriodAction(plan, asOf, Object.assign({}, paydayOpts, {
         paydayAllocation: alloc,
       }));
+      // #620 simplified contract: only a direct payday Bills observation or
+      // a fresh, completely reconciled observation can seed a future sweep.
+      // Qualify the current stock once. No historical account-share inference,
+      // reconstruction exemption, or funding-status/deduction bypass.
+      const s1RiskWindow = (operatingPayPeriodWindows(plan, asOf) || [])
+        .find(w => w && w.role === 'active');
+      const s1BasisOpening = s1RiskWindow
+        ? resolvePaydayPeriodOpening(plan, asOf, s1RiskWindow, paydayOpts, null, null) : null;
+      if (plan.savingsEarmarks?.allocationPolicy != null) {
+        paydayOpts.s1CurrentBillsStockCents = (() => {
+          const cents = value => typeof value === 'number' && Number.isFinite(value)
+            ? savingsCents(value, true) : null;
+          if (!s1RiskWindow || !s1BasisOpening?.openingKnown
+              || plan.opening?.asOf !== asOf || paydayOpts.operatingPlan === 'unavailable') return null;
+          const rows = plan.startingCash?.breakdown;
+          if (!Array.isArray(rows)) return null;
+          const cash = new Map();
+          for (const id of HOUSEHOLD_CHEQUING_IDS) {
+            const found = rows.filter(r => r?.id === id);
+            if (found.length !== 1) return null;
+            const row = found[0], value = cents(row.value);
+            if (value == null || row.unknown === true
+                || [row.confidence, row.status].some(tag => tag != null
+                  && !['verified', 'confirmed', 'calculated'].includes(tag))
+                || row.evidenceDate != null && financialDate(row.evidenceDate) !== asOf) return null;
+            cash.set(id, value);
+          }
+          if (paydayOpts.observedCash || paydayOpts.operatingPlan === 'live') {
+            const observed = paydayOpts.observedCash;
+            if (observed?.complete !== true || financialDate(observed.asOf) !== asOf
+                || !Array.isArray(observed.accounts)) return null;
+            for (const [id, value] of cash) {
+              const found = observed.accounts.filter(r => r?.id === id);
+              if (found.length !== 1 || financialDate(found[0].evidenceDate) !== asOf
+                  || cents(found[0].value) !== value || found[0].unknown === true
+                  || [found[0].confidence, found[0].status].some(tag => tag != null
+                    && !['verified', 'confirmed', 'calculated'].includes(tag))) return null;
+            }
+          }
+          const packet = currentPeriodActualsPacket(paydayOpts);
+          const direct = s1BasisOpening.source === 'payday-morning'
+            && s1RiskWindow.start === asOf;
+          if (!packet && direct) return cash.get(BILLS_ACCOUNT_ID);
+          const complete = value => value === 'complete' || value && typeof value === 'object'
+            && value.complete === true && (value.status == null || value.status === 'complete')
+            && ['truncated', 'hasMore', 'has_more'].every(k => value[k] == null || value[k] === false);
+          const fetch = packet?.savingsFetchCoverage;
+          if (packet?.schema !== 'atlas-current-period-actuals/v1'
+              || packet.observationAsOf !== asOf
+              || packet.currency != null && (typeof packet.currency !== 'string'
+                || packet.currency.toUpperCase() !== 'CAD')
+              || !complete(packet.transactionCoverage) || !complete(packet.pendingCoverage)
+              || !complete(fetch) || !savingsDate(packet.coverageStart)
+              || packet.coverageStart > s1RiskWindow.start || packet.coverageThrough !== asOf
+              || fetch.startDate !== packet.coverageStart || fetch.endDate !== packet.coverageThrough
+              || ['startDate', 'endDate'].some(key => Object.hasOwn(packet.transactionCoverage, key)
+                && packet.transactionCoverage[key] !== fetch[key])
+              || packet.transactionWindow != null && (!complete(packet.transactionWindow)
+                || packet.transactionWindow.startDate !== packet.coverageStart
+                || packet.transactionWindow.endDate !== packet.coverageThrough)
+              || !Array.isArray(packet.transactions) || !Array.isArray(packet.savingsMovementUnconfirmed)
+              || packet.savingsMovementUnconfirmed.some(f => !f
+                || !['savings', 'savings-dont-touch'].includes(f.accountId))
+              || packet.currencyUnconfirmed != null && (!Array.isArray(packet.currencyUnconfirmed)
+                || packet.currencyUnconfirmed.length)) return null;
+          const unique = new Map(), movements = householdInternalMovementIndex(paydayOpts);
+          const reserves = new Set((plan.savingsEarmarks?.pools || []).map(p => p.accountId));
+          let flow = 0;
+          for (const tx of packet.transactions) {
+            if (!tx || !savingsDate(tx.date) || tx.date > asOf
+                || !(typeof tx.id === 'string' && tx.id.trim() === tx.id && tx.id.length
+                  || typeof tx.id === 'number' && Number.isSafeInteger(tx.id) && tx.id >= 0)
+                || cents(tx.amount) == null || typeof tx.currency !== 'string'
+                || tx.currency.toUpperCase() !== 'CAD') return null;
+            const aliases = [tx.atlasAccountId, tx.accountId, tx.account]
+              .filter(id => id != null && id !== '');
+            const id = aliases[0];
+            if (aliases.some(a => a !== id) || !id && tx.accountRole !== 'household-external') return null;
+            const operating = HOUSEHOLD_CHEQUING_IDS.includes(id);
+            if (operating && tx.accountRole !== 'household-cash'
+                || tx.accountRole === 'household-cash' && !operating
+                || tx.accountRole === 'household-reserve' && !reserves.has(id)
+                || !['household-cash', 'household-reserve', 'revolving-credit', 'household-external'].includes(tx.accountRole)) return null;
+            const prior = unique.get(String(tx.id));
+            if (prior) {
+              if (JSON.stringify(prior) !== JSON.stringify(tx)) return null;
+              continue;
+            }
+            unique.set(String(tx.id), tx);
+            if (!operating || tx.date < s1RiskWindow.start) continue;
+            if (tx.pending !== false || tx.savingsPostingEvidence !== 'posted'
+                || tx.pendingPostedAmbiguous || tx.pendingPostedDuplicate || tx.contradictoryEvidence
+                || isInternalHouseholdTransfer(tx) && !movements.byTxId.has(String(tx.id))) return null;
+            flow -= cents(tx.amount);
+            if (!Number.isSafeInteger(flow)) return null;
+          }
+          if (!direct) {
+            // A pooled snapshot can reconcile the household total without
+            // inventing historical Bills shares. The current, dated Bills row
+            // supplies the account amount. Do not reconstruct EOD here; #618
+            // remains the unchanged authority for any snapshot already earned.
+            if (s1BasisOpening.source !== 'snapshot') return null;
+            const snapshot = paydayOpts.paydaySnapshot || plan.opening?.paydaySnapshot;
+            if (cents(snapshot?.opening) == null) return null;
+            const basis = cents(s1BasisOpening.opening);
+            const total = [...cash.values()].reduce((a, b) => a + b, 0);
+            if (basis == null || !Number.isSafeInteger(total) || basis + flow !== total) return null;
+          }
+          return cash.get(BILLS_ACCOUNT_ID);
+        })();
+      }
+      let earlySavingsFunding;
+      if (plan.savingsEarmarks?.allocationPolicy != null) {
+        earlySavingsFunding = savingsDailyFunding(plan, paydayOpts.debts || base.debts, asOf, { ...paydayOpts, savingsAllocationPolicy: undefined });
+      }
+      if (earlySavingsFunding && earlySavingsFunding.backing?.status === 'ready'
+        && earlySavingsFunding.period?.status === 'ready'
+        && !(earlySavingsFunding.unresolved || []).length) {
+        const fp = earlySavingsFunding.period;
+        const combinedPolicy = savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf);
+        const historicalPolicy = !combinedPolicy
+          || plan.savingsEarmarks.allocationPolicy.effectiveFrom > asOf;
+        const creditBound = payPeriodTimelineBound(plan, asOf, paydayOpts);
+        if (!historicalPolicy && creditBound && creditBound.through && fp.end <= creditBound.through) {
+          const backingItems = savingsDailyBackingContexts.get(plan)?.items || [];
+          const itemsMatchable = backingItems.every(item => item
+            && savingsDate(item.date) && savingsCents(item.needed) != null
+            && (item.date > creditBound.through || item.event));
+          const activeWindow = (operatingPayPeriodWindows(plan, asOf) || [])
+            .find(w => w && w.role === 'active');
+          let overlapCents = 0;
+          let overlapKnown = !!activeWindow && itemsMatchable;
+          if (activeWindow && itemsMatchable) {
+            const section = (calendarBillSections(plan, asOf, Object.assign({}, paydayOpts, {
+              periodWindows: [activeWindow] })).billSections || []).find(s => s && s.id === activeWindow.id);
+            // The shared basis object computed for the qualification
+            // gate above IS this window's resolver result (design §5
+            // Q4: computed once in recommend) — reuse it when it
+            // names the same active window.
+            const openingBasis = s1BasisOpening && s1RiskWindow
+              && activeWindow.start === s1RiskWindow.start
+              ? s1BasisOpening
+              : resolvePaydayPeriodOpening(plan, asOf, activeWindow, paydayOpts, null, null);
+            for (const item of backingItems) {
+              if (!item.event) continue;
+              const date = cashWalkDate(item.event, asOf);
+              if (date < asOf || date > activeWindow.end) continue;
+              const deducted = ((section && section.rows) || []).filter(b => b.id === item.id && b.date === date
+                && billBelongsOnPaydayWaterfall(b, openingBasis.openingAsOf, openingBasis.source));
+              if (deducted.length > 1) { overlapKnown = false; break; }
+              if (deducted.length) {
+                const cents = savingsCents(deducted[0].planned != null ? deducted[0].planned : deducted[0].amount);
+                if (cents == null) { overlapKnown = false; break; }
+                overlapCents += cents;
+              }
+            }
+          }
+          const tail = savingsCents(fp.projectedRemainingCapacity);
+          const net = savingsCents(fp.nativePeriodSurplus, true);
+          const saved = savingsCents(fp.alreadySavedIncome);
+          const transferred = savingsCents(fp.transferred);
+          if (overlapKnown && [tail, net, saved, transferred].every(n => n != null)) {
+            const creditCents = Math.min(tail + overlapCents,
+              Math.max(0, net + overlapCents - saved - transferred));
+            if (Number.isSafeInteger(creditCents)) {
+              // Observed saved/transferred amounts already left current Bills.
+              // Only the still-future current-period credit leaves it again.
+              paydayOpts.s1CurrentBoundaryCreditCents = Math.max(0, creditCents);
+            }
+          }
+        }
+      }
       const pastPeriodViews = planPastPeriodViews(plan, asOf, alloc, plans,
         paydayOpts.debts || base.debts, Object.assign({}, paydayOpts, {
           sim: knowledgeSim,
@@ -14082,7 +14474,9 @@
       publishBudgetBillDisplayTrust(asOf, payPeriodTimelinePack.views, paydayOpts);
       let savingsFunding, savingsSchedule = planSpendFunding;
       if (plan.savingsEarmarks?.allocationPolicy != null) {
-        savingsFunding = savingsDailyFunding(plan, paydayOpts.debts || base.debts, asOf, { ...paydayOpts, savingsAllocationPolicy: undefined });
+        // Reuse the funding built before the waterfalls (S1 repair: the
+        // boundary-credit pass above); identical inputs, one computation.
+        savingsFunding = earlySavingsFunding;
         const savingsBound = payPeriodTimelineBound(plan, asOf, paydayOpts);
         const combinedPolicy = savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf);
         savingsSchedule = combinedPolicy && planSpendFunding.status !== 'unavailable' ? {
@@ -19843,6 +20237,11 @@
     // Nothing is retained in Bills for future operating need, and the ledger
     // never pays a routine Bills deficit: operating keeps its signed balance
     // and the close publishes the shortfall for the owner to act on.
+    // S1 (2026-10-14, via Atlas): for future periods the eligible amount is
+    // the Budget waterfall's published paydaySweep — the period's full
+    // positive available Bills remainder, inherited opening cash included —
+    // consumed unchanged here, so this ledger and the Budget opening that
+    // deducted the same sweep agree by construction.
     const walk = (selectedTransfers) => {
       let pot = stock, sent = 0, draws = 0, restored = 0, nativeStockDrawn = 0;
       const paid = new Set(), daily = [], payments = [];
@@ -19900,7 +20299,39 @@
       const transferred = current ? savingsCents(funding.period.transferred) : 0;
       if ([net, saved, transferred].some(n => n == null) || !Number.isSafeInteger(overlap))
         return hold('A native period surplus or receipt inclusion is unavailable.');
-      let eligible = current ? Math.min(tail + overlap, Math.max(0, net + overlap - saved - transferred)) : net + overlap;
+      // S1: a future period's sweep is the single figure the Budget
+      // waterfall published on the period (paydaySweep — its full positive
+      // available remainder, inherited opening cash included), so Savings
+      // credits the sweep the Budget opening deducted; the two
+      // publications cannot disagree.
+      // S1 repair (Systems Review 2026-10-15, PR #620 blockers 1 and 1b):
+      // on the published-sweep path the credit is the published sweep
+      // exactly — no overlap added and no operating cap applied here.
+      // The waterfall's remainder now restores the goal-bill overlap
+      // itself (the ledger still debits the full goal cost once, below),
+      // and the chain seed is net of the current period's boundary
+      // credit, so the walk's operating position at this close equals
+      // the remainder the sweep was published from. Adding the overlap or
+      // re-capping here (the pre-repair shape) made the accepted credit
+      // differ from the sweep Budget had already published and consumed,
+      // and the discrepancy changed the next sweep basis. Unknown Bills
+      // now withholds the dependent closes; net surplus is not a fallback.
+      // The current period keeps its receipt-qualified
+      // entitlement path: its close has not happened, and no prior close
+      // may be inferred for it.
+      const publishedSweep = !current && typeof period.paydaySweep === 'number'
+        ? savingsCents(period.paydaySweep) : null;
+      if (!current && publishedSweep == null) {
+        for (const dependent of ordered.slice(index)) result.set(dependent.end, {
+          status: 'unavailable', reason: 'The shared Bills sweep is unavailable.',
+          stock: null, items: [], rows: [], actualSaved: null, trust: 'unknown',
+          start: dependent.start, end: dependent.end, asOf, currency: 'CAD',
+          source: 'Forecast.recommend.savingsFunding', actionPermission: 'not-granted',
+          moneyMovementPermission: 'not-granted' });
+        return result;
+      }
+      let eligible = current ? Math.min(tail + overlap, Math.max(0, net + overlap - saved - transferred))
+        : publishedSweep;
       if (!Number.isSafeInteger(eligible)) return hold('A native period surplus is unavailable.');
       eligible = Math.max(0, eligible);
       if (!Number.isSafeInteger(eligible)) return hold('Projected contribution cents exceed exact arithmetic.');
@@ -19909,10 +20340,15 @@
       // actually exists at this period's close (the walk's operating
       // position before this period's own sweep is scheduled): a carried
       // deficit absorbs later net before any of it can move. No future-needs
-      // retention is applied on top of that bound.
+      // retention is applied on top of that bound. S1 repair: this bound
+      // still governs the current period; on the published-sweep path the waterfall remainder is
+      // already that same walk-basis figure, so the credit is the
+      // published sweep unchanged (see above).
       const preClose = path.daily.find(d => d.date === period.end);
       if (!preClose) return hold('The selected native closing date is unavailable.');
-      eligible = Math.min(eligible, Math.max(0, preClose.operating));
+      if (current) {
+        eligible = Math.min(eligible, Math.max(0, preClose.operating));
+      }
       if (!Number.isSafeInteger(eligible)) return hold('Projected contribution cents exceed exact arithmetic.');
       // The full eligible surplus sweeps on the next period's payday (its
       // start date), never at this period's own close and never reduced by a

@@ -1067,6 +1067,12 @@ console.log('\n=== 10. Designated savings in the gap does not change spendable p
   };
   ok(a.savingsFunding.stock.amount===119 && a.savingsFunding.goalAllocation.status==='ready'
       && a.savingsFunding.period.status==='ready', 'reported reserve119 stays known while the legitimately earned bridge qualifies funding');
+  // The native provider omits the optional packet currency summary, but every
+  // posted row is verified CAD. Complete reconciliation qualifies Bills83;
+  // other chequing30 remains outside its sweep. No historical share is needed.
+  const nextBills=a.payPeriodViews.find(p=>p.start==='2026-10-16');
+  ok(nextBills.opening===83 && nextBills.paydaySweep===1083,
+    'fully reconciled native provider packet sweeps Bills83 plus receipt1000 and excludes other30');
   for (const [start, receipts] of [['2026-10-16',1000],['2026-10-30',2000]]) {
     const c=close(a,start);
     ok(c.status==='ready' && Number.isFinite(c.stock) && Number.isFinite(c.operatingCash)

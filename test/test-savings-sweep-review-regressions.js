@@ -92,9 +92,13 @@ test('finding 2: only the unspent sweep is attributed to remaining goals after a
   // Ledger (deficitModel, stock 50): period 1 surplus 100 sweeps in on
   // 2026-10-30. Goal a (120, due 2026-11-04) is paid from the pot during
   // period 2: prior funds 50 cover 50 of it, the arrived sweep covers 70,
-  // so only 30 of the sweep remains for the remaining goal b. The pot
-  // closes at 50 + 100 - 120 = 30. Head 21636a13 attributed the full
-  // arrived 100 to b (forecastContribution 100 against a 30 pot).
+  // so only part of the sweep remains for the remaining goal b. Head
+  // 21636a13 attributed the full arrived sweep to b (forecastContribution
+  // against a smaller pot).
+  // S1 supersession: the arrived sweep is the full remainder 120 (20
+  // inherited opening cash + 100 surplus, was the 100 surplus only), so
+  // the pot closes at 50 + 120 - 120 = 50 (was 30) and the unspent sweep
+  // attributed to b is 50 (was 30).
   const x = deficitModel(100, 200, 50);
   x.plan.commitments[0].date = '2026-11-04'; x.plan.commitments[0].amount = 120;
   const a = advice(x);
@@ -102,17 +106,21 @@ test('finding 2: only the unspent sweep is attributed to remaining goals after a
   assert.equal(first.stock, 50); assert.equal(first.contribution, 0);
   const p = second;
   assert.equal(p.status, 'ready', p.reason);
-  assert.equal(p.contribution, 100, 'the full prior surplus still lands on the payday');
+  assert.equal(p.contribution, 120, 'the full prior remainder still lands on the payday');
   assert.equal(p.projectedDraws, 120, 'the due goal cost is debited once');
-  assert.equal(p.stock, 30); assert.equal(p.unallocated, 0);
-  assert.deepEqual(p.items.map(i => [i.id, i.forecastSaved]), [['b', 30]]);
-  assert.deepEqual(p.rows.map(r => r.forecastContribution), [30],
-    'only the unspent 30 of the arrived sweep contributes to the remaining goal');
-  assert.equal(5000 + 10000 - 12000, 3000, 'opening pot plus sweep minus the due goal paid once');
+  assert.equal(p.stock, 50); assert.equal(p.unallocated, 0);
+  assert.deepEqual(p.items.map(i => [i.id, i.forecastSaved]), [['b', 50]]);
+  assert.deepEqual(p.rows.map(r => r.forecastContribution), [50],
+    'only the unspent 50 of the arrived sweep contributes to the remaining goal');
+  assert.equal(5000 + 12000 - 12000, 5000, 'opening pot plus sweep minus the due goal paid once');
   // Finding 3 packet contract on this same ready close: the signed Bills
   // position and the dated uncovered gap ride the close for the surfaces.
-  assert.equal(p.operatingCash, -180, 'signed Bills position at the close');
-  assert.equal(p.gap.date, '2026-11-03'); assert.equal(p.gap.signedOperatingCash, -180);
-  assert.equal(p.gap.shortBy, 200); assert.equal(p.gap.cashFloor, 20);
+  // S1: the close's signed Bills position is -200 (was -180); the dated
+  // gap is the first floor breach, which the full sweep moves to the
+  // payday itself (Bills at 0, 20 under the floor — was the 2026-11-03
+  // bill at -180 / shortBy 200).
+  assert.equal(p.operatingCash, -200, 'signed Bills position at the close');
+  assert.equal(p.gap.date, '2026-10-30'); assert.equal(p.gap.signedOperatingCash, 0);
+  assert.equal(p.gap.shortBy, 20); assert.equal(p.gap.cashFloor, 20);
   assert.equal(p.projectedDeficitCoverage, 0);
 });

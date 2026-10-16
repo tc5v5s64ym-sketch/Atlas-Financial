@@ -676,9 +676,10 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
     'active payday opening is withheld when the opening-to-payday gap is not cash-complete');
   ok(thisP.available != null && near(thisP.available, thisP.incomeTotal),
     'Payday balance still publishes the period income identity');
-  ok(nextP.openingKnown === true && nextP.opening != null
-      && !near(nextP.opening, independentCash),
-    'next period opens from the already-run walk, not from live mid-period cash');
+  // #620 simplified contract: the incomplete packet and absent payday basis
+  // cannot establish a future Bills sweep. Current displays above stay valid.
+  ok(nextP.openingKnown !== true && nextP.opening == null && nextP.paydaySweep == null,
+    'next opening and sweep stay unknown without a qualified payday Bills basis');
   ok(thisP.remainingBills != null, 'active period shows remaining bills');
   const groceries = (thisP.householdBudget || []).find(row => row && row.id === 'groceries');
   ok(groceries && groceries.planned != null && groceries.spent != null

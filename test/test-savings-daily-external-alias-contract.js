@@ -214,7 +214,12 @@ test('9. the undated-requirement gate and other safety gates are unchanged with 
   const pendingIncomplete = withRow(externalRow()); pendingIncomplete.opts.currentPeriodActuals.pendingCoverage = 'partial';
   withheld(run(pendingIncomplete), COVERAGE_REASON);
   const missingBill = withRow(externalRow()); delete missingBill.plan.bills[0].amount;
-  withheld(run(missingBill), 'A required operating bill amount is unavailable.');
+  // S1 repair (PR #620 blocker 3): an unamounted bill now makes the
+  // native Budget period basis itself unavailable (the waterfall load
+  // is unknown, not zero), so the funding builder withholds at its
+  // basis gate with this reason instead of the later bill-amount gate.
+  // The withhold outcome is unchanged.
+  withheld(run(missingBill), 'The native Budget period basis is unavailable.');
   const floor = withRow(externalRow()); floor.plan.defaults.targetBuffer = 50;
   withheld(run(floor), 'Known operating cash on 2026-10-29 cannot preserve the existing cash/card floor.');
 });
