@@ -392,6 +392,100 @@ const App = (() => {
   const hooks = [];   // re-run on every render (data arrival, theme change)
   const onceHooks = []; // run once when data arrives (control wiring)
 
+  // An explicit local save of successful boot responses, never a new read or
+  // a financial publication. Keep the detached JSON private to this boot.
+  function privateComparisonSave(mount, writingChanged) {
+    let generation = 0, snapshot = null, saving = false, writing = false;
+    const supported = globalThis.isSecureContext === true
+      && typeof globalThis.showSaveFilePicker === 'function';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Save private comparison inputs';
+    button.setAttribute('data-private-comparison-save', '');
+    const status = document.createElement('p');
+    status.setAttribute('data-private-comparison-status', '');
+    status.setAttribute('role', 'status');
+    mount.append(button, status);
+    const unavailable = () => supported
+      ? 'Private inputs are incomplete. Saving is unavailable.'
+      : 'Private saving is unavailable in this browser. A secure browser with a file save picker is required.';
+    const updateButton = () => { button.disabled = !supported || !snapshot || saving; };
+    function reset() {
+      generation++;
+      snapshot = null;
+      status.textContent = unavailable();
+      updateButton();
+    }
+    function capture(data, periods, history, observation, responses) {
+      const object = value => value && typeof value === 'object' && !Array.isArray(value);
+      if (!object(data) || !object(data.plan) || !object(periods) || !object(history)
+          || !['data', 'periods', 'history'].every(key => responses[key]?.status === 200)) return;
+      try {
+        const label = document.querySelector('.running-build')?.textContent?.trim();
+        snapshot = {
+          generation, loadedAt: new Date().toISOString(),
+          inputs: JSON.stringify({ data, periods, history }),
+          provenance: JSON.stringify({
+            // The HTML exposes a short page identity, not the data-serving SHA.
+            pageBuildLabel: /^Running (?:commit |PR #[1-9]\d* \u00b7 )[0-9a-f]{7}$/i.test(label || '') ? label : null,
+            dataServingRevision: null,
+            observation,
+            responses,
+          }),
+        };
+        status.textContent = supported
+          ? 'Contains private financial data. Choose your approved private folder when saving.' : unavailable();
+      } catch { snapshot = null; status.textContent = unavailable(); }
+      updateButton();
+    }
+    button.addEventListener('click', async () => {
+      if (!supported || !snapshot || saving) return;
+      const selected = snapshot;
+      saving = true;
+      updateButton();
+      let stream = null, picked = false;
+      try {
+        // Call the picker directly in the owner gesture. No automatic download
+        // fallback, stored handle, cookie, header bag, or upload transport.
+        const handle = await globalThis.showSaveFilePicker({
+          suggestedName: 'atlas-private-comparison-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json',
+          types: [{ description: 'Private Atlas comparison inputs', accept: { 'application/json': ['.json'] } }],
+        });
+        picked = true;
+        if (snapshot !== selected || generation !== selected.generation) {
+          status.textContent = 'Inputs changed while choosing a file. Save the newly loaded inputs instead.';
+          return;
+        }
+        // A refresh may invalidate a pending picker. Once writing starts, a
+        // new load waits until closure so no stale generation can be committed.
+        writing = true;
+        writingChanged(true);
+        const body = JSON.stringify({
+          schema: 'atlas-private-comparison-inputs/v1',
+          exportedAt: new Date().toISOString(), loadedAt: selected.loadedAt,
+          provenance: JSON.parse(selected.provenance), inputs: JSON.parse(selected.inputs),
+        }) + '\n';
+        stream = await handle.createWritable();
+        await stream.write(body);
+        await stream.close();
+        stream = null;
+        status.textContent = 'Private comparison inputs saved.';
+      } catch (error) {
+        if (stream) { try { await stream.abort(); } catch { /* No completed save is claimed. */ } }
+        status.textContent = !picked && error?.name === 'AbortError'
+          ? 'Private save cancelled.'
+          : 'Private inputs could not be saved. No completed save was confirmed.';
+      } finally {
+        writing = false;
+        saving = false;
+        writingChanged(false);
+        updateButton();
+      }
+    });
+    reset();
+    return { reset, capture, isWriting: () => writing };
+  }
+
   function rerender() {
     if (!DATA) return;
     for (const fn of hooks) fn(DATA, PERIODS, HISTORY);
@@ -585,20 +679,26 @@ const App = (() => {
       refresh.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 9a7 7 0 1 0 0 6M19 4v5h-5"/></svg>';
       toolbar.insertBefore(refresh, toolbar.querySelector('[data-transaction-review-open]'));
     }
-    const checkMount = document.querySelector('[data-review-source-check]') || document.querySelector('.site-head-inner') || document.querySelector('.site-head') || $('asof')?.parentNode;
+    const reviewCheckMount = document.querySelector('[data-review-source-check]');
+    const checkMount = reviewCheckMount || document.querySelector('.site-head-inner') || document.querySelector('.site-head') || $('asof')?.parentNode;
     if (checkMount) {
       checkMount.classList?.add('has-observation-controls');
       checkMount.append(controls);
     }
+    const privateSave = reviewCheckMount
+      ? privateComparisonSave(reviewCheckMount, busy => { refresh.disabled = busy || loading; }) : null;
     refresh.addEventListener('click', () => load(true));
     function load(forceRefresh = false) {
-      if (loading) return;
+      if (loading || privateSave?.isWriting()) return;
       loading = true;
+      privateSave?.reset();
       if (wrap && !notice.isConnected) wrap.prepend(notice);
       isolateShell();
       refresh.disabled = true;
       const controller = new AbortController();
       let check = null;
+      let exportCheck = null;
+      const responses = { data: null, periods: null, history: null };
       let cancelled = false;
       const timer = setTimeout(() => controller.abort(), 180000);
       notice.className = 'note-box is-loading';
@@ -615,22 +715,40 @@ const App = (() => {
       // removes it with the notice.
       notice.append(buildBootTreatment());
       const wants = [fetch(forceRefresh ? '/data.json?refresh=force' : '/data.json', { credentials: 'same-origin', signal: controller.signal })
-        .then(r => {
+        .then(async r => {
           if (r.status === 401) { location.href = '/login'; throw new Error('auth'); }
           if (!r.ok) throw new Error('data unavailable');
           check = { source: r.headers?.get('X-Atlas-Observation-Source'),
             qualified: r.headers?.get('X-Atlas-Observation-Qualified') === 'true',
             checkedAt: r.headers?.get('X-Atlas-Observation-Checked-At') };
-          return r.json();
+          const qualified = r.headers?.get('X-Atlas-Observation-Qualified');
+          exportCheck = {
+            source: ['provider', 'memory'].includes(check.source) ? check.source : null,
+            qualified: qualified === 'true' ? true : qualified === 'false' ? false : null,
+            checkedAt: typeof check.checkedAt === 'string' && Number.isFinite(Date.parse(check.checkedAt)) ? check.checkedAt : null,
+          };
+          const json = await r.json();
+          responses.data = { path: '/data.json', status: r.status };
+          return json;
         })];
       wants.push(opts.periods
         ? fetch('/periods.json', { credentials: 'same-origin', signal: controller.signal })
-          .then(r => r.ok ? r.json() : null)
+          .then(async r => {
+            if (!r.ok) return null;
+            const json = await r.json();
+            responses.periods = { path: '/periods.json', status: r.status };
+            return json;
+          })
           .catch(() => null)
         : Promise.resolve(null));
       wants.push(opts.history
         ? fetch('/balance-history.json', { credentials: 'same-origin', signal: controller.signal })
-          .then(r => r.ok ? r.json() : null)
+          .then(async r => {
+            if (!r.ok) return null;
+            const json = await r.json();
+            responses.history = { path: '/balance-history.json', status: r.status };
+            return json;
+          })
           .catch(() => null)
         : Promise.resolve(null));
       Promise.all(wants).then(([d, p, h]) => {
@@ -638,6 +756,7 @@ const App = (() => {
         // Existing once-wired views capture their initial inputs. A successful
         // forced check rebuilds every view; the next boot replays its evidence.
         if (forceRefresh) { location.reload(); return; }
+        privateSave?.capture(d, p, h, exportCheck, responses);
         DATA = d; PERIODS = p || null; HISTORY = h || null;
         const asof = $('asof');
         if (asof) {
@@ -650,6 +769,7 @@ const App = (() => {
         restoreShell();
         notice.remove();
       }).catch(err => {
+        privateSave?.reset();
         if (err.message === 'auth') return;
         controller.abort();
         notice.className = 'note-box crit';
