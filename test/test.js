@@ -391,6 +391,7 @@ const suites = [
   ['live plan overlay without rewriting openings', 'test-live-plan.js'],
   ['request-scoped exact-input refresh evaluation reuse', 'test-refresh-evaluation-reuse.js'],
   ['closed refresh stage timings with unchanged worker results', 'test-refresh-stage-timing.js'],
+  ['current-period Savings planning and exact-once observed replacement', 'test-savings-current-period-projection.js'],
   ['live overlay unresolved same-day inbound', 'test-live-unresolved-inbound.js'],
   ['production read-only live overlay boundary', 'test-production-live-overlay.js'],
   ['read-only assistant interface', 'test-assistant-interface.js'],

@@ -880,11 +880,23 @@ rescheduled is the owner's decision. Dale's clarification
 `Sentinel_98d4486829848191b933e14411bbc3cd` permits the qualified hypothetical
 Savings remainder in this forecast calculation only. It authorizes no real
 transfer, reserve withdrawal, loan or native/current money movement.
-Remaining current-period capacity is included only through the existing
-`savingsDailyFunding` receipt, posted-transfer and opening reconciliation gates.
-A reported increase is never evidence of its income source. Missing inclusion
-proof, native cash coverage, required amounts/dates or income authority keeps
-the closing projection unknown. Current Saved remains the reported earmark;
+Owner clarification 2026-10-16 (`ownerSentinel_f70d821f734481919f25b706ea7ab1a6`):
+the current period's hypothetical contribution uses its expected income minus
+planned bills and Household Budget (planned reserve fulfilled by spending up
+to budget; overspending increases the deduction). It is independent of today's
+transfer capacity and future operating needs. The existing qualified current
+reserve/operating opening, complete movement and matched receipt/transfer
+inclusion evidence still apply. Unreceived salary stays forecast, including
+on or after its expected date; a hypothetical receipt at the current close
+keeps the scenario's operating and Savings legs conserved. Received amounts
+already in reported Savings replace their projected credit exactly once.
+The bank-transfer publisher and its cash-floor/receipt guards are unchanged.
+The future S1 sweep remains the published waterfall amount. Signed planning
+and operating deficits stay visible; no negative actual transfer or automatic
+Savings draw is invented. A reported increase is never evidence of its income
+source. Missing opening/inclusion proof, native cash coverage, required
+amounts/dates or income authority keeps the closing projection unknown.
+Current Saved remains the reported earmark;
 future actual Saved, transfers and settlement remain unknown. Estimated scenario
 trust and provenance stay internal. The selected period supplies visible context;
 Dale's 2026-10-14 UTC direction (`Sentinel_fd7dfe558f4c8191ad91f6f2379ad41d`)

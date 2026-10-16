@@ -517,7 +517,7 @@ test('a future annual goal already deducted by Budget is not subtracted a second
   assert.equal(third.projectedDraws, 900);
   assert.equal(30000 + 48000 + 40000 - 50000 - 40000, 28000);
 });
-test('an unavailable native current-tail path is never overridden by schedule funding-gap acceptance', () => {
+test('a later funding gap withholds transfer-now permission without erasing earlier qualified planning closes', () => {
   const x = input(); x.plan.commitments[0].amount = 4000;
   x.plan.income.push({ id: 'current-gift', label: 'Invented operating receipt', frequency: 'once', date: '2026-10-04', amount: 200, confidence: 'confirmed' });
   x.plan.startingCash.breakdown[0].value += 200;
@@ -529,7 +529,16 @@ test('an unavailable native current-tail path is never overridden by schedule fu
   assert.equal(a.savingsFunding.backing.status, 'ready');
   assert.equal(a.savingsFunding.period.status, 'unavailable');
   assert.match(a.savingsFunding.period.reason, /cannot preserve the existing cash\/card floor/);
-  const p = closing(a, '2026-10-16'); assert.equal(p.status, 'unavailable'); assert.equal(p.stock, null);
+  // Owner 2026-10-16 (ownerSentinel_f70d821f734481919f25b706ea7ab1a6)
+  // supersedes the blanket current-tail hold: known current net200 is a
+  // projected addition, not a transfer quota, and the later4000 goal cannot
+  // erase an earlier closing. The actual bank permission above still holds.
+  const p = closing(a, '2026-10-16'); assert.equal(p.status, 'ready'); assert.equal(p.stock, 319);
+  assert.equal(11900 + 20000, 31900);
+  const later = closing(a, '2026-12-11');
+  assert.equal(later.status, 'unavailable'); assert.equal(later.stock, null);
+  assert.equal(later.diagnostics.signedSavings, -1601); assert.equal(later.gap.shortBy, 1601);
+  assert.equal(11900 + 20000 + 108000 + 100000 - 400000, -160100);
 });
 test('signed native diagnostics carry -100 forward to -200 without resetting deficits or publishing zero Savings', () => {
   const x = input(); x.plan.defaults.targetBuffer = 0;
