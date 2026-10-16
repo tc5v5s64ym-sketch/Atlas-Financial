@@ -146,7 +146,12 @@ if (!isMainThread) {
   }
   function startJob(job, canonical, env) {
     if (job.settled) return;
-    job.timer = setTimeout(() => finishJob(job, unavailable('live-refresh-timeout')), LIVE_REFRESH_TIMEOUT_MS);
+    job.timer = setTimeout(() => {
+      // A job-level timeout is a forced-refresh termination too: the hold
+      // must be recorded before the job settles, like every other path.
+      if (!job.evidence && (job.hadForcedWaiter || [...job.waiters].some(waiter => waiter.forceRefresh))) replayHeld = true;
+      finishJob(job, unavailable('live-refresh-timeout'));
+    }, LIVE_REFRESH_TIMEOUT_MS);
     try {
       const worker = job.worker = new Worker(__filename, { workerData: { canonical, evidence: job.evidence }, env });
       active.add(worker);
@@ -161,6 +166,9 @@ if (!isMainThread) {
           return finishJob(job, unavailable('live-refresh-invalidated'));
         }
         job.check = result?.check;
+        // Forced participation includes a forced waiter who already left
+        // (timeout/cancel): the completion must not cleanse their hold.
+        const forced = job.hadForcedWaiter || [...job.waiters].some(waiter => waiter.forceRefresh);
         if (!job.evidence && result?.data) {
           let published = false;
           if (job.cacheable && metadata.readable && matches && result.check?.qualified === true && result.check.evidence
@@ -177,18 +185,18 @@ if (!isMainThread) {
             // truth: it supersedes any retained qualified observation.
             observationEpoch++;
             observations.clear();
-            replayHeld = [...job.waiters].some(waiter => waiter.forceRefresh);
+            replayHeld = forced;
           } else {
             // A failed check (no dated answer) never destroys retained
             // qualified evidence. A failed forced refresh still holds
             // replay until a later live job completes, so the failure is
             // not hidden behind the earlier success.
-            replayHeld = [...job.waiters].some(waiter => waiter.forceRefresh);
+            replayHeld = forced;
           }
         } else if (!job.evidence) {
           // A live job that produced no result at all follows the same
           // retention/hold rule as a failed check.
-          replayHeld = [...job.waiters].some(waiter => waiter.forceRefresh);
+          replayHeld = forced;
         }
         if (job.evidence && result?.check?.qualified !== true) {
           observationEpoch++;
@@ -198,18 +206,23 @@ if (!isMainThread) {
         return result?.data ? finishJob(job, null, result.data) : finishJob(job, unavailable('live-refresh-unavailable'));
       });
       worker.on('error', () => {
-        if (!job.settled && !job.evidence) replayHeld = [...job.waiters].some(waiter => waiter.forceRefresh);
+        if (!job.settled && !job.evidence) replayHeld = job.hadForcedWaiter || [...job.waiters].some(waiter => waiter.forceRefresh);
         finishJob(job, unavailable('live-refresh-unavailable'));
       });
       worker.on('exit', () => {
         active.delete(worker);
         if (!job.settled) {
-          if (!job.evidence) replayHeld = [...job.waiters].some(waiter => waiter.forceRefresh);
+          if (!job.evidence) replayHeld = job.hadForcedWaiter || [...job.waiters].some(waiter => waiter.forceRefresh);
           finishJob(job, unavailable('live-refresh-unavailable'));
         }
         emitTiming(job);
       });
-    } catch (_) { finishJob(job, unavailable('live-refresh-unavailable')); }
+    } catch (_) {
+      // A constructor failure is a forced-refresh termination too: record
+      // the hold for any forced waiter before settling the job.
+      if (!job.evidence && [...job.waiters].some(waiter => waiter.forceRefresh)) replayHeld = true;
+      finishJob(job, unavailable('live-refresh-unavailable'));
+    }
   }
   function serve(canonical, env, options = {}) {
     const Live = require('./live-plan');
@@ -239,11 +252,15 @@ if (!isMainThread) {
     // Equivalent callers can join even when the distinct-worker cap is full.
     if (fresh && active.size >= MAX_ACTIVE_LIVE_REFRESHES) return Promise.reject(unavailable('live-refresh-busy'));
     if (fresh) {
-      // Starting a live job never destroys the retained observation: it is
-      // replaced only by a new qualified publish or a hard invalidator.
+      // Starting a live job invalidates in-flight replays of the retained
+      // observation (their verdicts predate this attempt), but it never
+      // destroys the observation itself: the slot is replaced only by a
+      // new qualified publish, a dated unqualified answer, or a hard
+      // invalidator.
+      if (!evidence) observationEpoch++;
       job = { key, context, evidence, cacheable: metadata.readable, day: financialDay(), generation, observationEpoch,
         started: performance.now(), waiters: new Set(), waiterCount: 0,
-        peakWaiters: 0, cancelledWaiters: 0, timedOutWaiters: 0, settled: false };
+        peakWaiters: 0, cancelledWaiters: 0, timedOutWaiters: 0, settled: false, hadForcedWaiter: false };
       jobs.set(key, job);
     }
     return new Promise((resolve, reject) => {
@@ -254,6 +271,12 @@ if (!isMainThread) {
         else job.timedOutWaiters++;
         const error = unavailable(code);
         settleWaiter(job, waiter, error);
+        // A forced waiter who leaves unserved (timeout/cancel) means the
+        // forced refresh has failed for the publication barrier, whatever
+        // the job does next: hold replay now, and mark the job so its
+        // completion bookkeeping cannot cleanse the hold. A later
+        // qualified publish still releases it.
+        if (!job.evidence && waiter.forceRefresh) { job.hadForcedWaiter = true; replayHeld = true; }
         if (!job.waiters.size) finishJob(job, error);
       };
       waiter.cancelled = () => leave('live-refresh-cancelled');
