@@ -14335,6 +14335,8 @@
               || !complete(fetch) || !savingsDate(packet.coverageStart)
               || packet.coverageStart > s1RiskWindow.start || packet.coverageThrough !== asOf
               || fetch.startDate !== packet.coverageStart || fetch.endDate !== packet.coverageThrough
+              || ['startDate', 'endDate'].some(key => Object.hasOwn(packet.transactionCoverage, key)
+                && packet.transactionCoverage[key] !== fetch[key])
               || packet.transactionWindow != null && (!complete(packet.transactionWindow)
                 || packet.transactionWindow.startDate !== packet.coverageStart
                 || packet.transactionWindow.endDate !== packet.coverageThrough)

@@ -61,6 +61,7 @@ const invalid = {
   'stale observation': x => { x.opts.currentPeriodActuals.observationAsOf = '2026-10-06'; },
   'incomplete fetch': x => { x.opts.currentPeriodActuals.savingsFetchCoverage.complete = false; },
   'conflicting window': x => { x.opts.currentPeriodActuals.transactionWindow = { complete: false, startDate: '2026-10-02', endDate: x.asOf }; },
+  'conflicting complete coverage dates': x => { x.opts.currentPeriodActuals.transactionCoverage = { complete: true, startDate: '2026-10-06', endDate: x.asOf }; },
   'missing fetch': x => { delete x.opts.currentPeriodActuals.savingsFetchCoverage; },
   'incomplete interval': x => { x.opts.currentPeriodActuals.transactionCoverage.complete = false; },
   'dropped Bills row despite READY funding': x => { x.opts.currentPeriodActuals.savingsMovementUnconfirmed.push({ accountId: 'chequing-a', reason: 'transaction-amount-or-date-unconfirmed' }); },
