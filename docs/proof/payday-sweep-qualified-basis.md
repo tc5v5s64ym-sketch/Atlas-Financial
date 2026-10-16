@@ -51,6 +51,10 @@ dependent Savings closes. No `net + overlap` fallback can credit that unknown
 amount. The dropped-row case preserves the independently supported current
 funding status and its transferred50 disclosure while withholding future money.
 Invalid planned future income also withholds its sweep and later opening.
+If independently supported current funding exceeds the qualified Bills cash
+available to supply it, the future chain is withheld rather than borrowing from
+another account. The synthetic Bills80 / other200 / current funding200 case
+preserves that READY200 disclosure but publishes no future Bills sweep.
 
 ## Changed expectations
 

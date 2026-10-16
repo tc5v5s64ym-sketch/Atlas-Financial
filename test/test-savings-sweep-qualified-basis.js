@@ -96,6 +96,17 @@ test('a direct payday observation establishes the Bills basis without a historic
   assert.equal(period(a, '2026-10-16').opening, 80);
   assert.equal(period(a, '2026-10-16').paydaySweep, 1080);
 });
+test('current pooled funding READY cannot borrow another account for the Bills sweep seam', () => {
+  const x = fixture();
+  x.plan.income.push({ id: 'other-credit', frequency: 'once', date: '2026-10-04', amount: 200, confidence: 'confirmed' });
+  x.plan.startingCash.breakdown[1].value = 200;
+  x.opts.currentPeriodActuals.representedActuals.push({ id: 'other-credit', date: '2026-10-04', actual: 200, transactionId: 'other-credit' });
+  ordinary(x, -200, { id: 'other-credit', atlasAccountId: 'chequing-b', isIncome: true, incomeId: 'other-credit' });
+  const a = advice(x);
+  assert.equal(a.savingsFunding.period.status, 'ready', 'existing current funding remains independent');
+  assert.equal(a.savingsFunding.period.projectedRemainingCapacity, 200);
+  held(a); // Bills80 cannot supply a200 credit; other200 is excluded.
+});
 for (const amount of [null, '', false, Infinity]) test('invalid planned future receipt ' + String(amount) + ' cannot produce a known sweep', () => {
   const x = fixture(); x.plan.income[1].amount = amount;
   const a = advice(x);

@@ -10891,7 +10891,10 @@
               && periodBillLoad != null && !goalOverlapUnknown && !annualSavingsUnknown && sweepIncomeKnown && creditKnown
               ? stock + Math.round((futureIncome.reduce((sum, row) => sum + calendarIncomeContribution(row), 0)
                 - remainingBills + overlap) * 100) - remainingBudget - (credit || 0) : null;
-            previousEnding = Number.isSafeInteger(seed) ? seed / 100 : null;
+            // A receipt-qualified pooled entitlement cannot draw from another
+            // account to make this Bills-only seam work. Preserve its current
+            // funding disclosure, but withhold the dependent projection.
+            previousEnding = Number.isSafeInteger(seed) && !(credit > 0 && seed < 0) ? seed / 100 : null;
             if (previousEnding == null) openingChainLost = true;
           } else {
             // Incumbent noncombined publication, with no Savings sweep consumer.
