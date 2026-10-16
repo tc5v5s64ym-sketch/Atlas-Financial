@@ -9515,7 +9515,20 @@
     const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
     const matches = rows.filter(row => row && row.id === BILLS_ACCOUNT_ID);
     if (matches.length !== 1) return null;
-    const value = Number(matches[0].value);
+    const row = matches[0];
+    // The raw row value is the evidence; test it BEFORE any Number()
+    // coercion can flatten it — Number(null), Number('') and
+    // Number(true) are all finite, so a row carrying no numeric
+    // evidence (or one flagged unknown) would otherwise publish as a
+    // provider-confirmed figure. Mirrors billsAccountPeriodBalance's
+    // guard and the designated-reserve reader's raw test. Numeric
+    // strings and finite numbers — zero and negatives included —
+    // stay evidenced exactly as before.
+    if (row.unknown === true) return null;
+    const raw = row.value;
+    if (raw == null || typeof raw === 'boolean' || typeof raw === 'object') return null;
+    if (typeof raw === 'string' && raw.trim() === '') return null;
+    const value = Number(raw);
     return Number.isFinite(value) ? roundCent(value) : null;
   }
 
