@@ -394,6 +394,7 @@ const suites = [
   ['current-period Savings planning and exact-once observed replacement', 'test-savings-current-period-projection.js'],
   ['live overlay unresolved same-day inbound', 'test-live-unresolved-inbound.js'],
   ['production read-only live overlay boundary', 'test-production-live-overlay.js'],
+  ['legacy /planning.html retired to Budget at / (redirect, HTTP variants, auth preserved)', 'test-planning-retirement.js'],
   ['read-only assistant interface', 'test-assistant-interface.js'],
   ['Aug. 16 household evidence absorption', 'test-aug16-evidence.js'],
   ['2026-09-03 card-charge evidence intake', 'test-card-charge-evidence-2026-09-03.js'],

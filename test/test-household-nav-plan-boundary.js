@@ -553,6 +553,13 @@ function startAtlas(env) {
       if (page === '/') {
         ok(res.status === 200 && nav === null && /id="operating-surface"/.test(body),
           '/ serves 200 with the operating surface and no page nav');
+      } else if (page === '/planning.html') {
+        // Retired route (PR #632): /planning.html is no longer served. The URL
+        // answers the approved 302 to / instead; the page's nav markup facts
+        // remain pinned against public/planning.html itself in section 2.
+        const retired = await fetch(base + page, { headers: { cookie }, redirect: 'manual' });
+        ok(retired.status === 302 && (retired.headers.get('location') || '') === '/',
+          '/planning.html answers the approved 302 to / (Forecast page retired, not served)');
       } else {
         ok(res.status === 200 && nav
             && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV)
