@@ -145,6 +145,7 @@ const suites = [
   ['exact deployed PR provenance', 'test-build-provenance.js'],
   ['Budget running build identity', 'test-running-build.js'],
   ['Budget release detection on resume', 'test-app-release-resume.js'],
+  ['phone startup entry: web app manifest, brand icons and head metadata pin the launch to /', 'test-startup-manifest.js'],
   ['current-period actuals stay in the Seaspan spending cycle', 'test-current-period-cycle-actuals.js'],
   ['settled commitments do not reappear in the action lookback', 'test-settled-cost-lookback-action.js'],
   ['static sanity', 'test-static.js'],
