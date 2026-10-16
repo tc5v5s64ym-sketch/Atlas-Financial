@@ -29,6 +29,18 @@
  * are absent-from-window records (deletion unproven — never deletions);
  * window-only IDs are newly-visible divergences.
  *
+ * KNOWN-STATE SCOPE GATE (Q3, round 2 — Systems Review BLOCK 5545500868):
+ * known state is a SCOPED input, { rows, scope }, where scope declares
+ * the effective date bounds and the four query flags the state was
+ * captured under. The scope is required even when rows is empty, and it
+ * is validated against the reconciliation scope (the window's effective
+ * bounds and emitted flags) BEFORE any diffing. A missing, malformed,
+ * or mismatched scope returns an unqualified cycle — status
+ * 'unqualified', no certification, no applicable rows, no cursor, no
+ * absence findings — because payload equality across incomparable
+ * scopes certifies nothing. The round-1 bare-array shape declares no
+ * scope and is therefore always unqualified.
+ *
  * CONVERGENCE / CONFLICT: the two passes merge as a union by providerId.
  * An ID present in only one pass is included as-is — membership
  * differences between the created/updated predicates are NOT conflicts.
@@ -161,15 +173,26 @@ function validateWindowDescriptor(windowDescriptor) {
   return { now, historyDays };
 }
 
-// Q4: known state is caller-supplied — an array of rows already in the
-// mapped delta shape — and is keyed here by providerId. The consumer
-// owns no store and integrates with no memory path.
-function indexKnownState(knownState) {
-  if (!Array.isArray(knownState)) {
-    throw new Error('Delta consumer "knownState" must be an array of mapped transaction rows supplied by the caller.');
+// Q4: known state is caller-supplied and SCOPED — { rows, scope } — and
+// is keyed here by providerId. The consumer owns no store and
+// integrates with no memory path. A bare array is the round-1 shape: it
+// declares no scope, so it parses as rows with a null scope and the
+// scope gate returns the cycle unqualified.
+function parseKnownStateInput(knownState) {
+  if (knownState == null) return { rows: [], scope: null };
+  if (Array.isArray(knownState)) return { rows: knownState, scope: null };
+  if (typeof knownState === 'object') {
+    if (!Array.isArray(knownState.rows)) {
+      throw new Error('Delta consumer "knownState.rows" must be an array of mapped transaction rows supplied by the caller.');
+    }
+    return { rows: knownState.rows, scope: knownState.scope != null ? knownState.scope : null };
   }
+  throw new Error('Delta consumer "knownState" must be a scoped input { rows, scope } supplied by the caller.');
+}
+
+function indexKnownState(rows) {
   const byId = new Map();
-  for (const row of knownState) {
+  for (const row of rows) {
     if (!row || typeof row !== 'object' || row.providerId == null || row.providerId === '') {
       throw new Error('Delta consumer known-state row is missing its providerId; failing closed.');
     }
@@ -180,6 +203,47 @@ function indexKnownState(knownState) {
     byId.set(id, row);
   }
   return byId;
+}
+
+// Q3 scope gate (round 2): normalize the caller-declared known-state
+// scope into a comparable form — effective date bounds (YYYY-MM-DD)
+// plus the four query flags as booleans. Anything missing or malformed
+// normalizes to null, which the gate treats as unqualified: a scope
+// that cannot be stated exactly cannot certify anything.
+function normalizeKnownStateScope(scope) {
+  if (!scope || typeof scope !== 'object') return null;
+  const { startDate, endDate } = scope;
+  const dateOk = (value) => typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(value));
+  if (!dateOk(startDate) || !dateOk(endDate)) return null;
+  const normalized = { startDate, endDate };
+  for (const flag of ALIGNMENT_FLAGS) {
+    if (typeof scope[flag] !== 'boolean') return null;
+    normalized[flag] = scope[flag];
+  }
+  return normalized;
+}
+
+// The reconciliation scope the known-state scope is validated against:
+// the window's effective date bounds and its emitted query flags.
+function reconciliationScopeOf(windowUrl, descriptor) {
+  const scope = {
+    startDate: windowUrl.startDate || windowUrl.searchParams.get('start_date'),
+    endDate: windowUrl.endDate || windowUrl.searchParams.get('end_date'),
+    historyDays: descriptor.historyDays,
+  };
+  for (const flag of ALIGNMENT_FLAGS) {
+    scope[flag] = windowUrl.searchParams.get(flag) === 'true';
+  }
+  return scope;
+}
+
+function knownScopeMatches(knownScope, reconciliationScope) {
+  if (!knownScope) return false;
+  if (knownScope.startDate !== reconciliationScope.startDate) return false;
+  if (knownScope.endDate !== reconciliationScope.endDate) return false;
+  return ALIGNMENT_FLAGS.every((flag) => knownScope[flag] === reconciliationScope[flag]);
 }
 
 // PIN 1: the window URL is consumer-owned. The incumbent builder derives
@@ -267,14 +331,15 @@ async function consumeDeltaCycle(options = {}) {
     token,
     base,
     fetchOptions,
-    knownState = [],
   } = options;
 
   // Input validation fails closed BEFORE any fetch.
   if (!token) throw new Error('Delta consumer cycle has no Lunch Money credential.');
   Delta.validateSinceTimestamp(since);
   const descriptor = validateWindowDescriptor(options.window);
-  const known = indexKnownState(knownState);
+  const knownInput = parseKnownStateInput(options.knownState);
+  const known = indexKnownState(knownInput.rows);
+  const knownScope = normalizeKnownStateScope(knownInput.scope);
 
   // 1. Cycle-start instant, captured before any fetch. Callers may inject
   // it (tests, a caller's own clock discipline); when injected it must
@@ -297,6 +362,8 @@ async function consumeDeltaCycle(options = {}) {
     reconciliationCertified: false,
     reconciliationError: null,
     windowScope: null,
+    knownStateScope: knownScope,
+    scopeQualified: false,
     rows: null,
     diagnosticCandidates: null,
     conflicts: [],
@@ -304,6 +371,26 @@ async function consumeDeltaCycle(options = {}) {
     failures: [],
     advanceableCursor: null,
   };
+
+  // Q3 scope gate — BEFORE any fetch or diffing: the known-state scope
+  // must equal the reconciliation scope. The window URL is built here
+  // (pure construction, no fetch) so its effective bounds and emitted
+  // flags are the exact values the diffing leg will use. A missing,
+  // malformed, or mismatched scope returns the cycle unqualified: no
+  // certification, no applicable rows, no cursor, no absence findings.
+  const windowUrl = buildConsumerWindowUrl(descriptor, base);
+  const reconciliationScope = reconciliationScopeOf(windowUrl, descriptor);
+  result.windowScope = {
+    startDate: reconciliationScope.startDate,
+    endDate: reconciliationScope.endDate,
+    historyDays: reconciliationScope.historyDays,
+  };
+  result.scopeQualified = knownScopeMatches(knownScope, reconciliationScope);
+  if (!result.scopeQualified) {
+    result.status = 'unqualified';
+    result.reconciliationOutcome = 'unqualified';
+    return result;
+  }
 
   // 2. Created pass, then updated pass — identical since/token/base. A
   // thrown pass fails the cycle closed: no merge, no reconciliation, no
@@ -344,12 +431,6 @@ async function consumeDeltaCycle(options = {}) {
   const candidate = new Map(known);
   for (const row of merged) candidate.set(row.providerId, row);
 
-  const windowUrl = buildConsumerWindowUrl(descriptor, base);
-  result.windowScope = {
-    startDate: windowUrl.startDate || windowUrl.searchParams.get('start_date'),
-    endDate: windowUrl.endDate || windowUrl.searchParams.get('end_date'),
-    historyDays: descriptor.historyDays,
-  };
   let windowRows = null;
   try {
     const page = await ProviderObserve.fetchLunchMoneyTransactionsPaged(windowUrl, token, fetchOptions);

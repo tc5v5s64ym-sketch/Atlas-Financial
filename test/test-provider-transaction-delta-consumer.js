@@ -20,6 +20,16 @@
  * PIN 3 no completeness claim from idempotence, unseen backdated-row
  * negative case included.
  *
+ * Round 2 (Systems Review BLOCK 5545500868 on head edc7976e): the Q3
+ * scope qualification. Known state is a SCOPED input — { rows, scope } —
+ * whose declared effective date bounds and four query flags must equal
+ * the reconciliation scope before any diffing; missing or mismatched
+ * scope returns an unqualified cycle (section 18). On the round-1 code
+ * these pins fail: the old API accepted only a bare array, so
+ * known-state scope was inexpressible and payload equality certified
+ * incomparable scopes. Sections 1–17 are unchanged in their assertions;
+ * only the known-state harness shape changed to carry the scope.
+ *
  * Sections 3 and 6 are the naive-merge guards: if the consumer's merge
  * degenerated to a silent first-wins (or last-wins) merge, section 3's
  * conflict case would return rows and a 'complete' status instead of a
@@ -60,9 +70,30 @@ function tx(overrides) {
   }, overrides || {});
 }
 
-// Known state is caller-supplied in the mapped shape.
-function known(rawOverridesList) {
+// Known state is caller-supplied in the mapped shape, as a SCOPED input:
+// { rows, scope }, where scope declares the effective date bounds and
+// the four query flags the state was captured under (Q3, round 2). The
+// default scope matches the default test window (now 2026-10-16,
+// historyDays 45 -> 2026-09-01..2026-10-16, all four flags true).
+const MATCHING_SCOPE = {
+  startDate: '2026-09-01',
+  endDate: '2026-10-16',
+  include_pending: true,
+  include_metadata: true,
+  include_group_children: true,
+  include_split_parents: true,
+};
+
+function knownRows(rawOverridesList) {
   return rawOverridesList.map((overrides) => Delta.mapDeltaTransaction(tx(overrides)));
+}
+
+function scopedKnown(rows, scopeOverrides) {
+  return { rows, scope: Object.assign({}, MATCHING_SCOPE, scopeOverrides || {}) };
+}
+
+function known(rawOverridesList) {
+  return scopedKnown(knownRows(rawOverridesList));
 }
 
 function payload(transactions, hasMore) {
@@ -105,7 +136,7 @@ function cycleOpts(base, extra) {
     token: 'synthetic-test-token',
     base,
     window: { now: '2026-10-16T12:00:00Z', historyDays: 45 },
-    knownState: [],
+    knownState: known([]),
     cycleStart: CYCLE_START,
   }, extra || {});
 }
@@ -329,6 +360,7 @@ function assertHonestEnvelope(result) {
   }, async (base) => {
     const result = await Consumer.consumeDeltaCycle(cycleOpts(base, {
       window: { now: '2026-10-16T12:00:00Z', historyDays: 90 },
+      knownState: scopedKnown([], { startDate: '2026-07-18' }),
     }));
     eq(result.status, 'divergent');
     deepEq(result.divergences, [{ providerId: '99', type: 'newly-visible', fields: [] }]);
@@ -429,6 +461,7 @@ function assertHonestEnvelope(result) {
     const result = await Consumer.consumeDeltaCycle(cycleOpts(base, {
       since: '2026-10-10T00:00:00Z',
       window: { now: '2026-10-16T12:00:00Z', historyDays: 60 },
+      knownState: scopedKnown([], { startDate: '2026-08-17' }),
     }));
     eq(result.status, 'complete');
     deepEq(result.rows.map((r) => r.providerId), ['8'], 'backdated row merges by ID, never dropped as before-cursor');
@@ -503,6 +536,7 @@ function assertHonestEnvelope(result) {
   }, async (base, seenUrls) => {
     await Consumer.consumeDeltaCycle(cycleOpts(base, {
       window: { now: '2026-10-16T12:00:00Z', historyDays: 10 },
+      knownState: scopedKnown([], { startDate: '2026-10-06' }),
     }));
     const windowUrl = seenUrls.find((u) => u.searchParams.get('start_date'));
     eq(windowUrl.searchParams.get('start_date'), '2026-10-06');
@@ -541,16 +575,170 @@ function assertHonestEnvelope(result) {
   checks += 1;
   await assert.rejects(
     () => Consumer.consumeDeltaCycle(cycleOpts(deadBase, {
-      knownState: [...known([{ id: 1 }]), ...known([{ id: 1 }])],
+      knownState: scopedKnown([...knownRows([{ id: 1 }]), ...knownRows([{ id: 1 }])]),
     })),
     /duplicate providerId 1/,
   );
   checks += 1;
   await assert.rejects(
-    () => Consumer.consumeDeltaCycle(cycleOpts(deadBase, { knownState: [{ amount: '1.0000' }] })),
+    () => Consumer.consumeDeltaCycle(cycleOpts(deadBase, {
+      knownState: scopedKnown([{ amount: '1.0000' }]),
+    })),
     /missing its providerId/,
   );
   checks += 1;
+
+  // 18. Round 2 / Q3 — the known-state SCOPE GATE (Systems Review BLOCK
+  // 5545500868 on head edc7976e). Known state must declare the scope it
+  // was captured under — effective date bounds plus the four query
+  // flags — even when it is empty, and that scope must equal the
+  // reconciliation scope before any diffing. Missing or mismatched
+  // scope returns an UNQUALIFIED cycle: no certification, no applicable
+  // rows, no cursor, no absence findings. On the round-1 code every pin
+  // below fails (the bare-array API made scope inexpressible, and
+  // payload equality certified incomparable scopes); the matched-scope
+  // preservation controls at the end pin that correctly-scoped states
+  // behave exactly as the round-1 contract did (sections 1–17 carry the
+  // same preservation property across the full matrix).
+  function assertUnqualified(result) {
+    eq(result.status, 'unqualified');
+    eq(result.scopeQualified, false, 'scope gate reports the state as unqualified');
+    eq(result.reconciliationOutcome, 'unqualified');
+    eq(result.reconciliationComplete, false);
+    eq(result.reconciliationCertified, false, 'an unqualified scope never certifies');
+    eq(result.rows, null, 'an unqualified scope publishes no applicable rows');
+    eq(result.diagnosticCandidates, null);
+    eq(result.advanceableCursor, null, 'an unqualified scope never advances the cursor');
+    deepEq(result.divergences, [], 'an unqualified scope emits no absence findings');
+    deepEq(result.conflicts, []);
+    assertHonestEnvelope(result);
+  }
+  const emptyRoutes = {
+    created: () => payload([]),
+    updated: () => payload([]),
+    window: () => payload([]),
+  };
+
+  // (a) EMPTY state, date-window mismatch (declared start one day
+  // before the reconciliation window's start): on round 1 this shape
+  // certified and advanced; now unqualified.
+  await withProvider(emptyRoutes, async (base) => {
+    const result = await Consumer.consumeDeltaCycle(cycleOpts(base, {
+      knownState: scopedKnown([], { startDate: '2026-08-31' }),
+    }));
+    assertUnqualified(result);
+    deepEq(result.knownStateScope.startDate, '2026-08-31', 'the declared scope is echoed for diagnosis');
+  });
+
+  // (b) EMPTY state, pending-filter mismatch.
+  await withProvider(emptyRoutes, async (base) => {
+    const result = await Consumer.consumeDeltaCycle(cycleOpts(base, {
+      knownState: scopedKnown([], { include_pending: false }),
+    }));
+    assertUnqualified(result);
+  });
+
+  // (c) EMPTY state, topology-flag mismatch (both topology flags off).
+  await withProvider(emptyRoutes, async (base) => {
+    const result = await Consumer.consumeDeltaCycle(cycleOpts(base, {
+      knownState: scopedKnown([], { include_group_children: false, include_split_parents: false }),
+    }));
+    assertUnqualified(result);
+  });
+
+  // (d) NONEMPTY state whose payloads match the window read exactly,
+  // under a mismatched query scope (metadata flag off): on round 1 this
+  // published applicable rows and advanced; now it publishes nothing.
+  await withProvider({
+    created: () => payload([]),
+    updated: () => payload([]),
+    window: () => payload([tx({ id: 1 })]),
+  }, async (base) => {
+    const result = await Consumer.consumeDeltaCycle(cycleOpts(base, {
+      knownState: scopedKnown(knownRows([{ id: 1 }]), { include_metadata: false }),
+    }));
+    assertUnqualified(result);
+  });
+
+  // (e) Known-state DATE scope differing from the window, with a known
+  // row absent from the window read: the evidence is unqualified — NOT
+  // an absent-from-window finding (divergences stay empty).
+  await withProvider(emptyRoutes, async (base) => {
+    const result = await Consumer.consumeDeltaCycle(cycleOpts(base, {
+      knownState: scopedKnown(knownRows([{ id: 2 }]), { endDate: '2026-10-15' }),
+    }));
+    assertUnqualified(result);
+    ok(result.divergences.every((d) => d.type !== 'absent-from-window'),
+      'a scope mismatch never degrades into absence evidence');
+  });
+
+  // (f) MISSING scope — the round-1 bare-array shape itself: rows that
+  // would otherwise form a clean cycle are unqualified, not certified.
+  await withProvider({
+    created: () => payload([]),
+    updated: () => payload([]),
+    window: () => payload([tx({ id: 1 })]),
+  }, async (base) => {
+    const result = await Consumer.consumeDeltaCycle(cycleOpts(base, {
+      knownState: knownRows([{ id: 1 }]),
+    }));
+    assertUnqualified(result);
+    eq(result.knownStateScope, null, 'a bare array declares no scope');
+  });
+
+  // (g) MISSING scope — rows object without a scope, and knownState
+  // omitted entirely: both unqualified (an omitted state can no longer
+  // silently certify an empty cycle).
+  await withProvider(emptyRoutes, async (base) => {
+    const noScope = await Consumer.consumeDeltaCycle(cycleOpts(base, {
+      knownState: { rows: [] },
+    }));
+    assertUnqualified(noScope);
+    const omittedOpts = cycleOpts(base);
+    delete omittedOpts.knownState;
+    const omitted = await Consumer.consumeDeltaCycle(omittedOpts);
+    assertUnqualified(omitted);
+  });
+
+  // (h) MALFORMED scope — an unparseable date bound is not a scope.
+  await withProvider(emptyRoutes, async (base) => {
+    const result = await Consumer.consumeDeltaCycle(cycleOpts(base, {
+      knownState: scopedKnown([], { startDate: '16/10/2026' }),
+    }));
+    assertUnqualified(result);
+  });
+
+  // Preservation controls — matched scope, EMPTY state: the cycle is
+  // the same clean, certified, cursor-offering cycle the round-1
+  // contract produced for an empty state under this window.
+  await withProvider(emptyRoutes, async (base) => {
+    const result = await Consumer.consumeDeltaCycle(cycleOpts(base, {
+      knownState: scopedKnown([]),
+    }));
+    eq(result.status, 'complete');
+    eq(result.scopeQualified, true);
+    eq(result.reconciliationCertified, true);
+    eq(result.advanceableCursor, CYCLE_START);
+    deepEq(result.rows, []);
+    assertHonestEnvelope(result);
+  });
+
+  // Preservation control — matched scope, NONEMPTY state agreeing with
+  // the window: applicable output and cursor exactly as before.
+  await withProvider({
+    created: () => payload([]),
+    updated: () => payload([]),
+    window: () => payload([tx({ id: 1 })]),
+  }, async (base) => {
+    const result = await Consumer.consumeDeltaCycle(cycleOpts(base, {
+      knownState: known([{ id: 1 }]),
+    }));
+    eq(result.status, 'complete');
+    eq(result.scopeQualified, true);
+    eq(result.reconciliationCertified, true);
+    eq(result.advanceableCursor, CYCLE_START);
+    assertHonestEnvelope(result);
+  });
 
   console.log(`All provider-transaction-delta-consumer checks passed (${checks} checks).`);
 })().catch((err) => {
