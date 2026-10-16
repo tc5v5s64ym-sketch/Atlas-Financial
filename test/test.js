@@ -133,6 +133,7 @@ const suites = [
   ['immediate evidence-qualified card purchase coverage', 'test-card-purchase-coverage.js'],
   ['card purchase markers retain expense and whole-ledger trust', 'test-card-purchase-tracker.js'],
   ['read-only bill payment evidence and exact sanitized links', 'test-bill-detail.js'],
+  ['BCAA original bank description and complete paid reconciliation', 'test-bcaa-original-description.js'],
   ['transaction edit form (isolated, mock adapter)', 'test-transaction-edit.js'],
   ['Budget bill payment evidence integration and hooks', 'test-bill-detail-budget-integration.js'],
   ['from-today Budget savings arithmetic and evidence', 'test-from-today-funding.js'],
