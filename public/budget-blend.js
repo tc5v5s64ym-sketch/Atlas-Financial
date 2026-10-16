@@ -268,8 +268,10 @@
         [house, goals].filter(Boolean).forEach(node => right.appendChild(node));
       }
       if (restoreFocus && document.activeElement !== active) active.focus({ preventScroll: true });
+      fitBadAmount(hero);
     };
     placeTiles();
+    document.fonts?.ready.then(() => { if (hero?.isConnected) fitBadAmount(hero); });
     stackPlaceTiles = () => { if (bento.isConnected) placeTiles(); };
   }
 
@@ -542,6 +544,33 @@
       frag.append(dollars, cents, document.createTextNode(parts[4]));
       textNode.replaceWith(frag);
     });
+  }
+
+  // Fit the complete printed amount, not a parsed/reformatted monetary value.
+  // Reuse the existing dollar/cents group and layout/resize path. Ordinary
+  // amounts retain their CSS size; reset it before measuring each new layout.
+  function fitBadAmount(hero) {
+    const bad = hero?.querySelector('[data-blend-term="balanceAfterDeductions"]');
+    const dollars = bad?.querySelector('.blend-dollars');
+    const cents = bad?.querySelector('.blend-cents');
+    const slot = bad?.closest('.budget-step-value');
+    if (!dollars || !cents || !slot) return;
+    let group = dollars.parentElement;
+    if (!group.classList.contains('blend-dollar-group')) {
+      group = document.createElement('span');
+      group.className = 'blend-dollar-group';
+      dollars.before(group);
+      group.append(dollars, cents);
+    }
+    group.style.fontSize = '';
+    const style = getComputedStyle(hero);
+    const contentWidth = hero.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const available = Math.min(slot.clientWidth, contentWidth) - group.offsetLeft;
+    const width = group.scrollWidth;
+    if (available > 1 && width > available) {
+      const size = parseFloat(getComputedStyle(group).fontSize);
+      group.style.fontSize = (size * (available - 1) / width).toFixed(3) + 'px';
+    }
   }
 
   function selectedPeriodIsCurrent(hero) {

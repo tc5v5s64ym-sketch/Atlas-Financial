@@ -140,7 +140,7 @@ const cases = [
           check(box.x >= value.hero.x - 0.5 && box.x + box.width <= value.hero.x + value.hero.width + 0.5,
             label + ': complete ' + part + ' stay inside the clipped hero');
         }
-        if (value.dollarGlyphRect && value.centsRect) check(value.centsRect.y < value.dollarGlyphRect.y + value.dollarGlyphRect.height,
+        if (value.dollarRect && value.centsRect) check(value.centsRect.y < value.dollarRect.y + value.dollarRect.height / 2,
           label + ': cents stay on the amount line');
       };
       checkContainment(read, name);
