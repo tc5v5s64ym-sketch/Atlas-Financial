@@ -107,6 +107,7 @@ const C = require('./canonical-refresh.js');
 const OA = require('./operating-answer.js');
 const RT = require('./refresh-trust.js');
 const ObservationMemory = require('./server-observation-memory.js');
+const StageTiming = require('./refresh-stage-timing.js');
 const { isDeepStrictEqual } = require('node:util');
 const Forecast = require('../public/forecast.js');
 
@@ -1428,21 +1429,24 @@ async function applyForServer(canonical, env, options) {
   try {
     const accountMap = O.loadLiveAccountMap(env || process.env, canonical);
     const payload = options?.evidence?.schema === ObservationMemory.SCHEMA
-      ? ObservationMemory.sourceInputs(options.evidence.payload)
-      : await acquireServerObservation(canonical, env, options);
-    const report = observeForOverlay(canonical, payload, accountMap);
+      ? StageTiming.sync('sourceReplayMs', () => ObservationMemory.sourceInputs(options.evidence.payload))
+      : await StageTiming.async('providerAcquireMs', () => acquireServerObservation(canonical, env, options));
+    const report = StageTiming.sync('normalizeMs', () => observeForOverlay(canonical, payload, accountMap));
     const operatingEvaluation = OA.createRefreshEvaluation();
-    const data = applyObservedOverlay(canonical, report, operatingEvaluation);
+    const data = StageTiming.sync('overlayMs', () => applyObservedOverlay(canonical, report, operatingEvaluation));
     let qualified = data.liveOverlay?.applied === true
       && report.observationReceipt?.readyForReconciliation === true;
     let evidence = null;
     if (qualified && !options?.evidence && options?.onObservation) {
       try {
-        const inputs = ObservationMemory.sourceInputs(payload);
-        // A field projection cannot change qualification or a single figure.
-        // Future observer inputs therefore cause a cache miss until supported.
-        const replayed = applyObservedOverlay(canonical, observeForOverlay(canonical, inputs, accountMap), operatingEvaluation);
-        if (isDeepStrictEqual(data, replayed)) evidence = { schema: ObservationMemory.SCHEMA, payload: inputs };
+        StageTiming.sync('sourceReplayMs', () => {
+          const inputs = ObservationMemory.sourceInputs(payload);
+          // A field projection cannot change qualification or a single figure.
+          // Future observer inputs therefore cause a cache miss until supported.
+          const replayReport = StageTiming.sync('normalizeMs', () => observeForOverlay(canonical, inputs, accountMap));
+          const replayed = StageTiming.sync('overlayMs', () => applyObservedOverlay(canonical, replayReport, operatingEvaluation));
+          if (isDeepStrictEqual(data, replayed)) evidence = { schema: ObservationMemory.SCHEMA, payload: inputs };
+        });
       } catch (error) {
         // Capacity refusal is a cache miss, not a failed provider observation.
         if (error.code !== 'observation-input-too-large') qualified = false;
@@ -1452,7 +1456,7 @@ async function applyForServer(canonical, env, options) {
     return data;
   } catch (err) {
     const message = err && err.message ? err.message : 'overlay-failed';
-    return failedOverlay(canonical, message);
+    return StageTiming.sync('overlayMs', () => failedOverlay(canonical, message));
   }
 }
 

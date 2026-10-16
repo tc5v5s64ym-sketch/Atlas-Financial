@@ -4,6 +4,7 @@
 // source evidence; Observer/LivePlan re-evaluate it and Forecast owns all values.
 const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
 const { performance } = require('node:perf_hooks');
+const StageTiming = require('./refresh-stage-timing');
 const LIVE_REFRESH_TIMEOUT_MS = 150000;
 const MAX_ACTIVE_LIVE_REFRESHES = 2;
 
@@ -12,8 +13,9 @@ if (!isMainThread) {
   const controller = new AbortController();
   let check = { qualified: false, checkedAt: null, evidence: null };
   parentPort.on('message', () => controller.abort());
-  Live.applyForServer(workerData.canonical, process.env, { signal: controller.signal,
-    evidence: workerData.evidence, onObservation: value => { check = value; } })
+  StageTiming.run(() => Live.applyForServer(workerData.canonical, process.env, { signal: controller.signal,
+    evidence: workerData.evidence, onObservation: value => { check = value; } }),
+  stages => parentPort.postMessage({ type: StageTiming.MESSAGE, stages }))
     .then(data => parentPort.postMessage({ data, check }))
     .catch(() => parentPort.postMessage({ error: 'live-refresh-unavailable' }));
 } else {
@@ -94,6 +96,8 @@ if (!isMainThread) {
       cleanupMs: elapsed(job.finished, performance.now()),
       waiterCount: job.waiterCount, peakWaiters: job.peakWaiters,
       cancelledWaiters: job.cancelledWaiters, timedOutWaiters: job.timedOutWaiters }));
+    console.log(JSON.stringify(StageTiming.record(job.stages, job.evidence ? 'memory' : 'provider',
+      job.outcome, job.check?.qualified, job.publicationMs)));
   }
   function settleWaiter(job, waiter, error, data) {
     if (!job.waiters.delete(waiter)) return;
@@ -158,6 +162,13 @@ if (!isMainThread) {
       worker.once('online', () => { if (!job.settled) job.online = performance.now(); });
       worker.on('message', result => {
         if (job.settled) return;
+        if (result?.type === StageTiming.MESSAGE) {
+          const stages = StageTiming.accept(result.stages);
+          if (stages) job.stages = stages;
+          return;
+        }
+        const publicationStarted = performance.now();
+        try {
         if (job.generation !== generation || activeWrites) return finishJob(job, unavailable('live-refresh-invalidated'));
         if (job.evidence && job.observationEpoch !== observationEpoch) return finishJob(job, unavailable('live-refresh-invalidated'));
         // A rollover/config change during work cannot publish an old-context verdict.
@@ -204,6 +215,7 @@ if (!isMainThread) {
           return finishJob(job, unavailable('live-refresh-unavailable'));
         }
         return result?.data ? finishJob(job, null, result.data) : finishJob(job, unavailable('live-refresh-unavailable'));
+        } finally { job.publicationMs = Math.max(0, performance.now() - publicationStarted); }
       });
       worker.on('error', () => {
         if (!job.settled && !job.evidence) replayHeld = job.hadForcedWaiter || [...job.waiters].some(waiter => waiter.forceRefresh);
