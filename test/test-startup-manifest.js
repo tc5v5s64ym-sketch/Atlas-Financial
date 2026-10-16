@@ -107,8 +107,17 @@ if (inlineMark && iconSvgBuf) {
 
 // --- index.html head wiring --------------------------------------------
 const head = indexHtml.slice(0, indexHtml.indexOf('</head>'));
-ok(/<link rel="manifest" href="\/manifest\.webmanifest">/.test(head),
+const manifestLink = head.match(/<link rel="manifest"[^>]*>/);
+ok(manifestLink !== null && attrs(manifestLink[0]).href === '/manifest.webmanifest',
   'index.html head links the manifest');
+// Regression (PR #628 Systems Review finding on e867a75b): the app is
+// auth-gated, so the manifest must be fetched WITH credentials. Without
+// crossorigin="use-credentials" the browser requests the manifest
+// without the session cookie, the gate redirects it to /login, and the
+// manifest never loads — home-screen pinning silently fails even though
+// the manifest file itself is present and correct.
+ok(manifestLink !== null && attrs(manifestLink[0]).crossorigin === 'use-credentials',
+  'manifest link carries crossorigin="use-credentials" so its fetch survives the auth gate');
 const touch = head.match(/<link rel="apple-touch-icon" href="([^"]+)">/);
 ok(touch !== null, 'index.html head links an apple-touch-icon');
 if (touch) {
