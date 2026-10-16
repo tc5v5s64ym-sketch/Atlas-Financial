@@ -83,6 +83,15 @@ The #618 fixture similarly keeps its original future-Savings conservation
 assertions: its earned snapshot106 reconciles current Bills83 plus other23,
 and the shared opening/sweep is83/1083. No new EOD qualification is performed.
 
+Independent review5541622398 found an observed-row trust omission. A live
+Bills row with status unavailable or confidence unknown must withhold exactly
+as an explicit unknown flag does; a numeric match and complete packet cannot
+repair that source trust. The committed AA401 transfer37 control independently
+leaves Bills43 / Savings156 and publishes43/1043 only for a qualified row.
+Transferring80 instead leaves valid observed Bills0 / Savings199 and publishes
+0/1000. Both valid controls finish at Savings2199 / Bills0 after two receipts;
+both unqualified trust variants withhold every dependent opening and sweep.
+
 No historical-share attribution or EOD qualification subsystem was added to
 preserve those older numbers. Existing noncombined Budget displays retain their
 incumbent behavior; current funding READY is never used as sweep qualification.

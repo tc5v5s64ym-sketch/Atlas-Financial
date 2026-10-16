@@ -22,6 +22,14 @@ function ordinary(x, amount, extra = {}) {
     atlasAccountId: 'chequing-a', accountRole: 'household-cash', ...extra });
 }
 function pair() { const x = fixture(); fx.transfer(x, 50, 'AA101', 'savings', '2026-10-05'); return x; }
+function livePair(amount = 37) {
+  const x = fixture(); fx.transfer(x, amount, 'AA401', 'savings', '2026-10-05');
+  x.opts.operatingPlan = 'live';
+  x.opts.observedCash = { complete: true, asOf: x.asOf,
+    accounts: x.plan.startingCash.breakdown.filter(row => ['chequing-a', 'chequing-b'].includes(row.id))
+      .map(row => ({ id: row.id, value: row.value, evidenceDate: x.asOf, status: 'verified', confidence: 'verified' })) };
+  return x;
+}
 function held(a) {
   for (const date of ['2026-10-16', '2026-10-30', '2026-11-13']) {
     assert.equal(period(a, date).opening, null, date + ': dependent opening unknown');
@@ -30,6 +38,23 @@ function held(a) {
     assert.equal(close(a, date).stock, null);
   }
 }
+for (const [field, value] of [['status', 'unavailable'], ['confidence', 'unknown'], ['unknown', true]]) {
+  test('explicit live observed Bills ' + field + '=' + value + ' withholds the dependent chain', () => {
+    const x = livePair(); x.opts.observedCash.accounts[0][field] = value;
+    const a = advice(x);
+    assert.equal(a.savingsFunding.period.status, 'unavailable');
+    held(a);
+    assert.deepEqual(advice(x), a, 'replay cannot restore an unqualified observation');
+  });
+}
+for (const transfer of [37, 80]) test('qualified live Bills ' + (80 - transfer) + ' remains known, including zero', () => {
+  const x = livePair(transfer), a = advice(x);
+  assert.equal(period(a, '2026-10-16').opening, 80 - transfer);
+  assert.equal(period(a, '2026-10-16').paydaySweep, 1080 - transfer);
+  assert.equal(close(a, '2026-11-13').stock, 2199);
+  assert.equal(close(a, '2026-11-13').operatingCash, 0);
+  assert.deepEqual(advice(x), a);
+});
 for (const inflow of [30, 37]) test('all observed Bills inflow ' + inflow + ' reaches the shared sweep', () => {
   const x = fixture(); ordinary(x, -inflow); x.plan.startingCash.breakdown[0].value += inflow;
   const a = advice(x);

@@ -14317,7 +14317,9 @@
             for (const [id, value] of cash) {
               const found = observed.accounts.filter(r => r?.id === id);
               if (found.length !== 1 || financialDate(found[0].evidenceDate) !== asOf
-                  || cents(found[0].value) !== value || found[0].unknown === true) return null;
+                  || cents(found[0].value) !== value || found[0].unknown === true
+                  || [found[0].confidence, found[0].status].some(tag => tag != null
+                    && !['verified', 'confirmed', 'calculated'].includes(tag))) return null;
             }
           }
           const packet = currentPeriodActualsPacket(paydayOpts);
