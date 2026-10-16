@@ -20434,7 +20434,14 @@
     for (const row of current.income || []) {
       const amount = savingsCents(row.amount);
       if (amount == null || !savingsDate(row.date)) return unknown('Current planning income is unavailable.');
-      if (!amount || row.notReliedUpon || row.settlement === 'not-relied-upon') continue;
+      if (!amount) continue;
+      // A live cash omission is not a cancellation of supported planned
+      // salary. Only these two receipt-unproved states may remain forecast;
+      // unsupported income authority and claimed receipt ambiguity still hold.
+      if ((row.notReliedUpon || row.settlement === 'not-relied-upon')
+          && !['same-day-inbound-unproven', 'elapsed-inbound-unproven'].includes(row.notReliedUponReason)) {
+        return unknown('Current planning income authority is unavailable.');
+      }
       const actuals = (packet.representedActuals || []).filter(r => r.id === row.id && r.date === row.date);
       const ids = new Set((row.recon || []).map(r => String(r.id)));
       for (const actual of actuals) if (actual.transactionId != null) ids.add(String(actual.transactionId));

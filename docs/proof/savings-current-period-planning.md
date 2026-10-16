@@ -43,7 +43,7 @@ withholds. This change does not invent current opening evidence.
 
 ## Independent invented ledgers
 
-The new 25-case suite supplies no household/provider data and performs no
+The new 36-case suite supplies no household/provider data and performs no
 networking. It compares literal hand-derived cents, preserves complete input
 bytes, checks the public sealed selection, and retains actual/estimated and
 movement-permission boundaries.
@@ -65,9 +65,25 @@ movement-permission boundaries.
   evidence retain their holds.
 
 With the exact unmodified main engine at
-`a898d374b7f893f37fa37e01eabe84f33cbda021`, the final suite is15 pass/10 fail.
-The repaired engine is25/25. The initial 18-case test-first commit independently
+`a898d374b7f893f37fa37e01eabe84f33cbda021`, the original25-case suite is15 pass/10 fail.
+The initial candidate is25/25. The initial18-case test-first commit independently
 recorded12 pass/6 fail before production edits.
+
+Required Systems Review found two legitimate live-overlay states absent from
+that original proof: same-day `same-day-inbound-unproven`, and elapsed salary
+after the live opening advances (`elapsed-inbound-unproven`). Budget still
+includes the supported expected salary, while cash correctly omits it. The
+private planning basis now carries those two states as unreceived forecast
+income instead of skipping them. Unsupported authority/reasons still withhold;
+claimed receipt identities still must reconcile before any forecast replacement.
+The bank-transfer publisher, opening guards and live cash omission are unchanged.
+
+The committed test-first expansion `e2198f5d6304e61e88121af8e54163e0e5c095d2`
+records34 pass/2 fail on engine `c038da185e31d1a9dbf1a248c53e38e66dd92b33`.
+The repaired suite is36/36, including the reviewer's four before/on/after
+controls, three matched receipt/destination/transfer cases, two missing receipt
+claims and two unsupported-income controls. Both newly repaired cases keep
+119+200=319 Savings and80 operating cash; no posted receipt is fabricated.
 
 One neighboring future-closing test is explicitly superseded by this owner
 instruction: a later4000 goal used to suppress an earlier current200 projected
