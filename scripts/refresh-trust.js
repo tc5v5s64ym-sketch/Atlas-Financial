@@ -125,7 +125,7 @@ function previewFromReport(report, canonical) {
 
 function operatingLimits(data, opts) {
   try {
-    const packet = OA.fromRefreshedState(data, {
+    const packet = (opts?.operatingEvaluation || OA).fromRefreshedState(data, {
       mode: (opts && opts.mode) || 'live-overlay',
       writesCanonicalState: false,
     });
