@@ -157,6 +157,7 @@
       "eventId": "bcaa",
       "payeePattern": "BCAA-AdvAutoIns",
       "payeePatterns": ["BCAA-AdvAutoIns", "Bcaa-adv"],
+      "originalNameFallbackForPayees": ["Bca"],
       "atlasAccountId": "chequing-a",
       "direction": "debit",
       "postingDateRule": "same-day-or-weekend-next-business-day",

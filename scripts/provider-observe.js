@@ -1190,7 +1190,19 @@ function payeeMatchesRule(tx, rule) {
   const originalFields = identityOriginalNameFields(tx);
   const matchMode = rulePayeeMatchMode(rule);
   if (!rulePayeePatterns(rule).some(pattern => anyIdentityFieldMatches(payeeFields, pattern, matchMode))) {
-    return false;
+    // A rule may name exact shortened display payees whose original bank
+    // description can carry its existing aliases. This is an explicit
+    // identity permission, not a category/note or fuzzy-merchant fallback.
+    const shortenedPayees = Array.isArray(rule.originalNameFallbackForPayees)
+      ? rule.originalNameFallbackForPayees.filter(value => typeof value === 'string' && value.trim())
+      : [];
+    // This new permission is for affirmatively posted bank evidence only;
+    // it must not feed the separate pending-only bill-actuals path.
+    if (tx.pending !== false || tx.savingsPostingEvidence !== 'posted'
+        || !shortenedPayees.some(pattern => anyIdentityFieldMatches(payeeFields, pattern, 'exact'))
+        || !rulePayeePatterns(rule).some(pattern => anyIdentityFieldMatches(originalFields, pattern, matchMode))) {
+      return false;
+    }
   }
   const originalPatterns = ruleOriginalNamePatterns(rule);
   if (originalPatterns.length
