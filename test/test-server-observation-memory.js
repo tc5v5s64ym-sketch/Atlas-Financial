@@ -560,6 +560,87 @@ if (require.main === module) (async () => {
     mock.payload({ ...Fixture.payload(), tags: [] });
     await Refresh.serve(canonical, env); await drain();
 
+    // ATLAS-069 review repair: a failed FORCED refresh restores the whole
+    // publication barrier on every termination path — in-flight replays are
+    // invalidated and replay is held — while the slot itself is retained.
+    // A merely-attempted (non-forced) failed refresh keeps the retention
+    // behaviour pinned above.
+    {
+      // Delayed-replay race: a failing forced refresh invalidates an
+      // in-flight replay of the retained observation.
+      const raceEnv = { ...env, ATLAS_SYNTHETIC_REPLAY_DELAY_MS: '800',
+        NODE_OPTIONS: '--require "' + __filename.replace(/\\/g, '/') + '"' };
+      await Refresh.serve(canonical, raceEnv); await drain();
+      mock.mode('failure');
+      const raceReplay = reject(Refresh.serve(canonical, raceEnv, { preferObservation: true }), 'live-refresh-invalidated');
+      await reject(Refresh.serve(canonical, raceEnv, { forceRefresh: true }), 'live-refresh-unavailable');
+      await raceReplay; await drain();
+      mock.mode('ok');
+    }
+    {
+      // A forced waiter timeout holds replay even while a second waiter
+      // keeps the job alive and the job later completes unqualified.
+      await Refresh.serve(canonical, env); await drain();
+      mock.hold();
+      const timedOut = reject(Refresh.serve(canonical, env, { forceRefresh: true, timeoutMs: 20 }), 'live-refresh-timeout');
+      const survivor = Refresh.serve(canonical, env);
+      await timedOut;
+      mock.mode('failure'); mock.release();
+      const survived = await survivor; await drain();
+      check(survived.liveOverlay.applied, false, 'surviving waiter still receives the failed completion');
+      mock.mode('ok');
+      const holdCount = mock.calls.length;
+      await Refresh.serve(canonical, env, { preferObservation: true }); await drain();
+      check(mock.calls.length - holdCount, 7, 'forced waiter timeout holds replay until a live completion');
+    }
+    {
+      // A forced waiter timeout that terminates the job still holds replay.
+      await Refresh.serve(canonical, env); await drain();
+      mock.hold();
+      await reject(Refresh.serve(canonical, env, { forceRefresh: true, timeoutMs: 20 }), 'live-refresh-timeout');
+      mock.release(); await drain();
+      const holdCount = mock.calls.length;
+      await Refresh.serve(canonical, env, { preferObservation: true }); await drain();
+      check(mock.calls.length - holdCount, 7, 'job terminated by forced timeout holds replay');
+    }
+    {
+      // A worker-constructor failure on a forced refresh holds replay. The
+      // driver runs in a child process: server-live-refresh binds
+      // worker_threads.Worker at require time, so the throwing subclass
+      // must be installed before the module loads, which this process
+      // cannot do for its own already-loaded copy.
+      const driver = path.join(ROOT, 'test', 'atlas069-constructor-failure-driver.js');
+      const child = spawn(process.execPath, [driver], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = '';
+      child.stdout.on('data', chunk => { out += chunk; });
+      child.stderr.on('data', () => {});
+      const code = await new Promise(resolve => child.once('exit', resolve));
+      check(code, 0, 'constructor failure on forced refresh holds replay (child driver exit)');
+      check(out.includes('ATLAS069-CONSTRUCTOR-OK'), true, 'constructor failure child driver completed its sequence');
+    }
+    {
+      // Preservation: a transport-unreachable worker completion still
+      // rejects a forced read outright (worker failure path).
+      const dead = await provider(); const deadBase = dead.base; await dead.close();
+      const deadEnv = { ...env, ATLAS_LUNCHMONEY_API_BASE: deadBase };
+      await reject(Refresh.serve(canonical, deadEnv, { forceRefresh: true }), 'live-refresh-unavailable'); await drain();
+      await Refresh.serve(canonical, env); await drain();
+    }
+    {
+      // Preservation: day rollover still invalidates retained evidence.
+      const dayPayload = { ...Fixture.payload(), tags: [] };
+      now = '2026-08-28T06:59:59.000Z'; dayPayload.accounts.forEach(row => { row.updated_at = now; }); mock.payload(dayPayload);
+      const dayEnv = { ...env, ATLAS_LIVE_OVERLAY_NOW: now };
+      await Refresh.serve(canonical, dayEnv); await drain();
+      now = '2026-08-28T07:00:00.000Z';
+      const dayCount = mock.calls.length;
+      const rolled = await Refresh.serve(canonical, { ...dayEnv, ATLAS_LIVE_OVERLAY_NOW: now }, { preferObservation: true }); await drain();
+      check(mock.calls.length - dayCount, 7, 'day rollover still invalidates retained evidence');
+      check(rolled.liveOverlay.applied, false, 'prior-day retained cash cannot become a new-day verdict');
+      now = CLOCK; mock.payload({ ...Fixture.payload(), tags: [] });
+      await Refresh.serve(canonical, env); await drain();
+    }
+
     originalLog('MEASURED ' + JSON.stringify({ providerFreeResponseMs: Math.round(providerFreeResponseMs * 100) / 100,
       sequentialProviderRequests: 0, proof: 'synthetic worker/HTTP; render measured separately' }));
     originalLog('PASS observation memory: ' + checks + ' checks; actual workers/routes, source-only cloning, qualification, force/failure, context, write races, calendar/DST and restart');
