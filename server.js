@@ -772,6 +772,21 @@ const runningBuildSha = Assistant.versionIdentifier(process.env).gitSha;
 const budgetHtml = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
   .replace('Running build unavailable', RunningBuild.label(__dirname, runningBuildSha));
 app.get(['/', '/index.html'], (_req, res) => res.type('html').end(budgetHtml));
+app.get('/planning.html', (_req, res) => res.redirect('/'));
+// The literal route above matches the canonical path, including its plain
+// case and trailing-slash forms (Express default matching). It does not
+// match the percent-encoded or dot-segment forms, which express.static
+// would decode and normalise back onto the same file — so retire those
+// here too: decode the path once, collapse duplicate slashes and resolve
+// dot segments, and redirect only on an exact canonical match.
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  let decoded;
+  try { decoded = decodeURIComponent(req.path); } catch { return next(); }
+  const normalized = path.posix.normalize(decoded.replace(/\/{2,}/g, '/'));
+  if (normalized.toLowerCase() === '/planning.html') return res.redirect('/');
+  return next();
+});
 
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false, lastModified: false, maxAge: 0,
