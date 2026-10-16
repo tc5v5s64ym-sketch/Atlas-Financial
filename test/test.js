@@ -115,6 +115,7 @@ const suites = [
   ['purpose-reserve authenticated funding and both page consumers', 'test-reserve-aware-funding-integration.js'],
   ['Lunch Money provider amount precision and sanitized read failures', 'test-assistant-provider-amounts.js'],
   ['Lunch Money transaction delta read (change feed, never a ledger or audit stream)', 'test-provider-transaction-delta.js'],
+  ['Lunch Money transaction delta consumer contract (inert, harness-only)', 'test-provider-transaction-delta-consumer.js'],
   ['MCP provider account balances and truthful freshness', 'test-assistant-account-balances.js'],
   ['Lunch Money monthly balance history read (monthly only, unavailable never zero)', 'test-assistant-balance-history.js'],
   ['Lunch Money MCP reads and confirmed bounded edits', 'test-assistant-lunchmoney.js'],
