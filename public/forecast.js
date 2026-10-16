@@ -14395,13 +14395,15 @@
         })();
       }
       let earlySavingsFunding;
+      const savingsPlanning = {};
       if (plan.savingsEarmarks?.allocationPolicy != null) {
-        earlySavingsFunding = savingsDailyFunding(plan, paydayOpts.debts || base.debts, asOf, { ...paydayOpts, savingsAllocationPolicy: undefined });
+        earlySavingsFunding = savingsDailyFunding(plan, paydayOpts.debts || base.debts, asOf,
+          { ...paydayOpts, savingsAllocationPolicy: undefined }, savingsPlanning);
       }
       if (earlySavingsFunding && earlySavingsFunding.backing?.status === 'ready'
-        && earlySavingsFunding.period?.status === 'ready'
+        && savingsPlanning.current?.status === 'ready'
         && !(earlySavingsFunding.unresolved || []).length) {
-        const fp = earlySavingsFunding.period;
+        const fp = savingsPlanning.current;
         const combinedPolicy = savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf);
         const historicalPolicy = !combinedPolicy
           || plan.savingsEarmarks.allocationPolicy.effectiveFrom > asOf;
@@ -14440,17 +14442,15 @@
               }
             }
           }
-          const tail = savingsCents(fp.projectedRemainingCapacity);
-          const net = savingsCents(fp.nativePeriodSurplus, true);
-          const saved = savingsCents(fp.alreadySavedIncome);
-          const transferred = savingsCents(fp.transferred);
-          if (overlapKnown && [tail, net, saved, transferred].every(n => n != null)) {
-            const creditCents = Math.min(tail + overlapCents,
-              Math.max(0, net + overlapCents - saved - transferred));
+          const { netCents: net, savedCents: saved, transferredCents: transferred } = fp;
+          if (overlapKnown && [net, saved, transferred].every(Number.isSafeInteger)) {
+            const creditCents = Math.max(0, net + overlapCents - saved - transferred);
             if (Number.isSafeInteger(creditCents)) {
-              // Observed saved/transferred amounts already left current Bills.
-              // Only the still-future current-period credit leaves it again.
-              paydayOpts.s1CurrentBoundaryCreditCents = Math.max(0, creditCents);
+              // Forecast only: expected unreceived current-period income joins
+              // by the close, and only the untransferred planning surplus leaves.
+              // This signed NET seam adjustment never changes observed cash or
+              // grants a transfer. The existing future sweep consumer is intact.
+              paydayOpts.s1CurrentBoundaryCreditCents = creditCents - fp.unreceivedCents;
             }
           }
         }
@@ -14533,7 +14533,8 @@
         savingsFunding.periodViews = payPeriodTimelinePack.views.map(period => ({ id: period.id, start: period.start,
           end: period.end, role: period.timelineRole, funding: period.plannedCostFunding, progress: period.budgetProgress }));
         const closingSavings = savingsClosingProjection(savingsFunding,
-          savingsClosingWalks.get(payPeriodTimelinePack.views), asOf);
+          { ...savingsClosingWalks.get(payPeriodTimelinePack.views), currentPlanning: savingsPlanning.current,
+            openingQualified: Number.isSafeInteger(paydayOpts.s1CurrentBillsStockCents) }, asOf);
         // A location reprint of this same native walk and serial schedule. New
         // projected top-ups move cash between locations; expenses remain once.
         const projectionShell = { source: 'Forecast.savingsFundingTimeline', asOf, currency: 'CAD',
@@ -20198,15 +20199,15 @@
         actionPermission: 'not-granted', moneyMovementPermission: 'not-granted' });
       return result;
     };
+    const planning = context?.currentPlanning;
     if (funding.allocationMode !== 'combined' || funding.backing.status !== 'ready'
-        || funding.period.status !== 'ready') return hold(funding.period.reason || funding.backing.reason
+        || planning?.status !== 'ready') return hold(planning?.reason || funding.period.reason || funding.backing.reason
           || 'Current-period receipt inclusion is not proved; a remaining surplus cannot be added to reported savings.');
-    if (!context || !['calculated', 'estimated'].includes(context.trust))
+    if (context.openingQualified !== true || !context.sim || !['calculated', 'estimated'].includes(context.trust))
       return hold('The native Budget cash walk is unavailable.');
     const { sim, through } = context;
     const stock = savingsCents(funding.stock.amount), floor = savingsCents(simulationCashFloor(sim), true);
-    const tail = savingsCents(funding.period.projectedRemainingCapacity);
-    if (stock == null || floor == null || tail == null)
+    if (stock == null || floor == null)
       return hold('Reported stock, remaining current-period receipt evidence or cash floor is unavailable.');
     const items = funding.backing.items;
     if (funding.unresolved.length || items.some(i => savingsCents(i.needed) == null || !savingsDate(i.date)))
@@ -20254,7 +20255,11 @@
         }
         const addition = selectedTransfers.get(day.date) || 0;
         pot += addition; sent += addition;
-        const native = savingsCents(day.balance, true);
+        // The source walk deliberately excludes today's/elapsed unreceived
+        // salary. In this hypothetical scenario it arrives by this cycle's
+        // close, without becoming an observed receipt or usable cash today.
+        const forecastIncome = day.date >= planning.end ? planning.unreceivedCents : 0;
+        const native = savingsCents(day.balance, true) + forecastIncome;
         const operating = native - sent + restored;
         if (![pot, sent, draws, operating, nativeStockDrawn].every(Number.isSafeInteger)
             || !Number.isSafeInteger(operating + pot) || !Number.isSafeInteger(native + stock - nativeStockDrawn)
@@ -20292,11 +20297,12 @@
       }
       // Budget already deducts annual goal bills. Restore that exact deduction
       // to the pre-goal quota, then debit the full cost once in this ledger.
-      // Current-tail inclusion still comes only from qualified receipt/transfer
-      // evidence and its existing native cash bound, never a report-date split.
-      const net = savingsCents(current ? funding.period.nativePeriodSurplus : period.balanceAfterDeductions, true);
-      const saved = current ? savingsCents(funding.period.alreadySavedIncome) : 0;
-      const transferred = current ? savingsCents(funding.period.transferred) : 0;
+      // Qualified opening and matched receipt/transfer evidence locate amounts
+      // already in Savings. The remaining current-period PLANNING surplus is
+      // independent of today's transfer capacity and later operating needs.
+      const net = current ? planning.netCents : savingsCents(period.balanceAfterDeductions, true);
+      const saved = current ? planning.savedCents : 0;
+      const transferred = current ? planning.transferredCents : 0;
       if ([net, saved, transferred].some(n => n == null) || !Number.isSafeInteger(overlap))
         return hold('A native period surplus or receipt inclusion is unavailable.');
       // S1: a future period's sweep is the single figure the Budget
@@ -20316,9 +20322,8 @@
       // differ from the sweep Budget had already published and consumed,
       // and the discrepancy changed the next sweep basis. Unknown Bills
       // now withholds the dependent closes; net surplus is not a fallback.
-      // The current period keeps its receipt-qualified
-      // entitlement path: its close has not happened, and no prior close
-      // may be inferred for it.
+      // Current-period expected salary remains a hypothetical planning input;
+      // matched received/transferred amounts are already in the observed pot.
       const publishedSweep = !current && typeof period.paydaySweep === 'number'
         ? savingsCents(period.paydaySweep) : null;
       if (!current && publishedSweep == null) {
@@ -20330,25 +20335,17 @@
           moneyMovementPermission: 'not-granted' });
         return result;
       }
-      let eligible = current ? Math.min(tail + overlap, Math.max(0, net + overlap - saved - transferred))
+      let eligible = current ? net + overlap - saved - transferred
         : publishedSweep;
       if (!Number.isSafeInteger(eligible)) return hold('A native period surplus is unavailable.');
       eligible = Math.max(0, eligible);
       if (!Number.isSafeInteger(eligible)) return hold('Projected contribution cents exceed exact arithmetic.');
-      // Systems Review 2026-10-14 (PR #616): a positive period net is not by
-      // itself sweepable cash. The sweep is bounded by the Bills cash that
-      // actually exists at this period's close (the walk's operating
-      // position before this period's own sweep is scheduled): a carried
-      // deficit absorbs later net before any of it can move. No future-needs
-      // retention is applied on top of that bound. S1 repair: this bound
-      // still governs the current period; on the published-sweep path the waterfall remainder is
-      // already that same walk-basis figure, so the credit is the
-      // published sweep unchanged (see above).
+      // Future periods consume the published S1 sweep unchanged. Owner
+      // 2026-10-16: the current PLANNING contribution does not inherit the
+      // bank-transfer cash-floor cap. Negative net remains in the operating
+      // walk and signed diagnostics; it never authorizes a reverse transfer.
       const preClose = path.daily.find(d => d.date === period.end);
       if (!preClose) return hold('The selected native closing date is unavailable.');
-      if (current) {
-        eligible = Math.min(eligible, Math.max(0, preClose.operating));
-      }
       if (!Number.isSafeInteger(eligible)) return hold('Projected contribution cents exceed exact arithmetic.');
       // The full eligible surplus sweeps on the next period's payday (its
       // start date), never at this period's own close and never reduced by a
@@ -20365,7 +20362,8 @@
       const nativeClosing = savingsCents(days.find(d => d.date === period.end).balance, true);
       const diagnostics = { signedSavings: closing.pot / 100, operatingResidual: closing.operating / 100,
         nativeOperatingCash: nativeClosing / 100, qualifiedOperatingCash: closing.qualifiedCash / 100,
-        deficitCoverage: closing.deficitCoverage / 100, trust: 'estimated' };
+        deficitCoverage: closing.deficitCoverage / 100, trust: 'estimated',
+        currentPeriodSurplusDeficit: planning.netCents / 100 };
       if (closing.pot < 0) {
         result.set(period.end, { status: 'unavailable', stock: null, items: [], rows: [], actualSaved: null,
           trust: 'unknown', start: period.start, end: period.end, asOf, currency: 'CAD', diagnostics,
@@ -20420,9 +20418,59 @@
     return result;
   }
 
+  // Private current-period planning basis, reached only after the incumbent
+  // reserve, original-opening, complete-movement and native Budget gates.
+  // Receipt identity is evidence; the calendar's alreadyInCash flag alone is
+  // not. No planned salary here becomes a posted receipt or transfer quota.
+  function currentSavingsPlanningBasis(plan, day, facts) {
+    const { current, packet, unique, opts, nativePeriodSurplus, nativeReceived,
+      evidencedIncome, alreadySavedIncome, transferred } = facts;
+    const unknown = reason => ({ status: 'unavailable', reason });
+    if (![nativePeriodSurplus, nativeReceived, evidencedIncome, alreadySavedIncome, transferred]
+      .every(Number.isSafeInteger)) return unknown('Current planning cents are unavailable.');
+    const represented = representedKeySet(plan, opts, day);
+    const used = new Set();
+    let unreceivedCents = 0, calendarReceivedWithoutReceipt = 0, matchedIncome = 0;
+    for (const row of current.income || []) {
+      const amount = savingsCents(row.amount);
+      if (amount == null || !savingsDate(row.date)) return unknown('Current planning income is unavailable.');
+      if (!amount || row.notReliedUpon || row.settlement === 'not-relied-upon') continue;
+      const actuals = (packet.representedActuals || []).filter(r => r.id === row.id && r.date === row.date);
+      const ids = new Set((row.recon || []).map(r => String(r.id)));
+      for (const actual of actuals) if (actual.transactionId != null) ids.add(String(actual.transactionId));
+      const receipts = Array.from(ids).map(id => unique.get(id));
+      if (receipts.some(tx => !tx || tx.pending !== false || tx.amount >= 0
+          || tx.savingsPostingEvidence !== 'posted')) return unknown('A current income receipt has incomplete inclusion evidence.');
+      if (receipts.length) {
+        const received = receipts.reduce((sum, tx) => sum - savingsCents(tx.amount, true), 0);
+        if (!Number.isSafeInteger(received) || received !== amount
+          || receipts.some(tx => used.has(String(tx.id)))) return unknown('Current income receipt identity is ambiguous.');
+        receipts.forEach(tx => used.add(String(tx.id)));
+        matchedIncome += received;
+      } else if (row.date <= day) {
+        if (actuals.length || represented.has(row.id + '@' + row.date)
+            || row.settlement === 'represented'
+            || !(plan.income || []).some(stream => stream.id === row.id)) {
+          return unknown('Current income inclusion in the opening or reported Savings is unproved.');
+        }
+        unreceivedCents += amount;
+        if (row.alreadyInCash === true || ['represented', 'opening'].includes(row.settlement))
+          calendarReceivedWithoutReceipt += amount;
+      }
+    }
+    if (matchedIncome !== evidencedIncome
+        || nativeReceived - evidencedIncome !== calendarReceivedWithoutReceipt
+        || ![unreceivedCents, matchedIncome, calendarReceivedWithoutReceipt].every(Number.isSafeInteger)) {
+      return unknown('Current income and receipt inclusion do not reconcile.');
+    }
+    return { status: 'ready', start: current.start, end: current.end,
+      netCents: nativePeriodSurplus, savedCents: alreadySavedIncome,
+      transferredCents: transferred, unreceivedCents };
+  }
+
   // Replacement funding packet only. An observation/earmark is never transfer
   // evidence; no canonical history, observations or real money are changed.
-  function savingsDailyFunding(plan, debts, asOf, opts) {
+  function savingsDailyFunding(plan, debts, asOf, opts, planningContext) {
     opts = { ...(opts || {}), debts: Array.isArray(debts) ? debts : [] };
     const day = financialDate(asOf), derived = savingsDailyBackingContexts.get(plan) || savingsPolicyBacking(plan, day, opts);
     const shell = { source: 'Forecast.savingsDailyFunding', asOf: day, currency: 'CAD',
@@ -20568,6 +20616,8 @@
       && ['household-cash', 'household-reserve'].includes(tx.accountRole)
       && (txMatchesScheduledIncome(tx, plan, opts) || isGenuineOtherIncomeTransaction(tx, plan, opts)))
       .reduce((sum, tx) => sum - savingsCents(tx.amount, true), 0);
+    if (planningContext) planningContext.current = currentSavingsPlanningBasis(plan, day, {
+      current, packet, unique, opts, nativePeriodSurplus, nativeReceived, evidencedIncome, alreadySavedIncome, transferred });
     if (nativeReceived !== evidencedIncome) return unknown('Native received income does not reconcile to the complete posted receipt evidence.');
     const entitlement = nativePeriodSurplus - alreadySavedIncome, remainingEntitlement = Math.max(0, entitlement - transferred);
     if (!Number.isSafeInteger(entitlement) || !Number.isSafeInteger(remainingEntitlement)) return unknown('Period cents exceed exact arithmetic.');

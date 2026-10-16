@@ -2,11 +2,12 @@
 // Test-first owner clarification 2026-10-16, 12:57 UTC:
 // ownerSentinel_f70d821f734481919f25b706ea7ab1a6.
 // Every balance/receipt below is invented. Literal expected cents are a second
-// ledger, not outputs copied from Forecast or household data. These tests are
-// intentionally not in the suite manifest until the bounded design is reviewed.
+// ledger, not outputs copied from Forecast or household data. These tests
+// exercise the approved planning boundary; transfer permission is separate.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const F = require('../public/forecast');
+const path = require('node:path');
+const F = require(path.join(process.env.ATLAS_TEST_APP_ROOT || path.resolve(__dirname, '..'), 'public/forecast'));
 const futureFixture = require('./fixtures/savings-future-closing-data');
 
 function fixture({ asOf = '2026-10-19', state = 'expected', spent = 0,
@@ -142,6 +143,29 @@ test('a refreshed next-period observed stock replaces the prior projected contri
   assertReady(closing(a, '2026-11-13'), 619, 300);
 });
 
+for (const received of [0, 150]) test('incomplete claimed salary receipt withholds overlap instead of inventing a replacement: ' + received, () => {
+  const x = fixture({ asOf: '2026-10-23', state: 'received-operating' });
+  x.plan.startingCash.breakdown.find(row => row.id === 'chequing-a').value = 80 + received;
+  x.opts.currentPeriodActuals.transactions[0].amount = -received;
+  x.opts.currentPeriodActuals.representedActuals[0].actual = received;
+  const a = advice(x);
+  assert.equal(a.payPeriodViews.find(row => row.timelineRole === 'current').incomeTotal, 200,
+    'the existing native planned-income publication is unchanged');
+  const c = closing(a);
+  assert.equal(c.status, 'unavailable'); assert.equal(c.stock, null);
+});
+
+for (const proof of ['represented-event', 'missing-receipt-id', 'missing-receipt-row']) {
+  test('unproven claimed receipt inclusion is not replaced by forecast salary: ' + proof, () => {
+    const x = fixture({ asOf: '2026-10-20' });
+    if (proof === 'represented-event') x.opts.representedEvents = [{ id: 'expected-salary', date: '2026-10-20' }];
+    else x.opts.currentPeriodActuals.representedActuals = [{ id: 'expected-salary', date: '2026-10-20', actual: 200,
+      ...(proof === 'missing-receipt-row' ? { transactionId: 'missing-row' } : {}) }];
+    const c = closing(advice(x));
+    assert.equal(c.status, 'unavailable'); assert.equal(c.stock, null);
+  });
+}
+
 for (const [spent, expected] of [[0, 219], [50, 219], [125, 194]]) {
   test('within-budget spend fulfils the reserve and overspend alone reduces surplus: ' + spent, () => {
     const x = fixture({ asOf: '2026-10-23', state: 'received-operating', budget: 100, spent });
@@ -170,6 +194,27 @@ test('the established future surplus timeline remains unchanged', () => {
   assertReady(closing(a, '2026-11-13'), 2199, 1000);
   assert.equal(a.payPeriodViews.find(row => row.start === '2026-10-16').paydaySweep, 1080);
   assert.equal(a.payPeriodViews.find(row => row.start === '2026-10-30').paydaySweep, 1000);
+});
+
+test('a negative planning surplus stays signed and never invents a Savings transfer', () => {
+  const a = advice(fixture({ budget: 300 }));
+  const current = a.payPeriodViews.find(row => row.timelineRole === 'current');
+  assert.equal(current.balanceAfterDeductions, -100, 'forecast200 minus budget300');
+  const c = closing(a);
+  assertReady(c, 119, 0);
+  assert.equal(c.diagnostics.currentPeriodSurplusDeficit, -100);
+  assert(c.operatingCash < 0, 'the signed operating shortage is not clamped to zero');
+  assert(c.gap.shortBy > 0 && c.gap.signedOperatingCash < 0);
+  assert.equal(c.projectedDeficitCoverage, 0, 'routine Bills deficit cannot silently draw Savings');
+});
+
+test('an unaffordable dated goal preserves signed Savings shortage diagnostics', () => {
+  const x = fixture({ goalDate: '2026-10-25' });
+  x.plan.commitments[0].amount = 500;
+  const c = closing(advice(x));
+  assert.equal(c.status, 'unavailable'); assert.equal(c.stock, null);
+  assert.equal(c.diagnostics.signedSavings, -181, 'observed119 + forecast200 - goal500');
+  assert.equal(c.gap.shortBy, 181); assert.deepEqual(c.items, []);
 });
 
 for (const fault of ['stale-reserve', 'missing-reserve', 'pending-reserve', 'missing-payday-opening', 'missing-movement-evidence']) {
