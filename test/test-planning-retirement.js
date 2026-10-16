@@ -186,6 +186,18 @@ const WINDOWS_ALIASES = [
   ['NTFS stream suffix, uppercase path', '/PLANNING.HTML::$DATA'],
   ['NTFS stream suffix, mixed case', '/Planning.Html::$Data'],
   ['NTFS stream suffix with trailing slash', '/planning.html::$DATA/'],
+  // Decide retirement before filesystem lookup: some runtimes reject these
+  // suffix forms with 404 instead of resolving them onto the retained file.
+  ['trailing period', '/planning.html.'],
+  ['encoded trailing period', '/planning.html%2e'],
+  ['encoded trailing space', '/planning.html%20'],
+  ['mixed trailing periods and spaces', '/planning.html.%20.%20'],
+  ['uppercase trailing space with query', '/PLANNING.HTML%20?alias=1'],
+  ['filename suffix before NTFS stream', '/planning.html.%20::$DATA'],
+  ['suffix after NTFS stream', '/planning.html::$DATA.%20'],
+  ['suffixes around NTFS stream and trailing slash', '/planning.html.%20::$DATA.%20%2F'],
+  ['suffix after backslash and parent traversal', '/x%5c..%5cplanning.html.%20'],
+  ['parent traversal before suffixed filename', '/x/../planning.html.'],
 ];
 
 function expectKind(res, kind) {
@@ -287,7 +299,8 @@ function expectKind(res, kind) {
         `status ${res.status}, location ${res.headers.location}`);
       ok(!isOldPage(res), `unauthenticated ${label} is never the old page`);
     }
-    for (const rawPath of ['/planning.html%2f', '/%5cplanning.html', '/planning.html::$DATA']) {
+    for (const rawPath of ['/planning.html%2f', '/%5cplanning.html', '/planning.html::$DATA',
+      '/planning.html.', '/planning.html%20']) {
       const head = await rawRequest(base, 'HEAD', rawPath, null, null);
       ok(head.status === 302 && head.headers.location === '/login',
         `unauthenticated HEAD ${rawPath} -> 302 /login at the gate`,
@@ -295,6 +308,27 @@ function expectKind(res, kind) {
     }
 
     console.log('=== preservation controls ===');
+    for (const rawPath of ['/bills.html.', '/bills.html%20', '/forecast.js%20']) {
+      for (const method of ['GET', 'HEAD']) {
+        const res = await rawRequest(base, method, rawPath, cookie, null);
+        ok((res.status === 200 || res.status === 404) && !res.headers.location,
+          `${method} unrelated suffixed path ${rawPath} retains static handling`,
+          `status ${res.status}, location ${res.headers.location}`);
+      }
+    }
+    for (const rawPath of ['/planning.html.', '/planning.html%20']) {
+      const res = await rawRequest(base, 'POST', rawPath, cookie, null);
+      ok(res.status === 404, `POST ${rawPath} is not absorbed by the GET/HEAD retirement`,
+        `status ${res.status}`);
+    }
+    {
+      const res = await rawGet(base, '/planning.html.%20/..', cookie);
+      ok(res.status === 301 && res.headers.location === '/planning.html.%20/../',
+        'parent traversal out of a suffixed name retains the directory redirect');
+      const followed = res.headers.location
+        ? await rawGet(base, res.headers.location, cookie) : { status: 0, body: '' };
+      ok(isBudget(followed), 'parent traversal out of a suffixed name still lands on Budget');
+    }
     {
       const res = await rawGet(base, '/planning.html', null);
       ok(res.status === 302 && res.headers.location === '/login',

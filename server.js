@@ -790,8 +790,10 @@ app.use((req, res, next) => {
   try { decoded = decodeURIComponent(req.path); } catch { return next(); }
   const slashed = decoded.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
   let canonical = path.posix.normalize(slashed).toLowerCase();
-  canonical = canonical.replace(/\/+$/, '');
-  canonical = canonical.replace(/::\$data$/, '').replace(/\/+$/, '');
+  // Resolve dot segments first, then fold terminal filename dots/spaces
+  // on both sides of the default-stream suffix, including exposed slashes.
+  canonical = canonical.replace(/[. \/]+$/, '');
+  canonical = canonical.replace(/::\$data$/, '').replace(/[. \/]+$/, '');
   if (canonical === '/planning.html') return res.redirect('/');
   return next();
 });
