@@ -27,6 +27,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { isDeepStrictEqual } = require('node:util');
 const Forecast = require('../public/forecast.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -105,7 +106,7 @@ function recommendOpts(data, opts) {
   };
 }
 
-function recommendFrom(data, opts) {
+function evaluateRecommendation(data, opts, evaluate) {
   const plan = data && data.plan;
   const asOf = asOfFrom(data, opts);
   if (!plan || !asOf) {
@@ -115,8 +116,41 @@ function recommendFrom(data, opts) {
   }
   return {
     asOf,
-    advice: Forecast.recommend(plan, asOf, recommendOpts(data, opts)),
+    advice: evaluate(plan, asOf, recommendOpts(data, opts)),
   };
+}
+
+function recommendFrom(data, opts) {
+  return evaluateRecommendation(data, opts, Forecast.recommend);
+}
+
+// One live read uses this for its primary and projected-source replay overlays.
+// Keep at most one successful result, owned by that operation, with the complete
+// Forecast input (including newly loaded periods). No cross-request cache or
+// option normalization: differing inputs always ask Forecast again.
+function createRefreshEvaluation() {
+  let entry = null;
+  function evaluate(plan, asOf, options) {
+    const input = { plan, asOf, options };
+    let snapshot;
+    try {
+      if (entry && entry.recommend === Forecast.recommend && isDeepStrictEqual(entry.input, input)) return structuredClone(entry.advice);
+      snapshot = structuredClone(input);
+    } catch (_) {
+      entry = null;
+      return Forecast.recommend(plan, asOf, options);
+    }
+    entry = null; // Exceptions and unsupported results must not become hits.
+    const recommend = Forecast.recommend;
+    const advice = recommend(plan, asOf, options);
+    try {
+      if (recommend === Forecast.recommend && isDeepStrictEqual(snapshot, input)) {
+        entry = { input: snapshot, advice: structuredClone(advice), recommend };
+      }
+    } catch (_) { /* Unsupported clone: retain incumbent uncached behavior. */ }
+    return advice;
+  }
+  return { fromRefreshedState: (data, opts) => projectRefreshedState(data, opts, evaluate) };
 }
 
 function trustedStateFrom(data, opts) {
@@ -279,9 +313,9 @@ function projectFromAdvice(advice, data, opts, asOf) {
   };
 }
 
-function fromRefreshedState(data, opts) {
+function projectRefreshedState(data, opts, evaluate) {
   opts = opts || {};
-  const { asOf, advice } = recommendFrom(data, opts);
+  const { asOf, advice } = evaluateRecommendation(data, opts, evaluate);
   const packet = projectFromAdvice(advice, data, opts, asOf);
   if (opts.baseline) {
     const baselineOpts = {
@@ -289,13 +323,17 @@ function fromRefreshedState(data, opts) {
       writesCanonicalState: false,
       baseline: null,
     };
-    const before = fromRefreshedState(opts.baseline, baselineOpts);
+    const before = projectRefreshedState(opts.baseline, baselineOpts, evaluate);
     packet.change = changeFrom(before, packet);
     packet.baselineProvenance = before.provenance;
   } else {
     packet.change = changeFrom(null, packet);
   }
   return packet;
+}
+
+function fromRefreshedState(data, opts) {
+  return projectRefreshedState(data, opts, Forecast.recommend);
 }
 
 const api = {
@@ -306,6 +344,7 @@ const api = {
   actualsFrom,
   recommendOpts,
   recommendFrom,
+  createRefreshEvaluation,
   fromRefreshedState,
   changeFrom,
 };

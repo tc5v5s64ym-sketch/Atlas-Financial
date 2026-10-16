@@ -1247,7 +1247,7 @@ function overlayLiveState(input) {
     && !actualsPacketLooksSanitized(next.liveOverlay.currentPeriodActuals)) {
     fail('Current-period actuals packet is not sanitized.');
   }
-  RT.attachTo(next, { report, canonical: data });
+  RT.attachTo(next, { report, canonical: data, operatingEvaluation: input.operatingEvaluation });
   if (!RT.looksSanitized(next.refreshTrust)) fail('Refresh-trust packet is not sanitized.');
   return {
     data: next,
@@ -1389,9 +1389,9 @@ function observeForOverlay(canonical, payload, accountMap) {
   }));
 }
 
-function applyObservedOverlay(canonical, report) {
+function applyObservedOverlay(canonical, report, operatingEvaluation) {
   try {
-    return overlayLiveState({ data: canonical, report }).data;
+    return overlayLiveState({ data: canonical, report, operatingEvaluation }).data;
   } catch (err) {
     const message = err && err.message ? err.message : 'overlay-failed';
     return failedOverlay(canonical, message, { report });
@@ -1431,7 +1431,8 @@ async function applyForServer(canonical, env, options) {
       ? ObservationMemory.sourceInputs(options.evidence.payload)
       : await acquireServerObservation(canonical, env, options);
     const report = observeForOverlay(canonical, payload, accountMap);
-    const data = applyObservedOverlay(canonical, report);
+    const operatingEvaluation = OA.createRefreshEvaluation();
+    const data = applyObservedOverlay(canonical, report, operatingEvaluation);
     let qualified = data.liveOverlay?.applied === true
       && report.observationReceipt?.readyForReconciliation === true;
     let evidence = null;
@@ -1440,7 +1441,7 @@ async function applyForServer(canonical, env, options) {
         const inputs = ObservationMemory.sourceInputs(payload);
         // A field projection cannot change qualification or a single figure.
         // Future observer inputs therefore cause a cache miss until supported.
-        const replayed = applyObservedOverlay(canonical, observeForOverlay(canonical, inputs, accountMap));
+        const replayed = applyObservedOverlay(canonical, observeForOverlay(canonical, inputs, accountMap), operatingEvaluation);
         if (isDeepStrictEqual(data, replayed)) evidence = { schema: ObservationMemory.SCHEMA, payload: inputs };
       } catch (error) {
         // Capacity refusal is a cache miss, not a failed provider observation.
