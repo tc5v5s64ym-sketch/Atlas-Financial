@@ -29,6 +29,7 @@ const fs = require('fs');
 const path = require('path');
 const { isDeepStrictEqual } = require('node:util');
 const Forecast = require('../public/forecast.js');
+const StageTiming = require('./refresh-stage-timing.js');
 
 const ROOT = path.join(__dirname, '..');
 const SCHEMA = 'atlas-refresh-operating-answer/v1';
@@ -121,7 +122,12 @@ function evaluateRecommendation(data, opts, evaluate) {
 }
 
 function recommendFrom(data, opts) {
-  return evaluateRecommendation(data, opts, Forecast.recommend);
+  return evaluateRecommendation(data, opts, timedRecommend);
+}
+
+function timedRecommend(...args) {
+  const recommend = Forecast.recommend;
+  return StageTiming.sync('forecastMs', () => recommend(...args));
 }
 
 // One live read uses this for its primary and projected-source replay overlays.
@@ -138,11 +144,11 @@ function createRefreshEvaluation() {
       snapshot = structuredClone(input);
     } catch (_) {
       entry = null;
-      return Forecast.recommend(plan, asOf, options);
+      return StageTiming.sync('forecastMs', () => Forecast.recommend(plan, asOf, options));
     }
     entry = null; // Exceptions and unsupported results must not become hits.
     const recommend = Forecast.recommend;
-    const advice = recommend(plan, asOf, options);
+    const advice = StageTiming.sync('forecastMs', () => recommend(plan, asOf, options));
     try {
       if (recommend === Forecast.recommend && isDeepStrictEqual(snapshot, input)) {
         entry = { input: snapshot, advice: structuredClone(advice), recommend };
@@ -333,7 +339,7 @@ function projectRefreshedState(data, opts, evaluate) {
 }
 
 function fromRefreshedState(data, opts) {
-  return projectRefreshedState(data, opts, Forecast.recommend);
+  return projectRefreshedState(data, opts, timedRecommend);
 }
 
 const api = {

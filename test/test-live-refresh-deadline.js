@@ -103,9 +103,14 @@ async function stalled(mode,fn){
  const busy=await new Promise((resolve,reject)=>{let output='';const child=cp.spawn(process.execPath,['--require',path.join(__dirname,'fixtures/live-refresh-busy-worker.js'),'-e',busyProgram],{cwd:root,env:baseEnv,stdio:['ignore','pipe','pipe'],windowsHide:true});child.stdout.on('data',chunk=>output+=chunk);child.on('error',reject);child.on('exit',code=>resolve({code,output}));});
  check(busy.code,0,'deadline interrupts synchronous worker work');
  assert.ok(busy.output.includes('busy terminated\n'));checks++;
- const busyTiming=busy.output.split('\n').filter(line=>line.startsWith('{')).map(JSON.parse);
+ const busyRecords=busy.output.split('\n').filter(line=>line.startsWith('{')).map(JSON.parse);
+ const busyTiming=busyRecords.filter(record=>record.type==='live-refresh-lifecycle');
  check(busyTiming.length,1,'one sanitized lifecycle timing for the interrupted worker');
  check(busyTiming[0].outcome,'live-refresh-timeout','busy-worker timing carries only the closed timeout outcome');
+ const busyStages=busyRecords.filter(record=>record.type==='live-refresh-stages');
+ check(busyStages.length,1,'one companion stage record for the interrupted worker');
+ check(busyStages[0].workerComplete,false,'interrupted synchronous worker cannot claim completed stages');
+ check(busyStages[0].qualified,null,'interruption has no qualification verdict');
  await stalled('trickle',async(env,state)=>{
   const port=await freePort(),shortFixture=path.join(__dirname,'fixtures/live-refresh-short-budget.js').replace(/\\/g,'/'),atlas=await startAtlas({...env,NODE_OPTIONS:'--require "'+shortFixture+'"',PORT:String(port),SITE_PASSWORD:PASS,SESSION_SECRET:SECRET,ATLAS_ASSISTANT_TOKEN:'synthetic-assistant-token-long-enough'}),base='http://127.0.0.1:'+port;
   try{
