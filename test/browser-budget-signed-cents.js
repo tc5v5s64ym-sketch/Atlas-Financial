@@ -17,12 +17,25 @@ assert.ok(out && path.isAbsolute(out), 'PROOF_OUTPUT_DIR must be an absolute evi
 assert.ok(!path.resolve(out).startsWith(root + path.sep), 'proof output stays outside the checkout');
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-function dataFor(levy) {
+function dataFor(c) {
   // Move the invented Aug 14-27 period forward exactly 140 calendar days.
   const data = JSON.parse(JSON.stringify(fixture.served()).replace(/\d{4}-\d{2}-\d{2}/g,
     s => new Date(Date.parse(s + 'T00:00:00Z') + 140 * 86400000).toISOString().slice(0, 10)));
+  if (c.large) {
+    // The independently reported clipping fixture, without an old payroll
+    // snapshot or observed spending that could change this separate oracle.
+    delete data.liveOverlay; delete data.refreshTrust; delete data.plan.opening.paydaySnapshot;
+    data.plan.opening.representedEvents = []; data.plan.opening.notReliedUponEvents = [];
+    data.plan.income = [{ id: 'payroll', label: 'Synthetic Seaspan payroll', frequency: 'biweekly',
+      anchor: '2027-01-01', amount: c.income, confidence: 'confirmed' }];
+    data.plan.bills = [];
+    data.plan.obligations = []; data.plan.commitments = [];
+    data.plan.budget.categories = [100.01, 200.02, 300.03].map((amount, i) => ({
+      id: ['groceries', 'fuel', 'restaurants'][i], label: 'Synthetic category ' + i,
+      class: 'essential', from: [], plannedPayday: amount, confidence: 'confirmed' }));
+  }
   data.plan.bills.push({ id: 'synthetic-january-levy', label: 'Synthetic January levy',
-    frequency: 'monthly', day: 3, amount: levy, confidence: 'confirmed', payingAccount: 'chequing-a' });
+    frequency: 'monthly', day: 3, amount: c.levy, confidence: 'confirmed', payingAccount: 'chequing-a' });
   return data;
 }
 const cases = [
@@ -30,6 +43,11 @@ const cases = [
   { name: 'positive', levy: 0, expected: '$1,847.01' },
   { name: 'zero', levy: 1847.01, expected: '$0.00' },
   { name: 'negative', levy: 5000, expected: '−$3,152.99' },
+  { name: 'negative-cent', levy: 1847.02, expected: '−$0.01' },
+  // 4,444.44 - 1,234,567.89 - (100.01 + 200.02 + 300.03).
+  { name: 'large-negative', large: true, income: 4444.44, levy: 1234567.89, expected: '−$1,230,723.51' },
+  { name: 'large-positive', large: true, income: 1234567.89, levy: 4444.44, expected: '$1,229,523.39' },
+  { name: 'unavailable', levy: 0, unavailable: true, expected: 'Unavailable' },
 ];
 
 (async () => {
@@ -49,7 +67,7 @@ const cases = [
       const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme, reducedMotion: 'reduce' });
       await page.addInitScript(chosen => localStorage.setItem('hfd-theme', chosen), theme);
       page.on('pageerror', e => errors.push(name + ': ' + e.message));
-      const data = dataFor(c.levy);
+      const data = dataFor(c);
       await page.route('**/*', route => {
         const u = new URL(route.request().url());
         if (u.origin !== 'http://budget.test') { external.push(u.origin); return route.abort(); }
@@ -65,36 +83,81 @@ const cases = [
       await page.goto('http://budget.test/');
       await page.waitForSelector('.blend-hero .blend-bad');
       await page.evaluate(() => document.fonts.ready);
-      const read = await page.evaluate(() => {
+      if (c.unavailable) {
+        await page.locator('.river').focus();
+        await page.keyboard.press('ArrowLeft');
+        await page.waitForSelector('.blend-hero .blend-bad.is-unavailable');
+      }
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const readState = () => {
         const face = document.querySelector('.blend-hero .blend-bad');
-        const native = document.querySelector('ol[data-bad-timeline]>[data-bad-timeline-start="2027-01-01"] [data-bad-term-amount]');
+        const block = document.querySelector('[data-bad-terms]');
+        const row = [...document.querySelectorAll('ol[data-bad-timeline]>li')]
+          .find(el => el.dataset.badTimelinePeriod === block?.dataset.badTermsPeriod);
+        const native = row?.querySelector('[data-bad-term-amount]');
         const dollars = face.querySelector('.blend-dollars'), prefix = face.querySelector('.blend-term-prefix');
+        const cents = face.querySelector('.blend-cents'), slot = face.closest('.budget-step-value');
         const rect = el => el && { x: el.getBoundingClientRect().x, y: el.getBoundingClientRect().y,
           width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height };
+        const glyphRect = el => {
+          if (!el) return null;
+          const range = document.createRange(); range.selectNodeContents(el);
+          const box = range.getBoundingClientRect();
+          return { x: box.x, y: box.y, width: box.width, height: box.height };
+        };
         const hatches = [...document.querySelectorAll('.budget-waterfall-track.is-unknown')].map(el => ({
           class: el.className, image: getComputedStyle(el).backgroundImage, rect: rect(el) }));
         // A CSS-only unknown-track control: the same native hatch selector,
         // with a box so its unchanged paint can be captured independently.
-        const control = document.createElement('div');
+        const control = document.querySelector('[data-signed-cents-hatch-control]') || document.createElement('div');
         control.className = 'budget-waterfall-track is-unknown';
         control.style.cssText = 'display:block;width:240px;height:12px;margin:12px';
         control.dataset.signedCentsHatchControl = '';
         document.body.appendChild(control);
         return { native: native?.textContent, text: face.textContent, dollars: dollars?.textContent,
           prefix: prefix?.textContent || '', face: rect(face), dollarRect: rect(dollars), prefixRect: rect(prefix),
+          centsRect: glyphRect(cents), dollarGlyphRect: glyphRect(dollars), slot: rect(slot), hero: rect(face.closest('.blend-hero')),
+          fontSize: getComputedStyle(dollars || face).fontSize,
+          protectedContent: [...slot.querySelectorAll('.blend-clip, .blend-est, .budget-cash-sr')].map(el => el.outerHTML),
+          triggerLabel: slot.closest('summary')?.getAttribute('aria-label') || null,
           color: getComputedStyle(dollars || face).color, heroBackground: getComputedStyle(face.closest('.blend-hero')).backgroundColor,
           hatches, hatchControl: getComputedStyle(control).backgroundImage,
           range: document.querySelector('.blend-hero-range')?.textContent.replace(/\s+/g, ' ').trim() };
-      });
-      check(read.native === c.expected, name + ': independent fixture amount');
-      check(read.text === c.expected, name + ': visible text equals unchanged native amount');
-      check(read.dollars === c.expected.slice(0, -3), name + ': sign grouped with dollar digits');
+      };
+      const read = await page.evaluate(readState);
+      check(read.native === (c.unavailable ? '' : c.expected), name + ': independent fixture amount');
+      check(read.text === c.expected, name + ': visible text equals unchanged native amount or withholding');
+      check(read.dollars === (c.unavailable ? undefined : c.expected.slice(0, -3)), name + ': sign grouped with dollar digits');
       check(read.prefix === '', name + ': no isolated minus prefix');
-      check(read.range.includes('Jan 1') && read.range.includes('Jan 14'), name + ': reported January range');
+      if (!c.unavailable) check(read.range.includes('Jan 1') && read.range.includes('Jan 14'), name + ': reported January range');
       check(read.hatchControl.includes('repeating-linear-gradient'), name + ': unknown hatch retained');
-      check(read.color === (c.name === 'negative' ? (theme === 'dark' ? 'rgb(224, 82, 82)' : 'rgb(199, 55, 55)')
+      if (!c.unavailable) check(read.color === (c.expected.startsWith('−') ? (theme === 'dark' ? 'rgb(224, 82, 82)' : 'rgb(199, 55, 55)')
         : theme === 'dark' ? 'rgb(245, 246, 248)' : 'rgb(11, 12, 16)'), name + ': original readable amount color');
-      if (width === 390 && c.name === 'negative') {
+      const checkContainment = (value, label) => {
+        for (const [part, box] of [['dollars', value.dollarGlyphRect], ['cents', value.centsRect]]) if (box) {
+          check(box.x >= value.slot.x - 0.5 && box.x + box.width <= value.slot.x + value.slot.width + 0.5,
+            label + ': complete ' + part + ' fit the available amount row');
+          check(box.x >= value.hero.x - 0.5 && box.x + box.width <= value.hero.x + value.hero.width + 0.5,
+            label + ': complete ' + part + ' stay inside the clipped hero');
+        }
+        if (value.dollarGlyphRect && value.centsRect) check(value.centsRect.y < value.dollarGlyphRect.y + value.dollarGlyphRect.height,
+          label + ': cents stay on the amount line');
+      };
+      checkContainment(read, name);
+      if (c.large && width === 390) {
+        read.reflows = [];
+        for (const nextWidth of [720, 390]) {
+          await page.setViewportSize({ width: nextWidth, height: 1000 });
+          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+          const resized = await page.evaluate(readState);
+          checkContainment(resized, name + '/resize-' + nextWidth);
+          check(resized.text === c.expected, name + '/resize-' + nextWidth + ': full text retained');
+          check(JSON.stringify(resized.protectedContent) === JSON.stringify(read.protectedContent)
+            && resized.triggerLabel === read.triggerLabel, name + '/resize-' + nextWidth + ': accessibility content retained');
+          read.reflows.push({ width: nextWidth, ...resized });
+        }
+      }
+      if ((width === 390 && c.name === 'negative') || (c.name === 'large-negative' && width <= 390)) {
         const file = name + '.png';
         await page.locator('.blend-hero').screenshot({ path: path.join(out, file), animations: 'disabled' });
         screenshots[file] = sha256(fs.readFileSync(path.join(out, file)));
