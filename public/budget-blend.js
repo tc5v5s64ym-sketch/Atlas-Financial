@@ -523,7 +523,8 @@
       if (/\$[\d,]+\.\d{2}/.test(node.textContent)) nodes.push(node);
     }
     nodes.forEach(textNode => {
-      const parts = textNode.textContent.match(/^(.*?)(-?\$[\d,]+)(\.\d{2})(.*)$/);
+      // Both printed minus glyphs stay with dollars, never the small qualifier prefix.
+      const parts = textNode.textContent.match(/^(.*?)([-−]?\$[\d,]+)(\.\d{2})(.*)$/);
       if (!parts) return;
       const frag = document.createDocumentFragment();
       if (parts[1]) {
