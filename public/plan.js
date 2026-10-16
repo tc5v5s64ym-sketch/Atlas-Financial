@@ -7376,6 +7376,16 @@ function billsAccountPeriodBalanceHtml(ctx) {
   const publication = ctx.advice?.defaultView?.billsAccountPeriodBalance;
   if (!publication || publication.source !== 'Forecast.billsAccountPeriodBalance'
     || publication.accountId !== 'chequing-a' || publication.scope !== 'bills-only') return '';
+  // Forecast publishes this card for the active pay period only. When the
+  // surface has another period selected, the card must not ride into that
+  // period's figures carrying the active period's label and value: beside a
+  // different period's dates it would read as that period's own closing
+  // balance. The selected row is the publication's own period when it is the
+  // current row or its dates match the publication's exactly.
+  const selected = payPeriodSelection(ctx.advice || {}, ctx.planPayPeriodId).period;
+  if (selected && selected.timelineRole !== 'current'
+    && !(publication.start && selected.start === publication.start
+      && selected.end === publication.end)) return '';
   const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
     c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const numeric = value => typeof value === 'number' && Number.isFinite(value);
