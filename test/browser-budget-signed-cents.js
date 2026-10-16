@@ -77,7 +77,7 @@ const cases = [
         // with a box so its unchanged paint can be captured independently.
         const control = document.createElement('div');
         control.className = 'budget-waterfall-track is-unknown';
-        control.style.cssText = 'width:240px;height:12px;margin:12px';
+        control.style.cssText = 'display:block;width:240px;height:12px;margin:12px';
         control.dataset.signedCentsHatchControl = '';
         document.body.appendChild(control);
         return { native: native?.textContent, text: face.textContent, dollars: dollars?.textContent,
