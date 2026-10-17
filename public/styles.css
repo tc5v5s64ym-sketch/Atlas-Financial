@@ -410,9 +410,9 @@ svg { display:block; width:100%; height:auto; overflow:visible; }
    static copy is re-appended, so the terminated surface keeps the
    branding with all motion stopped. .note-box is shared with in-content
    plan.js boxes, so every overlay rule below is scoped to .boot-static
-   or [data-boot-notice] and can never reach them. Both layers are
-   purely decorative — aria-hidden, no focusable content in the
-   treatment — and the boot notice remains the single role="status"
+   or [data-boot-notice] and can never reach them. Branding in both
+   layers is aria-hidden decoration. The static layer exposes loading
+   text as role="status" until the boot notice replaces it as the single
    announcer. Isolation: the static layer intercepts pointer events
    while it covers the page, and index.html bakes the keyboard/AT
    isolation for the pre-script interval into the shell markup
