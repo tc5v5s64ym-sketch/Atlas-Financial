@@ -1,7 +1,7 @@
 {
   "binding": {
-    "sourceCommit": "719fa3b86414f0a38554336bd9fd7adb0b4d32c8",
-    "sourceTree": "f51b671b40de59b39821106f5538e1841ecdadcc",
+    "sourceCommit": "22d47b8bd16c9b9f797b4382820d570a85cb2f4c",
+    "sourceTree": "9f5bdb73b544e6c208fb7768252c0544ae65a42f",
     "baseCommit": null,
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -822,9 +822,9 @@
         "bytes": 4747
       },
       "test/browser-budget-month-contrast.js": {
-        "gitBlob": "ee5aeaf6ac600654a9efc13ad00b1f5d168b406b",
-        "sha256": "d34191aa137c67b412f285846f128abb669056ca5e4bb6bc175009289e96a45b",
-        "bytes": 16365
+        "gitBlob": "df0e79082f1860034b226d08d6dc5fc092fe1d9f",
+        "sha256": "2d14289a09b720cc975bdd7433e473c205377d56e60cd340b69ef96fd8575691",
+        "bytes": 16459
       },
       "test/fixtures/annual-snapshot-carry-data.js": {
         "gitBlob": "51a7458de81dcaa2775b1d9f7cd4ec91fa0b7bfc",
@@ -1120,6 +1120,11 @@
         "gitBlob": "63952db76627888b1e91a903c7bf7e88c9c62eae",
         "sha256": "7ca6581a423eec4f935214fcb20f867011bc3bfa3c26f298196eff39f0536439",
         "bytes": 2654
+      },
+      "test/lib/month-contrast-receipt.js": {
+        "gitBlob": "82bb53b7ff8ed60c6b8feccbd59e3fc837a672b9",
+        "sha256": "805d00d4b98e81a9286f2637c2713cde4727cb7755015a76a5627074b98ff0ed",
+        "bytes": 904
       },
       "test/proof-source-binding.js": {
         "gitBlob": "0ef3063b8281592e93e7808ca706e5d0c585a0f4",
@@ -8362,12 +8367,6 @@
   },
   "unchangedAfterRun": true,
   "limits": "Synthetic full App/Forecast Month navigation. Two explicitly identified native row-renderer publication controls per card. Pixel samples exclude trust pills. No household/live/provider/credential/physical-device claim.",
-  "reformattedFrom": {
-    "commit": "7e1f4ee7af2d23587c027a3366f1f86a197bfb1c",
-    "path": "docs/proof/atlas-024-month-contrast/after/receipt.json",
-    "sha256": "369dd26d4e486cf81bc23491a5a139425dfc48dbd7484326671a26c954620fee",
-    "operation": "Only reported contrast/pixelContrast precision changed; original execution, binding and screenshot evidence retained."
-  },
   "measurementPrecision": {
     "contrastDecimalPlaces": 6,
     "assertions": "Unrounded contrast values; stored contrast and pixelContrast diagnostics rounded to six decimal places.",

@@ -4,12 +4,12 @@ The native **Month > Money in and out** card inherited the fixed `#1a2b33`
 amount color from `public/budget-polish.css:636-639`. On its dark `#1b1b1a`
 card this was 1.18:1. The active `.budget-v3-month .budget-month-amount`
 selector now uses the incumbent `--text-primary` theme token. This is one
-presentation declaration; no number, label, formatter, arithmetic or trust
+presentation declaration; no number, label, financial formatter, arithmetic or trust
 publication changed.
 
 | Evidence | Before | After |
 |---|---|---|
-| Exercised source commit | `8c74cbf834e3e121b03063e8f7cd1449929d6fe6` | `719fa3b86414f0a38554336bd9fd7adb0b4d32c8` |
+| Exercised source commit | `8c74cbf834e3e121b03063e8f7cd1449929d6fe6` | `22d47b8bd16c9b9f797b4382820d570a85cb2f4c` |
 | Result | FAIL, exit 1: 126 contrast failures only | PASS, exit 0: no failures |
 | Dark computed and sampled raster contrast | 1.179747:1 | 15.780801:1 |
 | Light computed and sampled raster contrast | 14.610968:1 | 18.283836:1 |
@@ -19,12 +19,53 @@ publication changed.
 
 The before commit has runtime bytes identical to main
 `84a18e591cfe5e1f6e8f0648e540effecf2bdad8`; only the standalone test had been
-added. The after source differs by the single scoped CSS declaration.
+added. The after runtime differs by the single scoped CSS declaration; its
+test harness also includes the receipt-precision repair described below.
 Receipts bind all tracked public assets, scripts, fixtures, the test and
-package files to exact Git blobs and SHA-256 bytes, assert a clean start,
+package files to exact Git blobs and SHA-256 bytes (224 before, 225 after,
+including the new receipt serializer), assert a clean start,
 verify the served bytes, and verify unchanged source at completion. Each
-receipt also hashes its nine PNGs. Later commits in this PR add only this
-proof directory; the exercised runtime and harness blobs stay identical.
+receipt also hashes its nine PNGs. Commits after the latest after run add only
+this proof directory; its exercised runtime and harness blobs stay identical.
+
+## B1: proof-receipt format repair
+
+[Independent review of the prior head](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/638#issuecomment-6228804692)
+accepted the presentation but found a required-check regression: long binary
+floating-point contrast tails in the synthetic before receipt matched the
+unchanged static identifier guard. Both original hosted runs failed the
+static and refresh-isolation suites (396 of 398 unique suites passed).
+
+The dedicated `test/lib/month-contrast-receipt.js` serializer now rounds only
+the stored `contrast` and `pixelContrast` diagnostics to six decimal places.
+All browser pass/fail assertions still use the unrounded values. Exact ratios
+can be recalculated from the recorded foreground, sampled foreground pixel,
+and background RGB colors. The serializer declares that precision in every
+receipt; no geometry, monetary text, colors, bindings or image bytes are rounded.
+The scanner, isolation helper, financial code and shared registry are unchanged.
+
+The original before execution was not repeated or relabelled as a new run.
+Its receipt was re-serialized from the exact file at the reviewed commit
+`7e1f4ee7af2d23587c027a3366f1f86a197bfb1c`; `reformattedFrom` records its
+commit/path/SHA-256. Every field other than those two diagnostics and explicit
+format/provenance metadata is identical, and all threshold decisions are
+unchanged. All original before images remain byte-identical. A fresh after
+browser run at `22d47b8b` passed the full matrix against that baseline; its
+nine image hashes are also identical to the independently reviewed after images.
+
+Builder reproduction of the named blocker:
+
+| Unchanged test path | Reviewed head | Repair |
+|---|---|---|
+| `node test/test-static.js` | exit 1, one failed check | exit 0, all checks passed |
+| B92 `withMutatedFixture` / `runSuite('test-static.js')`, no-op mutation | exit 1, assertion failure | exit 0, success |
+
+The prior before receipt has 126 identifier-shape matches from contrast
+diagnostics; the repaired receipt has zero. Both original canonical input files
+remain byte-identical across the isolated replays. The bounded controls and
+preservation checks are recorded in [repair-checks.json](repair-checks.json).
+Hosted exact-head standard, refresh-isolation and aggregate results belong in
+the PR merge card; a local targeted replay alone does not establish their PASS.
 
 ## Render proof
 

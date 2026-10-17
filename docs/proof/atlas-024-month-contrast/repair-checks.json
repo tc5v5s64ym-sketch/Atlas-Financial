@@ -1,0 +1,57 @@
+{
+  "review": "https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/638#issuecomment-6228804692",
+  "blocker": "B1: synthetic contrast precision triggers unchanged static identifier guard",
+  "before": {
+    "head": "7e1f4ee7af2d23587c027a3366f1f86a197bfb1c",
+    "directStaticExit": 1,
+    "isolatedStatic": {
+      "ok": false,
+      "status": 1,
+      "kind": "assertion-failure",
+      "fails": 1
+    },
+    "syntheticContrastMatches": 126,
+    "canonicalBytesUnchanged": true
+  },
+  "targetedRepair": {
+    "head": "22d47b8bd16c9b9f797b4382820d570a85cb2f4c",
+    "isolatedStatic": {
+      "ok": true,
+      "status": 0,
+      "kind": "success",
+      "fails": 0
+    },
+    "canonicalBytesUnchanged": true
+  },
+  "originalBeforeReceiptProvenanceVerified": true,
+  "beforeNonContrastEvidenceUnchanged": true,
+  "afterNonContrastEvidenceUnchanged": true,
+  "allEighteenPngHashesUnchangedAndVerified": true,
+  "originalBeforeIdentifierShapeMatches": 126,
+  "repairedBeforeIdentifierShapeMatches": 0,
+  "protectedPathsUnchanged": [
+    "public",
+    "test/test.js",
+    "test/test-static.js",
+    "test/test-refresh-isolation.js",
+    "test/lib/refresh-isolation-runner.js",
+    "scripts",
+    ".github",
+    ".githooks",
+    "ARCHITECTURE.md"
+  ],
+  "contrastDecimalPlaces": 6,
+  "assertionsUseUnroundedValues": true,
+  "freshBrowser": {
+    "sourceCommit": "22d47b8bd16c9b9f797b4382820d570a85cb2f4c",
+    "boundFiles": 225,
+    "status": "PASS",
+    "monthCases": 18,
+    "amountRecords": 126,
+    "heroControls": 6,
+    "failures": [],
+    "externalRequests": [],
+    "pageErrors": []
+  },
+  "scope": "Targeted local repair evidence, not a full hosted-CI claim. Terminal exact-head hosted validation is recorded in the PR merge card."
+}
