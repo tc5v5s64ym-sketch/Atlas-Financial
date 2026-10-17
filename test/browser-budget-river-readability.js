@@ -69,7 +69,13 @@ const COMPONENT = [
   const check = (truth, message) => { if (!truth) failures.push(message); };
   const settle = async page => {
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForFunction(() => document.querySelector('.river')?.dataset.riverMotion === 'settled');
+    await page.waitForFunction(() => {
+      const r = document.querySelector('.river'), selected = r?.querySelector('.rv.is-sel');
+      if (!selected || r.dataset.riverMotion !== 'settled') return false;
+      const offset = new DOMMatrixReadOnly(getComputedStyle(r.querySelector('.river-slide')).transform).m41;
+      const head = new DOMMatrixReadOnly(getComputedStyle(r.querySelector('.playhead')).transform).m41;
+      return Math.abs(parseFloat(selected.style.left) + offset - head) < 0.15;
+    });
     await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
   };
   const open = async (width, theme, options = {}) => {
@@ -143,6 +149,7 @@ const COMPONENT = [
   try {
     for (const width of [320, 390, 1440]) for (const theme of ['dark', 'light']) {
       for (const fixtureKey of ['ordinary', 'january-negative']) {
+        console.log('Native fixture ' + fixtureKey + '/' + width + '/' + theme);
         const page = await open(width, theme, { data: invented(fixtureKey), reducedMotion: 'reduce' });
         await page.waitForSelector('.river .rv.is-sel');
         for (const position of ['current', 'Home', 'End', 'Home-again']) {
@@ -183,7 +190,7 @@ const COMPONENT = [
       ['unknown-savings', { withheldSavings: true }], ['unavailable', { unavailablePlan: true }],
     ]) {
       const page = await open(390, theme, { data: fixture.served(options), reducedMotion: 'reduce' });
-      await page.waitForFunction(() => globalThis.App?.data?.meta?.asOf);
+      await page.waitForFunction(() => typeof App !== 'undefined' && App.data?.meta?.asOf);
       if (key !== 'unavailable') await page.waitForSelector('.river .rv');
       await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
       const state = await page.evaluate(() => ({ river: !!document.querySelector('.river'),
