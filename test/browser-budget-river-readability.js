@@ -191,7 +191,7 @@ const COMPONENT = [
     ]) {
       const page = await open(390, theme, { data: fixture.served(options), reducedMotion: 'reduce' });
       await page.waitForFunction(() => typeof App !== 'undefined' && App.data?.meta?.asOf);
-      if (key !== 'unavailable') await page.waitForSelector('.river .rv');
+      if (key !== 'unavailable') await page.waitForSelector('.river .rv.is-sel');
       await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
       const state = await page.evaluate(() => ({ river: !!document.querySelector('.river'),
         repeatedGradientPaint: [...document.querySelectorAll('#operating-surface *')].flatMap(el => {
