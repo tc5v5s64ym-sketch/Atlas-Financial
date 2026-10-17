@@ -137,6 +137,57 @@ function operatingPlanNote(data, advice) {
     || 'Current plan unavailable. The dated opening is stale.';
 }
 
+// ATLAS-077: Forecast's named scheduled-amount state. recommend
+// attaches it to its result only when unavailable, and projectDebts
+// carries its own for the debt-walk window; either way, an attached
+// unavailable state names dated amounts the packet's claims may
+// depend on. This is NOT the operatingPlan gate: publications the
+// unknowns do not touch stay ready, and only the affected claims
+// below are qualified.
+function scheduledAmountsOf(result) {
+  const state = result && result.scheduledAmounts;
+  return state && state.status === 'unavailable' ? state : null;
+}
+
+function scheduledAmountsProjection(state) {
+  return {
+    status: 'unavailable',
+    reason: state.reason || 'scheduled-amount-unknown',
+    unknowns: (Array.isArray(state.unknowns) ? state.unknowns : []).map(u => ({
+      carrier: u.carrier || null,
+      id: u.id || null,
+      date: u.date || null,
+      reason: u.reason || 'scheduled-amount-unknown',
+    })),
+  };
+}
+
+// An unknown dated on or before a claim's date sits where the
+// claim asserts order or completeness: an earlier dated amount the
+// packet cannot quantify means the "next" obligation or the day
+// total built past it is not certifiable, however well-known the
+// later rows are. The state's unknowns are unresolved by
+// construction — waived, settled, excused and known rows never
+// reach it — and a once outflow dated before the as-of is still
+// owed (Forecast carries it at the opening), so no as-of lower
+// bound applies here: an overdue unknown is an earlier obligation
+// a "next" claim cannot skip.
+function scheduledUnknownOnOrBefore(state, date) {
+  if (!state || !date) return false;
+  return (Array.isArray(state.unknowns) ? state.unknowns : [])
+    .some(u => u.date && u.date <= date);
+}
+
+// The nearBoundary total is a sum over its own dated window
+// [as-of, until]: only an unknown dated inside that window enters
+// the sum's completeness. An overdue unknown is not an item of
+// that window and does not qualify it.
+function scheduledUnknownWithin(state, asOf, date) {
+  if (!state || !date) return false;
+  return (Array.isArray(state.unknowns) ? state.unknowns : [])
+    .some(u => u.date && u.date >= asOf && u.date <= date);
+}
+
 function canonicalAsOf(data) {
   const overlay = data && data.liveOverlay;
   if (overlay && overlay.historicalOpeningAsOf) return overlay.historicalOpeningAsOf;
@@ -695,6 +746,25 @@ function currentBlock(data, asOf, advice, used) {
       };
     })
     : null;
+  // ATLAS-077 (B1a): a scheduled amount unknown dated on or before a
+  // next-obligation claim makes that claim an ordering/completeness
+  // assertion the packet cannot certify — the unknown row emits no
+  // event, so the earliest KNOWN event is not thereby the next
+  // obligation. Withhold only the affected claims and carry the
+  // named state on the block; claims the unknowns postdate, and the
+  // independently known stocks above, stay published. A carried
+  // overdue unknown (dated before the as-of, still owed) qualifies
+  // the next-obligation claims the same way; the dated nearBoundary
+  // sum is qualified only by unknowns inside its own window.
+  const schedAmounts = scheduledAmountsOf(advice);
+  const nextDueWithheld = !!schedAmounts && !!nextDue
+    && scheduledUnknownOnOrBefore(schedAmounts, nextDue.due);
+  const nextOutWithheld = !!schedAmounts && !!nextOut
+    && scheduledUnknownOnOrBefore(schedAmounts, nextOut.date);
+  const nearBoundaryWithheld = !!schedAmounts && !!nearBoundaryItems
+    && !!(advice.nearBoundary && advice.nearBoundary.until)
+    && scheduledUnknownWithin(schedAmounts, asOf, advice.nearBoundary.until);
+  const nextClaimsQualified = nextDueWithheld || nextOutWithheld || nearBoundaryWithheld;
   return {
     spendableHouseholdCash: advice?.cardCoverageUnavailable === true
       && !(data.liveOverlay && data.liveOverlay.operatingPlan === 'unavailable')
@@ -746,14 +816,17 @@ function currentBlock(data, asOf, advice, used) {
       ? {
         status: 'ok',
         source: 'Forecast.nextDue / Forecast.nextPaymentOut / Forecast.recommend.nearBoundary',
-        nextDue: nextDue ? {
+        ...(nextClaimsQualified
+          ? { scheduledAmounts: scheduledAmountsProjection(schedAmounts) }
+          : {}),
+        nextDue: nextDueWithheld ? null : nextDue ? {
           date: nextDue.due,
           label: nextDue.what,
           amount: money(nextDue.amount),
           daysUntil: nextDue.daysUntil,
           confidence: nextDueConfidence,
         } : null,
-        nextPaymentOut: nextOut ? {
+        nextPaymentOut: nextOutWithheld ? null : nextOut ? {
           date: nextOut.date,
           label: nextOut.label,
           amount: money(nextOut.amount),
@@ -761,7 +834,7 @@ function currentBlock(data, asOf, advice, used) {
           daysUntil: nextOut.daysUntil,
           confidence: nextOutConfidence,
         } : null,
-        nearBoundary: nearBoundaryItems
+        nearBoundary: nearBoundaryWithheld ? null : nearBoundaryItems
           ? {
             payday: advice.nearBoundary.payday || null,
             until: advice.nearBoundary.until || null,
@@ -836,6 +909,7 @@ function forecastBlock(data, asOf, advice, debtProj, periods) {
       alreadyOver: row.alreadyOver === true,
     }))
     : [];
+  const debtSchedAmounts = scheduledAmountsOf(debtProj);
   const action = advice.currentPeriodAction || null;
   return {
     status: 'ok',
@@ -844,7 +918,10 @@ function forecastBlock(data, asOf, advice, debtProj, periods) {
       weekly: money(advice.weekly),
       monthlyEquivalent: capMonthly,
       mode: advice.mode || null,
-      holds: advice.holds === true,
+      // A withheld feasibility verdict is null (unknown) upstream;
+      // collapsing it to boolean false would publish a definite
+      // "does not hold" the forecast never reached (ATLAS-077 B1a).
+      holds: advice.holds == null ? null : advice.holds === true,
       infeasible,
       trust: advice.mode === 'infeasible' ? 'calculated' : trustFor(advice.weekly),
     },
@@ -865,8 +942,21 @@ function forecastBlock(data, asOf, advice, debtProj, periods) {
     upcomingModeledCommitments: major.length
       ? { status: 'ok', source: 'Forecast.majorPlans', items: major }
       : unavailable('no-major-plans'),
-    facilityCrossings: crossings.length || (debtProj && Array.isArray(debtProj.crossings))
-      ? { status: 'ok', source: 'Forecast.projectDebts', items: crossings }
+    // ATLAS-077 (B1a): when the debt walk withheld uncertain
+    // crossings under the named state, an empty list is an
+    // unavailable result, not a complete set of zero crossings —
+    // it must not be promoted to {ok, []}. Crossings the walk did
+    // publish (all established before the first unknown) stay
+    // published, with the named state carried as the qualifier.
+    facilityCrossings: debtSchedAmounts && !crossings.length
+      ? { status: 'unavailable', reason: debtSchedAmounts.reason || 'scheduled-amount-unknown',
+        source: 'Forecast.projectDebts',
+        scheduledAmounts: scheduledAmountsProjection(debtSchedAmounts) }
+      : crossings.length || (debtProj && Array.isArray(debtProj.crossings))
+      ? { status: 'ok', source: 'Forecast.projectDebts', items: crossings,
+        ...(debtSchedAmounts
+          ? { scheduledAmounts: scheduledAmountsProjection(debtSchedAmounts) }
+          : {}) }
       : unavailable('debt-projection-unavailable'),
     majorPlanFunding: major.length
       ? { status: 'ok', source: 'Forecast.majorPlans', items: major }
@@ -1027,6 +1117,12 @@ function uncertaintyBlock(data, periods, questionsMarkdown, advice) {
     liveOverlayFailed: overlay && overlay.applied === false
       ? { reason: overlay.reason || 'overlay-failed' }
       : null,
+    // ATLAS-077: the named scheduled-amount unknowns behind any
+    // qualified claim above, with Forecast's reason — an affected
+    // claim's absence from the packet is never left unexplained.
+    ...(scheduledAmountsOf(advice)
+      ? { scheduledAmounts: scheduledAmountsProjection(scheduledAmountsOf(advice)) }
+      : {}),
     ownerQuestions,
   };
 }
