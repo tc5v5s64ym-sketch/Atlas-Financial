@@ -67,8 +67,10 @@
   <!-- Static boot treatment: pure HTML/CSS (the CSP allows no inline
        script). Visible at first paint for the pre-script interval only;
        App.boot removes it the moment scripts run and the shared boot
-       notice owns the loading interval from there. Purely decorative:
-       aria-hidden, no focusable content; styles.css lets it intercept
+       notice owns the loading interval from there. The static status
+       exposes the loading text before scripts can create the live notice;
+       the branding remains aria-hidden. No focusable content;
+       styles.css lets it intercept
        pointer events while it covers the page. The header and every
        .wrap child below carry the pre-script keyboard/AT isolation in
        the markup itself — inert + aria-hidden + data-boot-inert —
@@ -87,7 +89,7 @@
        through it for the whole loading interval, and on arrival
        boot replaces the wrapper with its contents, returning the
        wrapped elements to their natural parentage. -->
-  <div class="boot-static" data-boot-static aria-hidden="true">
+  <div class="boot-static" data-boot-static role="status">
     <svg class="boot-static-mark boot-blocks-mark" viewBox="0 0 32 32" aria-hidden="true">
       <rect width="32" height="32" rx="10" class="boot-mark-bg"/>
       <rect x="7" y="7" width="8" height="11" rx="2.6" class="boot-mark-a"/>
@@ -95,7 +97,7 @@
       <rect x="7" y="20" width="8" height="5" rx="2.5" class="boot-mark-b"/>
       <rect x="17" y="15" width="8" height="10" rx="2.6" class="boot-mark-c"/>
     </svg>
-    <span class="boot-wordmark">ATLAS</span>
+    <span class="boot-wordmark" aria-hidden="true">ATLAS</span>
     <span class="boot-static-text">Loading Atlas…</span>
   </div>
 
