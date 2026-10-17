@@ -138,6 +138,10 @@ const COMPONENT = [
     const painted = [...state.labels, ...state.months].filter(x => x.visibility !== 'hidden' && x.opacity > 0);
     for (const item of painted) if (item.glyphRight > 0 && item.glyphLeft < state.tile.width)
       check(item.glyphLeft >= -0.1 && item.glyphRight <= state.tile.width + 0.1, id + ': painted ' + item.type + ' complete: ' + item.text);
+    const amounts = painted.filter(x => x.type === 'amount' && x.glyphRight > 0 && x.glyphLeft < state.tile.width)
+      .sort((a, b) => a.glyphLeft - b.glyphLeft);
+    for (let i = 1; i < amounts.length; i++) check(amounts[i].glyphLeft >= amounts[i - 1].glyphRight - 0.1,
+      id + ': painted amounts stay separate: ' + amounts[i - 1].text + ' / ' + amounts[i].text);
     const selected = state.labels.find(x => x.selected);
     check(!!selected && selected.visibility !== 'hidden' && selected.opacity > 0, id + ': selected amount is painted');
     check(selected.glyphLeft >= -0.1 && selected.glyphRight <= state.tile.width + 0.1, id + ': selected amount is complete');
