@@ -366,13 +366,19 @@
       if (this._stepEl && this._stepEl !== selEl) { this._stepEl.style.transform = ''; this._stepEl = null; this._stepBox = null; }
       let stepDx = 0, selW = 0, selC = 0;
       if (selEl) {
+        selW = selEl.offsetWidth; selC = this.xs[this.index] - this.off;
+        // Keep a visible selected value whole at an end of the viewport.
+        // The existing displaced-label hit box also follows this paint shift;
+        // point coordinates, camera, selection and drag/fling stay untouched.
+        const edgeDx = selC >= 0 && selC <= this.W
+          ? clamp(selC, selW / 2 + 2, this.W - selW / 2 - 2) - selC : 0;
+        stepDx = edgeDx;
         if (known && y + 10 > this.H - 44) {
-          selW = selEl.offsetWidth; selC = this.xs[this.index] - this.off;
           const need = 12 + selW / 2 - Math.abs(selC - x);
           if (need > 0) {
             const dir = this.W - (selC + selW / 2) >= selC - selW / 2 ? 1 : -1;
             stepDx = clamp(selC + dir * need, selW / 2 + 2, this.W - selW / 2 - 2) - selC;
-            if (Math.abs(selC + stepDx - x) < 12 + selW / 2) stepDx = 0; // no room either side: leave centred
+            if (Math.abs(selC + stepDx - x) < 12 + selW / 2) stepDx = edgeDx; // no room: retain viewport clearance
           }
         }
         const t = stepDx ? `translateX(-50%) translateX(${stepDx.toFixed(1)}px)` : '';
@@ -397,14 +403,32 @@
             return;
           }
           let cover = false;
-          if (inBand) {
+          if (inBand || stepDx) {
             const ck = this.xs[k] - this.off, wk = el.offsetWidth;
-            cover = (ck + wk / 2 > x - 10 && ck - wk / 2 < x + 10)
+            cover = (inBand && ck + wk / 2 > x - 10 && ck - wk / 2 < x + 10)
               || (selW > 0 && ck + wk / 2 > selL && ck - wk / 2 < selR);
           }
           if (cover && !this._yielded.has(el)) { el.style.opacity = '0'; this._yielded.add(el); }
           else if (!cover && this._yielded.has(el)) { el.style.opacity = ''; this._yielded.delete(el); }
         });
+        // Offscreen context must not leave a cut sign, number or date fragment.
+        // These labels are decorative; the native slider/pill retain the full
+        // selected publication. Visibility resets as the camera returns.
+        this.valEls.forEach((el, k) => {
+          const centre = this.xs[k] - this.off + (k === this.index ? stepDx : 0), half = el.offsetWidth / 2;
+          el.style.visibility = centre - half >= 0 && centre + half <= this.W ? '' : 'hidden';
+        });
+      }
+      // The month row sits inside the tile's rounded lower corners. Derive its
+      // clearance from that existing clip instead of changing timeline geometry.
+      const radius = parseFloat(getComputedStyle(this.el.parentElement).borderBottomLeftRadius) || 0;
+      const depth = clamp(this.monthsEl.offsetTop + this.monthsEl.offsetHeight - (this.H - radius), 0, radius);
+      const inset = Math.ceil(radius - Math.sqrt(Math.max(0, radius * radius - depth * depth))) + 1;
+      for (const month of this.monthsEl.children) {
+        const left = parseFloat(month.style.left) - this.off, shift = Math.max(0, inset - left);
+        const fits = left >= 0 && left + shift + month.offsetWidth <= this.W - inset;
+        month.style.visibility = fits ? '' : 'hidden';
+        month.style.transform = fits && shift ? `translateX(${shift.toFixed(1)}px)` : '';
       }
       if (this.index < 0) {
         this.playhead.style.transform = 'translate3d(8px,0,0)'; this.pill.style.transform = 'none';
