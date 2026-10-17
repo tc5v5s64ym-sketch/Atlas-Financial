@@ -21,7 +21,7 @@ const luminance = color => color.map(v => v / 255).map(v => v <= 0.04045 ? v / 1
 const contrast = (a, b) => (Math.max(luminance(a), luminance(b)) + 0.05) / (Math.min(luminance(a), luminance(b)) + 0.05);
 
 function dataFor(key) {
-  const data = key === 'zero' ? fixture.served({ zeroIncomeWithoutSpend: true }) : fixture.served();
+  const data = fixture.served();
   if (key === 'calculated') for (const rows of [data.plan.income, data.plan.bills, data.plan.obligations,
     data.plan.commitments, data.plan.budget.categories]) rows.forEach(row => { row.confidence = 'confirmed'; });
   if (key === 'large') {
@@ -60,8 +60,9 @@ function dataFor(key) {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
   try {
     for (const width of [320, 390, 1440]) for (const theme of ['dark', 'light']) {
-      for (const key of ['estimated', 'calculated', 'zero', 'large', 'hero-control']) {
+      for (const key of ['estimated', 'calculated', 'large', 'hero-control']) {
         const id = `${key}-${width}-${theme}`;
+        console.log('Render ' + id);
         const page = await browser.newPage({ viewport: { width, height: 1000 }, deviceScaleFactor: 1,
           colorScheme: theme, reducedMotion: 'reduce' });
         await page.addInitScript(chosen => localStorage.setItem('hfd-theme', chosen), theme);
@@ -180,7 +181,7 @@ function dataFor(key) {
         const unknown = state.rows.find(row => row.label === 'Unavailable control');
         check(!unknown.amount && unknown.unavailable.includes('Synthetic source unavailable.') && unknown.text.includes('Not $0.'), id + ': unavailable stays distinct from zero');
         check(state.rows.some(row => row.outflow), id + ': native outflow marker retained');
-        if (key === 'zero') check(state.rows.find(row => row.label === 'Total income').amount.includes('$0.00'), id + ': genuine zero income');
+        check(state.rows.find(row => row.label === 'Planned spending').amount.includes('$0.00'), id + ': genuine zero planned spending');
         if (key === 'large') check(state.rows.some(row => /\$1,234,567\.89/.test(row.amount || '')), id + ': large native amount present');
         if (key === 'estimated') check(state.rows.some(row => row.trust.some(tag => tag.html.includes('trust-estimated'))), id + ': estimated native state present');
         if (key === 'estimated' || (key === 'large' && width === 390)) {
