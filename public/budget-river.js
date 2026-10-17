@@ -403,7 +403,8 @@
             return;
           }
           let cover = false;
-          if (inBand || stepDx) {
+          // An undisplaced selected value also needs its own clear text box.
+          if (inBand || selW > 0) {
             const ck = this.xs[k] - this.off, wk = el.offsetWidth;
             cover = (inBand && ck + wk / 2 > x - 10 && ck - wk / 2 < x + 10)
               || (selW > 0 && ck + wk / 2 > selL && ck - wk / 2 < selR);
