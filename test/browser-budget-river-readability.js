@@ -76,6 +76,10 @@ const COMPONENT = [
       const head = new DOMMatrixReadOnly(getComputedStyle(r.querySelector('.playhead')).transform).m41;
       return Math.abs(parseFloat(selected.style.left) + offset - head) < 0.15;
     });
+    // Existing yielded neighbours fade via CSS after the spring has settled.
+    // Capture their completed paint state without changing that transition.
+    await page.waitForFunction(() => [...document.querySelectorAll('.river .rv')]
+      .every(el => el.style.opacity !== '0' || Number(getComputedStyle(el).opacity) === 0));
     await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
   };
   const open = async (width, theme, options = {}) => {
