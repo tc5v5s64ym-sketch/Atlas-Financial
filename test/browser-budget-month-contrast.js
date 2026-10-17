@@ -11,6 +11,7 @@ const { execFileSync } = require('node:child_process');
 let chromium;
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('playwright-core')); }
 const { captureSourceBinding, verifySourceBinding } = require('./proof-source-binding');
+const { serializeReceipt } = require('./lib/month-contrast-receipt');
 const fixture = require('./fixtures/budget-surface-data');
 const root = path.join(__dirname, '..'), out = process.env.PROOF_OUTPUT_DIR;
 assert.ok(out && path.isAbsolute(out) && !path.resolve(out).startsWith(root + path.sep), 'Evidence directory must be absolute and outside the checkout');
@@ -48,7 +49,7 @@ function dataFor(key) {
 
 (async () => {
   const files = execFileSync('git', ['ls-files', '-z', '--', 'public', 'scripts/*.js', 'test/fixtures',
-    'test/browser-budget-month-contrast.js', 'test/proof-source-binding.js', 'package.json', 'package-lock.json'],
+    'test/browser-budget-month-contrast.js', 'test/lib/month-contrast-receipt.js', 'test/proof-source-binding.js', 'package.json', 'package-lock.json'],
   { cwd: root }).toString().split('\0').filter(Boolean);
   const binding = captureSourceBinding(root, files);
   fs.mkdirSync(out, { recursive: true });
@@ -207,7 +208,7 @@ function dataFor(key) {
       runtime: { node: process.version, browser: await browser.version(), playwright: require('playwright-core/package.json').version,
         viewportScale: 1, renderer: 'headless Edge; --disable-accelerated-2d-canvas' }, unchangedAfterRun: true,
       limits: 'Synthetic full App/Forecast Month navigation. Two explicitly identified native row-renderer publication controls per card. Pixel samples exclude trust pills. No household/live/provider/credential/physical-device claim.' };
-    fs.writeFileSync(path.join(out, 'receipt.json'), JSON.stringify(receipt, null, 2) + '\n');
+    fs.writeFileSync(path.join(out, 'receipt.json'), serializeReceipt(receipt));
     console.log(JSON.stringify({ status: receipt.status, monthCases: records.length, heroControls: heroes.length,
       amountRecords: records.reduce((n, row) => n + row.rows.filter(x => x.amount).length, 0), failures, errors, external }));
     process.exitCode = failures.length ? 1 : 0;

@@ -1307,7 +1307,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1316,7 +1316,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Regular household spending",
@@ -1359,7 +1359,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1368,7 +1368,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Bills",
@@ -1411,7 +1411,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1420,7 +1420,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Required debt payments",
@@ -1463,7 +1463,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1472,7 +1472,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned spending",
@@ -1515,7 +1515,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1524,7 +1524,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned extra debt payment",
@@ -1567,7 +1567,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1576,7 +1576,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Signed control",
@@ -1613,7 +1613,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1622,7 +1622,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Unavailable control",
@@ -1698,7 +1698,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1707,7 +1707,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Regular household spending",
@@ -1750,7 +1750,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1759,7 +1759,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Bills",
@@ -1802,7 +1802,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1811,7 +1811,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Required debt payments",
@@ -1854,7 +1854,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1863,7 +1863,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned spending",
@@ -1906,7 +1906,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1915,7 +1915,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned extra debt payment",
@@ -1958,7 +1958,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -1967,7 +1967,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Signed control",
@@ -2004,7 +2004,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2013,7 +2013,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Unavailable control",
@@ -2089,7 +2089,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2098,7 +2098,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Regular household spending",
@@ -2141,7 +2141,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2150,7 +2150,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Bills",
@@ -2193,7 +2193,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2202,7 +2202,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Required debt payments",
@@ -2245,7 +2245,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2254,7 +2254,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned spending",
@@ -2297,7 +2297,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2306,7 +2306,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned extra debt payment",
@@ -2349,7 +2349,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2358,7 +2358,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Signed control",
@@ -2395,7 +2395,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2404,7 +2404,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Unavailable control",
@@ -2480,7 +2480,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2489,7 +2489,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Regular household spending",
@@ -2532,7 +2532,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2541,7 +2541,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Bills",
@@ -2584,7 +2584,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2593,7 +2593,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Required debt payments",
@@ -2636,7 +2636,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2645,7 +2645,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned spending",
@@ -2688,7 +2688,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2697,7 +2697,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned extra debt payment",
@@ -2740,7 +2740,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2749,7 +2749,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Signed control",
@@ -2786,7 +2786,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2795,7 +2795,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Unavailable control",
@@ -2871,7 +2871,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2880,7 +2880,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Regular household spending",
@@ -2923,7 +2923,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2932,7 +2932,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Bills",
@@ -2975,7 +2975,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -2984,7 +2984,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Required debt payments",
@@ -3027,7 +3027,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3036,7 +3036,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned spending",
@@ -3079,7 +3079,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3088,7 +3088,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned extra debt payment",
@@ -3131,7 +3131,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3140,7 +3140,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Signed control",
@@ -3177,7 +3177,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3186,7 +3186,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Unavailable control",
@@ -3262,7 +3262,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3271,7 +3271,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Regular household spending",
@@ -3314,7 +3314,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3323,7 +3323,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Bills",
@@ -3366,7 +3366,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3375,7 +3375,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Required debt payments",
@@ -3418,7 +3418,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3427,7 +3427,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned spending",
@@ -3470,7 +3470,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3479,7 +3479,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned extra debt payment",
@@ -3522,7 +3522,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3531,7 +3531,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Signed control",
@@ -3568,7 +3568,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3577,7 +3577,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Unavailable control",
@@ -3653,7 +3653,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3662,7 +3662,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Regular household spending",
@@ -3705,7 +3705,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3714,7 +3714,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Bills",
@@ -3757,7 +3757,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3766,7 +3766,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Required debt payments",
@@ -3809,7 +3809,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3818,7 +3818,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned spending",
@@ -3861,7 +3861,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3870,7 +3870,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned extra debt payment",
@@ -3913,7 +3913,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3922,7 +3922,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Signed control",
@@ -3959,7 +3959,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -3968,7 +3968,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Unavailable control",
@@ -4044,7 +4044,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4053,7 +4053,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Regular household spending",
@@ -4096,7 +4096,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4105,7 +4105,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Bills",
@@ -4148,7 +4148,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4157,7 +4157,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Required debt payments",
@@ -4200,7 +4200,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4209,7 +4209,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned spending",
@@ -4252,7 +4252,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4261,7 +4261,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned extra debt payment",
@@ -4304,7 +4304,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4313,7 +4313,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Signed control",
@@ -4350,7 +4350,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4359,7 +4359,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Unavailable control",
@@ -4435,7 +4435,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4444,7 +4444,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Regular household spending",
@@ -4487,7 +4487,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4496,7 +4496,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Bills",
@@ -4539,7 +4539,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4548,7 +4548,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Required debt payments",
@@ -4591,7 +4591,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4600,7 +4600,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned spending",
@@ -4643,7 +4643,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4652,7 +4652,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned extra debt payment",
@@ -4695,7 +4695,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4704,7 +4704,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Signed control",
@@ -4741,7 +4741,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4750,7 +4750,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Unavailable control",
@@ -4826,7 +4826,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4835,7 +4835,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Regular household spending",
@@ -4878,7 +4878,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4887,7 +4887,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Bills",
@@ -4930,7 +4930,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4939,7 +4939,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Required debt payments",
@@ -4982,7 +4982,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -4991,7 +4991,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned spending",
@@ -5034,7 +5034,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5043,7 +5043,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned extra debt payment",
@@ -5086,7 +5086,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5095,7 +5095,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Signed control",
@@ -5132,7 +5132,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5141,7 +5141,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Unavailable control",
@@ -5217,7 +5217,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5226,7 +5226,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Regular household spending",
@@ -5269,7 +5269,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5278,7 +5278,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Bills",
@@ -5321,7 +5321,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5330,7 +5330,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Required debt payments",
@@ -5373,7 +5373,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5382,7 +5382,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned spending",
@@ -5425,7 +5425,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5434,7 +5434,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned extra debt payment",
@@ -5477,7 +5477,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5486,7 +5486,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Signed control",
@@ -5523,7 +5523,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5532,7 +5532,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Unavailable control",
@@ -5608,7 +5608,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5617,7 +5617,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Regular household spending",
@@ -5660,7 +5660,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5669,7 +5669,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Bills",
@@ -5712,7 +5712,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5721,7 +5721,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Required debt payments",
@@ -5764,7 +5764,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5773,7 +5773,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned spending",
@@ -5816,7 +5816,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5825,7 +5825,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned extra debt payment",
@@ -5868,7 +5868,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5877,7 +5877,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Signed control",
@@ -5914,7 +5914,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -5923,7 +5923,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Unavailable control",
@@ -5999,7 +5999,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6008,7 +6008,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Regular household spending",
@@ -6051,7 +6051,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6060,7 +6060,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Bills",
@@ -6103,7 +6103,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6112,7 +6112,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Required debt payments",
@@ -6155,7 +6155,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6164,7 +6164,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned spending",
@@ -6207,7 +6207,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6216,7 +6216,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned extra debt payment",
@@ -6259,7 +6259,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6268,7 +6268,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Signed control",
@@ -6305,7 +6305,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6314,7 +6314,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Unavailable control",
@@ -6390,7 +6390,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6399,7 +6399,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Regular household spending",
@@ -6442,7 +6442,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6451,7 +6451,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Bills",
@@ -6494,7 +6494,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6503,7 +6503,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Required debt payments",
@@ -6546,7 +6546,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6555,7 +6555,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned spending",
@@ -6598,7 +6598,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6607,7 +6607,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned extra debt payment",
@@ -6650,7 +6650,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6659,7 +6659,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Signed control",
@@ -6696,7 +6696,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6705,7 +6705,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Unavailable control",
@@ -6781,7 +6781,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6790,7 +6790,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Regular household spending",
@@ -6833,7 +6833,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6842,7 +6842,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Bills",
@@ -6885,7 +6885,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6894,7 +6894,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Required debt payments",
@@ -6937,7 +6937,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6946,7 +6946,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned spending",
@@ -6989,7 +6989,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -6998,7 +6998,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Planned extra debt payment",
@@ -7041,7 +7041,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7050,7 +7050,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Signed control",
@@ -7087,7 +7087,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 1.1797473329096047,
+          "contrast": 1.179747,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7096,7 +7096,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 1.1797473329096047
+          "pixelContrast": 1.179747
         },
         {
           "label": "Unavailable control",
@@ -7172,7 +7172,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7181,7 +7181,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Regular household spending",
@@ -7224,7 +7224,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7233,7 +7233,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Bills",
@@ -7276,7 +7276,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7285,7 +7285,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Required debt payments",
@@ -7328,7 +7328,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7337,7 +7337,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned spending",
@@ -7380,7 +7380,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7389,7 +7389,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned extra debt payment",
@@ -7432,7 +7432,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7441,7 +7441,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Signed control",
@@ -7478,7 +7478,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7487,7 +7487,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Unavailable control",
@@ -7563,7 +7563,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7572,7 +7572,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Regular household spending",
@@ -7615,7 +7615,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7624,7 +7624,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Bills",
@@ -7667,7 +7667,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7676,7 +7676,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Required debt payments",
@@ -7719,7 +7719,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7728,7 +7728,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned spending",
@@ -7771,7 +7771,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7780,7 +7780,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned extra debt payment",
@@ -7823,7 +7823,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7832,7 +7832,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Signed control",
@@ -7869,7 +7869,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7878,7 +7878,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Unavailable control",
@@ -7954,7 +7954,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -7963,7 +7963,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Regular household spending",
@@ -8006,7 +8006,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -8015,7 +8015,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Bills",
@@ -8058,7 +8058,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -8067,7 +8067,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Required debt payments",
@@ -8110,7 +8110,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -8119,7 +8119,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned spending",
@@ -8162,7 +8162,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -8171,7 +8171,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Planned extra debt payment",
@@ -8214,7 +8214,7 @@
           ],
           "outflow": "<span aria-label=\"outflow\">− </span>",
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -8223,7 +8223,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Signed control",
@@ -8260,7 +8260,7 @@
           ],
           "outflow": null,
           "unavailable": null,
-          "contrast": 14.610967695829771,
+          "contrast": 14.610968,
           "pixel": {
             "nearestForegroundPixel": [
               26,
@@ -8269,7 +8269,7 @@
             ],
             "squaredDistance": 0
           },
-          "pixelContrast": 14.610967695829771
+          "pixelContrast": 14.610968
         },
         {
           "label": "Unavailable control",
@@ -8488,5 +8488,16 @@
     "renderer": "headless Edge; --disable-accelerated-2d-canvas"
   },
   "unchangedAfterRun": true,
-  "limits": "Synthetic full App/Forecast Month navigation. Two explicitly identified native row-renderer publication controls per card. Pixel samples exclude trust pills. No household/live/provider/credential/physical-device claim."
+  "limits": "Synthetic full App/Forecast Month navigation. Two explicitly identified native row-renderer publication controls per card. Pixel samples exclude trust pills. No household/live/provider/credential/physical-device claim.",
+  "reformattedFrom": {
+    "commit": "7e1f4ee7af2d23587c027a3366f1f86a197bfb1c",
+    "path": "docs/proof/atlas-024-month-contrast/before/receipt.json",
+    "sha256": "6289a62e4e6134f269f27593be3043e24c7c00ab3b3003c704e1bc04ec3e8b48",
+    "operation": "Only reported contrast/pixelContrast precision changed; original execution, binding and screenshot evidence retained."
+  },
+  "measurementPrecision": {
+    "contrastDecimalPlaces": 6,
+    "assertions": "Unrounded contrast values; stored contrast and pixelContrast diagnostics rounded to six decimal places.",
+    "reconstruction": "Compute exact contrast from each recorded foreground or nearestForegroundPixel and its card background RGB."
+  }
 }
