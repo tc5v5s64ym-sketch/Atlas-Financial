@@ -1398,13 +1398,13 @@ function sectionMissingIncomeAmount() {
   // The period before the receipt is unaffected.
   const missingPrior = rowByStart(run(fixture([payroll, receipt(null)])), '2026-10-02');
   ok(missingPrior && missingPrior.incomeTotal === 0 && missingPrior.incomeTrust === 'calculated'
-      && missingPrior.incomeUnavailableReason === null,
+      && !missingPrior.incomeUnavailableReason,
     '026 missing: prior period unaffected',
     missingPrior && `${missingPrior.incomeTotal}/${missingPrior.incomeTrust}/${missingPrior.incomeUnavailableReason}`);
 
   // Genuine zero stays a trusted zero (positive control for the detector).
   const zero = rowByStart(run(fixture([payroll, receipt(0)])), '2026-10-16');
-  ok(zero && zero.incomeTotal === 0 && zero.incomeTrust === 'calculated' && zero.incomeUnavailableReason === null
+  ok(zero && zero.incomeTotal === 0 && zero.incomeTrust === 'calculated' && !zero.incomeUnavailableReason
       && near(zero.afterBills, -120) && near(zero.balanceAfterDeductions, -120)
       && near(zero.predictedEndingBalance, -120) && zero.predictedEndingBalanceTerms
       && zero.predictedEndingBalanceTerms.closes === true,
@@ -1414,7 +1414,7 @@ function sectionMissingIncomeAmount() {
   // Positive receipt publishes normally.
   const positive = rowByStart(run(fixture([payroll, receipt(500)])), '2026-10-16');
   ok(positive && near(positive.incomeTotal, 500) && positive.incomeTrust === 'calculated'
-      && positive.incomeUnavailableReason === null && near(positive.afterBills, 380)
+      && !positive.incomeUnavailableReason && near(positive.afterBills, 380)
       && near(positive.predictedEndingBalance, 380) && positive.predictedEndingBalanceTerms
       && positive.predictedEndingBalanceTerms.closes === true,
     '026 positive control: valid receipt publishes normally',
@@ -1437,14 +1437,14 @@ function sectionMissingIncomeAmount() {
     { id: 'r1', label: 'Monthly receipt', frequency: 'monthly', day: 16, firstDue: '2026-10-16', amount: null, scenarioMonthly: { expected: 500 }, confidence: 'confirmed' }])),
     '2026-10-16');
   ok(scenario && near(scenario.incomeTotal, 500) && scenario.incomeTrust === 'calculated'
-      && scenario.incomeUnavailableReason === null,
+      && !scenario.incomeUnavailableReason,
     '026 scenario control: scenarioMonthly basis keeps the period known',
     scenario && `${scenario.incomeTotal}/${scenario.incomeTrust}`);
   const override = rowByStart(run(fixture([payroll,
     { id: 'r1', label: 'Override receipt', frequency: 'biweekly', anchor: '2026-10-16', amount: null, confidence: 'confirmed' }]),
     { incomeOverrides: { r1: 2600 } }), '2026-10-16');
   ok(override && near(override.incomeTotal, 1200) && override.incomeTrust === 'calculated'
-      && override.incomeUnavailableReason === null,
+      && !override.incomeUnavailableReason,
     '026 override control: incomeOverrides basis keeps the period known',
     override && `${override.incomeTotal}/${override.incomeTrust}`);
 
@@ -1453,7 +1453,7 @@ function sectionMissingIncomeAmount() {
   const notRelied = rowByStart(run(fixture([payroll, receipt(null)],
     { notReliedUponEvents: [{ id: 'r1', date: '2026-10-16', reason: 'already in cash' }] })), '2026-10-16');
   ok(notRelied && notRelied.incomeTotal === 0 && notRelied.incomeTrust === 'calculated'
-      && notRelied.incomeUnavailableReason === null && near(notRelied.afterBills, -120),
+      && !notRelied.incomeUnavailableReason && near(notRelied.afterBills, -120),
     '026 not-relied control: excluded receipt does not taint',
     notRelied && `${notRelied.incomeTotal}/${notRelied.incomeTrust}/${notRelied.incomeUnavailableReason}`);
 
@@ -1465,7 +1465,7 @@ function sectionMissingIncomeAmount() {
   const lateEarly = rowByStart(lateAdvice, '2026-10-16');
   const lateOwn = rowByStart(lateAdvice, '2026-11-13');
   ok(lateEarly && lateEarly.incomeTotal === 0 && lateEarly.incomeTrust === 'calculated'
-      && lateEarly.incomeUnavailableReason === null,
+      && !lateEarly.incomeUnavailableReason,
     '026 occurrence control: no contributing occurrence, no taint',
     lateEarly && `${lateEarly.incomeTotal}/${lateEarly.incomeTrust}`);
   ok(lateOwn && lateOwn.incomeTotal === null && lateOwn.incomeTrust === 'unavailable'

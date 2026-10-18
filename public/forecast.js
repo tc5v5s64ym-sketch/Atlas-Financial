@@ -11374,7 +11374,9 @@
         incomeAdded,
         incomeTotal,
         incomeTrust,
-        incomeUnavailableReason,
+        // Published only when it fires, so every unaffected period's
+        // publication stays byte-identical to the incumbent shape.
+        ...(incomeUnavailableReason ? { incomeUnavailableReason } : {}),
         otherIncome: planUnavailable
           ? { amount: 0, items: [] }
           : { amount: otherAmount, items: otherItems },
