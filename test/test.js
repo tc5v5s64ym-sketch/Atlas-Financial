@@ -74,6 +74,7 @@ const suites = [
   ['bounded shared browser data load and truthful retry', 'test-browser-data-deadline.js'],
   ['source check metadata and independent financial coverage status', 'test-source-check-status.js'],
   ['explicit private comparison save from complete loaded inputs only', 'test-private-comparison-download.js'],
+  ['inactive private planned-input correction contract and synthetic validation', 'test-planned-input-contract.js'],
   ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
