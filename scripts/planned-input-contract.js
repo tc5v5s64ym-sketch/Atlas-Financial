@@ -31,7 +31,7 @@ const identifier = value => typeof value === 'string' && /^[a-z][a-z0-9-]{0,95}$
 const household = value => typeof value === 'string' && /^household-[a-f0-9]{32}$/.test(value);
 const actor = value => typeof value === 'string' && /^session-[a-f0-9]{64}$/.test(value);
 const operation = value => typeof value === 'string' && /^operation-[a-f0-9]{32}$/.test(value);
-const tick = value => Number.isSafeInteger(value) && value >= 0 && value <= 8640000000000000 - TTL_MS;
+const tick = value => Number.isSafeInteger(value) && value >= 0 && value <= 8.64e15 - TTL_MS;
 function keys(value, names) {
   check(plain(value) && Object.keys(value).length === names.length && names.every(k => Object.hasOwn(value, k)));
 }
