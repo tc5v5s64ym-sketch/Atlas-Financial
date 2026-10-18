@@ -2207,5 +2207,119 @@ const plannedOpts = () => ({ allowPlannedDebt: true, plannedDebtFacility: 'card-
     `plannedDebt=${JSON.stringify(rec0.plannedDebt && { feasible: rec0.plannedDebt.feasible, endingBalance: rec0.plannedDebt.endingBalance })}`);
 }
 
+/* --- Y. Takeover verification, families 1 and 2: omitted repayment
+ * provenance follows the effective carry and the actual event position.
+ * Independent arithmetic: a 200 payment against 100 leaves 100; a 500
+ * payment after a 200 charge leaves 300. Before that charge, a payment
+ * against zero is bypassed and leaves zero. No guessed unknown amount
+ * may select one of those outcomes. All fixtures are synthetic. */
+const carryRemainderWalk = (amount, modify = () => {}, openingBalance = 100) => {
+  const plan = lookbackPlan();
+  plan.obligations = [monthlyObligationU(amount)];
+  modify(plan);
+  return F.projectDebts(plan, omittedDebts(openingBalance), U_AS_OF,
+    { extraDebtMonthly: 0, debtHorizonDays: 3 });
+};
+{
+  const unknown = carryRemainderWalk(null);
+  const zero = carryRemainderWalk(0);
+  const finite = carryRemainderWalk(200);
+  ok(unknown.scheduledAmounts.unknowns.length === 1
+    && unknown.scheduledAmounts.unknowns[0].date === '2027-01-31'
+    && unknown.unabsorbed === null
+    && !('2027-01-31:m-pay' in unknown.obligationAbsorbed)
+    && unknown.marks[0].debts.find(d => d.id === 'card-b').balance === 100,
+    'Family 2 carry: Jan 31 unknown repayment applies at the Feb 1 opening; remainder withheld without an invented cap or changed opening');
+  ok(zero.scheduledAmounts.status === 'ready' && zero.unabsorbed === 0
+    && zero.byId['card-b'].balance === 100
+    && finite.unabsorbed === 100 && finite.byId['card-b'].balance === 0
+    && finite.obligationAbsorbed['2027-01-31:m-pay'] === 100,
+    'Family 2 carry controls: zero leaves balance 100; known 200 leaves remainder 100 and original-date cap 100');
+  const gone = carryRemainderWalk(null, () => {}, 0);
+  ok(gone.unabsorbed === 0 && Object.keys(gone.obligationAbsorbed).length === 0,
+    'Family 2 carry control: a known-zero target still bypasses the omitted repayment');
+  const noCarry = carryRemainderWalk(null, p => { delete p.opening.priorAsOf; });
+  const settled = carryRemainderWalk(null, p => {
+    p.opening.representedEvents = [{ id: 'm-pay', date: '2027-01-31' }];
+  });
+  ok(noCarry.scheduledAmounts.status === 'ready' && noCarry.unabsorbed === 0
+    && settled.scheduledAmounts.status === 'ready' && settled.unabsorbed === 0,
+    'Family 2 carry controls: absent lookback and exactly represented monthly occurrence introduce no omitted remainder');
+  const sent = carryRemainderWalk(null, p => {
+    p.obligations[0].sentPayments = [{ scheduledDate: '2027-01-31',
+      confirmed: true, intent: 'minimum', pending: false,
+      debitId: 'synthetic-sent', postedOn: '2027-01-30', amount: 100,
+      currency: 'cad', fundingAccountId: 'chequing-a', cashIncludedAsOf: U_AS_OF }];
+  });
+  ok(sent.scheduledAmounts.status === 'unavailable' && sent.unabsorbed === 0,
+    'Family 2 carry control: a send posted after the lookback origin is rechecked at the current opening, not recorded as an omitted repayment');
+}
+const sameDayCharge = { id: 'b-charge', label: 'Synthetic card charge',
+  confidence: 'confirmed', frequency: 'once', date: '2027-02-06',
+  amount: 200, debtId: 'card-b', nonCash: true, effect: 'capitalise' };
+for (const chargeFirst of [true, false]) {
+  const rows = amount => chargeFirst
+    ? [sameDayCharge, bRepayment(amount)] : [bRepayment(amount), sameDayCharge];
+  const unknown = omittedWalk(rows(null), omittedDebts(0));
+  const zero = omittedWalk(rows(0), omittedDebts(0));
+  const finite = omittedWalk(rows(500), omittedDebts(0));
+  ok(unknown.unabsorbed === (chargeFirst ? null : 0)
+    && !('2027-02-06:pay' in unknown.obligationAbsorbed)
+    && unknown.marks[0].debts.find(d => d.id === 'card-b').balance === 0,
+    `Family 2 order: known charge ${chargeFirst ? 'before' : 'after'} omitted payment ${chargeFirst ? 'withholds possible remainder' : 'preserves zero-balance bypass'}`);
+  ok(zero.unabsorbed === 0 && zero.byId['card-b'].balance === 200
+    && finite.unabsorbed === (chargeFirst ? 300 : 0)
+    && finite.byId['card-b'].balance === (chargeFirst ? 0 : 200)
+    && finite.obligationAbsorbed['2027-02-06:pay'] === (chargeFirst ? 200 : 0),
+    `Family 2 order controls: charge ${chargeFirst ? 'before' : 'after'} known 500 payment preserves exact arithmetic and cash cap`);
+}
+{
+  const clear = { ...bRepayment(100), id: 'clear' };
+  const unknown = omittedWalk([clear, bRepayment(null)]);
+  const finite = omittedWalk([clear, bRepayment(500)]);
+  // Existing publication qualification is date-based for actual payment
+  // remainders; it conservatively withholds this same-day source. This
+  // repair changes omission capture, not that independent qualification.
+  ok(unknown.unabsorbed === null && finite.unabsorbed === 0
+    && unknown.obligationAbsorbed['2027-02-06:clear'] === 100
+    && finite.obligationAbsorbed['2027-02-06:pay'] === 0,
+    'Family 2 order control: earlier same-day clearing preserves caps; existing date-based aggregate qualification remains');
+}
+{
+  // Both carried dates apply at opening. Original date outranks row order;
+  // all positive injections apply before either carried payment.
+  const plan = lookbackPlan();
+  plan.obligations = [bRepayment(null, true, '2027-01-31'),
+    { ...bRepayment(100, true, '2027-01-30'), id: 'earlier-clear' },
+    { ...sameDayCharge, date: U_AS_OF }];
+  const carried = F.projectDebts(plan, omittedDebts(), U_AS_OF,
+    { extraDebtMonthly: 0, debtHorizonDays: 3 });
+  ok(carried.unabsorbed === null && carried.obligationAbsorbed['2027-01-30:earlier-clear'] === 100,
+    'Family 2 carry order control: earlier-date clearing preserves cap 100; existing date-based aggregate qualification remains');
+  plan.obligations = [bRepayment(null, true, '2027-01-31')];
+  const drawn = F.projectDebts(plan, omittedDebts(0), U_AS_OF,
+    { extraDebtMonthly: 0, debtHorizonDays: 3,
+      injections: [{ date: U_AS_OF, amount: 200, debtId: 'card-b' }] });
+  ok(drawn.unabsorbed === null
+    && drawn.marks[0].debts.find(d => d.id === 'card-b').balance === 0,
+    'Family 2 carry order: opening-date positive draw precedes carried omission; opening stock stays known zero');
+}
+for (const carrier of ['obligation', 'bill']) {
+ for (const hasPrior of [true, false]) {
+  const plan = lookbackPlan();
+  if (!hasPrior) delete plan.opening.priorAsOf;
+  const row = { ...bRepayment(null, true, '2027-01-31'), id: 'settled-once' };
+  plan[carrier === 'obligation' ? 'obligations' : 'bills'] = [row];
+  plan.opening.representedEvents = [{ id: row.id, date: row.date }];
+  ok(scanU(plan).status === 'ready',
+    `Family 1 represented once ${carrier} (${hasPrior ? 'with' : 'without'} priorAsOf): exact settled occurrence is excluded`);
+  ok(F.scheduledAmountState(plan, U_AS_OF, '2027-02-03', { keepRepresented: true }).status === 'unavailable',
+    `Family 1 represented once ${carrier} control: explicit keepRepresented preserves the unknown occurrence`);
+  plan.opening.representedEvents = [{ id: row.id, date: '2027-01-30' }];
+  ok(scanU(plan).status === 'unavailable',
+    `Family 1 represented once ${carrier} control: a different represented date cannot settle the unknown occurrence`);
+ }
+}
+
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All ATLAS-077 malformed-amount checks passed'));
 process.exit(failures === 0 ? 0 : 1);
