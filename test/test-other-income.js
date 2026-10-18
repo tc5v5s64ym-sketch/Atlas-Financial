@@ -659,6 +659,50 @@ console.log('\n=== 13. Same-day ATM withdrawal keeps automatic ATM deposit close
     JSON.stringify(manualItems.map(r => r.id)));
 }
 
+console.log('\n=== 14. An invalid adjustment does not break reconciliation (ATLAS-026 provenance) ===');
+{
+  // The expected refund carries an incomeOccurrenceAdjust whose amount
+  // is a positive string: the substituted event is marked privately and
+  // must not gain a contribution through coercion, but occurrence
+  // identity is preserved until the genuine deposit reconciles — and
+  // then the row and the totals publish from the actual, exactly as
+  // case 6 does with no adjustment.
+  const expected = {
+    id: 'expected-refund',
+    label: 'Expected refund',
+    frequency: 'once',
+    date: PAYDAY,
+    amount: EXPECTED_REFUND,
+    confidence: 'estimated',
+    incomeClass: 'other',
+  };
+  const observed = {
+    id: 'tx-refund', date: PAYDAY, amount: -EXPECTED_REFUND, pending: false,
+    categoryLabel: 'Reimbursement', accountRole: 'household-cash',
+    displayedPayee: 'Tax refund', originalMerchant: 'Tax refund',
+  };
+  const advice = recommend(paydayPlan([expected]), [observed], {
+    incomeOccurrenceAdjust: (s) => s && s.id === 'expected-refund'
+      ? { amount: '250', confidence: 'estimated' } : null,
+  });
+  const active = period(advice.defaultView, 'this-pay-period');
+  const items = (active.otherIncome && active.otherIncome.items) || [];
+  const expectedRows = items.filter(r => r && r.id === 'expected-refund');
+  ok(expectedRows.length === 1 && items.length === 1,
+    'invalid adjustment: the deposit still reconciles onto the expected row',
+    JSON.stringify(items.map(r => r.id)));
+  ok(expectedRows[0] && expectedRows[0].reconciledFrom
+      && expectedRows[0].status === 'received'
+      && near(expectedRows[0].amount, EXPECTED_REFUND),
+    'invalid adjustment: the genuine actual replaces the coerced row figure',
+    expectedRows[0] && `${expectedRows[0].amount} / ${expectedRows[0].reconciledFrom}`);
+  ok(near(active.otherIncome.amount, EXPECTED_REFUND)
+      && near(active.incomeTotal, roundCent(DALE + AMANDA + EXPECTED_REFUND))
+      && active.incomeTrust !== 'unavailable',
+    'invalid adjustment: period totals publish from the actual once',
+    `${active.incomeTotal} / ${active.incomeTrust}`);
+}
+
 if (failures) {
   console.log(`\n${failures} failure(s)`);
   process.exit(1);

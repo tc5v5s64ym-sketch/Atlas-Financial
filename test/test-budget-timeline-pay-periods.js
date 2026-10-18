@@ -1616,6 +1616,18 @@ function sectionMissingIncomeAmount() {
       `026 provenance actual ${label} preserved: qualified actual publishes over an invalid adjustment`,
       v && `${v.incomeTotal}/${v.incomeTrust}`);
   }
+  // Sealed lookback keeps incumbent treatment: a marked occurrence in a
+  // sealed period is not the repair's business, so the period publishes
+  // exactly what the base publishes (the coerced figure included).
+  for (const [label, adjAmount, expected] of [["string '250'", '250', 250], ['boolean true', true, 1]]) {
+    const sealedPlan = fixture([payroll,
+      { id: 'r1', label: 'Synthetic receipt', frequency: 'once', date: '2026-09-25', amount: 500, confidence: 'confirmed' }]);
+    const v = rowByStart(run(sealedPlan,
+      { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: adjAmount, confidence: 'confirmed' } : null }), '2026-09-18');
+    ok(v && v.incomeTotal === expected && v.incomeTrust === 'calculated' && !v.incomeUnavailableReason,
+      `026 provenance sealed lookback ${label}: incumbent treatment unchanged`,
+      v && `${v.incomeTotal}/${v.incomeTrust}`);
+  }
   // A native string amount with no adjustment keeps its incumbent
   // (coerced) publication: the repair is adjustment-specific.
   const nativeString = rowByStart(run(fixture([payroll, receipt('500')])), '2026-10-16');
