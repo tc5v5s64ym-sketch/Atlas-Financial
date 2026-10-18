@@ -199,6 +199,53 @@ async function corrections() {
     eq(await legacy.storage.read(), body, 'reader failure never initializes over existing state');
   }
 }
+async function conservation() {
+  // Joint conservation (ATLAS-044): a confirmed refund and payment
+  // allocations against the same purchase share one bound —
+  // covered + refunded <= purchase amount in exact cents. The validator
+  // rejects an overallocating candidate; it never clamps or absorbs it.
+  const withRefund = (x, refundAmount) => {
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 80004,
+      amount: -refundAmount, category_name: 'Refund', payee: 'Invented grocer refund' });
+    x.data.plan.cardPurchaseCoverage.refunds.push({ confirmed: true,
+      purchaseRef: fixture.ref(x, 80001), refundRef: fixture.ref(x, 80004) });
+    return x;
+  };
+  const pairAmount = (x, amount) => {
+    x.payload.transactions[1].amount = amount; x.payload.transactions[2].amount = -amount;
+    return x;
+  };
+  const over = setup(ledger(withRefund(seed(), 30)));
+  eq(await prepare(over, record(over.x, 80)), { status: 'unavailable' },
+    'refund 30 + allocation 80 overallocates the 80 purchase: validator rejects');
+  eq(await prepare(over, record(over.x, 80)), { status: 'unavailable' },
+    'the same overallocating candidate replays to the same rejection');
+  const centOver = setup(ledger(pairAmount(withRefund(seed(), 30), 50.01)));
+  eq(await prepare(centOver, record(centOver.x, 50.01)), { status: 'unavailable' },
+    'refund 30 + allocation 50.01 exceeds the purchase by one cent');
+  const exact = setup(ledger(pairAmount(withRefund(seed(), 30), 50)));
+  await save(exact, record(exact.x, 50));
+  const afterExact = await exact.controller.input();
+  eq(afterExact.plan.cardPurchaseCoverage.payments.length, 1);
+  eq(afterExact.plan.cardPurchaseCoverage.payments[0].confirmed, true,
+    'refund 30 + allocation 50 meets the bound exactly and stays confirmed');
+  // Cumulative: a second payment of 1 on a fresh pair pushes claims to 81.
+  const cumulativeX = pairAmount(withRefund(seed(), 30), 50); pair(cumulativeX, 80102, 80103, 1);
+  const cumulative = setup(ledger(cumulativeX));
+  await save(cumulative, record(cumulative.x, 50));
+  eq(await cumulative.controller.prepare({ session: 'A', selection: choice(cumulative.x, 80102, 80103, 80001, 1) }),
+    { status: 'unavailable' }, 'cumulative claims 50 + 30 + 1 exceed the 80 purchase');
+  // Input order does not matter: a payment saved before its refund exists is
+  // requalified jointly once the refund evidence arrives.
+  const ordered = setup(ledger(seed()));
+  await save(ordered, record(ordered.x, 80));
+  const savedId = (await ordered.store.snapshot()).decisions[0].record.id;
+  ordered.change(ledger(withRefund(ordered.x, 30)));
+  const requalified = await ordered.controller.input();
+  eq(requalified.plan.cardPurchaseCoverage.payments.map(d => [d.id, d.confirmed]),
+    [[savedId, false]],
+    'a refund arriving after the payment requalifies the joint bound: claim withheld');
+}
 async function retainedLifecycle() {
   for (const missing of ['credit', 'debit']) for (const overlap of missing === 'credit' ? ['debit-and-purchase', 'debit-only', 'purchase-only'] : ['credit']) {
     const s = setup(); await save(s, record(s.x));
@@ -488,6 +535,7 @@ async function main() {
   eq(await setup().controller.prepare({ session: 'not authenticated', selection: record(seed()) }), { status: 'unavailable' }, 'missing authentication adapter result fails closed');
   await retainedLifecycle();
   await corrections();
+  await conservation();
   console.log('PASS private card decision foundation: ' + checks + ' synthetic provider/controller checks');
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });

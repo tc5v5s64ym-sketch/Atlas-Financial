@@ -10462,7 +10462,7 @@
       const tx = refund && checkedRow(refund.refundRef, -1, row && row.accountId);
       const amount = tx && -money(tx);
       if (!refund || refund.confirmed !== true || !row || !tx || paymentLike(tx)
-        || tx.date < row.date || amount + savingsCents(row.refunded) > savingsCents(row.amount)) {
+        || tx.date < row.date || amount + savingsCents(row.refunded) + savingsCents(row.covered) > savingsCents(row.amount)) {
         issue('coverage-refund-unconfirmed', refund && refund.refundRef); continue;
       }
       row.refunded = (savingsCents(row.refunded) + amount) / 100;
@@ -10495,9 +10495,13 @@
         && (!other || ['prior-debt', 'required-payment', 'other'].includes(record.otherPurpose));
       for (const part of parts) {
         const row = purchases.get(part && part.purchaseRef), cents = part && savingsCents(part.amount);
+        // Joint conservation (ATLAS-044): refunds and payment allocations
+        // share one bound — covered + refunded + this allocation may not
+        // exceed the purchase amount. An overallocating record is rejected
+        // whole, never clamped, reclassified or absorbed.
         if (!row || !postedPurchase(part.purchaseRef) || row.accountId !== account || cents == null || cents <= 0
           || split.has(part.purchaseRef) || row.date > credit?.date
-          || savingsCents(row.covered) + cents > savingsCents(row.amount)) valid = false;
+          || savingsCents(row.covered) + savingsCents(row.refunded) + cents > savingsCents(row.amount)) valid = false;
         else split.set(part.purchaseRef, cents);
       }
       const backfill = Array.from(split.values()).reduce((a,b) => a+b, 0);

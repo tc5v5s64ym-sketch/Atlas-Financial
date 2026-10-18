@@ -201,4 +201,97 @@ for (const width of [1440,390]) for (const expected of fundingCases) {
   assert.match(evidence,new RegExp('data-from-today-card-coverage[^>]*><span>Uncovered card purchases - keep in Bills<\\/span><span>\\$'+(expected.reserve/100).toFixed(2).replace('.','\\.')));
 }
 
+// Joint conservation (ATLAS-044): confirmed refunds and payment allocations
+// share one bound — covered + refunded <= purchase amount in exact cents.
+// An overallocating claim is rejected (publication unavailable), never
+// silently clamped, reclassified or absorbed.
+function jointLedger(x) {
+  x.payload.accounts[0].balance = 500 - x.payload.transactions.filter(t => t.account_id === 3001).reduce((s, t) => s + t.amount, 0);
+  x.payload.accounts[3].balance = 400 + x.payload.transactions.filter(t => t.account_id === 3004).reduce((s, t) => s + t.amount, 0);
+  return x;
+}
+function refundClaim(x, amount, id = 80006) {
+  x.payload.transactions.push({ id, account_id: 3004, date: x.asOf, amount: -amount,
+    currency: 'cad', category_name: 'Refund', payee: 'Invented grocer refund', is_pending: false });
+  x.data.plan.cardPurchaseCoverage.refunds.push({ confirmed: true,
+    purchaseRef: fixture.ref(x, 80001), refundRef: fixture.ref(x, id) });
+  return x;
+}
+{ // Refund 30 + payment allocating the full 80 overallocates the 80 purchase.
+  const x = refundClaim(fixture('backfill'), 30);
+  fixture.confirm(x, 'joint-over', 80002, 80003, [[80001, 80]]);
+  const r = run(jointLedger(x));
+  assert.equal(r.advice.cardPurchaseCoverage.status, 'unavailable',
+    'covered 80 + refunded 30 against an 80 purchase must not publish');
+  assert.equal(r.advice.cardPurchaseCoverage.reservedCash, null);
+  // Replay of the identical input is deterministic.
+  assert.deepEqual(run(jointLedger(structuredClone(x))).advice.cardPurchaseCoverage,
+    r.advice.cardPurchaseCoverage, 'identical overallocated input replays identically');
+}
+{ // Exact bound: refund 30 + allocation 50 = 80 publishes ready, remaining 0.
+  const x = refundClaim(fixture('backfill'), 30);
+  x.payload.transactions[1].amount = 50; x.payload.transactions[2].amount = -50;
+  fixture.confirm(x, 'joint-exact', 80002, 80003, [[80001, 50]]);
+  const r = run(jointLedger(x)), pub = r.advice.cardPurchaseCoverage;
+  assert.equal(pub.status, 'ready');
+  assert.equal(pub.reservedCash, 0);
+  assert.equal(pub.purchases[0].covered, 50);
+  assert.equal(pub.purchases[0].refunded, 30);
+  assert.equal(pub.purchases[0].remaining, 0);
+}
+{ // One cent over the joint bound is rejected.
+  const x = refundClaim(fixture('backfill'), 30);
+  x.payload.transactions[1].amount = 50.01; x.payload.transactions[2].amount = -50.01;
+  fixture.confirm(x, 'joint-cent-over', 80002, 80003, [[80001, 50.01]]);
+  const r = run(jointLedger(x));
+  assert.equal(r.advice.cardPurchaseCoverage.status, 'unavailable',
+    'covered 50.01 + refunded 30 exceeds the 80 purchase by one cent');
+  assert.equal(r.advice.cardPurchaseCoverage.reservedCash, null);
+}
+{ // Cumulative claims across two payments plus a refund share the bound.
+  const build = second => {
+    const x = refundClaim(fixture('backfill'), 30);
+    x.payload.transactions[1].amount = 30; x.payload.transactions[2].amount = -30;
+    x.payload.transactions.push(
+      { ...x.payload.transactions[1], id: 80007, amount: second },
+      { ...x.payload.transactions[2], id: 80008, amount: -second });
+    fixture.confirm(x, 'joint-first', 80002, 80003, [[80001, 30]]);
+    fixture.confirm(x, 'joint-second', 80007, 80008, [[80001, second]]);
+    return run(jointLedger(x));
+  };
+  assert.equal(build(30).advice.cardPurchaseCoverage.status, 'unavailable',
+    'refund 30 + payments 30 + 30 cumulate past the 80 purchase');
+  const ok = build(20).advice.cardPurchaseCoverage;
+  assert.equal(ok.status, 'ready', 'refund 30 + payments 30 + 20 meet the bound exactly');
+  assert.equal(ok.purchases[0].covered, 50);
+  assert.equal(ok.purchases[0].remaining, 0);
+}
+{ // Opening carry is a claim too: opening covered 50 + refund 30 fills the
+  // purchase exactly; one more allocated dollar overallocates it.
+  const build = withPayment => {
+    const x = fixture();
+    x.data.plan.cardPurchaseCoverage.opening.purchases = [{ ref: 'opening-p1',
+      date: '2026-09-10', accountId: 'travelvisa', amount: 80, covered: 50,
+      categoryLabel: 'Groceries' }];
+    x.payload.transactions.push({ id: 80006, account_id: 3004, date: x.asOf, amount: -30,
+      currency: 'cad', category_name: 'Refund', payee: 'Invented grocer refund', is_pending: false });
+    x.data.plan.cardPurchaseCoverage.refunds.push({ confirmed: true,
+      purchaseRef: 'opening-p1', refundRef: fixture.ref(x, 80006) });
+    if (withPayment) {
+      const bf = fixture('backfill');
+      x.payload.transactions.push({ ...bf.payload.transactions[1], id: 80002, amount: 1 },
+        { ...bf.payload.transactions[2], id: 80003, amount: -1 });
+      x.data.plan.cardPurchaseCoverage.payments.push({ id: 'joint-opening-pay', confirmed: true,
+        debitRef: fixture.ref(x, 80002), creditRef: fixture.ref(x, 80003),
+        allocations: [{ purchaseRef: 'opening-p1', amount: 1 }], otherAmount: 0, otherPurpose: null });
+    }
+    return run(jointLedger(x));
+  };
+  const filled = build(false).advice.cardPurchaseCoverage;
+  assert.equal(filled.status, 'ready');
+  assert.equal(filled.purchases.find(p => p.amount === 80 && p.covered === 50).refunded, 30);
+  assert.equal(build(true).advice.cardPurchaseCoverage.status, 'unavailable',
+    'opening covered 50 + refunded 30 + allocated 1 exceeds the 80 purchase');
+}
+
 console.log('PASS independent observed cash/debt/spending ledger: purchase, partial and combined backfill, pending, intent/currency unknown and directed replacement');
