@@ -275,6 +275,14 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
       }
       const geometry = await readGeometry(page);
       check(geometry.labelOrbDisjoint && !geometry.neighborOverlap, label + ': labels remain disjoint from orb and neighbors');
+      const clearOtherText = await page.evaluate(() => {
+        const r = window.__river, selected = r.valEls[r.index].getBoundingClientRect();
+        return [r.pill, ...r.monthsEl.children].filter(el => getComputedStyle(el).visibility !== 'hidden').every(el => {
+          const b = el.getBoundingClientRect();
+          return selected.right <= b.left || b.right <= selected.left || selected.bottom <= b.top || b.bottom <= selected.top;
+        });
+      });
+      check(clearOtherText, label + ': selected value stays clear of pill and month text');
       await capture(page, 'after-bottom-targets-' + width + '-' + theme + '.png');
       const clicks = [];
       for (const target of [0, 1, 2]) for (const fraction of [0.1, 0.5, 0.9]) {
