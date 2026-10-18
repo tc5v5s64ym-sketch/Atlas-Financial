@@ -226,5 +226,24 @@ for (const patch of [{source:'Other'},{start:'1900-01-01'},{end:null}]) {
  const past={...qualifiedPast,budgetProgress:{...qualifiedPast.budgetProgress,...patch}};
  assert.equal(terms(block(render(past,f.plan,true),past.id))[3].trust,'unavailable','wrong historical publication identity');
 }
+// (e) ATLAS-026: a period whose income Forecast withholds (a scheduled
+// receipt with a missing amount) prints Unavailable for all four terms —
+// the fail-closed publication from (b), produced end-to-end by Forecast.
+const plan026={windowDays:120,defaults:{targetBuffer:0,extraDebtMonthly:0,scenario:'expected'},
+ opening:{asOf:'2026-10-07',paydaySnapshot:{periodStart:'2026-10-02',asOf:'2026-10-02',opening:50},
+ representedEvents:[{id:'payroll',date:'2026-10-02'}]},
+ startingCash:{breakdown:[{id:'chequing-a',value:50}]},
+ income:[{id:'payroll',frequency:'biweekly',anchor:'2026-10-02',amount:0,confidence:'confirmed'},
+ {id:'r1',label:'Synthetic receipt',frequency:'once',date:'2026-10-16',amount:null,confidence:'confirmed'}],
+ bills:[{id:'b1',label:'Synthetic bill',frequency:'once',date:'2026-10-20',amount:120,confidence:'confirmed'}],
+ obligations:[],commitments:[],budget:{categories:[]}};
+const view026=F.recommend(plan026,'2026-10-07',{weeklyVariable:0,debts:[]}).payPeriodViews.find(v=>v.start==='2026-10-16');
+assert.ok(view026&&view026.predictedEndingBalanceTerms===null&&view026.incomeTrust==='unavailable',
+ 'ATLAS-026: Forecast withholds the period terms for a missing receipt amount');
+for(const compact of [true,false]){
+ const b=block(render(view026,plan026,compact),view026.id);
+ assert.match(b,/data-bad-terms-status="unavailable"/);
+ assert.deepEqual(terms(b).map(x=>[x.trust,x.text,x.amount]),KEYS.map(()=>['unavailable','Unavailable','']));
+}
 console.log('PASS historical BAD: hero, Q07 and aggregate term withheld for every Household coverage; original source terms and publication immutable');
 console.log('bad terms print: 4 periods × 2 layouts close to the cent; null/non-closing/untrusted terms print Unavailable; amount hook plain (Oct 8 BAD 731.83/1,380.30/1,839.29/1,673.39); Q07 + hero result hooks (funded $1,675.00 est, unavailable empty); hidden all-period timeline matches the terms block per row; coverage attribute reprints remainingClaim (precise, posted-only, unavailable) and is omitted when missing');

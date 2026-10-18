@@ -1348,6 +1348,182 @@ console.log('\n=== trajectory and timeline share one projected Dale payroll ==='
     feb && feb.income && String(feb.income.amount));
 }
 
+// ATLAS-026: a scheduled receipt with a missing amount must not publish as
+// calculated zero in the period view. Synthetic Grok-shaped fixture: payday
+// snapshot opening 50, biweekly payroll of genuine zero, one-off receipt on
+// 2026-10-16, one 120 bill on 2026-10-20. The 2026-10-16 period is the first
+// period whose income identity relies on the receipt.
+function sectionMissingIncomeAmount() {
+  const ASOF = '2026-10-07';
+  const fixture = (income, openingExtra) => ({
+    windowDays: 120,
+    defaults: { targetBuffer: 0, extraDebtMonthly: 0, scenario: 'expected' },
+    opening: Object.assign({
+      asOf: ASOF,
+      paydaySnapshot: { periodStart: '2026-10-02', asOf: '2026-10-02', opening: 50 },
+      representedEvents: [{ id: 'payroll', date: '2026-10-02' }],
+    }, openingExtra || {}),
+    startingCash: { breakdown: [{ id: 'chequing-a', value: 50 }] },
+    income,
+    bills: [{ id: 'b1', label: 'Synthetic bill', frequency: 'once', date: '2026-10-20', amount: 120, confidence: 'confirmed' }],
+    obligations: [], commitments: [], budget: { categories: [] },
+  });
+  const payroll = { id: 'payroll', frequency: 'biweekly', anchor: '2026-10-02', amount: 0, confidence: 'confirmed' };
+  const receipt = amount => ({ id: 'r1', label: 'Synthetic receipt', frequency: 'once', date: '2026-10-16', amount, confidence: 'confirmed' });
+  const run = (plan, opts) => F.recommend(plan, ASOF, Object.assign({ weeklyVariable: 0, debts: [] }, opts || {}));
+
+  // Missing amount: every dependent figure is withheld as unknown, with the
+  // income-unavailable reason published; the known opening stock and the
+  // already-withheld sweep stay exactly as they were.
+  const missing = rowByStart(run(fixture([payroll, receipt(null)])), '2026-10-16');
+  ok(!!missing, '026 missing: period exists');
+  if (missing) {
+    ok(missing.incomeTotal === null, '026 missing: incomeTotal unknown, not zero', String(missing.incomeTotal));
+    ok(missing.incomeTrust === 'unavailable', '026 missing: incomeTrust unavailable', String(missing.incomeTrust));
+    ok(typeof missing.incomeUnavailableReason === 'string' && missing.incomeUnavailableReason.includes('income-unavailable'),
+      '026 missing: income-unavailable reason published', String(missing.incomeUnavailableReason));
+    ok(missing.available === null, '026 missing: payday balance unknown', String(missing.available));
+    ok(missing.afterBills === null && missing.afterBillsTrust === 'unavailable',
+      '026 missing: after-bills unknown', `${missing.afterBills}/${missing.afterBillsTrust}`);
+    ok(missing.balanceAfterDeductions === null && missing.balanceAfterDeductionsTrust === 'unavailable',
+      '026 missing: balance after deductions unknown',
+      `${missing.balanceAfterDeductions}/${missing.balanceAfterDeductionsTrust}`);
+    ok(missing.predictedEndingBalance === null && missing.predictedEndingBalanceTerms === null,
+      '026 missing: predicted ending withheld with its terms',
+      `${missing.predictedEndingBalance}/${JSON.stringify(missing.predictedEndingBalanceTerms)}`);
+    ok(missing.paydaySweep === null, '026 missing: payday sweep remains withheld', String(missing.paydaySweep));
+    ok(missing.openingKnown === true && near(missing.opening, 50),
+      '026 missing: known opening stock preserved', `${missing.openingKnown}/${missing.opening}`);
+  }
+  // The period before the receipt is unaffected.
+  const missingPrior = rowByStart(run(fixture([payroll, receipt(null)])), '2026-10-02');
+  ok(missingPrior && missingPrior.incomeTotal === 0 && missingPrior.incomeTrust === 'calculated'
+      && !missingPrior.incomeUnavailableReason,
+    '026 missing: prior period unaffected',
+    missingPrior && `${missingPrior.incomeTotal}/${missingPrior.incomeTrust}/${missingPrior.incomeUnavailableReason}`);
+
+  // Genuine zero stays a trusted zero (positive control for the detector).
+  const zero = rowByStart(run(fixture([payroll, receipt(0)])), '2026-10-16');
+  ok(zero && zero.incomeTotal === 0 && zero.incomeTrust === 'calculated' && !zero.incomeUnavailableReason
+      && near(zero.afterBills, -120) && near(zero.balanceAfterDeductions, -120)
+      && near(zero.predictedEndingBalance, -120) && zero.predictedEndingBalanceTerms
+      && zero.predictedEndingBalanceTerms.closes === true,
+    '026 zero control: genuine zero publishes as calculated zero',
+    zero && `${zero.incomeTotal}/${zero.incomeTrust}/${zero.afterBills}/${zero.balanceAfterDeductions}`);
+
+  // Positive receipt publishes normally.
+  const positive = rowByStart(run(fixture([payroll, receipt(500)])), '2026-10-16');
+  ok(positive && near(positive.incomeTotal, 500) && positive.incomeTrust === 'calculated'
+      && !positive.incomeUnavailableReason && near(positive.afterBills, 380)
+      && near(positive.predictedEndingBalance, 380) && positive.predictedEndingBalanceTerms
+      && positive.predictedEndingBalanceTerms.closes === true,
+    '026 positive control: valid receipt publishes normally',
+    positive && `${positive.incomeTotal}/${positive.afterBills}/${positive.predictedEndingBalance}`);
+
+  // Mixed known + unknown receipts in one period: the total is withheld
+  // (never a partial sum published as complete); the known row still shows.
+  const mixed = rowByStart(run(fixture([payroll, receipt(null),
+    { id: 'r2', label: 'Known receipt', frequency: 'once', date: '2026-10-18', amount: 500, confidence: 'confirmed' }])),
+    '2026-10-16');
+  ok(mixed && mixed.incomeTotal === null && mixed.incomeTrust === 'unavailable'
+      && typeof mixed.incomeUnavailableReason === 'string'
+      && (mixed.income || []).some(r => r && r.id === 'r2' && near(r.amount, 500)),
+    '026 mixed: total withheld, known receipt row preserved',
+    mixed && `${mixed.incomeTotal}/${mixed.incomeTrust}/${(mixed.income || []).length}`);
+
+  // Effective-basis controls: a raw missing plan amount with a valid
+  // effective basis must NOT taint the period.
+  const scenario = rowByStart(run(fixture([payroll,
+    { id: 'r1', label: 'Monthly receipt', frequency: 'monthly', day: 16, firstDue: '2026-10-16', amount: null, scenarioMonthly: { expected: 500 }, confidence: 'confirmed' }])),
+    '2026-10-16');
+  ok(scenario && near(scenario.incomeTotal, 500) && scenario.incomeTrust === 'calculated'
+      && !scenario.incomeUnavailableReason,
+    '026 scenario control: scenarioMonthly basis keeps the period known',
+    scenario && `${scenario.incomeTotal}/${scenario.incomeTrust}`);
+  const override = rowByStart(run(fixture([payroll,
+    { id: 'r1', label: 'Override receipt', frequency: 'biweekly', anchor: '2026-10-16', amount: null, confidence: 'confirmed' }]),
+    { incomeOverrides: { r1: 2600 } }), '2026-10-16');
+  ok(override && near(override.incomeTotal, 1200) && override.incomeTrust === 'calculated'
+      && !override.incomeUnavailableReason,
+    '026 override control: incomeOverrides basis keeps the period known',
+    override && `${override.incomeTotal}/${override.incomeTrust}`);
+
+  // Qualified exclusions follow the incumbent selectors, not raw list
+  // membership. A same-day not-relied-upon entry (the selector qualifies
+  // date === asOf) excludes its receipt: no taint.
+  const notRelied = rowByStart(run(fixture([payroll,
+    { id: 'r1', label: 'Synthetic receipt', frequency: 'once', date: '2026-10-07', amount: null, confidence: 'confirmed' }],
+    { notReliedUponEvents: [{ id: 'r1', date: '2026-10-07', reason: 'already in cash' }] })), '2026-10-02');
+  ok(notRelied && notRelied.incomeTotal === 0 && notRelied.incomeTrust === 'calculated'
+      && !notRelied.incomeUnavailableReason,
+    '026 qualified not-relied control: same-day exclusion does not taint',
+    notRelied && `${notRelied.incomeTotal}/${notRelied.incomeTrust}/${notRelied.incomeUnavailableReason}`);
+  // Negative: a FUTURE-dated not-relied-upon entry is not qualified by the
+  // incumbent selector, so it excludes nothing — the hold must fire.
+  const futureNotRelied = rowByStart(run(fixture([payroll, receipt(null)],
+    { notReliedUponEvents: [{ id: 'r1', date: '2026-10-16', reason: 'already in cash' }] })), '2026-10-16');
+  ok(futureNotRelied && futureNotRelied.incomeTotal === null && futureNotRelied.incomeTrust === 'unavailable'
+      && typeof futureNotRelied.incomeUnavailableReason === 'string',
+    '026 unqualified not-relied negative: future-dated entry does not suppress the hold',
+    futureNotRelied && `${futureNotRelied.incomeTotal}/${futureNotRelied.incomeTrust}`);
+  // Negative: a represented entry for a future occurrence is likewise not
+  // qualified at this asOf (stale effective date), so it excludes nothing.
+  const futureRepresented = rowByStart(run(fixture([payroll, receipt(null)],
+    { representedEvents: [{ id: 'payroll', date: '2026-10-02' }, { id: 'r1', date: '2026-10-16' }] })), '2026-10-16');
+  ok(futureRepresented && futureRepresented.incomeTotal === null && futureRepresented.incomeTrust === 'unavailable'
+      && typeof futureRepresented.incomeUnavailableReason === 'string',
+    '026 unqualified represented negative: future represented entry does not suppress the hold',
+    futureRepresented && `${futureRepresented.incomeTotal}/${futureRepresented.incomeTrust}`);
+  // Occurrence adjustments are an effective basis: a positive adjustment
+  // publishes its amount; a declared-zero adjustment keeps the period a
+  // known zero. Neither may be flagged unknown.
+  const adjPositive = rowByStart(run(fixture([payroll, receipt(null)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: 300, confidence: 'confirmed' } : null }), '2026-10-16');
+  ok(adjPositive && near(adjPositive.incomeTotal, 300) && adjPositive.incomeTrust === 'calculated'
+      && !adjPositive.incomeUnavailableReason,
+    '026 adjustment control: positive occurrence adjustment is the effective basis',
+    adjPositive && `${adjPositive.incomeTotal}/${adjPositive.incomeTrust}`);
+  const adjZero = rowByStart(run(fixture([payroll, receipt(null)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: 0, confidence: 'confirmed' } : null }), '2026-10-16');
+  ok(adjZero && adjZero.incomeTotal === 0 && adjZero.incomeTrust === 'calculated'
+      && !adjZero.incomeUnavailableReason && near(adjZero.afterBills, -120),
+    '026 adjustment control: declared-zero occurrence adjustment stays a known zero',
+    adjZero && `${adjZero.incomeTotal}/${adjZero.incomeTrust}/${adjZero.incomeUnavailableReason}`);
+  // An omitted occurrence is a declared non-event (expandEvents drops it
+  // entirely): it must not taint the period.
+  const adjOmit = rowByStart(run(fixture([payroll, receipt(null)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { omit: true } : null }), '2026-10-16');
+  ok(adjOmit && adjOmit.incomeTotal === 0 && adjOmit.incomeTrust === 'calculated'
+      && !adjOmit.incomeUnavailableReason && near(adjOmit.afterBills, -120),
+    '026 adjustment control: omitted occurrence does not taint',
+    adjOmit && `${adjOmit.incomeTotal}/${adjOmit.incomeTrust}/${adjOmit.incomeUnavailableReason}`);
+  // A negative adjustment is not a valid income basis anywhere in the
+  // codebase: it disposes of nothing, so the hold must fire.
+  const adjNegative = rowByStart(run(fixture([payroll, receipt(null)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: -300, confidence: 'confirmed' } : null }), '2026-10-16');
+  ok(adjNegative && adjNegative.incomeTotal === null && adjNegative.incomeTrust === 'unavailable'
+      && typeof adjNegative.incomeUnavailableReason === 'string' && adjNegative.afterBills === null,
+    '026 adjustment negative: negative adjustment is no basis, hold fires',
+    adjNegative && `${adjNegative.incomeTotal}/${adjNegative.incomeTrust}/${adjNegative.incomeUnavailableReason}`);
+
+  // A missing-amount receipt with no contributing occurrence in a period
+  // leaves that period known; only its own period goes unknown.
+  const latePlan = fixture([payroll,
+    { id: 'r1', label: 'Late receipt', frequency: 'once', date: '2026-11-20', amount: null, confidence: 'confirmed' }]);
+  const lateAdvice = run(latePlan);
+  const lateEarly = rowByStart(lateAdvice, '2026-10-16');
+  const lateOwn = rowByStart(lateAdvice, '2026-11-13');
+  ok(lateEarly && lateEarly.incomeTotal === 0 && lateEarly.incomeTrust === 'calculated'
+      && !lateEarly.incomeUnavailableReason,
+    '026 occurrence control: no contributing occurrence, no taint',
+    lateEarly && `${lateEarly.incomeTotal}/${lateEarly.incomeTrust}`);
+  ok(lateOwn && lateOwn.incomeTotal === null && lateOwn.incomeTrust === 'unavailable'
+      && typeof lateOwn.incomeUnavailableReason === 'string',
+    '026 occurrence control: the receipt\'s own period is unknown',
+    lateOwn && `${lateOwn.incomeTotal}/${lateOwn.incomeTrust}`);
+}
+sectionMissingIncomeAmount();
+
 if (failures) {
   console.error(`\n${failures} CHECK(S) FAILED`);
   process.exit(1);

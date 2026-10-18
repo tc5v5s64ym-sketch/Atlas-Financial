@@ -10857,6 +10857,13 @@
       }
     }
     const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
+    // ATLAS-026: the incumbent qualified exclusion selectors, computed
+    // once per recommend. An occurrence is excluded from reliance only
+    // when one of these sets contains it — raw plan-list entries that the
+    // selectors do not qualify (a future-dated not-relied-upon entry, a
+    // represented entry past its effective date) exclude nothing.
+    const qualifiedRepresentedKeys = representedKeySet(plan, opts, asOf);
+    const qualifiedNotReliedKeys = notReliedUponKeySet(plan, opts, asOf);
     const liveCurrentBalance = publishedCurrentBalanceAmount(plan, alloc);
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
       : ((plan.defaults && plan.defaults.targetBuffer) || 0);
@@ -11043,6 +11050,56 @@
       const openingSource = snapshot.source || null;
       const paydayBoundaryOpening = openingKnown
         && isPaydayBoundaryOpening(openingSource, openingAsOf, window.start);
+      // ATLAS-026: the income-side mirror of the S1 bill-load rule below.
+      // A scheduled receipt whose effective amount is unknown must not
+      // publish as calculated zero. Detection follows effective occurrence
+      // and contribution semantics: a stream taints the period only when
+      // an occurrence lands in this window, its effective amount
+      // (streamAmount — scenario and owner overrides included) is not a
+      // known cents value, no section row gives that occurrence a numeric
+      // contribution basis (represented/settled receipts carry one), the
+      // occurrence is not qualified as excluded by the incumbent
+      // represented / not-relied-upon selectors, and no occurrence
+      // adjustment disposes of it. A section row that
+      // reaches the waterfall with no numeric basis at all taints it too.
+      // Genuine zero is a known cents value and never taints.
+      const incomeRowHasBasis = row => !!row
+        && [row.actual, row.amount, row.planned]
+          .some(v => typeof v === 'number' && Number.isFinite(v));
+      const knownIncomeKeys = new Set();
+      for (const row of income || []) {
+        if (row && row.id && row.date && incomeRowHasBasis(row)) {
+          knownIncomeKeys.add(row.id + '@' + row.date);
+        }
+      }
+      const excludedIncomeOccurrence = (id, date) => {
+        const key = id + '@' + date;
+        return qualifiedRepresentedKeys.has(key) || qualifiedNotReliedKeys.has(key);
+      };
+      // An occurrence adjustment disposes of the occurrence when it omits
+      // it (expandEvents drops omitted occurrences entirely, so nothing
+      // relies on them) or gives it a finite non-negative amount (a
+      // declared zero included), whether or not it produced a section
+      // row. A negative amount is not a valid income basis anywhere in
+      // the codebase, so it disposes of nothing.
+      const occurrenceAdjustmentBasis = (stream, date) => {
+        if (!opts || typeof opts.incomeOccurrenceAdjust !== 'function') return false;
+        const adj = opts.incomeOccurrenceAdjust(stream, date, streamAmount(stream, opts));
+        if (!adj) return false;
+        if (adj.omit) return true;
+        return typeof adj.amount === 'number' && Number.isFinite(adj.amount) && adj.amount >= 0;
+      };
+      const incomeLoadUnknown = !planUnavailable && !lookback && (
+        (income || []).some(row => row && row.otherIncome !== true
+          && row.notReliedUpon !== true && row.settlement !== 'not-relied-upon'
+          && !incomeRowHasBasis(row))
+        || (plan.income || []).some(stream => stream
+          && !(opts.disabled || []).includes(stream.id)
+          && savingsCents(streamAmount(stream, opts)) == null
+          && occurrences(stream, window.start, window.end).some(date =>
+            !knownIncomeKeys.has(stream.id + '@' + date)
+            && !excludedIncomeOccurrence(stream.id, date)
+            && !occurrenceAdjustmentBasis(stream, date))));
       let incomeAdded = 0;
       for (const row of income) {
         if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) {
@@ -11064,10 +11121,10 @@
       // Dated opening cash is not today's operating plan. Do not add
       // later-dated income as arriving-to-spend, and do not publish a
       // leftover chain from that mix.
-      incomeAdded = planUnavailable || !openingKnown ? null : roundCent(incomeAdded);
+      incomeAdded = planUnavailable || incomeLoadUnknown || !openingKnown ? null : roundCent(incomeAdded);
       const otherItems = (planUnavailable ? [] : income).filter(r => r && r.otherIncome === true);
       const otherAmount = roundCent(otherItems.reduce((s, r) => s + (Number(r.amount) || 0), 0));
-      const incomeTotal = planUnavailable
+      const incomeTotal = planUnavailable || incomeLoadUnknown
         ? null
         : roundCent(income.reduce((s, r) => s + calendarIncomeContribution(r), 0));
       // The shared selector uses observed receipt dollars when present and
@@ -11115,6 +11172,14 @@
         : null;
       const afterRemainingBills = afterBills;
       const incomeTrust = periodWaterfallTotalTrust(income, incomeTotal, row => row.amount);
+      // ATLAS-026: the one Forecast-published reason for a withheld period
+      // income total, in the established income-unavailable vocabulary.
+      // Null whenever period income is published. Consumers read the trust
+      // fields for qualification; this string is the explanation, and no
+      // renderer change is required (or claimed) for it.
+      const incomeUnavailableReason = incomeLoadUnknown
+        ? 'A scheduled receipt in this period has an unknown amount (income-unavailable), so period income is not published.'
+        : null;
       const periodBillLoadTrust = periodWaterfallTotalTrust(
         assignedBillRows.filter(row => billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)),
         periodBillLoad, row => row.planned != null ? row.planned : row.amount);
@@ -11328,6 +11393,9 @@
         incomeAdded,
         incomeTotal,
         incomeTrust,
+        // Published only when it fires, so every unaffected period's
+        // publication stays byte-identical to the incumbent shape.
+        ...(incomeUnavailableReason ? { incomeUnavailableReason } : {}),
         otherIncome: planUnavailable
           ? { amount: 0, items: [] }
           : { amount: otherAmount, items: otherItems },
