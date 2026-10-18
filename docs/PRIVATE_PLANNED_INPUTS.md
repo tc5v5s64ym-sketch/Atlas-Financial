@@ -29,7 +29,8 @@ persistence with a flag because no adapter is included.
 The next consumer is the server-owned effective-plan input composition before
 observer history selection and Forecast publication, shared by browser and
 assistant. That live caller does not yet exist. It requires a separate file
-handoff, approved storage contract, exact-head Systems Review and connected tests.
+handoff, approved storage and operator-access contracts, exact-head Systems Review
+and connected tests.
 Financial computations remain in Forecast. This module produces no allocation,
 payment, balance, funding verdict or Paid state.
 
@@ -58,18 +59,22 @@ payment, balance, funding verdict or Paid state.
   current operation and restores its immediate predecessor as a new dated revision.
   It can restore a removed requirement. Stale heads cannot fork. Further edits
   must name the new head. No operation alters original retained rows.
-- The private preview binds actor, household, unique operation ID, command,
-  source fingerprint, exact document digest/revision and ten-minute expiry.
-  The future authenticated caller retains it server-side and renders the exact
-  before/after proposal privately. The digest is an integrity check, not an
-  authentication credential or a substitute for explicit user confirmation.
-  Browser-supplied preview objects, actor IDs and timestamps are not trusted.
+- The private preview binds an opaque caller-context token (`actorId`), household,
+  unique operation ID, command, source fingerprint, exact document digest/revision
+  and ten-minute expiry. Actor-token equality provides request continuity only;
+  this module neither authenticates that token nor establishes a named person or
+  permission to edit. A future authenticated, authorized server caller must resolve
+  the context, retain the preview server-side and render the exact before/after
+  proposal privately. The digest is an integrity check, not an authentication
+  credential or a substitute for explicit user confirmation. Browser-supplied
+  preview objects, actor IDs and timestamps are not trusted.
 - `confirmCandidate` validates the retained preview and the confirmed digest and
   returns new bytes plus expected/next pins. Its status is **candidate**, never
   saved. Rejected/stale previews have no state effect. One operation ID binds one
   request; matching recorded requests recover a receipt, conflicting reuse rejects.
-  Outcome lookup is actor/household scoped. Audit revisions retain before/after,
-  command, actor, operation ID, request digest and monotonic recorded time.
+  Outcome lookup matches the supplied actor-context token and household. Audit
+  revisions retain before/after, command, that context token, operation ID, request
+  digest and monotonic recorded time; they do not prove named-person attribution.
 - Composition replaces the exact native rows once in memory and retains native
   order. The complete legacy inventory must still match. Source drift fails closed
   and needs explicit reconciliation; it must not silently rebase or revive public
@@ -99,8 +104,12 @@ alternative. Any hosting cost or access change needs its own explicit decision.
 1. **Isolation:** dedicated service UID; owner-only directory/file permissions;
    outside every repository, worktree, static root, logs and public artifacts;
    refuse symlink components, hard-linked files, wrong owner/mode or replaced root.
-   Existing household sessions authorize preview/confirmation; private scope is
-   server-resolved. No new login, user database or broader provider grant.
+   The existing shared household-password login issues a signed expiry-only
+   session. It does not establish named-person identity or Dale-only correction
+   authority. Before implementing a writer or live caller, approve the permitted
+   operator scope and qualify its server-side enforcement and audit attribution.
+   Private scope must be server-resolved under that approved access choice. This
+   foundation grants no write authority and implements no authentication change.
 2. **One writer:** exactly one application instance with an exclusive lock around
    read, exact digest/revision compare, transformation, write and readback. Include
    administration and restore tools in this exclusion. No overlapping deployment
@@ -150,12 +159,13 @@ It exercises pure contract behavior with synthetic state and a serialized memory
 adapter, competing previews, exact readback, uncertain outcomes and restoration
 against an independently retained pin. Those are contract/serialization proofs,
 not persistent-storage, deployed restart or live household acceptance.
-The shared test registry remains untouched under the active file ownership rule.
-Therefore `npm test`/hosted CI do **not** run this new suite until the parent
-authorizes its registration; record standalone execution separately.
+The parent-designated registry writer added this suite to `test/test.js` in
+`992d95e768926ff3dc76c0857c06721abc39aa0f`. It is now selected by `npm test` and the
+standard CI group. Registration alone does not prove execution or a passing run;
+record exact-head hosted outcomes and standalone execution separately.
 
 Required next decisions/work: approve the concrete storage/access/backup/migration
-contract; obtain shared-file and Forecast handoffs; register the standalone suite;
+contract; obtain shared-file and Forecast handoffs;
 implement and qualify the approved writer; integrate a single effective input path
 and exact private preview/confirmation; prove downstream Forecast recalculation
 and private correction/removal acceptance. Paid behavior stays under ATLAS-025/024
