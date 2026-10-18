@@ -10857,6 +10857,13 @@
       }
     }
     const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
+    // ATLAS-026: the incumbent qualified exclusion selectors, computed
+    // once per recommend. An occurrence is excluded from reliance only
+    // when one of these sets contains it — raw plan-list entries that the
+    // selectors do not qualify (a future-dated not-relied-upon entry, a
+    // represented entry past its effective date) exclude nothing.
+    const qualifiedRepresentedKeys = representedKeySet(plan, opts, asOf);
+    const qualifiedNotReliedKeys = notReliedUponKeySet(plan, opts, asOf);
     const liveCurrentBalance = publishedCurrentBalanceAmount(plan, alloc);
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
       : ((plan.defaults && plan.defaults.targetBuffer) || 0);
@@ -11050,9 +11057,10 @@
       // an occurrence lands in this window, its effective amount
       // (streamAmount — scenario and owner overrides included) is not a
       // known cents value, no section row gives that occurrence a numeric
-      // contribution basis (represented/settled receipts carry one), and
-      // the occurrence is not excluded by design (represented in the
-      // opening snapshot or marked not-relied-upon). A section row that
+      // contribution basis (represented/settled receipts carry one), the
+      // occurrence is not qualified as excluded by the incumbent
+      // represented / not-relied-upon selectors, and no occurrence
+      // adjustment gives it a finite effective amount. A section row that
       // reaches the waterfall with no numeric basis at all taints it too.
       // Genuine zero is a known cents value and never taints.
       const incomeRowHasBasis = row => !!row
@@ -11064,13 +11072,18 @@
           knownIncomeKeys.add(row.id + '@' + row.date);
         }
       }
-      const openingListsApply = !!(plan.opening && plan.opening.asOf === asOf);
-      const excludedIncomeOccurrence = (id, date) =>
-        [(opts && opts.representedEvents) || null,
-          openingListsApply ? plan.opening.representedEvents : null,
-          (opts && opts.notReliedUponEvents) || null,
-          openingListsApply ? plan.opening.notReliedUponEvents : null]
-          .some(list => (list || []).some(item => item && item.id === id && item.date === date));
+      const excludedIncomeOccurrence = (id, date) => {
+        const key = id + '@' + date;
+        return qualifiedRepresentedKeys.has(key) || qualifiedNotReliedKeys.has(key);
+      };
+      // An occurrence adjustment with a finite amount is an effective
+      // basis for that occurrence (a declared zero included), whether or
+      // not it produced a section row.
+      const occurrenceAdjustmentBasis = (stream, date) => {
+        if (!opts || typeof opts.incomeOccurrenceAdjust !== 'function') return false;
+        const adj = opts.incomeOccurrenceAdjust(stream, date, streamAmount(stream, opts));
+        return !!adj && typeof adj.amount === 'number' && Number.isFinite(adj.amount);
+      };
       const incomeLoadUnknown = !planUnavailable && !lookback && (
         (income || []).some(row => row && row.otherIncome !== true
           && row.notReliedUpon !== true && row.settlement !== 'not-relied-upon'
@@ -11080,7 +11093,8 @@
           && savingsCents(streamAmount(stream, opts)) == null
           && occurrences(stream, window.start, window.end).some(date =>
             !knownIncomeKeys.has(stream.id + '@' + date)
-            && !excludedIncomeOccurrence(stream.id, date))));
+            && !excludedIncomeOccurrence(stream.id, date)
+            && !occurrenceAdjustmentBasis(stream, date))));
       let incomeAdded = 0;
       for (const row of income) {
         if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) {

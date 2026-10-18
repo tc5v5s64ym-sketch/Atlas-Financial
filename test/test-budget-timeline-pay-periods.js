@@ -1448,14 +1448,47 @@ function sectionMissingIncomeAmount() {
     '026 override control: incomeOverrides basis keeps the period known',
     override && `${override.incomeTotal}/${override.incomeTrust}`);
 
-  // A not-relied-upon receipt is excluded from reliance by design: its
-  // missing amount must not taint the period.
-  const notRelied = rowByStart(run(fixture([payroll, receipt(null)],
-    { notReliedUponEvents: [{ id: 'r1', date: '2026-10-16', reason: 'already in cash' }] })), '2026-10-16');
+  // Qualified exclusions follow the incumbent selectors, not raw list
+  // membership. A same-day not-relied-upon entry (the selector qualifies
+  // date === asOf) excludes its receipt: no taint.
+  const notRelied = rowByStart(run(fixture([payroll,
+    { id: 'r1', label: 'Synthetic receipt', frequency: 'once', date: '2026-10-07', amount: null, confidence: 'confirmed' }],
+    { notReliedUponEvents: [{ id: 'r1', date: '2026-10-07', reason: 'already in cash' }] })), '2026-10-02');
   ok(notRelied && notRelied.incomeTotal === 0 && notRelied.incomeTrust === 'calculated'
-      && !notRelied.incomeUnavailableReason && near(notRelied.afterBills, -120),
-    '026 not-relied control: excluded receipt does not taint',
+      && !notRelied.incomeUnavailableReason,
+    '026 qualified not-relied control: same-day exclusion does not taint',
     notRelied && `${notRelied.incomeTotal}/${notRelied.incomeTrust}/${notRelied.incomeUnavailableReason}`);
+  // Negative: a FUTURE-dated not-relied-upon entry is not qualified by the
+  // incumbent selector, so it excludes nothing — the hold must fire.
+  const futureNotRelied = rowByStart(run(fixture([payroll, receipt(null)],
+    { notReliedUponEvents: [{ id: 'r1', date: '2026-10-16', reason: 'already in cash' }] })), '2026-10-16');
+  ok(futureNotRelied && futureNotRelied.incomeTotal === null && futureNotRelied.incomeTrust === 'unavailable'
+      && typeof futureNotRelied.incomeUnavailableReason === 'string',
+    '026 unqualified not-relied negative: future-dated entry does not suppress the hold',
+    futureNotRelied && `${futureNotRelied.incomeTotal}/${futureNotRelied.incomeTrust}`);
+  // Negative: a represented entry for a future occurrence is likewise not
+  // qualified at this asOf (stale effective date), so it excludes nothing.
+  const futureRepresented = rowByStart(run(fixture([payroll, receipt(null)],
+    { representedEvents: [{ id: 'payroll', date: '2026-10-02' }, { id: 'r1', date: '2026-10-16' }] })), '2026-10-16');
+  ok(futureRepresented && futureRepresented.incomeTotal === null && futureRepresented.incomeTrust === 'unavailable'
+      && typeof futureRepresented.incomeUnavailableReason === 'string',
+    '026 unqualified represented negative: future represented entry does not suppress the hold',
+    futureRepresented && `${futureRepresented.incomeTotal}/${futureRepresented.incomeTrust}`);
+  // Occurrence adjustments are an effective basis: a positive adjustment
+  // publishes its amount; a declared-zero adjustment keeps the period a
+  // known zero. Neither may be flagged unknown.
+  const adjPositive = rowByStart(run(fixture([payroll, receipt(null)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: 300, confidence: 'confirmed' } : null }), '2026-10-16');
+  ok(adjPositive && near(adjPositive.incomeTotal, 300) && adjPositive.incomeTrust === 'calculated'
+      && !adjPositive.incomeUnavailableReason,
+    '026 adjustment control: positive occurrence adjustment is the effective basis',
+    adjPositive && `${adjPositive.incomeTotal}/${adjPositive.incomeTrust}`);
+  const adjZero = rowByStart(run(fixture([payroll, receipt(null)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: 0, confidence: 'confirmed' } : null }), '2026-10-16');
+  ok(adjZero && adjZero.incomeTotal === 0 && adjZero.incomeTrust === 'calculated'
+      && !adjZero.incomeUnavailableReason && near(adjZero.afterBills, -120),
+    '026 adjustment control: declared-zero occurrence adjustment stays a known zero',
+    adjZero && `${adjZero.incomeTotal}/${adjZero.incomeTrust}/${adjZero.incomeUnavailableReason}`);
 
   // A missing-amount receipt with no contributing occurrence in a period
   // leaves that period known; only its own period goes unknown.
