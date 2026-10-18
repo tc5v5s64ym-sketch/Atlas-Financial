@@ -2314,9 +2314,25 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
       && trustedActive.operatingPlanUnavailable !== true,
     'trusted Aug 31 as-of publishes Household Budget Aug 28–Sep 10');
   ok(trustedAdvice.operatingPlanUnavailable !== true
-      && trustedAdvice.weekly != null
+      && trustedAdvice.weekly === 0
       && !(trustedAdvice.currentPeriodAction && trustedAdvice.currentPeriodAction.unavailable),
-    'trusted control still publishes weekly permission and current-period action');
+    'trusted control keeps the current period published while weekly sits at the zero unsupported-cap sentinel');
+  // ATLAS-076 (B1): the canonical plan declares four funding options, but
+  // none is an eligible automatic cash source in this scenario - the
+  // tennis-account option resolves to zero under the Q25 observational
+  // policy, debt options are borrowing capacity rather than cash, and
+  // the remaining options are unusable. The opening gap is therefore
+  // honestly unfunded: no invented part, no recovery injection, and no
+  // weekly permission published off it.
+  ok(trustedAdvice.gap && Number(trustedAdvice.gap.amount) > 0
+      && trustedAdvice.funding && trustedAdvice.funding.feasible === false
+      && near(trustedAdvice.funding.shortfall, trustedAdvice.gap.amount)
+      && Number(trustedAdvice.funding.allocated) === 0
+      && Number(trustedAdvice.funding.borrowed) === 0
+      && (trustedAdvice.funding.parts || []).length === 0
+      && (trustedAdvice.simOptions.injections || []).length === 0
+      && trustedAdvice.weekly === 0,
+    'trusted control opening gap is honestly unfunded: infeasible funding, full shortfall, zero allocation/borrowing/parts/injections, weekly zero');
   const trustedOperating = OA.fromRefreshedState(trustedServed, { mode: 'live-overlay' });
   ok(trustedOperating.currentSpendingPermission.weekly === null
       && trustedOperating.moneyAvailable.value === null
@@ -2342,12 +2358,82 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
     liveOverlay: trustedServed.liveOverlay,
   });
   ok(!/data-current-operating="unavailable"/.test(trustedPayday)
-      && /\$/.test(trustedPayday)
-      && (/What to do now/.test(trustedPayday)
-          || /Money available/.test(trustedPayday))
-      && /Household spending permission/.test(trustedPayday)
-      && /payday-hero/.test(trustedPayday),
-    'trusted control paydayAnswerHtml still publishes a current operating answer');
+      && !/data-operating-plan="unavailable"/.test(trustedPayday)
+      && /payday-spend/.test(trustedPayday)
+      && /payday-refuse/.test(trustedPayday)
+      && !/payday-hero/.test(trustedPayday),
+    'trusted control paydayAnswerHtml refuses the weekly permission (payday-refuse, no payday-hero) while the current opening stays visible');
+  // ATLAS-076 (B1): positive publication is preserved on a wholly
+  // synthetic fixture whose gap is covered by an explicitly declared
+  // cash source - never an invented one. Opening 320 against a 200
+  // buffer leaves 120 of headroom; a 170 bill dated before the 1200
+  // income lands opens an independently computable gap of exactly 50.
+  const b1SynthPlan = {
+    windowDays: 21,
+    defaults: { targetBuffer: 200 },
+    startingCash: { breakdown: [{ id: 'chequing-a', value: 320 }] },
+    opening: { asOf: '2026-08-21' },
+    income: [{
+      id: 'pay', label: 'Payday', frequency: 'once', date: '2026-08-28',
+      amount: 1200, confidence: 'confirmed',
+    }],
+    bills: [{
+      id: 'pre', label: 'Pre-payday bill', frequency: 'once',
+      date: '2026-08-24', amount: 170, confidence: 'confirmed',
+    }],
+    obligations: [],
+    commitments: [],
+    funding: { options: [] },
+  };
+  const b1Funded = Forecast.recommend(b1SynthPlan, '2026-08-21', {
+    fundingSources: [{
+      id: 'test-cash', label: 'Test cash source', short: 'test cash',
+      available: 80, rank: 1, debtId: null,
+    }],
+    debts: [], extraFacilities: [], targetBuffer: 200,
+  });
+  ok(b1Funded.gap && near(b1Funded.gap.amount, 50)
+      && b1Funded.funding && b1Funded.funding.feasible === true
+      && near(b1Funded.funding.allocated, 50)
+      && near(b1Funded.funding.shortfall, 0)
+      && Number(b1Funded.funding.borrowed) === 0
+      && (b1Funded.funding.parts || []).length === 1
+      && (b1Funded.funding.parts || [])[0].id === 'test-cash'
+      && (b1Funded.simOptions.injections || []).length === 1
+      && near((b1Funded.simOptions.injections || [])[0].amount, 50)
+      && b1Funded.weekly > 0,
+    'synthetic funded control: declared cash source covers the 50 gap exactly once (allocation/injection 50, no shortfall or borrowing, feasible, positive weekly)');
+  const b1FundedPayday = browser.paydayAnswerHtml({
+    plan: b1SynthPlan,
+    asOf: '2026-08-21',
+    advice: b1Funded,
+    recommended: b1Funded.weekly,
+    weekly: b1Funded.weekly,
+    liveOverlay: { operatingPlan: 'live' },
+  });
+  ok(/payday-hero/.test(b1FundedPayday) && !/payday-refuse/.test(b1FundedPayday),
+    'synthetic funded control publishes a positive weekly hero');
+  const b1Empty = Forecast.recommend(b1SynthPlan, '2026-08-21', {
+    fundingSources: [],
+    debts: [], extraFacilities: [], targetBuffer: 200,
+  });
+  ok(b1Empty.gap && near(b1Empty.gap.amount, 50)
+      && b1Empty.funding && b1Empty.funding.feasible === false
+      && near(b1Empty.funding.shortfall, 50)
+      && (b1Empty.funding.parts || []).length === 0
+      && (b1Empty.simOptions.injections || []).length === 0
+      && b1Empty.weekly === 0,
+    'synthetic empty-source control: same 50 gap fails closed (full shortfall, no parts, no injection, weekly zero)');
+  const b1EmptyPayday = browser.paydayAnswerHtml({
+    plan: b1SynthPlan,
+    asOf: '2026-08-21',
+    advice: b1Empty,
+    recommended: b1Empty.weekly,
+    weekly: b1Empty.weekly,
+    liveOverlay: { operatingPlan: 'live' },
+  });
+  ok(/payday-refuse/.test(b1EmptyPayday) && !/payday-hero/.test(b1EmptyPayday),
+    'synthetic empty-source control refuses permission with no weekly hero');
   const trustedHero = browser.currentOperatingCashHeroTiles(
     trustedServed.plan,
     trustedServed.meta.asOf,
