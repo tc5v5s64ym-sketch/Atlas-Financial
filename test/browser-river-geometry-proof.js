@@ -4,7 +4,7 @@
 // Systems Review 5479984271 required this proof to be committed and re-runnable).
 //
 // Run from a clean checkout of the head under test:
-//   CHROME_PATH=<chromium> node test/browser-river-geometry-proof.js
+//   CHROME_PATH=<chromium> [PROOF_OUTPUT_DIR=<outside checkout>] node test/browser-river-geometry-proof.js
 // (playwright or playwright-core must be resolvable.)
 //
 // Synthetic timelines only. The script binds the exercised sources to the
@@ -24,7 +24,9 @@ let chromium;
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('playwright-core')); }
 
 const root = path.join(__dirname, '..');
-const outDir = path.join(root, 'docs/proof/browser');
+const outDir = process.env.PROOF_OUTPUT_DIR ? path.resolve(process.env.PROOF_OUTPUT_DIR) : path.join(root, 'docs/proof/browser');
+if (process.env.PROOF_OUTPUT_DIR) assert.ok(path.isAbsolute(process.env.PROOF_OUTPUT_DIR)
+  && !outDir.startsWith(root + path.sep), 'Requested external evidence stays outside the checkout.');
 const sha256 = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
 const BOUND_SOURCES = [
@@ -243,6 +245,67 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
       }
     }
 
+    // A bottom-band selected value must not erase either adjacent period's
+    // otherwise visible target. Measure real paint and send browser pointer
+    // events across the text, rather than using hitIndex as the oracle.
+    const adjacentTargets = [];
+    for (const width of [320, 390, 1280]) for (const theme of ['dark', 'light']) {
+      const page = await open(width, theme, { reduce: true });
+      await page.evaluate(() => window.__scenarioInit('negative', 1, true));
+      await page.waitForTimeout(350); // settle the existing opacity transition
+      const before = await page.evaluate(() => {
+        const r = window.__river, bounds = r.el.getBoundingClientRect();
+        return { index: r.index, pitch: r.sp, input: JSON.stringify(window.__periods),
+          geometry: JSON.stringify({ xs: r.xs, ys: r.ys, top: r.top, bot: r.bot, W: r.W, H: r.H }),
+          labels: r.valEls.map((el, i) => {
+            const b = el.getBoundingClientRect(), style = getComputedStyle(el);
+            return { i, text: el.textContent, title: el.title, state: el.dataset.state,
+              native: el.dataset.riverNativeValue || null, estimated: el.classList.contains('is-est'),
+              left: b.left - bounds.left, right: b.right - bounds.left,
+              opacity: Number(style.opacity), visibility: style.visibility };
+          }) };
+      });
+      const label = 'bottom-band-targets/' + width + '/' + theme;
+      for (const i of [0, 1, 2]) {
+        const value = before.labels[i];
+        check(value.visibility !== 'hidden' && value.opacity > 0,
+          label + ': period ' + i + ' label must remain visible ' + JSON.stringify(value));
+        check(value.left >= 0 && value.right <= width - 24,
+          label + ': period ' + i + ' label is clipped ' + JSON.stringify(value));
+      }
+      const geometry = await readGeometry(page);
+      check(geometry.labelOrbDisjoint && !geometry.neighborOverlap, label + ': labels remain disjoint from orb and neighbors');
+      await capture(page, 'after-bottom-targets-' + width + '-' + theme + '.png');
+      const clicks = [];
+      for (const target of [0, 1, 2]) for (const fraction of [0.1, 0.5, 0.9]) {
+        const point = await page.evaluate(([target, fraction]) => {
+          const r = window.__river;
+          r.go(1, true); r.place(1); r.draw(1500, 1); window.__changes.length = 0;
+          const b = r.valEls[target].getBoundingClientRect();
+          return { x: b.left + b.width * fraction, y: b.top + b.height / 2 };
+        }, [target, fraction]);
+        await page.mouse.click(point.x, point.y);
+        const result = await page.evaluate(() => ({ index: window.__river.index, changes: window.__changes.slice() }));
+        check(result.index === target && result.changes.length === 1
+          && result.changes[0].i === target && result.changes[0].how === 'commit',
+          label + ': click ' + target + '/' + fraction + ' selects its own period ' + JSON.stringify(result));
+        clicks.push({ target, fraction, ...point, ...result });
+      }
+      const after = await page.evaluate(() => {
+        const r = window.__river;
+        return { input: JSON.stringify(window.__periods),
+          geometry: JSON.stringify({ xs: r.xs, ys: r.ys, top: r.top, bot: r.bot, W: r.W, H: r.H }),
+          labels: r.valEls.map(el => ({ text: el.textContent, title: el.title, state: el.dataset.state,
+            native: el.dataset.riverNativeValue || null, estimated: el.classList.contains('is-est') })) };
+      });
+      check(before.input === after.input && before.geometry === after.geometry,
+        label + ': source inputs, curve geometry and domain stay unchanged');
+      check(JSON.stringify(before.labels.map(({ text, title, state, native, estimated }) => ({ text, title, state, native, estimated })))
+        === JSON.stringify(after.labels), label + ': signs, publication text and qualifiers stay unchanged');
+      adjacentTargets.push({ width, theme, before, clicks });
+      await page.close();
+    }
+
     // 3) Held-drag visual proof: mid-gesture captures with the drag state live.
     const heldDrag = [];
     for (const width of [1280, 390]) {
@@ -379,7 +442,7 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
 
     // Receipt + report.
     verifySourceBinding(root, binding);
-    fs.writeFileSync(path.join(outDir, 'timeline-geometry-after.json'), JSON.stringify({ cases, extremes, heldDrag, divergence, transitions }, null, 2));
+    fs.writeFileSync(path.join(outDir, 'timeline-geometry-after.json'), JSON.stringify({ cases, extremes, adjacentTargets, heldDrag, divergence, transitions }, null, 2));
     const receipt = {
       proof: 'timeline-geometry',
       syntheticOnly: true,
@@ -388,6 +451,7 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
       geometrySpec: { ...SPEC, pillBottomEdge: PILL_BOTTOM, valsTopEdgeFromBottom: VALS_TOP_FROM_BOTTOM, beamTop: 30, beamBottomInset: 51 },
       caseCount: cases.length,
       extremes,
+      adjacentTargets,
       behavior,
       screenshotSha256: Object.fromEntries(shots.map(name => [name, sha256(path.join(outDir, name))])),
       failures,
