@@ -2511,6 +2511,18 @@
   function expandEvents(plan, start, end, opts) {
     return expandEventsInternal(plan, start, end, opts, null);
   }
+  // Private provenance for adjustment-substituted events: an event whose
+  // amount came from an incomeOccurrenceAdjust declaration that is not a
+  // finite non-negative number must not gain a numeric contribution
+  // through the sections layer's coercion. Identity is the exact event
+  // object (never id/date, which other events can share); nothing is
+  // written onto the event or the plan, and the sets are module-private.
+  // Rows built from a marked event (while unpaid) are registered in the
+  // second set so the sections layer can let independent reconciliation
+  // replace or retire their figures, and the waterfall detector can deny
+  // them coverage while they remain unresolved.
+  const invalidAdjustedEvents = new WeakSet();
+  const invalidAdjustedRows = new WeakSet();
   // The debt walk's amount-free trace stays private; every public caller
   // still uses the same four-argument schedule authority above.
   function expandEventsInternal(plan, start, end, opts, debtTrace) {
@@ -2527,14 +2539,21 @@
       for (const date of occurrences(s, start, end)) {
         let amount = per;
         let confidence = s.confidence;
+        let invalidAdjustment = false;
         if (typeof opts.incomeOccurrenceAdjust === 'function') {
           const adj = opts.incomeOccurrenceAdjust(s, date, per);
           if (adj && adj.omit) continue;
-          if (adj && adj.amount != null) amount = adj.amount;
+          if (adj && adj.amount != null) {
+            amount = adj.amount;
+            invalidAdjustment = !(typeof adj.amount === 'number'
+              && Number.isFinite(adj.amount) && adj.amount >= 0);
+          }
           if (adj && adj.confidence) confidence = adj.confidence;
         }
         if (!amount) continue;
-        events.push({ date, amount, kind: 'income', label: s.label, id: s.id, confidence });
+        const event = { date, amount, kind: 'income', label: s.label, id: s.id, confidence };
+        if (invalidAdjustment) invalidAdjustedEvents.add(event);
+        events.push(event);
       }
     }
     for (const extra of opts.additionalIncomeEvents || []) {
@@ -8397,7 +8416,7 @@
       }, event);
     }
     if (dalePaydayRecognized) {
-      return applyIncomeClass(plan, {
+      const row = applyIncomeClass(plan, {
         id: event.id,
         label: event.label,
         kind: 'income',
@@ -8417,8 +8436,10 @@
         incomeClass,
         otherIncome: false,
       }, event);
+      if (invalidAdjustedEvents.has(event)) invalidAdjustedRows.add(row);
+      return row;
     }
-    return applyIncomeClass(plan, {
+    const finalRow = applyIncomeClass(plan, {
       id: event.id,
       label: event.label,
       kind: 'income',
@@ -8436,6 +8457,10 @@
       incomeClass,
       otherIncome: incomeClass === 'other',
     }, event);
+    // A paid row's contribution is the independently qualified observed
+    // actual; only an unpaid row still rests on the substituted amount.
+    if (!paid && invalidAdjustedEvents.has(event)) invalidAdjustedRows.add(finalRow);
+    return finalRow;
   }
 
   function incomeClassOfStream(stream) {
@@ -9043,6 +9068,33 @@
           kind: 'income', reason: 'other-income', includeReason: 'other-income',
         })],
       }, { otherIncome: true, incomeClass: 'other' }));
+    }
+    // ATLAS-026 provenance resolution: independent reconciliation has
+    // now been considered for every marked row. In non-lookback windows,
+    // a marked row with a genuine attached actual publishes from that
+    // actual (the actual replaces the coerced figures); a marked row
+    // still unresolved takes the incumbent unknown-amount row shape
+    // (figures null, identity preserved) and stays marked so the
+    // waterfall detector denies it coverage. Sealed lookback windows
+    // keep incumbent treatment and are not touched here.
+    const roleByWindowId = new Map();
+    for (const w of windows || []) if (w && w.id) roleByWindowId.set(w.id, w.role || null);
+    for (const windowId of Object.keys(buckets)) {
+      if (roleByWindowId.get(windowId) === 'lookback') continue;
+      for (const row of buckets[windowId] || []) {
+        if (!row || !invalidAdjustedRows.has(row)) continue;
+        if (typeof row.actual === 'number' && Number.isFinite(row.actual)) {
+          row.amount = roundCent(row.actual);
+          row.planned = roundCent(row.actual);
+          row.movement = householdMovement(row.actual, 'in');
+          invalidAdjustedRows.delete(row);
+        } else {
+          row.planned = null;
+          row.amount = null;
+          row.remaining = null;
+          row.movement = null;
+        }
+      }
     }
     const sortRows = rows => rows.sort((a, b) =>
       String(a.date || '').localeCompare(String(b.date || ''))
@@ -11068,7 +11120,10 @@
           .some(v => typeof v === 'number' && Number.isFinite(v));
       const knownIncomeKeys = new Set();
       for (const row of income || []) {
-        if (row && row.id && row.date && incomeRowHasBasis(row)) {
+        // A row still resting on an invalid adjustment substitution is
+        // not a basis, however its coerced figures read.
+        if (row && row.id && row.date && incomeRowHasBasis(row)
+            && !invalidAdjustedRows.has(row)) {
           knownIncomeKeys.add(row.id + '@' + row.date);
         }
       }
@@ -11118,7 +11173,19 @@
           && occurrences(stream, window.start, window.end).some(date =>
             !knownIncomeKeys.has(stream.id + '@' + date)
             && !excludedIncomeOccurrence(stream.id, date)
-            && occurrenceAdjustmentInvalid(stream, date))));
+            && occurrenceAdjustmentInvalid(stream, date)))
+        // ATLAS-026 provenance hold: a row still marked unresolved at
+        // this point rests on an invalid adjustment substitution whose
+        // figures the sections post-pass neutralized. The arms above
+        // each skip it for an incumbent reason — the row arm excludes
+        // Other Income rows and the stream arms exclude disabled ids —
+        // so that combination would otherwise publish a zero total for
+        // an unknown amount. The mark itself is the provenance-aware
+        // trigger: reconciled rows were unmarked by the post-pass,
+        // regime-replaced rows were discharged at the stamp, and
+        // represented rows were never marked.
+        || (income || []).some(row => row && invalidAdjustedRows.has(row)
+          && row.notReliedUpon !== true && row.settlement !== 'not-relied-upon'));
       let incomeAdded = 0;
       for (const row of income) {
         if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) {
@@ -11735,6 +11802,11 @@
       const dep = bonus ? maps.bonus.get(row.date) : maps.regular.get(row.date);
       if (!dep) continue;
       stampTimelineEstimatedDaleRow(row, dep);
+      // ATLAS-026: the authoritative regime replacement has supplied a
+      // valid basis for this exact row, superseding the invalid adjusted
+      // source — discharge its provenance mark. Unreplaced marked rows
+      // keep theirs; nothing is cleared before this qualification.
+      if (Number.isFinite(row.amount)) invalidAdjustedRows.delete(row);
       seen.add(kind + ':' + row.date);
       next.push(row);
     }
