@@ -2511,6 +2511,13 @@
   function expandEvents(plan, start, end, opts) {
     return expandEventsInternal(plan, start, end, opts, null);
   }
+  // Private provenance for adjustment-substituted events: an event whose
+  // amount came from an incomeOccurrenceAdjust declaration that is not a
+  // finite non-negative number must not gain a numeric contribution
+  // through the sections layer's coercion. Identity is the exact event
+  // object (never id/date, which other events can share); nothing is
+  // written onto the event or the plan, and the set is module-private.
+  const invalidAdjustedEvents = new WeakSet();
   // The debt walk's amount-free trace stays private; every public caller
   // still uses the same four-argument schedule authority above.
   function expandEventsInternal(plan, start, end, opts, debtTrace) {
@@ -2527,14 +2534,21 @@
       for (const date of occurrences(s, start, end)) {
         let amount = per;
         let confidence = s.confidence;
+        let invalidAdjustment = false;
         if (typeof opts.incomeOccurrenceAdjust === 'function') {
           const adj = opts.incomeOccurrenceAdjust(s, date, per);
           if (adj && adj.omit) continue;
-          if (adj && adj.amount != null) amount = adj.amount;
+          if (adj && adj.amount != null) {
+            amount = adj.amount;
+            invalidAdjustment = !(typeof adj.amount === 'number'
+              && Number.isFinite(adj.amount) && adj.amount >= 0);
+          }
           if (adj && adj.confidence) confidence = adj.confidence;
         }
         if (!amount) continue;
-        events.push({ date, amount, kind: 'income', label: s.label, id: s.id, confidence });
+        const event = { date, amount, kind: 'income', label: s.label, id: s.id, confidence };
+        if (invalidAdjustment) invalidAdjustedEvents.add(event);
+        events.push(event);
       }
     }
     for (const extra of opts.additionalIncomeEvents || []) {
@@ -8396,6 +8410,11 @@
         otherIncome: incomeClass === 'other',
       }, event);
     }
+    // An event whose amount is an invalid adjustment substitution must
+    // not gain a numeric contribution here through coercion. A paid
+    // (represented) row is exempt: its contribution is the independently
+    // qualified observed actual, not the substituted amount.
+    if (!paid && invalidAdjustedEvents.has(event)) return null;
     if (dalePaydayRecognized) {
       return applyIncomeClass(plan, {
         id: event.id,

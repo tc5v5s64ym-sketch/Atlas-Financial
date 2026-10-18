@@ -1574,6 +1574,68 @@ function sectionMissingIncomeAmount() {
       && !adjNoAmount.incomeUnavailableReason,
     '026 adjustment no-amount control: native amount stands',
     adjNoAmount && `${adjNoAmount.incomeTotal}/${adjNoAmount.incomeTrust}`);
+  // Provenance repair: a non-number adjustment amount is substituted
+  // verbatim into the event and calendarIncomeRowFromEvent coerces it
+  // into a genuine-looking row basis (roundCent does Number(...)), so the
+  // period publishes the coerced figure. The substituted event's invalid
+  // source must not gain a numeric contribution; independent actuals and
+  // conversions keep theirs.
+  for (const [label, adjAmount] of [["string '250'", '250'], ['boolean true', true]]) {
+    for (const [nativeLabel, nativeAmount] of [['positive', 500], ['zero', 0]]) {
+      const v = rowByStart(run(fixture([payroll, receipt(nativeAmount)]),
+        { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: adjAmount, confidence: 'confirmed' } : null }), '2026-10-16');
+      ok(v && v.incomeTotal === null && v.incomeTrust === 'unavailable'
+          && typeof v.incomeUnavailableReason === 'string' && v.afterBills === null,
+        `026 provenance ${label} on ${nativeLabel} native: coerced contribution withheld`,
+        v && `${v.incomeTotal}/${v.incomeTrust}`);
+    }
+    const missing = rowByStart(run(fixture([payroll, receipt(null)]),
+      { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: adjAmount, confidence: 'confirmed' } : null }), '2026-10-16');
+    ok(missing && missing.incomeTotal === null && missing.incomeTrust === 'unavailable',
+      `026 provenance ${label} on missing native: coerced row also covers the missing-native arm, withheld`,
+      missing && `${missing.incomeTotal}/${missing.incomeTrust}`);
+  }
+  // A qualified actual establishes the contribution independently of the
+  // invalid substituted amount: positive and zero actuals both publish.
+  const actualPacket = (actual) => ({
+    schema: 'atlas-current-period-actuals/v1',
+    observationAsOf: AS_OF,
+    coverageStart: '2026-10-02',
+    coverageThrough: AS_OF,
+    pendingCoverage: 'complete',
+    transactions: [],
+    representedActuals: [{ id: 'r1', date: '2026-10-07', actual }],
+  });
+  for (const [label, actual] of [['positive', 450], ['zero', 0]]) {
+    const v = rowByStart(run(fixture([payroll,
+      { id: 'r1', label: 'Synthetic receipt', frequency: 'once', date: '2026-10-07', amount: 500, confidence: 'confirmed' }],
+      { representedEvents: [{ id: 'r1', date: '2026-10-07' }] }),
+      { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: '250', confidence: 'confirmed' } : null,
+        currentPeriodActuals: actualPacket(actual) }), '2026-10-02');
+    ok(v && v.incomeTotal === actual && v.incomeTrust === 'calculated' && !v.incomeUnavailableReason,
+      `026 provenance actual ${label} preserved: qualified actual publishes over an invalid adjustment`,
+      v && `${v.incomeTotal}/${v.incomeTrust}`);
+  }
+  // A native string amount with no adjustment keeps its incumbent
+  // (coerced) publication: the repair is adjustment-specific.
+  const nativeString = rowByStart(run(fixture([payroll, receipt('500')])), '2026-10-16');
+  ok(nativeString && nativeString.incomeTotal === 500 && nativeString.incomeTrust === 'calculated'
+      && !nativeString.incomeUnavailableReason,
+    '026 provenance native-string control: no-replacement native conversion unchanged',
+    nativeString && `${nativeString.incomeTotal}/${nativeString.incomeTrust}`);
+  // An independent additional-income event keeps its explicit conversion
+  // in its own period while the adjusted receipt's period withholds.
+  const independentRun = run(fixture([payroll, receipt(500)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: '250', confidence: 'confirmed' } : null,
+      additionalIncomeEvents: [{ id: 'x1', kind: 'income', date: '2026-11-20', amount: '250' }] });
+  const independentWithheld = rowByStart(independentRun, '2026-10-16');
+  const independentLater = rowByStart(independentRun, '2026-11-13');
+  ok(independentWithheld && independentWithheld.incomeTotal === null
+      && independentWithheld.incomeTrust === 'unavailable'
+      && independentLater && independentLater.incomeTotal === 250
+      && independentLater.incomeTrust === 'estimated',
+    '026 provenance independent replacement: additional-income conversion preserved while the defect period withholds',
+    `${independentWithheld && independentWithheld.incomeTotal}/${independentLater && independentLater.incomeTotal}`);
 
   // A missing-amount receipt with no contributing occurrence in a period
   // leaves that period known; only its own period goes unknown.
