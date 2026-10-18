@@ -1505,6 +1505,43 @@ function sectionMissingIncomeAmount() {
       && typeof adjNegative.incomeUnavailableReason === 'string' && adjNegative.afterBills === null,
     '026 adjustment negative: negative adjustment is no basis, hold fires',
     adjNegative && `${adjNegative.incomeTotal}/${adjNegative.incomeTrust}/${adjNegative.incomeUnavailableReason}`);
+  // Follow-up: the same invalid negative adjustment on a KNOWN receipt
+  // discards the occurrence in expandEvents and the period publishes a
+  // calculated zero — the known amount silently vanishes. The hold must
+  // fire with the same qualification and reason.
+  const knownAdjNegative = rowByStart(run(fixture([payroll, receipt(500)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: -300, confidence: 'confirmed' } : null }), '2026-10-16');
+  ok(knownAdjNegative && knownAdjNegative.incomeTotal === null && knownAdjNegative.incomeTrust === 'unavailable'
+      && typeof knownAdjNegative.incomeUnavailableReason === 'string'
+      && knownAdjNegative.afterBills === null && knownAdjNegative.predictedEndingBalance === null,
+    '026 known-receipt negative adjustment: known amount discarded by an invalid adjustment withholds the period',
+    knownAdjNegative && `${knownAdjNegative.incomeTotal}/${knownAdjNegative.incomeTrust}/${knownAdjNegative.incomeUnavailableReason}`);
+  // Uniform rule: a native genuine zero with a negative adjustment is the
+  // same invalid declaration — the negative disposes of nothing there too.
+  const zeroAdjNegative = rowByStart(run(fixture([payroll, receipt(0)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: -300, confidence: 'confirmed' } : null }), '2026-10-16');
+  ok(zeroAdjNegative && zeroAdjNegative.incomeTotal === null && zeroAdjNegative.incomeTrust === 'unavailable'
+      && typeof zeroAdjNegative.incomeUnavailableReason === 'string',
+    '026 zero-receipt negative adjustment: invalid declaration withholds under the uniform rule',
+    zeroAdjNegative && `${zeroAdjNegative.incomeTotal}/${zeroAdjNegative.incomeTrust}`);
+  // Omit still takes precedence over a negative amount: a declared
+  // non-event on a known receipt stays a known zero.
+  const knownOmitNegative = rowByStart(run(fixture([payroll, receipt(500)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { omit: true, amount: -300 } : null }), '2026-10-16');
+  ok(knownOmitNegative && knownOmitNegative.incomeTotal === 0 && knownOmitNegative.incomeTrust === 'calculated'
+      && !knownOmitNegative.incomeUnavailableReason && near(knownOmitNegative.afterBills, -120),
+    '026 known-receipt omit control: omission precedence over a negative amount is preserved',
+    knownOmitNegative && `${knownOmitNegative.incomeTotal}/${knownOmitNegative.incomeTrust}`);
+  // A qualified exclusion still governs: a same-day not-relied-upon known
+  // receipt with a negative adjustment does not taint its period.
+  const knownExcludedNegative = rowByStart(run(fixture([payroll,
+    { id: 'r1', label: 'Synthetic receipt', frequency: 'once', date: '2026-10-07', amount: 500, confidence: 'confirmed' }],
+    { notReliedUponEvents: [{ id: 'r1', date: '2026-10-07', reason: 'already in cash' }] },
+    ), { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: -300, confidence: 'confirmed' } : null }), '2026-10-02');
+  ok(knownExcludedNegative && knownExcludedNegative.incomeTotal === 0
+      && knownExcludedNegative.incomeTrust === 'calculated' && !knownExcludedNegative.incomeUnavailableReason,
+    '026 known-receipt excluded negative control: qualified exclusion still governs',
+    knownExcludedNegative && `${knownExcludedNegative.incomeTotal}/${knownExcludedNegative.incomeTrust}`);
 
   // A missing-amount receipt with no contributing occurrence in a period
   // leaves that period known; only its own period goes unknown.

@@ -11089,6 +11089,16 @@
         if (adj.omit) return true;
         return typeof adj.amount === 'number' && Number.isFinite(adj.amount) && adj.amount >= 0;
       };
+      // A negative adjustment amount without omit is an invalid
+      // declaration on any stream: expandEvents builds the event and the
+      // sections layer discards it, so even a known native amount
+      // silently vanishes from the period. It disposes of nothing.
+      const occurrenceAdjustmentNegative = (stream, date) => {
+        if (!opts || typeof opts.incomeOccurrenceAdjust !== 'function') return false;
+        const adj = opts.incomeOccurrenceAdjust(stream, date, streamAmount(stream, opts));
+        return !!adj && !adj.omit && typeof adj.amount === 'number'
+          && Number.isFinite(adj.amount) && adj.amount < 0;
+      };
       const incomeLoadUnknown = !planUnavailable && !lookback && (
         (income || []).some(row => row && row.otherIncome !== true
           && row.notReliedUpon !== true && row.settlement !== 'not-relied-upon'
@@ -11099,7 +11109,13 @@
           && occurrences(stream, window.start, window.end).some(date =>
             !knownIncomeKeys.has(stream.id + '@' + date)
             && !excludedIncomeOccurrence(stream.id, date)
-            && !occurrenceAdjustmentBasis(stream, date))));
+            && !occurrenceAdjustmentBasis(stream, date)))
+        || (plan.income || []).some(stream => stream
+          && !(opts.disabled || []).includes(stream.id)
+          && occurrences(stream, window.start, window.end).some(date =>
+            !knownIncomeKeys.has(stream.id + '@' + date)
+            && !excludedIncomeOccurrence(stream.id, date)
+            && occurrenceAdjustmentNegative(stream, date))));
       let incomeAdded = 0;
       for (const row of income) {
         if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) {
