@@ -11060,7 +11060,7 @@
       // contribution basis (represented/settled receipts carry one), the
       // occurrence is not qualified as excluded by the incumbent
       // represented / not-relied-upon selectors, and no occurrence
-      // adjustment gives it a finite effective amount. A section row that
+      // adjustment disposes of it. A section row that
       // reaches the waterfall with no numeric basis at all taints it too.
       // Genuine zero is a known cents value and never taints.
       const incomeRowHasBasis = row => !!row
@@ -11076,13 +11076,18 @@
         const key = id + '@' + date;
         return qualifiedRepresentedKeys.has(key) || qualifiedNotReliedKeys.has(key);
       };
-      // An occurrence adjustment with a finite amount is an effective
-      // basis for that occurrence (a declared zero included), whether or
-      // not it produced a section row.
+      // An occurrence adjustment disposes of the occurrence when it omits
+      // it (expandEvents drops omitted occurrences entirely, so nothing
+      // relies on them) or gives it a finite non-negative amount (a
+      // declared zero included), whether or not it produced a section
+      // row. A negative amount is not a valid income basis anywhere in
+      // the codebase, so it disposes of nothing.
       const occurrenceAdjustmentBasis = (stream, date) => {
         if (!opts || typeof opts.incomeOccurrenceAdjust !== 'function') return false;
         const adj = opts.incomeOccurrenceAdjust(stream, date, streamAmount(stream, opts));
-        return !!adj && typeof adj.amount === 'number' && Number.isFinite(adj.amount);
+        if (!adj) return false;
+        if (adj.omit) return true;
+        return typeof adj.amount === 'number' && Number.isFinite(adj.amount) && adj.amount >= 0;
       };
       const incomeLoadUnknown = !planUnavailable && !lookback && (
         (income || []).some(row => row && row.otherIncome !== true

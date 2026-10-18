@@ -1489,6 +1489,22 @@ function sectionMissingIncomeAmount() {
       && !adjZero.incomeUnavailableReason && near(adjZero.afterBills, -120),
     '026 adjustment control: declared-zero occurrence adjustment stays a known zero',
     adjZero && `${adjZero.incomeTotal}/${adjZero.incomeTrust}/${adjZero.incomeUnavailableReason}`);
+  // An omitted occurrence is a declared non-event (expandEvents drops it
+  // entirely): it must not taint the period.
+  const adjOmit = rowByStart(run(fixture([payroll, receipt(null)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { omit: true } : null }), '2026-10-16');
+  ok(adjOmit && adjOmit.incomeTotal === 0 && adjOmit.incomeTrust === 'calculated'
+      && !adjOmit.incomeUnavailableReason && near(adjOmit.afterBills, -120),
+    '026 adjustment control: omitted occurrence does not taint',
+    adjOmit && `${adjOmit.incomeTotal}/${adjOmit.incomeTrust}/${adjOmit.incomeUnavailableReason}`);
+  // A negative adjustment is not a valid income basis anywhere in the
+  // codebase: it disposes of nothing, so the hold must fire.
+  const adjNegative = rowByStart(run(fixture([payroll, receipt(null)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: -300, confidence: 'confirmed' } : null }), '2026-10-16');
+  ok(adjNegative && adjNegative.incomeTotal === null && adjNegative.incomeTrust === 'unavailable'
+      && typeof adjNegative.incomeUnavailableReason === 'string' && adjNegative.afterBills === null,
+    '026 adjustment negative: negative adjustment is no basis, hold fires',
+    adjNegative && `${adjNegative.incomeTotal}/${adjNegative.incomeTrust}/${adjNegative.incomeUnavailableReason}`);
 
   // A missing-amount receipt with no contributing occurrence in a period
   // leaves that period known; only its own period goes unknown.
