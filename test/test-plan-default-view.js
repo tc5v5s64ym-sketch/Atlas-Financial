@@ -10,6 +10,7 @@ const path = require('path');
 const vm = require('vm');
 const F = require('../public/forecast.js');
 const { sourceText } = require('./test-source-text');
+const surfaceFixture = require('./fixtures/budget-surface-data');
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -503,6 +504,114 @@ console.log('\n=== 7. compact freshness remains; worksheet clutter is gone from 
     'worksheet and road-ahead diagnostic mounts are hidden from the default Plan');
   ok(!/View full current-period worksheet/.test(page) && !/Why \/ Road ahead/.test(page),
     'View full current-period worksheet and Why / Road ahead are not default Plan copy');
+}
+
+const DIAGNOSTIC_MOUNTS = ['hero-tiles', 'cap-headline', 'phases', 'risk-list'];
+
+// Real page scripts and Forecast, with an invented input generation. Only SVG
+// drawing and browser event wiring are stubbed; renderPlan and its consumers run.
+function diagnosticPage(hidden) {
+  const elements = new Map(), writes = new Map();
+  const metrics = { counterfactualCalls: 0, phaseCalls: 0 };
+  let advice;
+  const element = (id = '') => {
+    let html = DIAGNOSTIC_MOUNTS.includes(id) ? '<i>retained ' + id + '</i>' : '';
+    const attrs = {};
+    return { get innerHTML() { return html; }, set innerHTML(value) {
+      html = String(value); writes.set(id, (writes.get(id) || 0) + 1);
+    }, textContent: '', hidden: false, value: '', dataset: {}, children: [],
+    style: { setProperty() {}, getPropertyValue() { return ''; } },
+    classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+    setAttribute(k, v) { attrs[k] = String(v); }, getAttribute(k) { return attrs[k] ?? null; },
+    removeAttribute(k) { delete attrs[k]; }, hasAttribute(k) { return Object.hasOwn(attrs, k); },
+    addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; },
+    appendChild() {}, replaceChildren() {}, insertAdjacentHTML() {}, closest() { return null; } };
+  };
+  if (hidden !== 'absent') {
+    const root = element('road-ahead'); root.hidden = hidden;
+    elements.set('road-ahead', root);
+  }
+  for (const id of DIAGNOSTIC_MOUNTS) elements.set(id, element(id));
+  const forecast = { ...F,
+    recommend(...args) { advice = F.recommend(...args); return advice; },
+    counterfactuals(...args) { metrics.counterfactualCalls++; return F.counterfactuals(...args); },
+    planPhases(...args) { metrics.phaseCalls++; return F.planPhases(...args); },
+  };
+  const context = vm.createContext({ Forecast: forecast, console, addEventListener() {}, setTimeout, clearTimeout,
+    document: { addEventListener() {}, querySelectorAll() { return []; }, querySelector() { return null; },
+      getElementById(id) {
+        if (id === 'road-ahead' && hidden === 'absent') return null;
+        if (!elements.has(id)) elements.set(id, element(id));
+        return elements.get(id);
+      }, documentElement: { dataset: {}, style: {} }, createElement: element, createElementNS: element, body: element() },
+    localStorage: { getItem() { return null; }, setItem() {} }, location: { pathname: '/', search: '' } });
+  context.window = Object.assign(context, { matchMedia() { return { matches: false, addEventListener() {} }; } });
+  const script = name => fs.readFileSync(path.join(__dirname, '../public/' + name + '.js'), 'utf8');
+  vm.runInContext(script('app'), context);
+  vm.runInContext('App.boot=()=>{}; App.once=()=>{}; App.register=()=>{};', context);
+  for (const name of ['forecast-chequing', 'balance-history', 'bill-detail', 'savings-inventory', 'budget-surface', 'plan'])
+    vm.runInContext(script(name), context);
+  vm.runInContext('forecastChart=()=>{}; renderCalendar=()=>{};', context);
+  return { metrics, writes, elements,
+    render(served) {
+      context.served = served;
+      context.periods = { periods: { ytd: { label: 'Invented month', months: 1, spending: [] } } };
+      vm.runInContext("Object.defineProperty(App, 'data', { get:()=>served, configurable:true });", context);
+      vm.runInContext('Object.assign(state, served.plan.defaults, { debts:served.debts, weeklyVariable:40 }); renderPlan(served,periods,null);', context);
+      const output = Object.fromEntries([...elements].map(([id, el]) => [id, { html: el.innerHTML, text: el.textContent }]));
+      return { output, advice: JSON.stringify(advice) };
+    },
+  };
+}
+
+function diagnosticFixture(kind) {
+  if (kind === 'withheld-savings') return surfaceFixture.served({ withheldSavings: true });
+  const data = surfaceFixture.canonical();
+  if (kind === 'opening-gap') {
+    data.plan.startingCash.breakdown.forEach(row => { row.value = 0; });
+    data.plan.funding = { options: [{ id: 'invented-cover', label: 'Invented outside cash', short: 'invented cash',
+      available: 0, debtId: null, rank: 1 }] };
+  }
+  return data;
+}
+
+console.log('\n=== 8. explicit hidden diagnostics skip counterfactual work only ===');
+{
+  const html = read('public/index.html'), start = html.indexOf('<section id="road-ahead"');
+  let depth = 0, end;
+  for (const tag of html.slice(start).matchAll(/<\/?section\b[^>]*>/g)) {
+    depth += tag[0].startsWith('</') ? -1 : 1;
+    if (!depth) { end = start + tag.index + tag[0].length; break; }
+  }
+  ok(start >= 0 && end > start && DIAGNOSTIC_MOUNTS.every(id => html.slice(start, end).includes('id="' + id + '"')),
+    'all four counterfactual consumers belong to the hidden road-ahead root');
+}
+for (const kind of ['current', 'opening-gap', 'withheld-savings']) {
+  const data = diagnosticFixture(kind), before = JSON.stringify(data);
+  const hidden = diagnosticPage(true), requested = diagnosticPage(false), absent = diagnosticPage('absent'), unspecified = diagnosticPage(undefined);
+  const h = hidden.render(data), shown = requested.render(data), legacy = absent.render(data), unset = unspecified.render(data);
+  ok(hidden.metrics.counterfactualCalls === 0, kind + ': explicit hidden root makes zero counterfactual calls');
+  ok(hidden.metrics.phaseCalls === 0, kind + ': hidden phase consumer does not rebuild diagnostic alternatives');
+  for (const id of DIAGNOSTIC_MOUNTS) {
+    ok(!hidden.writes.get(id) && h.output[id].html === '<i>retained ' + id + '</i>',
+      kind + ': hidden ' + id + ' is not rendered');
+    ok(requested.writes.get(id) === 1 && shown.output[id].html !== '<i>retained ' + id + '</i>',
+      kind + ': requested ' + id + ' renders its native output');
+    ok(JSON.stringify(shown.output[id]) === JSON.stringify(legacy.output[id])
+        && JSON.stringify(shown.output[id]) === JSON.stringify(unset.output[id]),
+      kind + ': ' + id + ' output identical when diagnostics requested or root absent/unspecified');
+  }
+  ok(requested.metrics.counterfactualCalls === 1 && absent.metrics.counterfactualCalls === 1 && unspecified.metrics.counterfactualCalls === 1,
+    kind + ': requested, absent and unspecified roots preserve the original call');
+  const active = output => Object.fromEntries(Object.entries(output)
+    .filter(([id]) => id !== 'road-ahead' && !DIAGNOSTIC_MOUNTS.includes(id)));
+  ok(JSON.stringify(active(h.output)) === JSON.stringify(active(shown.output)),
+    kind + ': every other render mount, including operating/Savings/payday, stays identical');
+  ok(!!h.output['operating-surface-body'].html && !!h.output['payday-answer-body'].html,
+    kind + ': preservation check covers populated active and payday consumers');
+  ok(h.advice === shown.advice && shown.advice === legacy.advice && legacy.advice === unset.advice,
+    kind + ': financial publications and qualification stay identical');
+  ok(JSON.stringify(data) === before, kind + ': all modes preserve the invented source generation');
 }
 
 if (failures) {

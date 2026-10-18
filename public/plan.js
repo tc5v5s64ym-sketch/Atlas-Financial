@@ -7920,9 +7920,12 @@ function renderPlan(d, periods, history) {
   // `recommend` and `projectDebts` for the HELOC fallback. It now asks once and
   // renders what comes back. It does not choose a source, name a facility,
   // restate the scenario, or decide whether either answer is worth showing.
-  const alternatives = Forecast.counterfactuals(plan, asOf, advice, debtProj, {
-    debts: d.debts, extraFacilities: d.revolvingExtra, weekly });
-  const ifCovered = alternatives.fullGapCoverage;
+  // Only an explicitly hidden root suppresses diagnostics. An absent root
+  // preserves the existing diagnostic render path.
+  const diagnosticsVisible = $('road-ahead')?.hidden !== true;
+  const alternatives = diagnosticsVisible ? Forecast.counterfactuals(plan, asOf, advice, debtProj, {
+    debts: d.debts, extraFacilities: d.revolvingExtra, weekly }) : null;
+  const ifCovered = alternatives?.fullGapCoverage;
 
   const cashOn = date => {
     const p = sim.daily.find(x => x.date === date);
@@ -8005,7 +8008,7 @@ function renderPlan(d, periods, history) {
   // The condition attached to the weekly cap, written ONCE. It appeared on
   // both the Today tile and the cap headline, and fixing the headline alone
   // left the tile describing a simulation that was not the one it showed.
-  const capQualifier = !gap
+  const capQualifier = !diagnosticsVisible ? null : !gap
     ? 'under the expected scenario'
     : ifCovered.applies
       ? `from ${fmtDateLong(advice.effectiveFrom)}, with only `
@@ -8020,7 +8023,7 @@ function renderPlan(d, periods, history) {
   // label it is given. The 3-day chip is presentation: it moves no figure
   // and selects no day.
   const nextOut = Forecast.nextPaymentOut(sim.events, asOf);
-  $('hero-tiles').innerHTML = [
+  if (diagnosticsVisible) $('hero-tiles').innerHTML = [
     ...currentOperatingCashHeroTiles(plan, asOf, sim, advice, d.liveOverlay),
     (planUnavailable
       ? { lab: 'Weekly household cap', val: 'unavailable', tone: 'alert',
@@ -8064,7 +8067,7 @@ function renderPlan(d, periods, history) {
     // situation — not for a covered gap. Saying "once the gap is covered"
     // beside it attached the condition of one simulation to the answer of
     // another, so the full-coverage figure is computed and shown separately.
-    $('cap-headline').innerHTML = capView.hasFeasibleCap
+    if (diagnosticsVisible) $('cap-headline').innerHTML = capView.hasFeasibleCap
       ? `<span class="cap-amt">${money(weekly)}</span><span class="cap-per">/ week</span>
        <span class="cap-qual">${capQualifier}</span>`
       : `<span class="cap-amt">unavailable</span>
@@ -8252,15 +8255,15 @@ function renderPlan(d, periods, history) {
   // is a financial decision and belongs to Forecast.planPhases — where the
   // node suite can reach it. This page looks the wording up. It no longer
   // compares debt marks, tests the gap, or selects a risk state.
-  const outlook = Forecast.planPhases(plan, advice, debtProj, {
+  const outlook = diagnosticsVisible ? Forecast.planPhases(plan, advice, debtProj, {
     weeklyOverride: state.weeklyVariable, sim,
     budget, transfer: transferDependency, alternatives,
     disabled: state.disabled,
-  });
+  }) : null;
   const phase = (range, title, body) =>
     `<div class="phase"><div class="phase-range">${range}</div>
       <div class="phase-title">${title}</div><p>${body}</p></div>`;
-  $('phases').innerHTML = outlook.phases.map(p => {
+  if (diagnosticsVisible) $('phases').innerHTML = outlook.phases.map(p => {
     const body = p.rangeId === '61-90'
       ? PHASE_BODY[p.rangeId](Object.assign({}, p, {
           nextDollarSummary: plan.nextDollar ? plan.nextDollar.summary : '',
@@ -8289,19 +8292,21 @@ function renderPlan(d, periods, history) {
   /* ---- what could break the plan ---- */
   // WHICH risks appear, and the figures inside them, is Forecast.planPhases.
   // The cash-not-cards line is always shown — it is copy, not a comparison.
-  const risks = outlook.risks.map(r => ({
-    what: RISK_WHAT[r.id](r),
-    change: RISK_CHANGE[r.id](r),
-  }));
-  risks.push({ what: 'The cap assumes spending is paid in cash, not put on the cards',
-    change: `The historical averages behind the split include card purchases. Spending at the same rate on the cards
+  if (diagnosticsVisible) {
+    const risks = outlook.risks.map(r => ({
+      what: RISK_WHAT[r.id](r),
+      change: RISK_CHANGE[r.id](r),
+    }));
+    risks.push({ what: 'The cap assumes spending is paid in cash, not put on the cards',
+      change: `The historical averages behind the split include card purchases. Spending at the same rate on the cards
              would leave the cash line looking healthy while the balances grew — the projection above assumes no new
              card spending at all.` });
-  $('risk-list').innerHTML = risks.map(r => `
+    $('risk-list').innerHTML = risks.map(r => `
     <div class="risk">
       <div class="risk-what">${r.what}</div>
       <p class="risk-change">${r.change}</p>
     </div>`).join('');
+  }
 
   /* ---- how this was calculated ---- */
   if ($('assumption-list')) {
