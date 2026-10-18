@@ -1016,6 +1016,36 @@ console.log('\n=== Jan 1–14 stays estimated as future, next, and current until
     'Jan 1 as future uses the estimated net', janFace(futureJan));
   expectPeriod(futureJan, janSpec, 'Jan 1 as future');
 
+  // ATLAS-026 provenance: an invalid adjustment on the Jan 1 payroll
+  // occurrence is superseded by the authoritative regime replacement —
+  // the replacement supplies the basis and the period publishes exactly
+  // as the no-adjustment control. An invalid adjustment the replacement
+  // does not qualify for (Amanda's Jan 15 occurrence) still withholds.
+  for (const [label, adjAmount] of [["string '250'", '250'], ['boolean true', true]]) {
+    const adjAdvice = recommend(withRegime('2026-12-04'), '2026-12-04', {
+      incomeOccurrenceAdjust: (s, d) => s && s.id === 'payroll' && d === '2027-01-01'
+        ? { amount: adjAmount, confidence: 'confirmed' } : null,
+    });
+    const adjJan = rowByStart(adjAdvice, '2027-01-01');
+    const adjDale = incomeOn(adjJan, 'payroll', '2027-01-01');
+    ok(adjDale.length === 1 && adjDale[0].amount === DALE_2027
+        && adjDale[0].incomeRegime === '2027-estimated'
+        && adjJan.incomeTrust === 'estimated' && !adjJan.incomeUnavailableReason,
+      `026 provenance regime replacement ${label}: valid replacement supplies the basis`,
+      adjJan && `${adjJan.incomeTotal}/${adjJan.incomeTrust}`);
+    expectPeriod(adjJan, janSpec, `Jan 1 regime replacement over ${label}`);
+  }
+  const unqualified = recommend(withRegime('2026-12-04'), '2026-12-04', {
+    incomeOccurrenceAdjust: (s, d) => s && s.id === 'amandaSalary15' && d === '2027-01-15'
+      ? { amount: '250', confidence: 'confirmed' } : null,
+  });
+  const unqualifiedJan = rowByStart(unqualified, '2027-01-15');
+  ok(unqualifiedJan && unqualifiedJan.incomeTotal === null
+      && unqualifiedJan.incomeTrust === 'unavailable'
+      && typeof unqualifiedJan.incomeUnavailableReason === 'string',
+    '026 provenance regime unqualified control: no replacement qualifies, period still withholds',
+    unqualifiedJan && `${unqualifiedJan.incomeTotal}/${unqualifiedJan.incomeTrust}`);
+
   const asNext = recommend(withRegime('2026-12-18'), '2026-12-18');
   const next = rowByRole(asNext, 'next');
   const currentOnDec = rowByRole(asNext, 'current');

@@ -11790,6 +11790,11 @@
       const dep = bonus ? maps.bonus.get(row.date) : maps.regular.get(row.date);
       if (!dep) continue;
       stampTimelineEstimatedDaleRow(row, dep);
+      // ATLAS-026: the authoritative regime replacement has supplied a
+      // valid basis for this exact row, superseding the invalid adjusted
+      // source — discharge its provenance mark. Unreplaced marked rows
+      // keep theirs; nothing is cleared before this qualification.
+      if (Number.isFinite(row.amount)) invalidAdjustedRows.delete(row);
       seen.add(kind + ':' + row.date);
       next.push(row);
     }
