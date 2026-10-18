@@ -13,7 +13,14 @@ async function proveRiverPort({ open, capture }) {
     if (data) for (let i = 0; i < 24; i++) data.plan.bills.push({id:'stress-bill-'+i,label:'Synthetic recurring bill '+i,
       frequency:'monthly',day:i+1,amount:12+i,confidence:'confirmed',payingAccount:'chequing-a'});
     const page = await open(width, theme, data ? { data } : {});
-    await page.waitForFunction(() => Number(getComputedStyle(document.querySelector('.t-river')).opacity) === 1);
+    // Opacity rounds to 1 before the finite entrance transform finishes.
+    // Measure only the settled tile; keep the exact geometry assertions below.
+    await page.waitForFunction(() => {
+      const tile = document.querySelector('.t-river');
+      return tile && Number(getComputedStyle(tile).opacity) === 1
+        && tile.getAnimations().filter(a => a.effect && Number.isFinite(a.effect.getTiming().iterations))
+          .every(a => a.playState === 'finished');
+    }, null, { timeout: 5000 });
     const before = await page.evaluate(width => {
       const river = document.querySelector('.river');
       const selected = Number(river.getAttribute('aria-valuenow')) - 1;
@@ -726,7 +733,10 @@ if (require.main === module) {
       ], process.env.PROOF_BASE_SHA || null);
       verifyBinding = sbl.verifySourceBinding;
     }
-    const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
+    // Match the readability runner's renderer so pixel readbacks do not switch
+    // between accelerated and software canvas output during the comparison.
+    const renderer = { canvas: 'software', args: ['--disable-accelerated-2d-canvas'] };
+    const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true, args: renderer.args });
     try {
       const errors = [];
       const open = async (width, theme, options = {}) => {
@@ -756,7 +766,7 @@ if (require.main === module) {
           proof: 'timeline-geometry-native-harness',
           harness: 'test/browser-budget-river-port.js',
           syntheticOnly: true,
-          runtime: { node: process.version, chromium: await browser.version() },
+          runtime: { node: process.version, chromium: await browser.version(), renderer },
           sourceBinding: { ...binding, unchangedAfterRun: true },
           results: result,
           pageErrors: errors,
