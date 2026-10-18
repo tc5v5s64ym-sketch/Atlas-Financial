@@ -242,5 +242,119 @@ console.log('\n=== explicitly authorized planned debt still works ===');
     'default plannedDebt still invents no permission');
 }
 
+console.log('\n=== no sources declared at all — omitted and empty fail closed (ATLAS-076) ===');
+{
+  // A caller that declares no funding sources has not authorized any
+  // money. Absent or empty fundingSources must behave exactly like the
+  // declared genuine-zero source below: no invented part, the full gap
+  // stays an unfunded shortfall, nothing enters the recovery sim, and
+  // no weekly cap is published off the unfunded gap.
+  const omittedData = fixture();
+  delete omittedData.plan.funding;
+  const omitted = F.recommend(omittedData.plan, AS_OF, {
+    debts: omittedData.debts,
+    extraFacilities: omittedData.extraFacilities,
+    targetBuffer: BUFFER,
+  });
+  ok(omitted.mode === 'openingGap', 'omitted: mode stays openingGap', omitted.mode);
+  ok(near(omitted.gap.amount, GAP), 'omitted: the $104.89 gap is preserved',
+    String(omitted.gap.amount));
+  ok(omitted.funding && omitted.funding.feasible === false,
+    'omitted: no declared sources cannot make the gap feasible');
+  ok(near(omitted.funding.shortfall, GAP),
+    'omitted: the unfunded shortfall is the full $104.89',
+    String(omitted.funding.shortfall));
+  ok((omitted.funding.parts || []).length === 0
+    && !(omitted.funding.parts || []).some(p => p.id === 'gapFunding'),
+    'omitted: no unattributed gapFunding part is invented',
+    JSON.stringify(omitted.funding.parts));
+  ok(near(omitted.funding.allocated, 0) && near(omitted.funding.borrowed, 0),
+    'omitted: nothing is allocated or borrowed');
+  ok((omitted.simOptions.injections || []).length === 0,
+    'omitted: no phantom injection enters the recovery sim',
+    JSON.stringify(omitted.simOptions.injections));
+  ok(omitted.weekly === 0,
+    'omitted: no weekly cap is published off an unfunded gap',
+    `$${omitted.weekly}/week`);
+
+  const emptyData = fixture();
+  delete emptyData.plan.funding;
+  const empty = F.recommend(emptyData.plan, AS_OF, {
+    fundingSources: [],
+    debts: emptyData.debts,
+    extraFacilities: emptyData.extraFacilities,
+    targetBuffer: BUFFER,
+  });
+  ok(empty.mode === 'openingGap', 'empty: mode stays openingGap', empty.mode);
+  ok(empty.funding && empty.funding.feasible === false,
+    'empty: an empty source list cannot make the gap feasible');
+  ok(near(empty.funding.shortfall, GAP),
+    'empty: the unfunded shortfall is the full $104.89',
+    String(empty.funding.shortfall));
+  ok((empty.funding.parts || []).length === 0
+    && !(empty.funding.parts || []).some(p => p.id === 'gapFunding'),
+    'empty: no unattributed gapFunding part is invented',
+    JSON.stringify(empty.funding.parts));
+  ok((empty.simOptions.injections || []).length === 0,
+    'empty: no phantom injection enters the recovery sim',
+    JSON.stringify(empty.simOptions.injections));
+  ok(empty.weekly === 0,
+    'empty: no weekly cap is published off an unfunded gap',
+    `$${empty.weekly}/week`);
+
+  const zeroData = fixture();
+  const zeroDecl = F.recommend(zeroData.plan, AS_OF, {
+    fundingSources: [{
+      id: 'zero-pot', label: 'Cash pot', short: 'cash pot',
+      available: 0, rank: 1, debtId: null,
+    }],
+    debts: zeroData.debts,
+    extraFacilities: zeroData.extraFacilities,
+    targetBuffer: BUFFER,
+  });
+  ok(zeroDecl.funding && zeroDecl.funding.feasible === false
+    && near(zeroDecl.funding.shortfall, GAP)
+    && (zeroDecl.funding.parts || []).length === 0
+    && zeroDecl.weekly === 0,
+    'declared genuine zero: infeasible, full shortfall, no parts, no weekly cap');
+  ok(omitted.funding.feasible === zeroDecl.funding.feasible
+    && near(omitted.funding.shortfall, zeroDecl.funding.shortfall)
+    && omitted.funding.parts.length === zeroDecl.funding.parts.length
+    && omitted.weekly === zeroDecl.weekly
+    && empty.funding.feasible === zeroDecl.funding.feasible
+    && near(empty.funding.shortfall, zeroDecl.funding.shortfall)
+    && empty.weekly === zeroDecl.weekly,
+    'omitted and empty agree with the declared genuine-zero outcome');
+}
+
+console.log('\n=== a partial cash source keeps its genuine shortfall (ATLAS-076 control) ===');
+{
+  const data = fixture();
+  const rec = F.recommend(data.plan, AS_OF, {
+    fundingSources: [{
+      id: 'part-pot', label: 'Cash pot', short: 'cash pot',
+      available: 50, rank: 1, debtId: null,
+    }],
+    debts: data.debts,
+    extraFacilities: data.extraFacilities,
+    targetBuffer: BUFFER,
+  });
+  ok(rec.funding && rec.funding.feasible === false,
+    'partial: a source short of the gap does not make it feasible');
+  ok(near(rec.funding.shortfall, GAP - 50),
+    'partial: the genuine shortfall is $54.89', String(rec.funding.shortfall));
+  ok(rec.funding.parts.length === 1 && rec.funding.parts[0].id === 'part-pot'
+    && near(rec.funding.parts[0].amount, 50),
+    'partial: the only part is the declared source at its real amount',
+    JSON.stringify(rec.funding.parts));
+  ok(near(rec.funding.allocated, 50), 'partial: allocated is the declared $50');
+  ok((rec.simOptions.injections || []).length === 1
+    && near(rec.simOptions.injections[0].amount, 50)
+    && !rec.simOptions.injections[0].debtId,
+    'partial: only the declared $50 enters the recovery sim');
+  ok(rec.weekly === 0,
+    'partial: no weekly cap is published off a shortfall', `$${rec.weekly}/week`);
+}
+
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All opening-gap no-auto-borrow checks passed'));
 process.exit(failures === 0 ? 0 : 1);
