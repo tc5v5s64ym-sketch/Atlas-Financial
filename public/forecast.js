@@ -2437,7 +2437,7 @@
     if (!from || from > to) return [];
     const represented = representedKeySet(plan, opts, start);
     const innerTrace = trace ? {} : null;
-    const inner = expandEvents(plan, from, to, opts, innerTrace);
+    const inner = expandEventsInternal(plan, from, to, opts, innerTrace);
     const extra = [];
     const selected = trace ? new Map() : null;
     for (const event of inner) {
@@ -2508,7 +2508,12 @@
     return roundCent(Math.max(0, scheduled - credit));
   }
 
-  function expandEvents(plan, start, end, opts, debtTrace) {
+  function expandEvents(plan, start, end, opts) {
+    return expandEventsInternal(plan, start, end, opts, null);
+  }
+  // The debt walk's amount-free trace stays private; every public caller
+  // still uses the same four-argument schedule authority above.
+  function expandEventsInternal(plan, start, end, opts, debtTrace) {
     opts = opts || {};
     const disabled = new Set(opts.disabled || []);
     const events = [];
@@ -15737,9 +15742,9 @@
   function expandEventsForDebtWalk(plan, start, end, opts, trace) {
     const represented = representedKeySet(plan, opts, start);
     if (!represented.size || liveOpeningAdvanced(plan, start)) {
-      return expandEvents(plan, start, end, opts, trace);
+      return expandEventsInternal(plan, start, end, opts, trace);
     }
-    const kept = expandEvents(plan, start, end, Object.assign({}, opts, {
+    const kept = expandEventsInternal(plan, start, end, Object.assign({}, opts, {
       keepRepresented: true,
     }), trace);
     const eligible = event => {

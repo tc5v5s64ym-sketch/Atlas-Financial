@@ -513,16 +513,8 @@ console.log('\n=== mutation: window-only once outflows recreate the defect ===')
 console.log('\n=== mutation: debt walk that ignores dates before start recreates the blocker ===');
 {
   const src = sourceText(fs.readFileSync(path.join(__dirname, '..', 'public', 'forecast.js'), 'utf8'));
-  const from = '    // Same application date as simulate(). A carried once cash obligation\n'
-    + '    // keeps e.date, so obligationAbsorbed still keys the original schedule.\n'
-    + '    const byDate = new Map();\n'
-    + '    for (const e of events) {\n'
-    + '      const applyOn = cashWalkDate(e, start);';
-  const to = '    // Same application date as simulate(). A carried once cash obligation\n'
-    + '    // keeps e.date, so obligationAbsorbed still keys the original schedule.\n'
-    + '    const byDate = new Map();\n'
-    + '    for (const e of events) {\n'
-    + '      const applyOn = e.date;';
+  const from = '      const applyOn = e.omittedRepayment && e.date < start ? start : cashWalkDate(e, start);';
+  const to = '      const applyOn = e.date;';
   ok(src.split(from).length - 1 === 1,
     'the projectDebts cashWalkDate grouping appears once, so the mutation is aimed');
   const sandbox = { module: { exports: {} } };
