@@ -14591,21 +14591,18 @@
         amount: take, debtId: src.debtId || null });
       unmet -= take;
     }
-    // No sources declared at all: fall back to one unattributed cash
-    // injection, which is what a caller that has not told us anything is
-    // implicitly asking for. A declared list that is only debt or unusable
-    // is not that case — it is an unfunded shortfall.
+    // No usable sources — whether the caller declared none at all
+    // (fundingSources absent or empty) or declared only debt, unusable
+    // or genuine-zero sources — is an unfunded shortfall: no part is
+    // invented, `unmet` stays the full gap, and the result is infeasible
+    // exactly as a declared genuine zero already was (ATLAS-076). A
+    // caller that has not told us anything has not authorized any money.
     //
     // Legacy fundingDebtId is a facility hint, not authorization to borrow.
     // Attaching it here used to convert HELOC capacity into opening-gap cash
     // while plannedDebt.permitted stayed false. Unapproved borrowing cannot
     // repair an opening gap (B70). Fail that path closed: no injection.
     // Planned borrowing stays on Forecast.plannedDebt.
-    if (!declared.length && !base.fundingDebtId) {
-      parts.push({ id: 'gapFunding', label: base.fundingLabel || 'Gap funding — transfer or draw',
-        short: 'gap funding', amount: gapAmount, debtId: null });
-      unmet = 0;
-    }
     const shortfall = Math.max(0, unmet);
     // Every usable source combined, which is what the allocation actually
     // reaches. Equal to the gap when it can be funded, and to the sum of every
