@@ -5214,11 +5214,16 @@ function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null,
   }).join('');
   const period = projected ? { ...packet.period, proposal: packet.forecastClosing?.contribution ?? null,
     trust: packet.forecastClosing?.trust || 'unknown' } : packet.period;
+  const projectedReasons = projected ? [...new Set([
+    packet.forecastClosing?.status !== 'ready'
+      ? packet.forecastClosing?.reason || 'Closing Savings data is unavailable.' : null,
+    packet.period?.status === 'unavailable' ? packet.period.reason : null,
+  ].filter(reason => typeof reason === 'string' && reason))] : [];
   return `<section data-budget-planned-savings-summary data-budget-daily-savings${projected ? ' data-budget-savings-forecast-evidence' : ''}>
     <ul class="budget-savings-contributions">${rows || (projected && (packet.forecastClosing?.status === 'ready' || packet.plannedRequirements?.rows.length === 0 && !packet.forecastClosing?.gap) ? '<li>No remaining Savings requirements.</li>' : '<li>Named savings unavailable.</li>')}</ul>${annualBillNote}
     <p class="operating-line"><span>${projected ? 'Added this period' : 'Unsent top-up today'}</span><strong data-budget-daily-proposal>${value(period?.proposal, period?.trust)}</strong></p>
     <details class="budget-savings-info" data-budget-savings-info><summary>Info</summary><div>
-      ${projected ? packet.forecastClosing?.status !== 'ready' ? '<p>' + budgetV3Escape(packet.forecastClosing?.reason || 'Closing Savings data is unavailable.') + '</p>' : ''
+      ${projected ? projectedReasons.map(reason => '<p>' + budgetV3Escape(reason) + '</p>').join('')
         : '<p>' + budgetV3Escape(packet.allocationDescription || 'Savings allocation evidence is unavailable.') + ' These figures are replaced on refresh. Saved amounts are reported earmarks, not money moved or bills paid. New Bills contributions are qualified separately.</p>'}
       ${!projected && (packet.period?.reason || packet.backing?.reason) ? '<p>' + budgetV3Escape(packet.period?.reason || packet.backing?.reason) + '</p>' : ''}
       ${projected ? `<div class="operating-line"><span>Savings at period close</span><span>${value(packet.forecastClosing?.stock, packet.forecastClosing?.trust)}</span></div>

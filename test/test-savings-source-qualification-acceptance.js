@@ -5,6 +5,7 @@
 // live-overlay, server-cache, browser, or household acceptance test.
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const F = require('../public/forecast');
 const O = require('../scripts/provider-observe');
 const fx = require('./fixtures/savings-v2-observation-data');
@@ -154,4 +155,96 @@ test('qualifying only reserve dates cannot clear an independent card payment hol
   assert.equal(current.funding.backing.status, 'ready');
   assert.equal(current.advice.cardMinimumPayments.status, 'unavailable');
   heldAcrossPeriods(current, CARD_HOLD);
+});
+
+function freeze(value, seen = new WeakSet()) {
+  if (!value || typeof value !== 'object' || seen.has(value)) return value;
+  seen.add(value);
+  Object.values(value).forEach(item => freeze(item, seen));
+  return Object.freeze(value);
+}
+
+function budgetPage(x) {
+  const stub = () => ({ innerHTML: '', value: '', dataset: {}, style: {},
+    classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {},
+    querySelector() { return null; }, querySelectorAll() { return []; }, appendChild() {}, replaceChildren() {} });
+  const page = vm.createContext({ Forecast: F, console, setTimeout, clearTimeout, addEventListener() {},
+    document: { getElementById: stub, querySelectorAll() { return []; }, addEventListener() {},
+      documentElement: { dataset: {}, style: {} } },
+    localStorage: { getItem() { return null; }, setItem() {} }, location: { pathname: '/', search: '' } });
+  page.window = page;
+  page.matchMedia = () => ({ matches: false, addEventListener() {} });
+  for (const name of ['app', 'bill-detail', 'savings-inventory', 'budget-surface', 'plan']) {
+    if (name === 'bill-detail') vm.runInContext('App.boot=()=>{};', page);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/' + name + '.js'), 'utf8'), page);
+  }
+  vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];', page);
+  page.src = { plan: { ...x.input.data.plan, savingsPoolObservation: x.report.savingsPools },
+    debts: x.input.data.debts, asOf: x.input.data.meta.asOf, advice: x.advice,
+    liveOverlay: x.input.data.liveOverlay, weekly: 40, weeklyOverride: 40 };
+  return page;
+}
+
+// One invented source generation supplies all three selections. Yesterday's
+// reserve evidence and the independent card hold must stay separate in the UI.
+const heldSnapshot = freeze(publish(reserveDate(fx.input('sender-unknown'), '2026-10-04T19:00:00Z')));
+for (const [start, label] of [
+  ['2026-10-02', 'Oct 2–Oct 15'],
+  ['2026-10-16', 'Oct 16–Oct 29'],
+  ['2026-10-30', 'Oct 30–Nov 12'],
+]) test('active Savings evidence retains both independent holds for ' + label, () => {
+  const before = JSON.stringify(heldSnapshot);
+  const page = budgetPage(heldSnapshot);
+  page.period = heldSnapshot.advice.payPeriodViews.find(p => p.start === start);
+  const packet = F.savingsFundingPublication(heldSnapshot.funding,
+    { asOf: heldSnapshot.input.data.meta.asOf, advice: heldSnapshot.advice, periodId: page.period.id });
+  const packetBefore = JSON.stringify(packet);
+  assert.equal(packet.period.status, 'unavailable');
+  assert.equal(packet.period.reason, CARD_HOLD);
+  assert.equal(packet.period.proposal, null);
+  assert.equal(heldSnapshot.funding.period.availableNow, null, 'current transfer capacity stays unavailable');
+  assert.equal(packet.moneyMovementPermission, 'not-granted');
+  if (start !== '2026-10-02') {
+    assert.equal(packet.forecastClosing.status, 'unavailable');
+    assert.equal(packet.forecastClosing.reason, DATE_HOLD);
+    assert.notEqual(packet.period.reason, packet.forecastClosing.reason);
+    for (const key of ['stock', 'actualSaved', 'contribution', 'projectedContributions', 'projectedDraws'])
+      assert.equal(packet.forecastClosing[key] ?? null, null, key + ' remains unavailable');
+    assert.equal(packet.forecastClosing.moneyMovementPermission, 'not-granted');
+    assert.deepEqual(packet.plannedRequirements.rows, [], 'elapsed goals remain retired');
+  }
+  try {
+    const html = vm.runInContext('budgetSavingsGoalsHtml(src,period,null)', page);
+    assert.ok(html.includes('<p class="budget-surface-eyebrow">' + label + '</p>'), 'selected-period label');
+    assert.match(html.split('data-budget-daily-proposal>')[1].split('</strong>')[0], /Unavailable/);
+    if (start !== '2026-10-02') {
+      assert.match(html, /No remaining Savings requirements\./);
+      const reasons = html.split('data-budget-savings-info>')[1].split('<div class="operating-line">')[0];
+      assert.ok(reasons.includes(DATE_HOLD), 'closing hold remains visible');
+      assert.ok(reasons.includes(CARD_HOLD), 'independent period-funding hold remains visible');
+    } else {
+      assert.ok(html.includes(DATE_HOLD), 'current reserve-backing hold remains visible');
+      assert.ok(html.includes(CARD_HOLD), 'current period-funding hold remains visible');
+    }
+  } finally {
+    assert.equal(JSON.stringify(heldSnapshot), before, 'all selections preserve the source generation and advice');
+    assert.equal(JSON.stringify(packet), packetBefore, 'rendering preserves the published packet');
+  }
+});
+
+test('projected hold presentation escapes published text, deduplicates it and excludes ready-period prose', () => {
+  const page = budgetPage(heldSnapshot);
+  page.packet = JSON.parse(JSON.stringify(F.savingsFundingPublication(heldSnapshot.funding,
+    { asOf: heldSnapshot.input.data.meta.asOf, advice: heldSnapshot.advice, periodId: 'next-pay-period' })));
+  const preamble = () => vm.runInContext('budgetDailySavingsHtml(packet)', page)
+    .split('data-budget-savings-info>')[1].split('<div class="operating-line">')[0];
+  page.packet.period.reason = DATE_HOLD;
+  assert.equal(preamble().split(DATE_HOLD).length - 1, 1, 'one copy of an identical published reason');
+  page.packet.period.reason = 'Period <hold> & "unconfirmed"';
+  const escaped = preamble();
+  assert.ok(escaped.includes('Period &lt;hold&gt; &amp; &quot;unconfirmed&quot;'));
+  assert.ok(escaped.includes(DATE_HOLD), 'separate closing hold survives');
+  assert.ok(!escaped.includes('Period <hold>'), 'published reason cannot become markup');
+  page.packet.period.status = 'ready';
+  assert.ok(!preamble().includes('unconfirmed'), 'ready-period explanation is not presented as a hold');
 });
