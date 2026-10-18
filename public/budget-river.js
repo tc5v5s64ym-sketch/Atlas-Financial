@@ -391,9 +391,10 @@
                     && ck + half > left && ck - half < right;
                 });
               };
-              // Preserve yielding when the publication is inherently too
-              // wide; use the extra row only when the step causes overlap.
-              if (masksTarget(stepDx) && !masksTarget(0)) {
+              // The extra row uses the period's raw click region. Keep a
+              // pixel of room on each side; wider text retains its existing
+              // horizontal displacement and hit box, even with tiny neighbors.
+              if (selW + 2 <= this.sp && masksTarget(stepDx) && !masksTarget(0)) {
                 stepDx = 0;
                 // The value row ends 28px above the tile bottom. Its new
                 // bottom clears the 10px-radius orb by the same 2px gap.
