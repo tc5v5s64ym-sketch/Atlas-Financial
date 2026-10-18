@@ -102,6 +102,16 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
   const runtime = { node: process.version, chromium: await browser.version() };
   try {
+    const settleTile = async (page, label) => {
+      // Opacity rounds to 1 before the finite entrance transform completes.
+      // Await that transform rather than relaxing the exact geometry guards.
+      await page.waitForFunction(() => {
+        const tile = document.querySelector('.tile.t-river');
+        return getComputedStyle(tile).opacity === '1' && tile.getAnimations()
+          .filter(a => a.effect && Number.isFinite(a.effect.getTiming().iterations))
+          .every(a => a.playState === 'finished');
+      }, null, { timeout: 5000 }).catch(() => check(false, label + ': tile entrance never settled'));
+    };
     const open = async (width, theme, { narrowWrapper = false, reduce = false } = {}) => {
       const page = await browser.newPage({
         viewport: { width, height: 500 }, colorScheme: theme,
@@ -123,13 +133,11 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
       // The tile's entrance animation transforms it for ~1s; the controller
       // measures the tile box at layout time, so proof pages settle the
       // animation before any controller is created.
-      await page.waitForFunction(() => getComputedStyle(document.querySelector('.tile.t-river')).opacity === '1', null, { timeout: 5000 })
-        .catch(() => check(false, 'page never settled to full tile opacity'));
+      await settleTile(page, 'page');
       return page;
     };
     const capture = async (page, name) => {
-      await page.waitForFunction(() => getComputedStyle(document.querySelector('.tile.t-river')).opacity === '1', null, { timeout: 5000 })
-        .catch(() => check(false, 'capture ' + name + ': tile never reached full opacity (entrance animation unresolved)'));
+      await settleTile(page, 'capture ' + name);
       await page.locator('.tile.t-river').screenshot({ path: path.join(outDir, name), animations: 'disabled' });
       shots.push(name);
     };
