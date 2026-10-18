@@ -11173,7 +11173,19 @@
           && occurrences(stream, window.start, window.end).some(date =>
             !knownIncomeKeys.has(stream.id + '@' + date)
             && !excludedIncomeOccurrence(stream.id, date)
-            && occurrenceAdjustmentInvalid(stream, date))));
+            && occurrenceAdjustmentInvalid(stream, date)))
+        // ATLAS-026 provenance hold: a row still marked unresolved at
+        // this point rests on an invalid adjustment substitution whose
+        // figures the sections post-pass neutralized. The arms above
+        // each skip it for an incumbent reason — the row arm excludes
+        // Other Income rows and the stream arms exclude disabled ids —
+        // so that combination would otherwise publish a zero total for
+        // an unknown amount. The mark itself is the provenance-aware
+        // trigger: reconciled rows were unmarked by the post-pass,
+        // regime-replaced rows were discharged at the stamp, and
+        // represented rows were never marked.
+        || (income || []).some(row => row && invalidAdjustedRows.has(row)
+          && row.notReliedUpon !== true && row.settlement !== 'not-relied-upon'));
       let incomeAdded = 0;
       for (const row of income) {
         if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) {

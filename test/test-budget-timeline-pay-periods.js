@@ -1658,6 +1658,38 @@ function sectionMissingIncomeAmount() {
       `026 provenance sealed lookback ${label}: incumbent treatment unchanged`,
       v && `${v.incomeTotal}/${v.incomeTrust}`);
   }
+  // Disabled-stream provenance hold: an unresolved marked row holds its
+  // period even where each incumbent detector arm skips it — the row arm
+  // excludes Other Income rows and both stream arms exclude disabled
+  // ids, so a disabled Other Income stream with an invalid adjustment
+  // otherwise publishes a zero total for an unknown amount.
+  for (const [label, adjAmount] of [["string '250'", '250'], ['boolean true', true]]) {
+    const disabledOpts = { disabled: ['r1'],
+      incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: adjAmount, confidence: 'confirmed' } : null };
+    const ordDisabled = rowByStart(run(fixture([payroll,
+      { id: 'r1', label: 'Synthetic receipt', frequency: 'once', date: '2026-10-20', amount: 500, confidence: 'confirmed' }]),
+      disabledOpts), '2026-10-16');
+    ok(ordDisabled && ordDisabled.incomeTotal === null && ordDisabled.incomeTrust === 'unavailable'
+        && typeof ordDisabled.incomeUnavailableReason === 'string',
+      `026 provenance disabled ordinary ${label}: unresolved marked row holds the period`,
+      ordDisabled && `${ordDisabled.incomeTotal}/${ordDisabled.incomeTrust}`);
+    const otherDisabled = rowByStart(run(fixture([payroll,
+      { id: 'r1', label: 'Synthetic receipt', frequency: 'once', date: '2026-10-20', amount: 500, confidence: 'confirmed', incomeClass: 'other' }]),
+      disabledOpts), '2026-10-16');
+    ok(otherDisabled && otherDisabled.incomeTotal === null && otherDisabled.incomeTrust === 'unavailable'
+        && typeof otherDisabled.incomeUnavailableReason === 'string',
+      `026 provenance disabled other-income ${label}: false zero withheld, period holds`,
+      otherDisabled && `${otherDisabled.incomeTotal}/${otherDisabled.incomeTrust}`);
+  }
+  // A disabled Other Income stream with no adjustment keeps its
+  // incumbent publication: the hold is provenance-specific.
+  const disabledNoAdj = rowByStart(run(fixture([payroll,
+    { id: 'r1', label: 'Synthetic receipt', frequency: 'once', date: '2026-10-20', amount: 500, confidence: 'confirmed', incomeClass: 'other' }]),
+    { disabled: ['r1'] }), '2026-10-16');
+  ok(disabledNoAdj && disabledNoAdj.incomeTotal === 500 && disabledNoAdj.incomeTrust === 'calculated'
+      && !disabledNoAdj.incomeUnavailableReason,
+    '026 provenance disabled no-adjustment control: incumbent publication unchanged',
+    disabledNoAdj && `${disabledNoAdj.incomeTotal}/${disabledNoAdj.incomeTrust}`);
   // A native string amount with no adjustment keeps its incumbent
   // (coerced) publication: the repair is adjustment-specific.
   const nativeString = rowByStart(run(fixture([payroll, receipt('500')])), '2026-10-16');
