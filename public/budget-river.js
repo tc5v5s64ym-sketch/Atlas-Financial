@@ -381,15 +381,19 @@
             stepDx = clamp(selC + dir * need, selW / 2 + 2, this.W - selW / 2 - 2) - selC;
             if (Math.abs(selC + stepDx - x) < 12 + selW / 2) stepDx = edgeDx; // no room: retain viewport clearance
             if (stepDx && !edgeDx) {
-              const left = selC + stepDx - selW / 2, right = selC + stepDx + selW / 2;
-              const masksTarget = this.valEls.some((el, k) => {
-                if (k === this.index) return false;
-                const ck = this.xs[k] - this.off, half = el.offsetWidth / 2;
-                return ck - half >= 0 && ck + half <= this.W
-                  && (ck + half <= x - 10 || ck - half >= x + 10)
-                  && ck + half > left && ck - half < right;
-              });
-              if (masksTarget) {
+              const masksTarget = dx => {
+                const left = selC + dx - selW / 2, right = selC + dx + selW / 2;
+                return this.valEls.some((el, k) => {
+                  if (k === this.index) return false;
+                  const ck = this.xs[k] - this.off, half = el.offsetWidth / 2;
+                  return ck - half >= 0 && ck + half <= this.W
+                    && (ck + half <= x - 10 || ck - half >= x + 10)
+                    && ck + half > left && ck - half < right;
+                });
+              };
+              // Preserve yielding when the publication is inherently too
+              // wide; use the extra row only when the step causes overlap.
+              if (masksTarget(stepDx) && !masksTarget(0)) {
                 stepDx = 0;
                 // The value row ends 28px above the tile bottom. Its new
                 // bottom clears the 10px-radius orb by the same 2px gap.
