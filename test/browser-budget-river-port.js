@@ -168,7 +168,8 @@ async function proveYieldedNeighbourReselect({ open }) {
   // Retain a genuinely yielded neighbour after the ordinary short-label fix:
   // index 2 is deliberately wide enough to overlap the minimum's orb already.
   // The ordinary $150 case remains in the geometry proof and must stay visible.
-  const bads = [300, -420, 8888888888888888, -80, 640, -260, 90, 480, -150, 720, 210, -40];
+  // Scientific notation keeps this synthetic amount distinct from identifier-shaped text.
+  const bads = [300, -420, 8.888888888888888e15, -80, 640, -260, 90, 480, -150, 720, 210, -40];
   const MIN = 1, NEIGHBOUR = 2;
   const cases = [];
   const setup = async (width, theme, options = {}) => {
@@ -298,7 +299,7 @@ async function proveDisplacedLabelHitTargeting({ open }) {
   // Same invented publication as the yield regression: index 1 is the
   // minimum (-420, on the band's bottom edge) whose selected label steps
   // aside; index 2 is the neighbour its visible centre lands on.
-  const bads = [300, -420, 8888888888888888, -80, 640, -260, 90, 480, -150, 720, 210, -40];
+  const bads = [300, -420, 8.888888888888888e15, -80, 640, -260, 90, 480, -150, 720, 210, -40];
   const MIN = 1, NEIGHBOUR = 2;
   const cases = [];
   const setup = async (width, theme, options = {}) => {
@@ -452,7 +453,7 @@ async function proveDisplacedLabelHitTargeting({ open }) {
 // period, not the press-time target. On the pre-fix code the held press
 // commits index 2 and this regression fails on its first case.
 async function proveHeldPressNonPanTargeting({ open }) {
-  const bads = [300, -420, 8888888888888888, -80, 640, -260, 90, 480, -150, 720, 210, -40];
+  const bads = [300, -420, 8.888888888888888e15, -80, 640, -260, 90, 480, -150, 720, 210, -40];
   const MIN = 1, NEIGHBOUR = 2;
   const HOLD_MS = 1100;
   const cases = [];
