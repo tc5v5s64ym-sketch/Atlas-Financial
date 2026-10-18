@@ -206,6 +206,7 @@ const suites = [
   ['chequing availability headline', 'test-chequing-availability.js'],
   ['Current Balance is planning-hub cash only', 'test-current-balance-chequing-cash.js'],
   ['null Bills opening is not a confirmed zero', 'test-null-bills-opening-not-confirmed-zero.js'],
+  ['malformed scheduled amounts fail closed as unknown', 'test-malformed-amounts-fail-closed.js'],
   ['Dale payday Current Balance assumption', 'test-dale-payday-current-balance.js'],
   ['live payday pre-BILLS base retain', 'test-live-payday-bills-base.js'],
   ['ordered payday action sheet (AF-OPERATE-03)', 'test-operate-payday-action-sheet.js'],

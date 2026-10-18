@@ -746,6 +746,12 @@
   const EPSILON = 0.005;
   const atLeast = (value, floor) => value >= floor - EPSILON;
   const below = (value, floor) => value < floor - EPSILON;
+  // Float noise floor for an UNROUNDED remainder: the debt walk's
+  // additions and subtractions leave dust around 1e-13 on household
+  // magnitudes, so a leftover at or below this is the walk's own
+  // arithmetic noise, not money. A real remainder — a sub-cent tail
+  // like 0.004 included — sits orders of magnitude above it.
+  const REMAINDER_DUST = 1e-9;
 
   // What a facility owes TODAY. Pending charges are ALREADY INCURRED, so they
   // belong to the opening balance: a card whose posted balance is under its
@@ -1906,6 +1912,160 @@
     return plan.windowDays || 91;
   }
 
+  /* ------------------------------------- scheduled-amount knowledge */
+  // ATLAS-077: a scheduled amount that is present but unparseable —
+  // null, NaN, a comma-grouped string like "1,900", a boolean, an
+  // object — is UNKNOWN, never zero and never a NaN cash event.
+  // Detection sits at effective-source selection: for obligations, the
+  // occurrence amount AFTER statement replacement (a valid statement
+  // minimum supersedes a bad row.amount fallback for that occurrence;
+  // a later occurrence still falling back to the bad amount blocks),
+  // before any coercion or cap. Supported amounts are finite numbers
+  // and strings that parse in full ("1900"); blank strings and partial
+  // parses are not amounts. No cent restriction is imposed here.
+  function scheduledAmountValue(raw) {
+    if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+    if (typeof raw === 'string' && raw.trim() !== '') {
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  }
+
+  // Every scheduled amount in the window the walk cannot quantify,
+  // named by carrier. Commitments are point requirements of the plan
+  // rather than occurrences of one window: a dated protected
+  // (non-optional, unsettled) requirement is scanned without an end
+  // bound, because a short display window — and a knowledge horizon
+  // that only extends for rows carrying a need or a range — cannot
+  // drop it. Rows the incumbent helpers already excuse (settled,
+  // disabled, optional, undated, valid-range) are not requirements
+  // with an unknown amount; a genuine zero is a known amount.
+  function scheduledAmountUnknowns(plan, start, end, opts) {
+    opts = opts || {};
+    const unknowns = [];
+    if (!plan || !start || !end) return unknowns;
+    const disabled = new Set(opts.disabled || []);
+    const represented = representedKeySet(plan, opts, start);
+    for (const b of plan.bills || []) {
+      if (!b || !billIsHouseholdObligation(b) || b.needsDate) continue;
+      if (scheduledAmountValue(b.amount) != null) continue;
+      for (const date of outflowDates(b, start, end)) {
+        if (Array.isArray(b.noPaymentRequiredOn)
+          && b.noPaymentRequiredOn.includes(date)) continue;
+        if (!opts.keepRepresented && date < start
+          && represented.has(b.id + '@' + date)) continue;
+        unknowns.push({ carrier: 'bill', id: b.id || null, date,
+          reason: 'scheduled-amount-unknown' });
+      }
+    }
+    for (const o of plan.obligations || []) {
+      if (!o) continue;
+      for (const occurrence of obligationOccurrences(o, start, end)) {
+        if (scheduledAmountValue(occurrence.amount) != null) continue;
+        if (!opts.keepRepresented && occurrence.date < start
+          && represented.has(o.id + '@' + occurrence.date)) continue;
+        unknowns.push({ carrier: 'obligation', id: o.id || null,
+          date: occurrence.date, scheduledDate: occurrence.scheduledDate || null,
+          reason: 'scheduled-amount-unknown' });
+      }
+    }
+    for (const c of plan.commitments || []) {
+      if (!c || disabled.has(c.id)) continue;
+      if (commitmentSettledBy(c, start)) continue;
+      if (commitmentFlexibility(c) === 'optional') continue;
+      const cashDate = commitmentCashDate(c);
+      if (!cashDate) continue;
+      if (commitmentHasRange(c)) continue;
+      if (scheduledAmountValue(c.amount) != null) continue;
+      unknowns.push({ carrier: 'commitment', id: c.id || null, date: cashDate,
+        reason: 'scheduled-amount-unknown' });
+    }
+    // ATLAS-077 (consolidated closure, family 1): the classification
+    // window must match the window the walk itself carries from.
+    // expandEvents appends carriedUnresolvedJointCashOutflows —
+    // recurring bills/obligations in (opening.priorAsOf, start) that
+    // are still unresolved — and cashWalkDate applies them at this
+    // opening, so a scan that starts at `start` misses an unknown
+    // the walk's figures depend on (a monthly Jan 31 payment
+    // vanishing from a Feb 1–3 scan while its finite twin carries).
+    // Classify those same occurrences here, with the carry's own
+    // exclusions: an exactly represented (settled) occurrence is
+    // omitted by the walk and is not classified; a noncash
+    // occurrence is never carried; a bill the walk would not carry
+    // as joint-cash or card-paid reserved gravity does not bind its
+    // figures. Occurrences are enumerated through the same helpers
+    // as the in-window scan, so statement replacement and the
+    // no-payment waiver apply unchanged, and each unknown keeps its
+    // real scheduled date. No priorAsOf (or one not before this
+    // opening) means the walk carries nothing and there is no
+    // lookback. Once rows need no second pass: outflowDates already
+    // carries them into the in-window scan above, and the seen-set
+    // keeps any overlap named exactly once.
+    const opening = plan.opening;
+    if (opening && opening.asOf === start && opening.priorAsOf
+      && opening.priorAsOf < start) {
+      const prior = opening.priorAsOf;
+      const from = addDays(prior, 1);
+      const to = addDays(start, -1);
+      if (from && to && from <= to) {
+        const seen = new Set(unknowns.map(u => u.carrier + '|' + u.id + '|' + u.date));
+        const pushLookback = (carrier, id, date, scheduledDate) => {
+          if (!(date > prior && date < start)) return;
+          if (represented.has(id + '@' + date)) return;
+          const key = carrier + '|' + id + '|' + date;
+          if (seen.has(key)) return;
+          seen.add(key);
+          if (carrier === 'obligation') {
+            unknowns.push({ carrier, id: id || null, date,
+              scheduledDate: scheduledDate || null,
+              reason: 'scheduled-amount-unknown' });
+          } else {
+            unknowns.push({ carrier, id: id || null, date,
+              reason: 'scheduled-amount-unknown' });
+          }
+        };
+        for (const b of plan.bills || []) {
+          if (!b || !billIsHouseholdObligation(b) || b.needsDate) continue;
+          if (scheduledAmountValue(b.amount) != null) continue;
+          if (billAffectsJointCash(b, plan) === false
+            && !isCardPaidBill(b, plan)) continue;
+          for (const date of outflowDates(b, from, to)) {
+            if (Array.isArray(b.noPaymentRequiredOn)
+              && b.noPaymentRequiredOn.includes(date)) continue;
+            pushLookback('bill', b.id || null, date);
+          }
+        }
+        for (const o of plan.obligations || []) {
+          if (!o || o.nonCash) continue;
+          for (const occurrence of obligationOccurrences(o, from, to)) {
+            if (scheduledAmountValue(occurrence.amount) != null) continue;
+            pushLookback('obligation', o.id || null, occurrence.date,
+              occurrence.scheduledDate);
+          }
+        }
+      }
+    }
+    return unknowns;
+  }
+
+  // The one named state every public consumer reads (ATLAS-077 ruling:
+  // the existing issue/unavailable publication pattern, carried through
+  // the actual consumers — never a new throw, NaN event, or silent
+  // skip). Malformed statement-contract input keeps its incumbent
+  // throw, raised inside obligationOccurrences before this returns.
+  function scheduledAmountState(plan, start, end, opts) {
+    const unknowns = scheduledAmountUnknowns(plan, start, end, opts);
+    if (!unknowns.length) {
+      return { status: 'ready', start, end, source: 'Forecast.scheduledAmountState',
+        unknowns: [], issues: [], reason: null };
+    }
+    return { status: 'unavailable', start, end, source: 'Forecast.scheduledAmountState',
+      unknowns,
+      issues: Array.from(new Set(unknowns.map(u => u.reason))),
+      reason: 'A dated scheduled amount is missing or unparseable, so the totals and spending claims that depend on it are unknown.' };
+  }
+
   function walkDays(plan, asOf, opts) {
     opts = opts || {};
     if (opts.horizonDays != null) return opts.horizonDays;
@@ -2193,11 +2353,12 @@
     if (!plan || !id || !date || !start || date >= start) return false;
     const obligation = (plan.obligations || []).find(item => item && item.id === id
       && item.frequency === 'once' && item.date === date
-      && item.nonCash !== true && Number(item.amount) > 0);
+      && item.nonCash !== true
+      && (scheduledAmountValue(item.amount) == null || Number(item.amount) > 0));
     if (obligation) return true;
     const bill = (plan.bills || []).find(item => item && item.id === id
       && item.frequency === 'once' && item.date === date
-      && Number(item.amount) > 0);
+      && (scheduledAmountValue(item.amount) == null || Number(item.amount) > 0));
     return !!(bill && billAffectsJointCash(bill, plan));
   }
 
@@ -2266,7 +2427,7 @@
   // not carried. Recurring joint-cash bills in the same interval stay
   // reserved: priorAsOf is not weakened. This is not a date-wide or
   // group-wide skip, and representedEvents is not the settler.
-  function carriedUnresolvedJointCashOutflows(plan, start, opts, already) {
+  function carriedUnresolvedJointCashOutflows(plan, start, opts, already, trace) {
     const opening = plan && plan.opening;
     if (!opening || opening.asOf !== start || !opening.priorAsOf) return [];
     const prior = opening.priorAsOf;
@@ -2275,8 +2436,10 @@
     const to = addDays(start, -1);
     if (!from || from > to) return [];
     const represented = representedKeySet(plan, opts, start);
-    const inner = expandEvents(plan, from, to, opts);
+    const innerTrace = trace ? {} : null;
+    const inner = expandEventsInternal(plan, from, to, opts, innerTrace);
     const extra = [];
+    const selected = trace ? new Map() : null;
     for (const event of inner) {
       const cardPaidReserved = event && event.cardPaid === true
         && event.amount < 0 && event.kind !== 'noncash';
@@ -2289,10 +2452,18 @@
       const key = event.id + '@' + event.date;
       if (represented.has(key)) continue;
       if (already && already.has(key)) continue;
-      extra.push(cardPaidReserved
+      const carried = cardPaidReserved
         ? Object.assign({}, event, { carriedUnresolved: true })
-        : event);
+        : event;
+      extra.push(carried);
+      if (selected) selected.set(event, carried);
     }
+    if (trace) trace.items = (innerTrace.items || []).flatMap(item => {
+      if (!item.omittedRepayment) return selected.has(item) ? [selected.get(item)] : [];
+      const key = item.id + '@' + item.date;
+      return item.date >= from && item.date <= to && !represented.has(key)
+        && !(already && already.has(key)) && !trace.already.has(key) ? [item] : [];
+    });
     return extra;
   }
 
@@ -2323,8 +2494,13 @@
     // occurrence. It is not a payment, bank credit or future credit application.
     if (date && Array.isArray(bill && bill.noPaymentRequiredOn)
         && bill.noPaymentRequiredOn.includes(date)) return 0;
-    const scheduled = Number(bill && bill.amount);
-    if (!isFinite(scheduled) || scheduled <= 0) return scheduled;
+    // ATLAS-077 (B2): the effective source is classified BEFORE any
+    // coercion or utility-credit adjustment, under the same contract
+    // as the named state — a boolean, array or nonfinite amount is
+    // unknown (null), never Number()-coerced into a fabricated figure
+    // (true -> 1, [475] -> 475, Infinity -> Infinity).
+    const scheduled = scheduledAmountValue(bill && bill.amount);
+    if (scheduled == null || scheduled <= 0) return scheduled;
     const credit = billUtilityAccountCreditAmount(bill);
     if (!(credit > 0) || !date) return scheduled;
     const first = bill.firstDue || null;
@@ -2333,9 +2509,18 @@
   }
 
   function expandEvents(plan, start, end, opts) {
+    return expandEventsInternal(plan, start, end, opts, null);
+  }
+  // The debt walk's amount-free trace stays private; every public caller
+  // still uses the same four-argument schedule authority above.
+  function expandEventsInternal(plan, start, end, opts, debtTrace) {
     opts = opts || {};
     const disabled = new Set(opts.disabled || []);
     const events = [];
+    // Private provenance for projectDebts only. An omitted repayment has
+    // no amount and never enters the public numeric event stream. Its
+    // insertion position is recorded where source selection omits it.
+    const omissions = debtTrace ? new Map() : null;
     for (const s of plan.income) {
       const per = streamAmount(s, opts);
       if (!per && typeof opts.incomeOccurrenceAdjust !== 'function') continue;
@@ -2384,13 +2569,33 @@
         // rather than two that can drift apart.
         const cap = opts.obligationAbsorbed;
         const amount = sent ? 0 : cap ? (cap[date + ':' + o.id] || 0) : occurrence.amount;
+        // The effective amount at source selection: the occurrence amount
+        // after statement replacement, before coercion or caps (ATLAS-077).
+        const occurrenceAmount = scheduledAmountValue(occurrence.amount);
         // A non-cash charge (HELOC interest capitalising onto the balance) is
         // shown on the calendar but never deducted from cash. Capping never
         // applies to it — it adds to a balance rather than reducing one.
         if (o.nonCash) {
-          events.push({ date, amount: -o.amount, kind: 'noncash',
+          const nonCashAmount = scheduledAmountValue(o.amount);
+          // An unparseable amount is never emitted as a NaN event;
+          // scheduledAmountState names it unknown and consumers withhold.
+          if (nonCashAmount == null) continue;
+          events.push({ date, amount: -nonCashAmount, kind: 'noncash',
             label: o.label, id: o.id, confidence: o.confidence,
             debtId: o.debtId || null, effect: o.effect || null });
+          continue;
+        }
+        // Same rule at the cash push: an unparseable effective amount is
+        // excluded loudly via scheduledAmountState, never pushed as NaN
+        // and never silently treated as a deleted row. A sent minimum
+        // still records its (already moved) cash at 0 below.
+        if (occurrenceAmount == null && !sent) {
+          if (omissions) {
+            const before = events.length;
+            if (!omissions.has(before)) omissions.set(before, []);
+            omissions.get(before).push({ ...evidenceEvent,
+              debtId: o.debtId || null, omittedRepayment: true });
+          }
           continue;
         }
         if (amount <= 0 && !sent) continue;      // nothing left for this payment to pay
@@ -2398,7 +2603,8 @@
           label: o.label, id: o.id, ...occurrenceTrustFields(occurrence),
           ...(occurrence.statement ? { scheduledDate: occurrence.scheduledDate,
             occurrenceKey: o.id + '@' + occurrence.scheduledDate } : {}),
-          ...(sent ? { minimumAmount: occurrence.amount, minimumPayment: sent } : {}),
+          ...(sent ? { ...(occurrenceAmount != null
+              ? { minimumAmount: occurrence.amount } : {}), minimumPayment: sent } : {}),
           debtId: o.debtId || null, effect: o.effect || null,
           payingAccount: o.payingAccount || null });
       }
@@ -2428,7 +2634,9 @@
       if (b.needsDate) continue;
       for (const date of outflowDates(b, start, end)) {
         const cash = billOccurrenceCashAmount(b, date);
-        if (!(cash > 0)) continue;
+        // An unknown amount (null from the classifier) emits no event:
+        // scheduledAmountState names it and consumers withhold.
+        if (cash == null || !(cash > 0)) continue;
         const jointCash = billAffectsJointCash(b, plan);
         const cardPaid = isCardPaidBill(b, plan);
         events.push({
@@ -2459,7 +2667,11 @@
       // Optional items are residual funding, not a protected cash outflow.
       if (commitmentFlexibility(c) === 'optional') continue;
       if (cashDate >= start && cashDate <= end) {
-        events.push({ date: cashDate, amount: -c.amount, kind: 'commitment', label: c.label, id: c.id, confidence: c.confidence });
+        // An unparseable point amount is never emitted as a NaN event;
+        // scheduledAmountState names it unknown and consumers withhold.
+        const amount = scheduledAmountValue(c.amount);
+        if (amount == null) continue;
+        events.push({ date: cashDate, amount: -amount, kind: 'commitment', label: c.label, id: c.id, confidence: c.confidence });
       }
     }
     // Dated reserve planning lumps (property tax). One cash outflow on the
@@ -2575,18 +2787,36 @@
     }
     // Deposits land before payments due the same day — payday-timed bills are
     // arranged on exactly that assumption. Sort: date, then income first.
-    events.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
-      (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
+    const order = (a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
+      (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0);
+    let traceItems = [];
+    if (debtTrace) {
+      for (let i = 0; i <= events.length; i++) {
+        traceItems.push(...(omissions.get(i) || []));
+        if (i < events.length) traceItems.push(events[i]);
+      }
+      traceItems.sort(order);
+      traceItems = omitRepresented(traceItems, plan, opts, start);
+    }
+    events.sort(order);
     const kept = omitRepresented(events, plan, opts, start);
     const already = new Set(kept.map(e => e.id + '@' + e.date));
-    const carried = carriedUnresolvedJointCashOutflows(plan, start, opts, already);
-    if (!carried.length) return applyPostedCardPurchaseProtection(
-      applyReserveFunding(applyMinimumSent(kept, plan, start, opts), plan, start, end, opts), plan, start, opts);
+    const carryTrace = debtTrace ? {
+      already: new Set(traceItems.map(e => e.id + '@' + e.date)),
+    } : null;
+    const carried = carriedUnresolvedJointCashOutflows(plan, start, opts, already, carryTrace);
     const out = kept.concat(carried);
-    out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
-      (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
-    return applyPostedCardPurchaseProtection(
+    out.sort(order);
+    const annotated = applyPostedCardPurchaseProtection(
       applyReserveFunding(applyMinimumSent(out, plan, start, opts), plan, start, end, opts), plan, start, opts);
+    if (debtTrace) {
+      // These publication helpers map events in place/order; retain their
+      // resulting objects so the trace and the numeric walk share identity.
+      const annotatedByEvent = new Map(out.map((event, i) => [event, annotated[i]]));
+      debtTrace.items = traceItems.concat(carryTrace.items || []).sort(order)
+        .map(item => item.omittedRepayment ? item : annotatedByEvent.get(item));
+    }
+    return annotated;
   }
 
   // Additional cash needed to keep this walk's measured trajectory at or
@@ -2916,9 +3146,69 @@
   function publishMinimumCashWalk(sim, minimums) {
     return publishUnavailableCashWalk(sim, minimums, 'cardMinimumPayments');
   }
+  // ATLAS-077: the generic unavailable wrapper leaves totals intact,
+  // which would publish an understated carrier total as if complete.
+  // The scheduled-amount state additionally withholds the totals (and
+  // week rows) of exactly the affected carriers; independently known
+  // totals — income, the unaffected carriers — are retained.
+  // The totals a state's unknowns actually feed: an obligation event
+  // lands in totals.obligations, except a non-cash (capitalising) row,
+  // whose events are kind 'noncash' and land in totals.noncash —
+  // nulling the wrong field leaves the affected total publishing a
+  // seemingly complete zero (B1).
+  function scheduledAmountAffectedFields(plan, unknowns) {
+    const fields = new Set();
+    for (const u of unknowns || []) {
+      if (u.carrier === 'bill') fields.add('bills');
+      else if (u.carrier === 'commitment') fields.add('commitments');
+      else if (u.carrier === 'obligation') {
+        const row = ((plan && plan.obligations) || [])
+          .find(o => o && (o.id || null) === u.id);
+        fields.add(row && row.nonCash ? 'noncash' : 'obligations');
+      }
+    }
+    return Array.from(fields);
+  }
+  function publishScheduledAmountCashWalk(sim, plan, opts) {
+    if (!sim || !sim.start || !sim.end) return sim;
+    let out = sim;
+    const state = scheduledAmountState(plan, sim.start, sim.end, opts);
+    if (state.status === 'unavailable') {
+      out = publishUnavailableCashWalk(sim, state, 'scheduledAmounts');
+      const affected = scheduledAmountAffectedFields(plan, state.unknowns);
+      if (out.totals) {
+        out.totals = { ...out.totals };
+        for (const field of affected) out.totals[field] = null;
+      }
+      out.weeks = (out.weeks || []).map(row => {
+        const copy = { ...row };
+        for (const field of affected) if (Object.hasOwn(copy, field)) copy[field] = null;
+        return copy;
+      });
+    }
+    // A sliced publication nests the full-horizon walk as `knowledge`.
+    // An unknown dated beyond the visible slice still withholds the
+    // knowledge walk's own affected totals and ending/min claims,
+    // while the genuinely independent slice above stays published (B1).
+    const knowledge = out.knowledge;
+    if (knowledge && knowledge.start && knowledge.end) {
+      const knowledgeState = scheduledAmountState(plan, knowledge.start, knowledge.end, opts);
+      if (knowledgeState.status === 'unavailable') {
+        const affected = scheduledAmountAffectedFields(plan, knowledgeState.unknowns);
+        const totals = knowledge.totals ? { ...knowledge.totals } : knowledge.totals;
+        if (totals) for (const field of affected) totals[field] = null;
+        out = { ...out, knowledge: { ...knowledge, totals,
+          scheduledAmounts: knowledgeState,
+          min: { date: null, balance: null }, ending: null } };
+      }
+    }
+    return out;
+  }
   function simulate(plan, asOf, opts) {
     return publishUnavailableCashWalk(
-      publishMinimumCashWalk(simulateModel(plan, asOf, opts), cardMinimumState(plan, asOf, opts)),
+      publishMinimumCashWalk(
+        publishScheduledAmountCashWalk(simulateModel(plan, asOf, opts), plan, opts),
+        cardMinimumState(plan, asOf, opts)),
       incomeReconciliationState(plan, asOf), 'incomeReconciliation');
   }
   /* ---------------------------------------- funding sequence + verdicts */
@@ -3364,7 +3654,8 @@
     const seq = fundingSequence(plan, asOf, opts);
     const income = incomeReconciliationState(plan, asOf);
     const fundingUnknown = cardMinimumState(plan, asOf, opts).status === 'unavailable'
-      || income.status === 'unavailable';
+      || income.status === 'unavailable'
+      || scheduledAmountState(plan, asOf, horizon.end, opts).status === 'unavailable';
     const weekly = opts.weeklyVariable != null ? opts.weeklyVariable : 0;
     const masterOpts = Object.assign({}, opts, {
       horizonDays: horizon.days, viewDays: horizon.days,
@@ -4325,7 +4616,26 @@
       injections: opts.injections || [], plannedFlows: [],
     }));
     const baseState = baseWalk.byId && baseWalk.byId[facility.id];
-    const interest = (state && baseState) ? state.interest - baseState.interest : (state ? state.interest : 0);
+    // ATLAS-077 (consolidated closure, family 4): the facility's
+    // published ending state can be withheld — projectDebts nulls a
+    // tainted debt's balance and interest when a scheduled amount
+    // the walk depends on is unknown (an unknown capitalisation on
+    // the facility, say). Claims derived from those fields qualify
+    // with them: interest computed from a withheld figure is not 0,
+    // and a limit verdict read off a withheld balance is not
+    // feasible — the same fixture that publishes ending 950 as
+    // feasible at capitalisation 0 publishes ending 5950 as
+    // infeasible at 5000, so the unknown case can state neither.
+    // Null is this function's own representation for an unknowable
+    // planned-debt answer (the income-unavailable return above).
+    // Known inputs and independent outputs — permitted, borrowed,
+    // capacity, draws, the repayment cadence — are untouched, and
+    // recommend.plannedDebt embeds this same object, so both
+    // surfaces qualify together.
+    const endingUnknown = !state || state.balance == null;
+    const interest = (!state || !baseState || state.interest == null
+      || baseState.interest == null)
+      ? null : state.interest - baseState.interest;
     const endingBalance = state ? state.balance : null;
     const crossedLimit = !!(state && state.firstOver);
     const endingOver = facility.limit != null && state && state.balance > facility.limit + EPSILON;
@@ -4334,7 +4644,7 @@
       seq, sim: post,
     })).feasible;
     const cashOk = borrowed > 0 && protectedOk;
-    const feasible = hasCadence && cashOk && withinLimit;
+    const feasible = endingUnknown ? null : (hasCadence && cashOk && withinLimit);
 
     return {
       permitted: true,
@@ -10478,6 +10788,40 @@
     const calendarOpts = Object.assign({}, opts, { periodWindows: windows });
     const cardCoverage = cardCoverageState(plan, asOf, opts);
     const calendar = calendarBillSections(plan, asOf, calendarOpts);
+    // ATLAS-077: the bill-load arms below only see plan bills. An
+    // obligation whose effective occurrence amount is unknown (after
+    // statement replacement, before coercion — the scheduledAmountState
+    // detector) emits no section row at all, so without this arm the
+    // window's bill load silently sums the known rows and publishes a
+    // trusted understated total. Unknown bill/obligation amounts in a
+    // window make that window's load unknown, on the same terms as the
+    // S1 bill arm: commitments never enter the bill load and stay out;
+    // the incumbent exclusions are mirrored (disabled rows,
+    // savings-funded bills, non-joint rows, and capitalising/non-cash
+    // obligations, whose cash minimums are the card-minimum state's
+    // own territory).
+    const scheduledLoadUnknowns = (() => {
+      const span = coveringSpan(windows);
+      if (!span) return [];
+      const disabledIds = new Set(opts.disabled || []);
+      return scheduledAmountUnknowns(plan, span.start, span.end, opts)
+        .filter(u => {
+          if (disabledIds.has(u.id)) return false;
+          if (u.carrier === 'bill') {
+            const b = (plan.bills || []).find(row => row && row.id === u.id);
+            if (b && (isSavingsFundedPaydayBill(b, plan)
+              || (b.jointCash === false && !b.cardPaid))) return false;
+            return true;
+          }
+          if (u.carrier === 'obligation') {
+            const o = (plan.obligations || []).find(row => row && row.id === u.id);
+            if (o && (o.nonCash || o.effect === 'capitalise'
+              || (o.jointCash === false && !o.cardPaid))) return false;
+            return true;
+          }
+          return false;
+        });
+    })();
     // Removing a planned savings cost from paycheck Bills cannot release its
     // unfunded cash into internal carry, extra debt or major purchases.
     // Read the same native expenses from today's opening so only earned
@@ -10755,7 +11099,8 @@
           && !(b.jointCash === false && !b.cardPaid)
           && !isSavingsFundedPaydayBill(b, plan)
           && (role === 'active' ? outflowDates(b, window.start, window.end)
-            : occurrences(b, window.start, window.end)).length > 0));
+            : occurrences(b, window.start, window.end)).length > 0)
+        || scheduledLoadUnknowns.some(u => u.date >= window.start && u.date <= window.end));
       const periodBillLoad = planUnavailable || billLoadUnknown
         ? null
         : periodWaterfallBillLoad(assignedBillRows, openingAsOf, openingSource);
@@ -12338,6 +12683,7 @@
       : ((plan.defaults && plan.defaults.targetBuffer) || 0);
     const payFloor = opts.paydayFloor != null ? opts.paydayFloor : 1000;
     const horizon = knowledgeHorizon(plan, asOf, opts);
+    const scheduledAmounts = scheduledAmountState(plan, asOf, horizon.end, opts);
     const seq = fundingSequence(plan, asOf, opts);
     const reserveState = reserveFundingState(plan, asOf, opts);
     const plans = opts.majorPlans || majorPlans(plan, asOf, Object.assign({}, opts, {
@@ -12959,24 +13305,35 @@
       result.runningLeftover = null;
       result.paydayShellTrust.extraDebt = result.paydayShellTrust.optional = result.paydayShellTrust.remainder = 'unknown';
     }
-    return withholdIncomeAllocationClaims(result, incomeReconciliationState(plan, asOf));
+    return withholdScheduledAmountAllocationClaims(
+      withholdIncomeAllocationClaims(result, incomeReconciliationState(plan, asOf)),
+      scheduledAmounts);
   }
 
   // One publication boundary for the standalone allocation and recommend.
   // Preserve observed stocks and named price/actual evidence; withhold every
   // derived funding assignment, future path and spending instruction.
   function withholdIncomeAllocationClaims(alloc, income) {
-    if (!alloc || income.status !== 'unavailable') return alloc;
+    return withholdAllocationClaims(alloc, income, 'incomeReconciliation');
+  }
+  // ATLAS-077: the same boundary for an unknown scheduled amount — the
+  // allocation's funding assignments and spending instructions are
+  // withheld identically, and the named state rides on the result.
+  function withholdScheduledAmountAllocationClaims(alloc, scheduledAmounts) {
+    return withholdAllocationClaims(alloc, scheduledAmounts, 'scheduledAmounts');
+  }
+  function withholdAllocationClaims(alloc, state, field) {
+    if (!alloc || !state || state.status !== 'unavailable') return alloc;
     alloc.status = 'unavailable';
-    alloc.reason = income.reason;
-    alloc.incomeReconciliation = income;
+    alloc.reason = state.reason;
+    alloc[field] = state;
     for (const key of ['available', 'movable', 'unallocated', 'remainder', 'allocatedTotal',
       'identity', 'runningLeftover', 'supportedAllowance', 'weeklyCap', 'spendPermission']) alloc[key] = null;
-    alloc.extraDebt = { status: 'unavailable', reason: income.reason, allocated: null,
+    alloc.extraDebt = { status: 'unavailable', reason: state.reason, allocated: null,
       absorbable: null, target: null, consequence: null };
-    alloc.protectedPath = protectedPathUnavailable(income.reason);
+    alloc.protectedPath = protectedPathUnavailable(state.reason);
     alloc.liquidity = { ...(alloc.liquidity || {}), wanted: null, allocated: null };
-    alloc.plannedDebt = { status: 'unavailable', reason: income.reason, permitted: null, borrowed: null };
+    alloc.plannedDebt = { status: 'unavailable', reason: state.reason, permitted: null, borrowed: null };
     alloc.optional = [];
     alloc.lines = [];
     for (const key of ['obligations', 'requiredDebtPayments', 'essentials']) {
@@ -12994,7 +13351,7 @@
       }
       row.verdict = null;
       row.status = 'unavailable';
-      row.reason = income.reason;
+      row.reason = state.reason;
     }
     alloc.risks = [];
     for (const key of Object.keys(alloc.paydayShellTrust || {})) alloc.paydayShellTrust[key] = 'unknown';
@@ -13012,6 +13369,8 @@
   function recommendWeekly(plan, asOf, opts) {
     if (incomeReconciliationState(plan, asOf).status === 'unavailable') return null;
     if (cardMinimumState(plan, asOf, opts).status === 'unavailable') return null;
+    if (scheduledAmountState(plan, asOf,
+      knowledgeHorizon(plan, asOf, opts).end, opts).status === 'unavailable') return null;
     opts = Object.assign({}, opts || {});
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const searchOpts = Object.assign({}, opts, {
@@ -13116,12 +13475,15 @@
   // half whose opening was lost because that current period was unavailable.
   // Dated-opening cash may remain as lookback. Do not mix live observedCash
   // into this walk.
-  function withholdCurrentOperatingClaims(result, opts) {
+  function withholdCurrentOperatingClaims(result, opts, plan) {
     const cardUnknown = result && result.cardPurchaseCoverage?.status === 'unavailable';
-    if (!result || !opts || (opts.operatingPlan !== 'unavailable' && !cardUnknown)) return result;
+    const scheduledUnknown = !!(opts && opts.scheduledAmounts
+      && opts.scheduledAmounts.status === 'unavailable');
+    if (!result || !opts || (opts.operatingPlan !== 'unavailable' && !cardUnknown && !scheduledUnknown)) return result;
     const note = opts.operatingPlan === 'unavailable'
       ? opts.operatingPlanNote || 'Current plan unavailable. The dated opening is stale.'
-      : result.cardPurchaseCoverage.reason;
+      : cardUnknown ? result.cardPurchaseCoverage.reason
+      : opts.scheduledAmounts.reason;
     if (opts.operatingPlan === 'unavailable') result.operatingPlanUnavailable = true;
     if (cardUnknown) result.cardCoverageUnavailable = true;
     result.operatingPlanNote = note;
@@ -13223,6 +13585,24 @@
       result.funding = null;
       result.infeasible = null;
       withholdIncomeAllocationClaims(result.paydayAllocation, income);
+    }
+    if (scheduledUnknown) {
+      // ATLAS-077 (B1): the walk/knowledge withholding the card-minimum
+      // and income branches apply above also binds the scheduled-amount
+      // state. recommend's sim/zero aliases are raw simulateModel walks
+      // that never passed through simulate()'s publication wrapper, so
+      // publish them through it here; the knowledge figures and the
+      // feasibility verdicts built on those walks (binding, holds, the
+      // sized gap) are dependent future claims, not the independently
+      // known opening stock.
+      for (const key of ['sim', 'zero']) {
+        if (result[key]) result[key] = publishScheduledAmountCashWalk(result[key], plan, opts);
+      }
+      if (result.knowledge) result.knowledge = { ...result.knowledge,
+        min: { date: null, balance: null }, ending: null, freeCash: null };
+      result.binding = null;
+      result.bindingIsReal = result.holds = null;
+      result.gap = null;
     }
     return result;
   }
@@ -14064,6 +14444,18 @@
       base.operatingPlan = 'unavailable';
       base.operatingPlanNote = income.reason;
     }
+    // ATLAS-077: an unknown scheduled amount is carried as its own
+    // named state and withholds recommend's dependent claims at the
+    // publication boundary (withholdCurrentOperatingClaims). It does
+    // NOT route through operatingPlan: account-scoped publications
+    // like billsAccountPeriodBalance hold their own finer-grained
+    // remaining-cash audit and stay ready for unknowns that do not
+    // touch their account.
+    const scheduledAmounts = scheduledAmountState(plan, asOf,
+      knowledgeHorizon(plan, asOf, base).end, base);
+    if (scheduledAmounts.status === 'unavailable') {
+      base.scheduledAmounts = scheduledAmounts;
+    }
     const buffer = base.targetBuffer != null ? base.targetBuffer : (plan.defaults.targetBuffer || 0);
     base.targetBuffer = buffer;
 
@@ -14682,6 +15074,8 @@
         ...(savingsFunding ? { savingsFunding } : {}),
         ...(cardMinimumState(plan, asOf, paydayOpts).status !== 'incumbent'
           ? { cardMinimumPayments: cardMinimumState(plan, asOf, paydayOpts) } : {}),
+        ...(planOptions.scheduledAmounts
+          ? { scheduledAmounts: planOptions.scheduledAmounts } : {}),
         ...(cardCoverageState(plan, asOf, paydayOpts).status !== 'incumbent'
           ? { cardPurchaseCoverage: cardCoverageState(plan, asOf, paydayOpts) } : {}),
         mode, weekly: weeklyCap, effectiveFrom, buffer, gap, sim: viewSim, zero: zeroSim,
@@ -14736,7 +15130,7 @@
         binding: next.min,
         bindingIsReal: below(next.min.balance, buffer),
         holds: protectedAtCap.feasible,
-      }, planOptions);
+      }, planOptions, plan);
     }
   }
 
@@ -15345,15 +15739,15 @@
   // applies the same scheduled payment. A live-advanced opening overlays
   // posted debt, so those names stay omitted here. Cash-only represented
   // bills never move a facility.
-  function expandEventsForDebtWalk(plan, start, end, opts) {
+  function expandEventsForDebtWalk(plan, start, end, opts, trace) {
     const represented = representedKeySet(plan, opts, start);
     if (!represented.size || liveOpeningAdvanced(plan, start)) {
-      return expandEvents(plan, start, end, opts);
+      return expandEventsInternal(plan, start, end, opts, trace);
     }
-    const kept = expandEvents(plan, start, end, Object.assign({}, opts, {
+    const kept = expandEventsInternal(plan, start, end, Object.assign({}, opts, {
       keepRepresented: true,
-    }));
-    return kept.filter(event => {
+    }), trace);
+    const eligible = event => {
       if (!event || !event.id || !event.date) return true;
       if (!represented.has(event.id + '@' + event.date)) return true;
       if (event.kind !== 'obligation' || event.effect === 'capitalise') return false;
@@ -15372,7 +15766,9 @@
           .some(item => cardMinimumReceiptIdentity(plan, item) === original && item.id === event.id
             && representedEventEffectiveBy(item, start))) return false;
       return prepaidJointCashOutflow(plan, event.id, event.date, start);
-    });
+    };
+    if (trace) trace.items = trace.items.filter(eligible);
+    return kept.filter(eligible);
   }
 
   function projectDebts(plan, debts, asOf, opts) {
@@ -15394,7 +15790,9 @@
     const days = opts.debtHorizonDays != null ? opts.debtHorizonDays : (plan.windowDays || 91);
     const start = asOf;
     const end = addDays(asOf, days - 1);
-    const events = expandEventsForDebtWalk(plan, start, end, opts);
+    const scheduledAmounts = scheduledAmountState(plan, start, end, opts);
+    const omissionTrace = scheduledAmounts.unknowns.some(u => u.carrier === 'obligation') ? {} : null;
+    const events = expandEventsForDebtWalk(plan, start, end, opts, omissionTrace);
     const byId = {};
     const state = (debts || []).map(x => {
       // Carrying pending charges from the opening balance is what makes
@@ -15558,9 +15956,40 @@
     // swallowed, because a non-zero value here means cash out and debt down
     // have stopped agreeing and the caller needs to know which way.
     let unabsorbed = 0;
+    // Remainder dependence follows execution order, not just dates. A
+    // later omission cannot invalidate an earlier determined remainder.
+    // This provenance qualifies publication only; it never changes a
+    // balance, payment, cap, or the unrounded numeric aggregate.
+    let unabsorbedUnknown = false;
+    const remainderDependent = new Set();
+    const arrivalAt = (entry, pos) => {
+      if (!entry.flow) return Infinity;
+      let arrived = entry.flow.total;
+      for (let j = 0; j < pos; j++) {
+        arrived -= entry.flow.takes[entry.ids[j]] || 0;
+      }
+      return arrived;
+    };
     // How much of each extra payment found a balance, by date. Handed back so
     // the cash simulation can spend exactly this and not the amount asked for.
     const extraAbsorbed = {};
+    // How much of each date's real (non-hypothetical) extra payment
+    // no chain facility could absorb — the walk's own leftover from
+    // the payDown cascade, kept UNROUNDED per date. Split
+    // completeness is decided from this in the publication pass,
+    // never from the cent-rounded allocation lines: a sub-cent tail
+    // rounds to zero in the published lines, but where it would
+    // have landed can still be uncertain.
+    const extraRemainderByDate = {};
+    // Each extra payment's own flow, keyed by the event object: the
+    // total asked and the walk's recorded per-debt takes (unrounded,
+    // from the same payDown cascade — never replayed). The
+    // publication pass's taint fixpoint reads this to decide whether
+    // an extra's value actually ARRIVES at a chain position: a
+    // cascade exhausted by the takes before a position delivers
+    // exactly zero past them in every resolution, so dependency
+    // cannot cross a position the money never reaches.
+    const extraFlowByEvent = new Map();
     // Walk-owned debt attribution for each applied monthly extra payment, by
     // event date like extraAbsorbed. Each entry is
     // { allocations: [{ debtId, label, amount, status }], nextTarget } —
@@ -15606,8 +16035,29 @@
     // Same application date as simulate(). A carried once cash obligation
     // keeps e.date, so obligationAbsorbed still keys the original schedule.
     const byDate = new Map();
-    for (const e of events) {
-      const applyOn = cashWalkDate(e, start);
+    const unknownObligations = new Set(scheduledAmounts.unknowns
+      .filter(u => u.carrier === 'obligation').map(u => u.id + '@' + u.date));
+    const noncashUnknownByDate = new Map();
+    for (const u of scheduledAmounts.unknowns) {
+      if (u.carrier !== 'obligation') continue;
+      const row = (plan.obligations || []).find(o => o && (o.id || null) === u.id);
+      if (row && row.nonCash && scheduledAmountValue(row.amount) == null) {
+        const applyOn = u.date < start ? start : u.date;
+        if (!noncashUnknownByDate.has(applyOn)) noncashUnknownByDate.set(applyOn, []);
+        noncashUnknownByDate.get(applyOn).push(row.debtId);
+      }
+    }
+    for (const e of omissionTrace ? omissionTrace.items : events) {
+      if (e.omittedRepayment) {
+        if (!byId[e.debtId] || !unknownObligations.has((e.id || null) + '@' + e.date)) continue;
+        // Lookback expansion used its earlier opening. A validated send
+        // posted since then is evidence at this opening, not an omission.
+        if (minimumPaymentFor(plan, e, start, opts)) continue;
+      }
+      // A selected cash omission has no numeric amount to give
+      // cashWalkDate. Its carried occurrence applies at the opening,
+      // while its original date and source position remain intact.
+      const applyOn = e.omittedRepayment && e.date < start ? start : cashWalkDate(e, start);
       if (!byDate.has(applyOn)) byDate.set(applyOn, []);
       byDate.get(applyOn).push(e);
     }
@@ -15617,6 +16067,10 @@
 
     for (let i = 0; i < days; i++) {
       const date = addDays(start, i);
+      // Noncash amounts may be negative; a resolved credit sorts before
+      // payments even when its row follows them. Do not guess its sign
+      // or certify an earlier same-day remainder from source row order.
+      for (const id of noncashUnknownByDate.get(date) || []) remainderDependent.add(id);
       // Card interest accrues daily; the two secured debts carry theirs as
       // events and are skipped here so nothing is charged twice.
       for (const s of state) {
@@ -15626,6 +16080,16 @@
         s.interest += daily;
       }
       for (const e of byDate.get(date) || []) {
+        // Capture the balance at the actual omitted source position,
+        // after earlier charges/draws/payments. This private marker
+        // changes no balance, cap, remainder, or cash event.
+        if (e.omittedRepayment) {
+          if (remainderDependent.has(e.debtId) || byId[e.debtId].balance > EPSILON) {
+            unabsorbedUnknown = true;
+            remainderDependent.add(e.debtId);
+          }
+          continue;
+        }
         if (e.kind === 'injection') {
           // Cash arriving from outside the plan. One movement, but possibly
           // several origins — each borrowed portion has to land on the facility
@@ -15653,6 +16117,7 @@
             obligationAbsorbed[e.date + ':' + e.id] = e.minimumAmount;
             continue;
           }
+          if (remainderDependent.has(t.id)) unabsorbedUnknown = true;
           const amount = -e.amount;
           // A named minimum is a demand against one remaining balance.
           // After that named balance is gone, later scheduled installments
@@ -15697,7 +16162,25 @@
           // Record the split from this same cascade — never replayed.
           const applied = [];
           const left = payDown(chain, -e.amount, applied);
+          const flowTakes = {};
+          for (const a of applied) {
+            flowTakes[a.state.id] = (flowTakes[a.state.id] || 0) + a.amount;
+          }
+          const flow = { total: -e.amount, takes: flowTakes };
+          extraFlowByEvent.set(e, flow);
+          const ids = chain.map(s => s.id);
+          const firstDependent = ids.findIndex(id => remainderDependent.has(id));
+          if (firstDependent >= 0 && arrivalAt({ ids, flow }, firstDependent) > REMAINDER_DUST) {
+            // Dependence reaches only positions this actual extra can
+            // reach. Exhaustion upstream leaves downstream remainders
+            // determined. Preserve the incumbent raw hypothetical policy.
+            if (!isHyp) unabsorbedUnknown = true;
+            for (let j = firstDependent + 1; j < ids.length; j++) remainderDependent.add(ids[j]);
+          }
           unabsorbed += left;
+          if (!isHyp) {
+            extraRemainderByDate[e.date] = (extraRemainderByDate[e.date] || 0) + left;
+          }
           // What this payment could actually land, for the cash side to match.
           extraAbsorbed[e.date] = -e.amount - left;
           // The walk-owned attribution for this payment, for the trajectory
@@ -15708,6 +16191,7 @@
         } else if (e.kind === 'planned-debt') {
           const t = e.debtId ? byId[e.debtId] : null;
           if (!t) continue;
+          if (remainderDependent.has(t.id)) unabsorbedUnknown = true;
           const left = payDown([t], -e.amount);
           unabsorbed += left;
         }
@@ -15721,19 +16205,217 @@
       }
     }
 
+    // Every facility that is over its limit at some point, on the day it
+    // actually happens rather than at the next 30-day snapshot. A facility
+    // already over the limit today is a different problem from one that
+    // crosses on its own inside the window, so they are marked apart.
+    let crossings = state.filter(s => s.firstOver)
+      .map(s => ({ id: s.id, label: s.label, date: s.firstOver, limit: s.limit,
+        day: diffDays(start, s.firstOver),
+        alreadyOver: s.limit != null && s.opening > s.limit,
+        pendingUnknown: !!s.pendingUnknown }))
+      .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    let pubMarks = marks, pubById = byId, pubExtraDebtAllocation = extraDebtAllocation;
+    const pubUnabsorbed = unabsorbedUnknown ? null : unabsorbed;
+    const pubExtraAbsorbedUnknown = {};
+    if (scheduledAmounts.status === 'unavailable') {
+      // The marker alone does not withhold (B1): an unknown scheduled
+      // payment leaves the affected debt's post-due balance, paid and
+      // headroom claims unknown — publishing them unchanged is
+      // byte-identical to deleting the payment. Day-zero stocks (the
+      // opening mark, opening balances) are independently known and
+      // stay; so do marks dated before the first unknown occurrence.
+      const unknownFrom = {};
+      for (const u of scheduledAmounts.unknowns) {
+        if (u.carrier !== 'obligation') continue;
+        const row = (plan.obligations || []).find(o => o && (o.id || null) === u.id);
+        if (!row || !row.debtId || !byId[row.debtId]) continue;
+        if (unknownFrom[row.debtId] == null || u.date < unknownFrom[row.debtId]) {
+          unknownFrom[row.debtId] = u.date;
+        }
+      }
+      const affectedIds = Object.keys(unknownFrom);
+      if (affectedIds.length) {
+        // B1b: the taint follows the routing dependency — in the
+        // cascade's own direction. An extra payment's payDown
+        // distributes a fixed total in chain order, so a member's
+        // take depends on the balances at-or-before its own chain
+        // position, never on members after it: once a member's
+        // balance is unknown, the shares of members AFTER it in
+        // the chain — and every downstream balance the cascade
+        // touches — are dependent unknowns, while members before
+        // it are determined by data upstream of the unknown and
+        // stay known, even for debts with no unknown obligation
+        // of their own. Spread the direct taints through the
+        // walk's own extra-payment chains (same target/chain
+        // resolution as the walk itself) to a fixpoint: from an
+        // extra payment's date, taint crosses to the chain
+        // positions after the first position already tainted on
+        // or before that date — but only when the payment's value
+        // actually ARRIVES at that position. A cascade exhausted
+        // by the determined takes before the tainted position
+        // delivers exactly zero to it and past it in every
+        // resolution, so members beyond it owe nothing to the
+        // unknown and stay known: dependency follows the routing
+        // that can actually reach the unknown, not chain position
+        // alone. Arrival is computed from the walk's own recorded
+        // takes (extraFlowByEvent), never a replayed cascade; an
+        // extra with no recorded flow is treated as reaching
+        // (fail closed).
+        const extraChains = [];
+        for (const e of events) {
+          if (e.kind !== 'extra') continue;
+          const isHyp = e.id === 'hypothetical-extra';
+          const target = isHyp ? (hypExtraTarget || policyExtraTarget) : policyExtraTarget;
+          if (!target) continue;
+          const chain = isHyp && honorCallerExtraTarget ? [target] : chainFrom(target);
+          extraChains.push({ date: e.date, isHyp,
+            ids: chain.map(s => s && s.id).filter(Boolean),
+            flow: extraFlowByEvent.get(e) || null });
+        }
+        const taintedFrom = { ...unknownFrom };
+        const firstTaintedPosition = (ids, date) => {
+          for (let i = 0; i < ids.length; i++) {
+            if (taintedFrom[ids[i]] != null && taintedFrom[ids[i]] <= date) return i;
+          }
+          return -1;
+        };
+        // How much of this extra is still in hand when the cascade
+        // reaches chain position `pos`: the total asked minus the
+        // walk's recorded takes at the positions before it. Those
+        // takes precede the first tainted position, so they are
+        // determined figures and the arrival is exact.
+        let spreading = true;
+        while (spreading) {
+          spreading = false;
+          for (const entry of extraChains) {
+            const { date, ids } = entry;
+            const first = firstTaintedPosition(ids, date);
+            if (first < 0) continue;
+            if (arrivalAt(entry, first) <= REMAINDER_DUST) continue;
+            for (let i = first + 1; i < ids.length; i++) {
+              const id = ids[i];
+              if (taintedFrom[id] == null || date < taintedFrom[id]) {
+                taintedFrom[id] = date;
+                spreading = true;
+              }
+            }
+          }
+        }
+        const taintedIds = Object.keys(taintedFrom);
+        pubMarks = marks.map(mark => {
+          // The day-zero mark is the PRE-EVENT opening snapshot,
+          // taken before any event applies: an unknown due on the
+          // as-of date itself cannot make that known stock unknown.
+          if (mark.day === 0) return mark;
+          const hit = taintedIds.filter(id => mark.date >= taintedFrom[id]);
+          if (!hit.length) return mark;
+          const copy = { ...mark, debts: mark.debts.map(d => hit.includes(d.id)
+            ? { ...d, balance: null, paid: null, interest: null,
+                available: null, overLimit: null, overLimitBy: null }
+            : d) };
+          if (hit.some(id => !byId[id].secured)) copy.consumer = null;
+          if (hit.some(id => byId[id].secured)) copy.secured = null;
+          if (hit.includes('heloc')) copy.heloc = null;
+          if (hit.some(id => byId[id].limit != null)) {
+            copy.headroom = null;
+            copy.overLimitCount = null;
+          }
+          copy.interestToDate = null;
+          return copy;
+        });
+        pubById = { ...byId };
+        for (const id of taintedIds) {
+          pubById[id] = { ...byId[id], balance: null, paid: null,
+            interest: null, capitalised: null,
+            // A crossing already established before the first unknown
+            // occurrence is a known fact; a later one is not.
+            firstOver: byId[id].firstOver != null && byId[id].firstOver >= taintedFrom[id]
+              ? null : byId[id].firstOver };
+        }
+        crossings = crossings.filter(c => taintedFrom[c.id] == null
+          || c.date < taintedFrom[c.id]);
+        // The allocation record follows the same direction. A
+        // take at a chain position before the first tainted
+        // position is determined by upstream data alone, so when
+        // every recorded take sits before it, those takes
+        // publish; only the nextTarget conclusion is withheld
+        // when its own position reaches the taint (whether that
+        // debt still holds a balance is exactly what is unknown).
+        // A take at-or-after the first tainted position depends
+        // on an unknown balance, so the entry is withheld
+        // entirely, the same fail-closed shape the trajectory's
+        // span attribution already applies to a missing walk
+        // record. Determined takes publishing is not the split
+        // being complete, though: the remainder qualification
+        // below governs that claim. (Hypothetical extras never
+        // record an allocation; their chains still spread taint
+        // above.)
+        pubExtraDebtAllocation = { ...extraDebtAllocation };
+        for (const { date, ids, isHyp } of extraChains) {
+          if (isHyp) continue;
+          const first = firstTaintedPosition(ids, date);
+          if (first < 0) continue;
+          const record = pubExtraDebtAllocation[date];
+          const position = id => ids.indexOf(id);
+          const lines = record ? (record.allocations || []) : [];
+          const splitDetermined = lines
+            .every(line => position(line.debtId) >= 0
+              && position(line.debtId) < first);
+          if (!splitDetermined) {
+            if (record) delete pubExtraDebtAllocation[date];
+          } else if (record && record.nextTarget) {
+            const targetPosition = position(record.nextTarget.debtId);
+            if (targetPosition < 0 || targetPosition >= first) {
+              pubExtraDebtAllocation[date] = { ...record, nextTarget: null };
+            }
+          }
+          // B1b remainder: a determined split is a COMPLETE split
+          // only when its takes exhaust the fixed extra. When a
+          // taint-blocked downstream position could have absorbed
+          // part of the remainder (the walk's leftover is nonzero),
+          // or a recorded take itself sits at-or-after the taint
+          // (the entry is withheld above), the absorbed total for
+          // the date is not exactly known and the aggregate
+          // unabsorbed carries an unknown component: the surviving
+          // record is stamped 'partial' rather than left
+          // byte-identical to a genuinely complete split and the date
+          // is named in extraAbsorbedUnknown. Aggregate remainder
+          // dependence is recorded in execution order above, so this
+          // date-based allocation stamp cannot erase an earlier known
+          // remainder. extraAbsorbed itself keeps its numeric
+          // value: capsFor/applyCaps hand that map to the cash
+          // walk, which spends exactly the capped value per date
+          // (a missing date defaults to zero), so nulling or
+          // deleting the entry would erase the determined cash
+          // outflow and invent a zero the ruling forbids.
+          // The remainder is the walk's UNROUNDED leftover for the
+          // date, not a figure rebuilt from the published lines:
+          // the lines publish in cents, so a sub-cent tail (an
+          // extra of 1000.004 against a known 1000 take) rounds to
+          // zero there while its destination — a tainted balance
+          // that could have taken it — stays uncertain. Deciding
+          // completeness on the rounded figure certified that
+          // split complete. Any leftover above float dust
+          // (REMAINDER_DUST) is a real remainder, however small.
+          const remainder = extraRemainderByDate[date] || 0;
+          if (!splitDetermined || remainder > REMAINDER_DUST) {
+            pubExtraAbsorbedUnknown[date] = true;
+            if (splitDetermined && record) {
+              pubExtraDebtAllocation[date] = {
+                ...pubExtraDebtAllocation[date], status: 'partial' };
+            }
+          }
+        }
+      }
+    }
     return {
-      marks, byId, end, unabsorbed, extraAbsorbed, obligationAbsorbed,
-      extraDebtPriority: priority, extraDebtAllocation,
-      // Every facility that is over its limit at some point, on the day it
-      // actually happens rather than at the next 30-day snapshot. A facility
-      // already over the limit today is a different problem from one that
-      // crosses on its own inside the window, so they are marked apart.
-      crossings: state.filter(s => s.firstOver)
-        .map(s => ({ id: s.id, label: s.label, date: s.firstOver, limit: s.limit,
-          day: diffDays(start, s.firstOver),
-          alreadyOver: s.limit != null && s.opening > s.limit,
-          pendingUnknown: !!s.pendingUnknown }))
-        .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0),
+      marks: pubMarks, byId: pubById, end, unabsorbed: pubUnabsorbed,
+      extraAbsorbed, extraAbsorbedUnknown: pubExtraAbsorbedUnknown,
+      obligationAbsorbed,
+      scheduledAmounts,
+      extraDebtPriority: priority, extraDebtAllocation: pubExtraDebtAllocation,
+      crossings,
       // Everything an extra payment did NOT reach, so an untargeted one is
       // visible rather than silently vanishing into cash.
       untargetedExtra: opts.extraDebtMonthly > 0 && !extraTarget,
@@ -17083,6 +17765,33 @@
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const events = expandEvents(plan, asOf, horizon.end, opts);
     const obligations = (plan && plan.obligations) || [];
+    // ATLAS-077 (consolidated closure, family 4): a scheduled
+    // repayment whose own amount is unknown never becomes an event
+    // (expandEvents excludes it at source selection), so the
+    // nextPayment selection below would silently step over it and
+    // present a LATER known payment as this debt's confirmed next
+    // payment. The ordering claim depends on the omitted payment
+    // whenever one sits at-or-before the candidate's date on the
+    // same debt. Classify the omissions with the same named state
+    // every other consumer reads (the detector's occurrence scan,
+    // family 1's lookback included), keyed to the debt through the
+    // obligation row, and excluding sent minimums — those DO reach
+    // the event stream as minimumPayment records and are not
+    // omissions. The withheld representation is nextPayment null,
+    // the shape the credit page already renders as Unknown.
+    const omittedUnknownPaymentAt = new Map();
+    for (const u of scheduledAmountUnknowns(plan, asOf, horizon.end, opts)) {
+      if (u.carrier !== 'obligation') continue;
+      const row = obligations.find(o => o && (o.id || null) === u.id);
+      if (!row || !row.debtId || row.nonCash || row.effect !== 'payment') continue;
+      const evidenceEvent = { id: row.id, date: u.date,
+        scheduledDate: u.scheduledDate, kind: 'obligation', effect: row.effect };
+      if (minimumPaymentFor(plan, evidenceEvent, asOf, opts)) continue;
+      if (!omittedUnknownPaymentAt.has(row.debtId)
+        || u.date < omittedUnknownPaymentAt.get(row.debtId)) {
+        omittedUnknownPaymentAt.set(row.debtId, u.date);
+      }
+    }
 
     const firstEvent = (debtId, predicate) => {
       let best = null;
@@ -17109,8 +17818,12 @@
     const rows = (debts || []).map((d, index) => {
       const u = utilById.get(d.id) || null;
       const unknownPending = pendingUnknown(d);
-      const nextPayment = paymentFact(firstEvent(d.id, e =>
+      let nextPayment = paymentFact(firstEvent(d.id, e =>
         e.kind === 'obligation' && e.effect === 'payment' && e.cashMinimum !== true));
+      if (nextPayment) {
+        const omittedAt = omittedUnknownPaymentAt.get(d.id);
+        if (omittedAt != null && omittedAt <= nextPayment.date) nextPayment = null;
+      }
       const capEvent = firstEvent(d.id, e => e.kind === 'noncash' && e.effect === 'capitalise');
       let nextCashMinimum = null;
       for (const o of obligations) {
@@ -19524,6 +20237,11 @@
     if (income.status === 'unavailable') return { status: 'unavailable', reason: income.reason };
     const minimums = cardMinimumState(plan, day, opts);
     if (minimums.status === 'unavailable') return { status: 'unavailable', reason: minimums.reason };
+    const scheduledAmounts = scheduledAmountState(plan, day,
+      knowledgeHorizon(plan, day, opts).end, opts);
+    if (scheduledAmounts.status === 'unavailable') {
+      return { status: 'unavailable', reason: scheduledAmounts.reason };
+    }
     const periods = opts.periods;
     const normalSpending = provisionalRecentNormalSpending(plan, day, opts);
     const plannedWeekly = plannedWeeklyVariable(plan, periods, Object.assign({}, opts, { asOf: day }));
@@ -23056,7 +23774,7 @@
     };
   }
 
-  const Forecast = { billsAccountPeriodBalance, minimumCategoryAllocationConflict, incomeReconciliationState, cardMinimumState, cardMinimumReceiptIdentity, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+  const Forecast = { billsAccountPeriodBalance, minimumCategoryAllocationConflict, incomeReconciliationState, cardMinimumState, scheduledAmountState, cardMinimumReceiptIdentity, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     cardPeriodMovements,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, savingsFundingPublication, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
