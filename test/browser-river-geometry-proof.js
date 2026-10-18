@@ -64,7 +64,7 @@ const scenarioInit = (key, index, reduce) => {
   const changes = [];
   // Mirrors the shipped formatter (budget-blend.js compactRiverAmount): a
   // non-finite (unknown) value renders as '—', never as a number.
-  const fmt = v => { if (!Number.isFinite(v)) return '—'; const a = Math.abs(v), sign = v < 0 ? '−' : ''; return a >= 999.5 ? sign + '$' + (a / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : sign + '$' + Math.round(a); };
+  const fmt = v => { if (!Number.isFinite(v)) return '—'; const a = Math.abs(v), sign = v < 0 ? (s.asciiMinus ? '-' : '−') : ''; return a >= 999.5 ? sign + '$' + (a / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : sign + '$' + Math.round(a); };
   const el = document.querySelector('.river');
   const river = BudgetRiver.create({
     el, canvas: el.querySelector('canvas'), playhead: el.querySelector('.playhead'),
@@ -322,6 +322,50 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
       await page.close();
     }
 
+    // Wide selected text keeps the existing horizontal displacement/hit box.
+    // Pin the independently measured base click results, including its right
+    // edge's existing nearest-period result; do not change selection semantics.
+    const wideSelected = [];
+    for (const width of [320, 390]) for (const theme of ['dark', 'light']) {
+      const page = await open(width, theme, { reduce: true });
+      await page.evaluate(() => {
+        window.__SCENARIOS.wideSelected = {
+          bads: [1, -1234567, 1, -80, 640, -260, 90, 480, -150, 720, 210, -40], asciiMinus: true,
+        };
+        window.__scenarioInit('wideSelected', 1, true);
+      });
+      await page.waitForTimeout(350);
+      const label = 'wide-selected/' + width + '/' + theme;
+      const before = await page.evaluate(() => {
+        const r = window.__river, el = r.valEls[1], b = el.getBoundingClientRect();
+        return { text: el.textContent, width: b.width, spacing: r.sp, transform: el.style.transform,
+          stepBox: r._stepBox, input: JSON.stringify(window.__periods) };
+      });
+      check(before.text === '-$1234.6k' && before.width > before.spacing,
+        label + ': fixture exercises selected text wider than its period');
+      check(before.stepBox?.i === 1 && !before.transform.includes('translateY'),
+        label + ': wide selected text retains its horizontal hit box ' + JSON.stringify(before));
+      const clicks = [];
+      for (const [fraction, expected] of [[0.1, 1], [0.5, 1], [0.9, 2]]) {
+        const point = await page.evaluate(fraction => {
+          const r = window.__river;
+          r.go(1, true); r.place(1); r.draw(1500, 1); window.__changes.length = 0;
+          const b = r.valEls[1].getBoundingClientRect();
+          return { x: b.left + b.width * fraction, y: b.top + b.height / 2 };
+        }, fraction);
+        await page.mouse.click(point.x, point.y);
+        const result = await page.evaluate(() => ({ index: window.__river.index, changes: window.__changes.slice(),
+          input: JSON.stringify(window.__periods) }));
+        check(result.index === expected && result.changes.length === 1
+          && result.changes[0].i === expected && result.changes[0].how === 'commit',
+          label + ': click ' + fraction + ' preserves base period ' + expected + ' ' + JSON.stringify(result));
+        check(result.input === before.input, label + ': native publications stay unchanged');
+        clicks.push({ fraction, expected, ...point, ...result });
+      }
+      wideSelected.push({ width, theme, before, clicks });
+      await page.close();
+    }
+
     // 3) Held-drag visual proof: mid-gesture captures with the drag state live.
     const heldDrag = [];
     for (const width of [1280, 390]) {
@@ -458,7 +502,7 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
 
     // Receipt + report.
     verifySourceBinding(root, binding);
-    fs.writeFileSync(path.join(outDir, 'timeline-geometry-after.json'), JSON.stringify({ cases, extremes, adjacentTargets, heldDrag, divergence, transitions }, null, 2));
+    fs.writeFileSync(path.join(outDir, 'timeline-geometry-after.json'), JSON.stringify({ cases, extremes, adjacentTargets, wideSelected, heldDrag, divergence, transitions }, null, 2));
     const receipt = {
       proof: 'timeline-geometry',
       syntheticOnly: true,
@@ -468,6 +512,7 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
       caseCount: cases.length,
       extremes,
       adjacentTargets,
+      wideSelected,
       behavior,
       screenshotSha256: Object.fromEntries(shots.map(name => [name, sha256(path.join(outDir, name))])),
       failures,
