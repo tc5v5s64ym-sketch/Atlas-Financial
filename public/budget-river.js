@@ -359,12 +359,13 @@
       // the 20px orb one radius above the value-label row, so the disc covers
       // the selected label's own text. Step that label sideways just clear of
       // the disc (toward the side with more room, clamped inside the tile);
-      // any neighbouring label the disc or the stepped label would cover
-      // yields (fades out) instead of meshing, and returns when clear.
+      // if a sideways step would erase another visible period target, use
+      // the space above the disc instead. Viewport-clamped values retain
+      // their existing horizontal placement and context-label yielding.
       // Placement only — selection, domain, and gesture behaviour unchanged.
       const selEl = this.valEls && this.index >= 0 ? this.valEls[this.index] : null;
       if (this._stepEl && this._stepEl !== selEl) { this._stepEl.style.transform = ''; this._stepEl = null; this._stepBox = null; }
-      let stepDx = 0, selW = 0, selC = 0;
+      let stepDx = 0, stepDy = 0, selW = 0, selC = 0;
       if (selEl) {
         selW = selEl.offsetWidth; selC = this.xs[this.index] - this.off;
         // Keep a visible selected value whole at an end of the viewport.
@@ -379,11 +380,33 @@
             const dir = this.W - (selC + selW / 2) >= selC - selW / 2 ? 1 : -1;
             stepDx = clamp(selC + dir * need, selW / 2 + 2, this.W - selW / 2 - 2) - selC;
             if (Math.abs(selC + stepDx - x) < 12 + selW / 2) stepDx = edgeDx; // no room: retain viewport clearance
+            if (stepDx && !edgeDx) {
+              const masksTarget = dx => {
+                const left = selC + dx - selW / 2, right = selC + dx + selW / 2;
+                return this.valEls.some((el, k) => {
+                  if (k === this.index) return false;
+                  const ck = this.xs[k] - this.off, half = el.offsetWidth / 2;
+                  return ck - half >= 0 && ck + half <= this.W
+                    && (ck + half <= x - 10 || ck - half >= x + 10)
+                    && ck + half > left && ck - half < right;
+                });
+              };
+              // The extra row uses the period's raw click region. Keep a
+              // pixel of room on each side; wider text retains its existing
+              // horizontal displacement and hit box, even with tiny neighbors.
+              if (selW + 2 <= this.sp && masksTarget(stepDx) && !masksTarget(0)) {
+                stepDx = 0;
+                // The value row ends 28px above the tile bottom. Its new
+                // bottom clears the 10px-radius orb by the same 2px gap.
+                stepDy = y - 12 - (this.H - 28);
+              }
+            }
           }
         }
-        const t = stepDx ? `translateX(-50%) translateX(${stepDx.toFixed(1)}px)` : '';
+        const t = stepDy ? `translateX(-50%) translateY(${stepDy.toFixed(1)}px)`
+          : stepDx ? `translateX(-50%) translateX(${stepDx.toFixed(1)}px)` : '';
         if (selEl.style.transform !== t) selEl.style.transform = t;
-        this._stepEl = stepDx ? selEl : null;
+        this._stepEl = stepDx || stepDy ? selEl : null;
         // The stepped label's visible box, in element coordinates: pointer
         // resolution (hitIndex) honours it, because the box can sit inside
         // the neighbouring period's raw hit region.
@@ -407,7 +430,7 @@
           if (inBand || selW > 0) {
             const ck = this.xs[k] - this.off, wk = el.offsetWidth;
             cover = (inBand && ck + wk / 2 > x - 10 && ck - wk / 2 < x + 10)
-              || (selW > 0 && ck + wk / 2 > selL && ck - wk / 2 < selR);
+              || (selW > 0 && !stepDy && ck + wk / 2 > selL && ck - wk / 2 < selR);
           }
           if (cover && !this._yielded.has(el)) { el.style.opacity = '0'; this._yielded.add(el); }
           else if (!cover && this._yielded.has(el)) { el.style.opacity = ''; this._yielded.delete(el); }

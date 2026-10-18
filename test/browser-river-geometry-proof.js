@@ -4,7 +4,7 @@
 // Systems Review 5479984271 required this proof to be committed and re-runnable).
 //
 // Run from a clean checkout of the head under test:
-//   CHROME_PATH=<chromium> node test/browser-river-geometry-proof.js
+//   CHROME_PATH=<chromium> [PROOF_OUTPUT_DIR=<outside checkout>] node test/browser-river-geometry-proof.js
 // (playwright or playwright-core must be resolvable.)
 //
 // Synthetic timelines only. The script binds the exercised sources to the
@@ -24,7 +24,9 @@ let chromium;
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('playwright-core')); }
 
 const root = path.join(__dirname, '..');
-const outDir = path.join(root, 'docs/proof/browser');
+const outDir = process.env.PROOF_OUTPUT_DIR ? path.resolve(process.env.PROOF_OUTPUT_DIR) : path.join(root, 'docs/proof/browser');
+if (process.env.PROOF_OUTPUT_DIR) assert.ok(path.isAbsolute(process.env.PROOF_OUTPUT_DIR)
+  && !outDir.startsWith(root + path.sep), 'Requested external evidence stays outside the checkout.');
 const sha256 = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
 const BOUND_SOURCES = [
@@ -62,7 +64,7 @@ const scenarioInit = (key, index, reduce) => {
   const changes = [];
   // Mirrors the shipped formatter (budget-blend.js compactRiverAmount): a
   // non-finite (unknown) value renders as '—', never as a number.
-  const fmt = v => { if (!Number.isFinite(v)) return '—'; const a = Math.abs(v), sign = v < 0 ? '−' : ''; return a >= 999.5 ? sign + '$' + (a / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : sign + '$' + Math.round(a); };
+  const fmt = v => { if (!Number.isFinite(v)) return '—'; const a = Math.abs(v), sign = v < 0 ? (s.asciiMinus ? '-' : '−') : ''; return a >= 999.5 ? sign + '$' + (a / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : sign + '$' + Math.round(a); };
   const el = document.querySelector('.river');
   const river = BudgetRiver.create({
     el, canvas: el.querySelector('canvas'), playhead: el.querySelector('.playhead'),
@@ -100,6 +102,16 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
   const runtime = { node: process.version, chromium: await browser.version() };
   try {
+    const settleTile = async (page, label) => {
+      // Opacity rounds to 1 before the finite entrance transform completes.
+      // Await that transform rather than relaxing the exact geometry guards.
+      await page.waitForFunction(() => {
+        const tile = document.querySelector('.tile.t-river');
+        return getComputedStyle(tile).opacity === '1' && tile.getAnimations()
+          .filter(a => a.effect && Number.isFinite(a.effect.getTiming().iterations))
+          .every(a => a.playState === 'finished');
+      }, null, { timeout: 5000 }).catch(() => check(false, label + ': tile entrance never settled'));
+    };
     const open = async (width, theme, { narrowWrapper = false, reduce = false } = {}) => {
       const page = await browser.newPage({
         viewport: { width, height: 500 }, colorScheme: theme,
@@ -121,13 +133,11 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
       // The tile's entrance animation transforms it for ~1s; the controller
       // measures the tile box at layout time, so proof pages settle the
       // animation before any controller is created.
-      await page.waitForFunction(() => getComputedStyle(document.querySelector('.tile.t-river')).opacity === '1', null, { timeout: 5000 })
-        .catch(() => check(false, 'page never settled to full tile opacity'));
+      await settleTile(page, 'page');
       return page;
     };
     const capture = async (page, name) => {
-      await page.waitForFunction(() => getComputedStyle(document.querySelector('.tile.t-river')).opacity === '1', null, { timeout: 5000 })
-        .catch(() => check(false, 'capture ' + name + ': tile never reached full opacity (entrance animation unresolved)'));
+      await settleTile(page, 'capture ' + name);
       await page.locator('.tile.t-river').screenshot({ path: path.join(outDir, name), animations: 'disabled' });
       shots.push(name);
     };
@@ -241,6 +251,119 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
         await capture(page, 'after-selected-' + kind + '-' + width + '-' + theme + '.png');
         await page.close();
       }
+    }
+
+    // A bottom-band selected value must not erase either adjacent period's
+    // otherwise visible target. Measure real paint and send browser pointer
+    // events across the text, rather than using hitIndex as the oracle.
+    const adjacentTargets = [];
+    for (const width of [320, 390, 1280]) for (const theme of ['dark', 'light']) {
+      const page = await open(width, theme, { reduce: true });
+      await page.evaluate(() => window.__scenarioInit('negative', 1, true));
+      await page.waitForTimeout(350); // settle the existing opacity transition
+      const before = await page.evaluate(() => {
+        const r = window.__river, bounds = r.el.getBoundingClientRect();
+        return { index: r.index, pitch: r.sp, input: JSON.stringify(window.__periods),
+          geometry: JSON.stringify({ xs: r.xs, ys: r.ys, top: r.top, bot: r.bot, W: r.W, H: r.H }),
+          labels: r.valEls.map((el, i) => {
+            const b = el.getBoundingClientRect(), style = getComputedStyle(el);
+            return { i, text: el.textContent, title: el.title, state: el.dataset.state,
+              native: el.dataset.riverNativeValue || null, estimated: el.classList.contains('is-est'),
+              left: b.left - bounds.left, right: b.right - bounds.left,
+              opacity: Number(style.opacity), visibility: style.visibility };
+          }) };
+      });
+      const label = 'bottom-band-targets/' + width + '/' + theme;
+      for (const i of [0, 1, 2]) {
+        const value = before.labels[i];
+        check(value.visibility !== 'hidden' && value.opacity > 0,
+          label + ': period ' + i + ' label must remain visible ' + JSON.stringify(value));
+        check(value.left >= 0 && value.right <= width - 24,
+          label + ': period ' + i + ' label is clipped ' + JSON.stringify(value));
+      }
+      const geometry = await readGeometry(page);
+      check(geometry.labelOrbDisjoint && !geometry.neighborOverlap, label + ': labels remain disjoint from orb and neighbors');
+      const clearOtherText = await page.evaluate(() => {
+        const r = window.__river, selected = r.valEls[r.index].getBoundingClientRect();
+        return [r.pill, ...r.monthsEl.children].filter(el => getComputedStyle(el).visibility !== 'hidden').every(el => {
+          const b = el.getBoundingClientRect();
+          return selected.right <= b.left || b.right <= selected.left || selected.bottom <= b.top || b.bottom <= selected.top;
+        });
+      });
+      check(clearOtherText, label + ': selected value stays clear of pill and month text');
+      await capture(page, 'after-bottom-targets-' + width + '-' + theme + '.png');
+      const clicks = [];
+      for (const target of [0, 1, 2]) for (const fraction of [0.1, 0.5, 0.9]) {
+        const point = await page.evaluate(([target, fraction]) => {
+          const r = window.__river;
+          r.go(1, true); r.place(1); r.draw(1500, 1); window.__changes.length = 0;
+          const b = r.valEls[target].getBoundingClientRect();
+          return { x: b.left + b.width * fraction, y: b.top + b.height / 2 };
+        }, [target, fraction]);
+        await page.mouse.click(point.x, point.y);
+        const result = await page.evaluate(() => ({ index: window.__river.index, changes: window.__changes.slice() }));
+        check(result.index === target && result.changes.length === 1
+          && result.changes[0].i === target && result.changes[0].how === 'commit',
+          label + ': click ' + target + '/' + fraction + ' selects its own period ' + JSON.stringify(result));
+        clicks.push({ target, fraction, ...point, ...result });
+      }
+      const after = await page.evaluate(() => {
+        const r = window.__river;
+        return { input: JSON.stringify(window.__periods),
+          geometry: JSON.stringify({ xs: r.xs, ys: r.ys, top: r.top, bot: r.bot, W: r.W, H: r.H }),
+          labels: r.valEls.map(el => ({ text: el.textContent, title: el.title, state: el.dataset.state,
+            native: el.dataset.riverNativeValue || null, estimated: el.classList.contains('is-est') })) };
+      });
+      check(before.input === after.input && before.geometry === after.geometry,
+        label + ': source inputs, curve geometry and domain stay unchanged');
+      check(JSON.stringify(before.labels.map(({ text, title, state, native, estimated }) => ({ text, title, state, native, estimated })))
+        === JSON.stringify(after.labels), label + ': signs, publication text and qualifiers stay unchanged');
+      adjacentTargets.push({ width, theme, before, clicks });
+      await page.close();
+    }
+
+    // Wide selected text keeps the existing horizontal displacement/hit box.
+    // Pin the independently measured base click results, including its right
+    // edge's existing nearest-period result; do not change selection semantics.
+    const wideSelected = [];
+    for (const width of [320, 390]) for (const theme of ['dark', 'light']) {
+      const page = await open(width, theme, { reduce: true });
+      await page.evaluate(() => {
+        window.__SCENARIOS.wideSelected = {
+          bads: [1, -1234567, 1, -80, 640, -260, 90, 480, -150, 720, 210, -40], asciiMinus: true,
+        };
+        window.__scenarioInit('wideSelected', 1, true);
+      });
+      await page.waitForTimeout(350);
+      const label = 'wide-selected/' + width + '/' + theme;
+      const before = await page.evaluate(() => {
+        const r = window.__river, el = r.valEls[1], b = el.getBoundingClientRect();
+        return { text: el.textContent, width: b.width, spacing: r.sp, transform: el.style.transform,
+          stepBox: r._stepBox, input: JSON.stringify(window.__periods) };
+      });
+      check(before.text === '-$1234.6k' && before.width > before.spacing,
+        label + ': fixture exercises selected text wider than its period');
+      check(before.stepBox?.i === 1 && !before.transform.includes('translateY'),
+        label + ': wide selected text retains its horizontal hit box ' + JSON.stringify(before));
+      const clicks = [];
+      for (const [fraction, expected] of [[0.1, 1], [0.5, 1], [0.9, 2]]) {
+        const point = await page.evaluate(fraction => {
+          const r = window.__river;
+          r.go(1, true); r.place(1); r.draw(1500, 1); window.__changes.length = 0;
+          const b = r.valEls[1].getBoundingClientRect();
+          return { x: b.left + b.width * fraction, y: b.top + b.height / 2 };
+        }, fraction);
+        await page.mouse.click(point.x, point.y);
+        const result = await page.evaluate(() => ({ index: window.__river.index, changes: window.__changes.slice(),
+          input: JSON.stringify(window.__periods) }));
+        check(result.index === expected && result.changes.length === 1
+          && result.changes[0].i === expected && result.changes[0].how === 'commit',
+          label + ': click ' + fraction + ' preserves base period ' + expected + ' ' + JSON.stringify(result));
+        check(result.input === before.input, label + ': native publications stay unchanged');
+        clicks.push({ fraction, expected, ...point, ...result });
+      }
+      wideSelected.push({ width, theme, before, clicks });
+      await page.close();
     }
 
     // 3) Held-drag visual proof: mid-gesture captures with the drag state live.
@@ -379,7 +502,7 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
 
     // Receipt + report.
     verifySourceBinding(root, binding);
-    fs.writeFileSync(path.join(outDir, 'timeline-geometry-after.json'), JSON.stringify({ cases, extremes, heldDrag, divergence, transitions }, null, 2));
+    fs.writeFileSync(path.join(outDir, 'timeline-geometry-after.json'), JSON.stringify({ cases, extremes, adjacentTargets, wideSelected, heldDrag, divergence, transitions }, null, 2));
     const receipt = {
       proof: 'timeline-geometry',
       syntheticOnly: true,
@@ -388,6 +511,8 @@ const pageHtml = (theme, narrowWrapper) => '<!doctype html><html data-theme="' +
       geometrySpec: { ...SPEC, pillBottomEdge: PILL_BOTTOM, valsTopEdgeFromBottom: VALS_TOP_FROM_BOTTOM, beamTop: 30, beamBottomInset: 51 },
       caseCount: cases.length,
       extremes,
+      adjacentTargets,
+      wideSelected,
       behavior,
       screenshotSha256: Object.fromEntries(shots.map(name => [name, sha256(path.join(outDir, name))])),
       failures,

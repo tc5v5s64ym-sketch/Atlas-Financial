@@ -13,7 +13,14 @@ async function proveRiverPort({ open, capture }) {
     if (data) for (let i = 0; i < 24; i++) data.plan.bills.push({id:'stress-bill-'+i,label:'Synthetic recurring bill '+i,
       frequency:'monthly',day:i+1,amount:12+i,confidence:'confirmed',payingAccount:'chequing-a'});
     const page = await open(width, theme, data ? { data } : {});
-    await page.waitForFunction(() => Number(getComputedStyle(document.querySelector('.t-river')).opacity) === 1);
+    // Opacity rounds to 1 before the finite entrance transform finishes.
+    // Measure only the settled tile; keep the exact geometry assertions below.
+    await page.waitForFunction(() => {
+      const tile = document.querySelector('.t-river');
+      return tile && Number(getComputedStyle(tile).opacity) === 1
+        && tile.getAnimations().filter(a => a.effect && Number.isFinite(a.effect.getTiming().iterations))
+          .every(a => a.playState === 'finished');
+    }, null, { timeout: 5000 });
     const before = await page.evaluate(width => {
       const river = document.querySelector('.river');
       const selected = Number(river.getAttribute('aria-valuenow')) - 1;
@@ -159,16 +166,17 @@ async function proveRiverPort({ open, capture }) {
 
 // Regression (Systems Review 5480635465): place() skipped the selected label
 // before clearing yielded opacity. Selecting the minimum faded the adjacent
-// $150 label to opacity 0; selecting that label next retained its node
+// adjacent label to opacity 0; selecting that label next retained its node
 // (mark/adopt keep the label nodes) but left it invisible — rectangle checks
 // pass on invisible text, so this regression asserts COMPUTED opacity
 // through the whole sequence: pointer, keyboard, reduced motion, and a
 // retained-node adopt() remount.
 async function proveYieldedNeighbourReselect({ open }) {
-  // Same invented publication as the geometry proof's negative scenario:
-  // index 1 is the minimum (-420, on the band's bottom edge) and index 2 is
-  // its $150 neighbour, which the selected minimum's stepped label covers.
-  const bads = [300, -420, 150, -80, 640, -260, 90, 480, -150, 720, 210, -40];
+  // Retain a genuinely yielded neighbour after the ordinary short-label fix:
+  // index 2 is deliberately wide enough to overlap the minimum's orb already.
+  // The ordinary $150 case remains in the geometry proof and must stay visible.
+  // Scientific notation keeps this synthetic amount distinct from identifier-shaped text.
+  const bads = [300, -420, 8.888888888888888e15, -80, 640, -260, 90, 480, -150, 720, 210, -40];
   const MIN = 1, NEIGHBOUR = 2;
   const cases = [];
   const setup = async (width, theme, options = {}) => {
@@ -226,7 +234,7 @@ async function proveYieldedNeighbourReselect({ open }) {
   const runSequence = async (page, select, label) => {
     await select(MIN);
     const hiddenNeighbour = await computedOpacity(page, NEIGHBOUR, '0');
-    assert.equal(hiddenNeighbour, '0', label + ': selecting the minimum must yield (hide) the adjacent $150 label; computed opacity ' + hiddenNeighbour);
+    assert.equal(hiddenNeighbour, '0', label + ': selecting the minimum must yield (hide) the wide adjacent label; computed opacity ' + hiddenNeighbour);
     const minSelected = await computedOpacity(page, MIN, '1');
     assert.equal(minSelected, '1', label + ': the selected minimum label itself must be visible; computed opacity ' + minSelected);
     await select(NEIGHBOUR);
@@ -298,7 +306,7 @@ async function proveDisplacedLabelHitTargeting({ open }) {
   // Same invented publication as the yield regression: index 1 is the
   // minimum (-420, on the band's bottom edge) whose selected label steps
   // aside; index 2 is the neighbour its visible centre lands on.
-  const bads = [300, -420, 150, -80, 640, -260, 90, 480, -150, 720, 210, -40];
+  const bads = [300, -420, 8.888888888888888e15, -80, 640, -260, 90, 480, -150, 720, 210, -40];
   const MIN = 1, NEIGHBOUR = 2;
   const cases = [];
   const setup = async (width, theme, options = {}) => {
@@ -452,7 +460,7 @@ async function proveDisplacedLabelHitTargeting({ open }) {
 // period, not the press-time target. On the pre-fix code the held press
 // commits index 2 and this regression fails on its first case.
 async function proveHeldPressNonPanTargeting({ open }) {
-  const bads = [300, -420, 150, -80, 640, -260, 90, 480, -150, 720, 210, -40];
+  const bads = [300, -420, 8.888888888888888e15, -80, 640, -260, 90, 480, -150, 720, 210, -40];
   const MIN = 1, NEIGHBOUR = 2;
   const HOLD_MS = 1100;
   const cases = [];
@@ -725,7 +733,10 @@ if (require.main === module) {
       ], process.env.PROOF_BASE_SHA || null);
       verifyBinding = sbl.verifySourceBinding;
     }
-    const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
+    // Match the readability runner's renderer so pixel readbacks do not switch
+    // between accelerated and software canvas output during the comparison.
+    const renderer = { canvas: 'software', args: ['--disable-accelerated-2d-canvas'] };
+    const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true, args: renderer.args });
     try {
       const errors = [];
       const open = async (width, theme, options = {}) => {
@@ -755,7 +766,7 @@ if (require.main === module) {
           proof: 'timeline-geometry-native-harness',
           harness: 'test/browser-budget-river-port.js',
           syntheticOnly: true,
-          runtime: { node: process.version, chromium: await browser.version() },
+          runtime: { node: process.version, chromium: await browser.version(), renderer },
           sourceBinding: { ...binding, unchangedAfterRun: true },
           results: result,
           pageErrors: errors,
