@@ -11089,15 +11089,18 @@
         if (adj.omit) return true;
         return typeof adj.amount === 'number' && Number.isFinite(adj.amount) && adj.amount >= 0;
       };
-      // A negative adjustment amount without omit is an invalid
-      // declaration on any stream: expandEvents builds the event and the
-      // sections layer discards it, so even a known native amount
-      // silently vanishes from the period. It disposes of nothing.
-      const occurrenceAdjustmentNegative = (stream, date) => {
+      // An adjustment amount that is not a finite non-negative number is
+      // an invalid declaration on any stream: negative and non-finite
+      // amounts are discarded by the sections layer, so even a known
+      // native amount silently vanishes from the period, and non-numeric
+      // amounts are coerced into figures no validator accepts as a
+      // basis. Only omit, no declared amount, or a finite non-negative
+      // number disposes of the occurrence.
+      const occurrenceAdjustmentInvalid = (stream, date) => {
         if (!opts || typeof opts.incomeOccurrenceAdjust !== 'function') return false;
         const adj = opts.incomeOccurrenceAdjust(stream, date, streamAmount(stream, opts));
-        return !!adj && !adj.omit && typeof adj.amount === 'number'
-          && Number.isFinite(adj.amount) && adj.amount < 0;
+        if (!adj || adj.omit || adj.amount == null) return false;
+        return !(typeof adj.amount === 'number' && Number.isFinite(adj.amount) && adj.amount >= 0);
       };
       const incomeLoadUnknown = !planUnavailable && !lookback && (
         (income || []).some(row => row && row.otherIncome !== true
@@ -11115,7 +11118,7 @@
           && occurrences(stream, window.start, window.end).some(date =>
             !knownIncomeKeys.has(stream.id + '@' + date)
             && !excludedIncomeOccurrence(stream.id, date)
-            && occurrenceAdjustmentNegative(stream, date))));
+            && occurrenceAdjustmentInvalid(stream, date))));
       let incomeAdded = 0;
       for (const row of income) {
         if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) {

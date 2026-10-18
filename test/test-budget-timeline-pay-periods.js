@@ -1542,6 +1542,38 @@ function sectionMissingIncomeAmount() {
       && knownExcludedNegative.incomeTrust === 'calculated' && !knownExcludedNegative.incomeUnavailableReason,
     '026 known-receipt excluded negative control: qualified exclusion still governs',
     knownExcludedNegative && `${knownExcludedNegative.incomeTotal}/${knownExcludedNegative.incomeTrust}`);
+  // Residual: an adjustment amount that is not a finite number is the same
+  // invalid declaration on a known receipt — non-finite values and numeric
+  // strings drop in expandEvents/sections and publish a calculated zero,
+  // and non-numeric types are coerced into figures no validator accepts.
+  // Only a finite non-negative number (or omit, or no amount) disposes.
+  const adjInvalidCases = [
+    ['-Infinity', { amount: -Infinity, confidence: 'confirmed' }],
+    ['NaN', { amount: NaN, confidence: 'confirmed' }],
+    ["string '-250'", { amount: '-250', confidence: 'confirmed' }],
+  ];
+  for (const [label, adj] of adjInvalidCases) {
+    const v = rowByStart(run(fixture([payroll, receipt(500)]),
+      { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? adj : null }), '2026-10-16');
+    ok(v && v.incomeTotal === null && v.incomeTrust === 'unavailable'
+        && typeof v.incomeUnavailableReason === 'string' && v.afterBills === null,
+      `026 invalid adjustment ${label}: declared non-basis amount withholds the period`,
+      v && `${v.incomeTotal}/${v.incomeTrust}`);
+  }
+  // +Infinity already withholds on the incumbent code (the row survives
+  // with a null amount); pin it so the generalization cannot regress it.
+  const adjPosInfinity = rowByStart(run(fixture([payroll, receipt(500)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: Infinity, confidence: 'confirmed' } : null }), '2026-10-16');
+  ok(adjPosInfinity && adjPosInfinity.incomeTotal === null && adjPosInfinity.incomeTrust === 'unavailable',
+    '026 invalid adjustment +Infinity control: incumbent withholding preserved',
+    adjPosInfinity && `${adjPosInfinity.incomeTotal}/${adjPosInfinity.incomeTrust}`);
+  // An adjustment declaring no amount leaves the native amount standing.
+  const adjNoAmount = rowByStart(run(fixture([payroll, receipt(500)]),
+    { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: null, confidence: 'confirmed' } : null }), '2026-10-16');
+  ok(adjNoAmount && adjNoAmount.incomeTotal === 500 && adjNoAmount.incomeTrust === 'calculated'
+      && !adjNoAmount.incomeUnavailableReason,
+    '026 adjustment no-amount control: native amount stands',
+    adjNoAmount && `${adjNoAmount.incomeTotal}/${adjNoAmount.incomeTrust}`);
 
   // A missing-amount receipt with no contributing occurrence in a period
   // leaves that period known; only its own period goes unknown.
