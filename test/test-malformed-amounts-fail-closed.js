@@ -2277,13 +2277,10 @@ for (const chargeFirst of [true, false]) {
   const clear = { ...bRepayment(100), id: 'clear' };
   const unknown = omittedWalk([clear, bRepayment(null)]);
   const finite = omittedWalk([clear, bRepayment(500)]);
-  // Existing publication qualification is date-based for actual payment
-  // remainders; it conservatively withholds this same-day source. This
-  // repair changes omission capture, not that independent qualification.
-  ok(unknown.unabsorbed === null && finite.unabsorbed === 0
+  ok(unknown.unabsorbed === 0 && finite.unabsorbed === 0
     && unknown.obligationAbsorbed['2027-02-06:clear'] === 100
     && finite.obligationAbsorbed['2027-02-06:pay'] === 0,
-    'Family 2 order control: earlier same-day clearing preserves caps; existing date-based aggregate qualification remains');
+    'Family 2 order control: earlier same-day clearing preserves the independently known zero remainder and caps');
 }
 {
   // Both carried dates apply at opening. Original date outranks row order;
@@ -2294,8 +2291,8 @@ for (const chargeFirst of [true, false]) {
     { ...sameDayCharge, date: U_AS_OF }];
   const carried = F.projectDebts(plan, omittedDebts(), U_AS_OF,
     { extraDebtMonthly: 0, debtHorizonDays: 3 });
-  ok(carried.unabsorbed === null && carried.obligationAbsorbed['2027-01-30:earlier-clear'] === 100,
-    'Family 2 carry order control: earlier-date clearing preserves cap 100; existing date-based aggregate qualification remains');
+  ok(carried.unabsorbed === 0 && carried.obligationAbsorbed['2027-01-30:earlier-clear'] === 100,
+    'Family 2 carry order control: earlier-date clearing preserves the independently known zero remainder and cap 100');
   plan.obligations = [bRepayment(null, true, '2027-01-31')];
   const drawn = F.projectDebts(plan, omittedDebts(0), U_AS_OF,
     { extraDebtMonthly: 0, debtHorizonDays: 3,
@@ -2319,6 +2316,69 @@ for (const carrier of ['obligation', 'bill']) {
   ok(scanU(plan).status === 'unavailable',
     `Family 1 represented once ${carrier} control: a different represented date cannot settle the unknown occurrence`);
  }
+}
+
+/* --- Z. Earlier determined remainders are not retroactively qualified
+ * by a later cash omission, including multiple dates carried to opening.
+ * Independent proof: 150 - 100 = 50, then the named balance is zero.
+ * Every later payment resolution is bypassed against that known zero. */
+for (const carried of [false, true]) {
+  for (const laterAmount of [null, 0, 500]) {
+    const plan = carried ? lookbackPlan() : omittedPlan([]);
+    const clear = { ...bRepayment(150, true, carried ? '2027-01-30' : '2027-02-06'), id: 'clear' };
+    const later = bRepayment(laterAmount, true, carried ? '2027-01-31' : '2027-02-06');
+    plan.obligations = carried
+      ? [later, clear, { ...sameDayCharge, date: U_AS_OF }]
+      : [clear, later];
+    const w = F.projectDebts(plan, omittedDebts(), U_AS_OF,
+      { extraDebtMonthly: 0, debtHorizonDays: 8 });
+    ok(w.unabsorbed === 50 && w.obligationAbsorbed[clear.date + ':clear'] === 100,
+      `Family 2 preservation: ${carried ? 'carried Jan30/Jan31' : 'same-day source order'}, later amount ${laterAmount}, earlier remainder stays exactly 50`);
+    if (laterAmount === null) {
+      ok(w.scheduledAmounts.status === 'unavailable' && w.byId['card-b'].balance === null
+        && w.marks[0].debts.find(d => d.id === 'card-b').balance === 100,
+        'Family 2 preservation: precise remainder publication does not rewrite date-based balance qualification or opening stocks');
+    }
+  }
+}
+{
+  const unknownFirst = omittedWalk([bRepayment(null), { ...bRepayment(150), id: 'later' }]);
+  ok(unknownFirst.unabsorbed === null,
+    'Family 2 reversed-order control: an omitted payment against a live balance precedes the known payment, so aggregate remains unknown');
+  const rows = amount => [bRepayment(150), { ...sameDayCharge, amount }];
+  const unknown = omittedWalk(rows(null));
+  const zero = omittedWalk(rows(0));
+  const charge = omittedWalk(rows(200));
+  const credit = omittedWalk(rows(-50));
+  ok(unknown.unabsorbed === null && zero.unabsorbed === 50
+    && charge.unabsorbed === 50 && credit.unabsorbed === 100,
+    'Family 2 noncash sign control: a later-row unknown charge can resolve to a credit sorted before payment; aggregate must withhold');
+}
+{
+  const rows = [bRepayment(null), sameDayCharge,
+    { ...bRepayment(300, true, '2027-02-07'), id: 'later' }];
+  const w = omittedWalk(rows, omittedDebts(0));
+  ok(w.unabsorbed === 100 && w.obligationAbsorbed['2027-02-07:later'] === 200,
+    'Family 2 zero-balance bypass: an omitted payment against zero cannot taint a later known charge and its known 100 remainder');
+}
+{
+  const rows = amount => {
+    const charge = { ...sameDayCharge, amount };
+    delete charge.id;
+    return [charge, bRepayment(150)];
+  };
+  const unknown = omittedWalk(rows(null));
+  const zero = omittedWalk(rows(0));
+  const charge = omittedWalk(rows(200));
+  const credit = omittedWalk(rows(-50));
+  ok(unknown.scheduledAmounts.unknowns.some(u => u.id === null)
+    && unknown.unabsorbed === null && zero.unabsorbed === 50
+    && charge.unabsorbed === 0 && credit.unabsorbed === 100,
+    'Family 2 unnamed source control: null-normalized unknown identity still qualifies the noncash dependency and cannot certify remainder 50');
+  const unnamedPayment = bRepayment(null);
+  delete unnamedPayment.id;
+  ok(omittedWalk([unnamedPayment]).unabsorbed === null,
+    'Family 2 unnamed cash omission: source identity normalization does not drop an unknown live-balance repayment');
 }
 
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All ATLAS-077 malformed-amount checks passed'));

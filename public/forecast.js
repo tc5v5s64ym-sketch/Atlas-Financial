@@ -15951,14 +15951,20 @@
     // swallowed, because a non-zero value here means cash out and debt down
     // have stopped agreeing and the caller needs to know which way.
     let unabsorbed = 0;
-    // Which single-debt remainders fed that total, and on which day
-    // they were computed — recorded from the same payDown calls,
-    // never replayed. The publication pass below uses this to tell
-    // whether an obligation or planned-debt remainder was computed
-    // from a balance a scheduled unknown makes unknowable. (Extra
-    // remainders leave their own trace: the allocation records and
-    // extraAbsorbed above.)
-    const unabsorbedSources = [];
+    // Remainder dependence follows execution order, not just dates. A
+    // later omission cannot invalidate an earlier determined remainder.
+    // This provenance qualifies publication only; it never changes a
+    // balance, payment, cap, or the unrounded numeric aggregate.
+    let unabsorbedUnknown = false;
+    const remainderDependent = new Set();
+    const arrivalAt = (entry, pos) => {
+      if (!entry.flow) return Infinity;
+      let arrived = entry.flow.total;
+      for (let j = 0; j < pos; j++) {
+        arrived -= entry.flow.takes[entry.ids[j]] || 0;
+      }
+      return arrived;
+    };
     // How much of each extra payment found a balance, by date. Handed back so
     // the cash simulation can spend exactly this and not the amount asked for.
     const extraAbsorbed = {};
@@ -16024,24 +16030,24 @@
     // Same application date as simulate(). A carried once cash obligation
     // keeps e.date, so obligationAbsorbed still keys the original schedule.
     const byDate = new Map();
-    const omittedRepayments = [];
     const unknownObligations = new Set(scheduledAmounts.unknowns
       .filter(u => u.carrier === 'obligation').map(u => u.id + '@' + u.date));
-    const noncashUnknownAt = new Set();
+    const noncashUnknownByDate = new Map();
     for (const u of scheduledAmounts.unknowns) {
       if (u.carrier !== 'obligation') continue;
-      const row = (plan.obligations || []).find(o => o && o.id === u.id);
+      const row = (plan.obligations || []).find(o => o && (o.id || null) === u.id);
       if (row && row.nonCash && scheduledAmountValue(row.amount) == null) {
-        noncashUnknownAt.add(row.debtId + '@' + u.date);
+        const applyOn = u.date < start ? start : u.date;
+        if (!noncashUnknownByDate.has(applyOn)) noncashUnknownByDate.set(applyOn, []);
+        noncashUnknownByDate.get(applyOn).push(row.debtId);
       }
     }
     for (const e of omissionTrace ? omissionTrace.items : events) {
       if (e.omittedRepayment) {
-        if (!byId[e.debtId] || !unknownObligations.has(e.id + '@' + e.date)) continue;
+        if (!byId[e.debtId] || !unknownObligations.has((e.id || null) + '@' + e.date)) continue;
         // Lookback expansion used its earlier opening. A validated send
         // posted since then is evidence at this opening, not an omission.
         if (minimumPaymentFor(plan, e, start, opts)) continue;
-        omittedRepayments.push(e);
       }
       // A selected cash omission has no numeric amount to give
       // cashWalkDate. Its carried occurrence applies at the opening,
@@ -16056,6 +16062,10 @@
 
     for (let i = 0; i < days; i++) {
       const date = addDays(start, i);
+      // Noncash amounts may be negative; a resolved credit sorts before
+      // payments even when its row follows them. Do not guess its sign
+      // or certify an earlier same-day remainder from source row order.
+      for (const id of noncashUnknownByDate.get(date) || []) remainderDependent.add(id);
       // Card interest accrues daily; the two secured debts carry theirs as
       // events and are skipped here so nothing is charged twice.
       for (const s of state) {
@@ -16069,7 +16079,10 @@
         // after earlier charges/draws/payments. This private marker
         // changes no balance, cap, remainder, or cash event.
         if (e.omittedRepayment) {
-          e.balanceAtOmission = byId[e.debtId].balance;
+          if (remainderDependent.has(e.debtId) || byId[e.debtId].balance > EPSILON) {
+            unabsorbedUnknown = true;
+            remainderDependent.add(e.debtId);
+          }
           continue;
         }
         if (e.kind === 'injection') {
@@ -16099,6 +16112,7 @@
             obligationAbsorbed[e.date + ':' + e.id] = e.minimumAmount;
             continue;
           }
+          if (remainderDependent.has(t.id)) unabsorbedUnknown = true;
           const amount = -e.amount;
           // A named minimum is a demand against one remaining balance.
           // After that named balance is gone, later scheduled installments
@@ -16108,11 +16122,6 @@
           // interest draining cash after payoff.
           if (!(t.balance > EPSILON)) {
             obligationAbsorbed[e.date + ':' + e.id] = 0;
-            // No remainder is added — but whether the balance was
-            // really gone is itself a conclusion drawn from that
-            // balance, so the publication pass still needs the
-            // source recorded (see unabsorbedSources above).
-            unabsorbedSources.push({ debtId: t.id, date });
             continue;
           }
           // An amortising payment is part interest, part principal; only the
@@ -16136,7 +16145,6 @@
           // go next. The two look alike in the ledger and are not alike at all.
           const left = payDown([t], principal);
           unabsorbed += left;
-          unabsorbedSources.push({ debtId: t.id, date });
           obligationAbsorbed[e.date + ':' + e.id] = amount - left;
         } else if (e.kind === 'extra') {
           const isHyp = e.id === 'hypothetical-extra';
@@ -16153,7 +16161,17 @@
           for (const a of applied) {
             flowTakes[a.state.id] = (flowTakes[a.state.id] || 0) + a.amount;
           }
-          extraFlowByEvent.set(e, { total: -e.amount, takes: flowTakes });
+          const flow = { total: -e.amount, takes: flowTakes };
+          extraFlowByEvent.set(e, flow);
+          const ids = chain.map(s => s.id);
+          const firstDependent = ids.findIndex(id => remainderDependent.has(id));
+          if (firstDependent >= 0 && arrivalAt({ ids, flow }, firstDependent) > REMAINDER_DUST) {
+            // Dependence reaches only positions this actual extra can
+            // reach. Exhaustion upstream leaves downstream remainders
+            // determined. Preserve the incumbent raw hypothetical policy.
+            if (!isHyp) unabsorbedUnknown = true;
+            for (let j = firstDependent + 1; j < ids.length; j++) remainderDependent.add(ids[j]);
+          }
           unabsorbed += left;
           if (!isHyp) {
             extraRemainderByDate[e.date] = (extraRemainderByDate[e.date] || 0) + left;
@@ -16168,9 +16186,9 @@
         } else if (e.kind === 'planned-debt') {
           const t = e.debtId ? byId[e.debtId] : null;
           if (!t) continue;
+          if (remainderDependent.has(t.id)) unabsorbedUnknown = true;
           const left = payDown([t], -e.amount);
           unabsorbed += left;
-          unabsorbedSources.push({ debtId: t.id, date });
         }
       }
       for (const s2 of state) {
@@ -16193,7 +16211,7 @@
         pendingUnknown: !!s.pendingUnknown }))
       .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
     let pubMarks = marks, pubById = byId, pubExtraDebtAllocation = extraDebtAllocation;
-    let pubUnabsorbed = unabsorbed;
+    const pubUnabsorbed = unabsorbedUnknown ? null : unabsorbed;
     const pubExtraAbsorbedUnknown = {};
     if (scheduledAmounts.status === 'unavailable') {
       // The marker alone does not withhold (B1): an unknown scheduled
@@ -16262,14 +16280,6 @@
         // walk's recorded takes at the positions before it. Those
         // takes precede the first tainted position, so they are
         // determined figures and the arrival is exact.
-        const arrivalAt = (entry, pos) => {
-          if (!entry.flow) return Infinity;
-          let arrived = entry.flow.total;
-          for (let j = 0; j < pos; j++) {
-            arrived -= entry.flow.takes[entry.ids[j]] || 0;
-          }
-          return arrived;
-        };
         let spreading = true;
         while (spreading) {
           spreading = false;
@@ -16364,9 +16374,11 @@
           // the date is not exactly known and the aggregate
           // unabsorbed carries an unknown component: the surviving
           // record is stamped 'partial' rather than left
-          // byte-identical to a genuinely complete split, the date
-          // is named in extraAbsorbedUnknown, and unabsorbed is
-          // withheld. extraAbsorbed itself keeps its numeric
+          // byte-identical to a genuinely complete split and the date
+          // is named in extraAbsorbedUnknown. Aggregate remainder
+          // dependence is recorded in execution order above, so this
+          // date-based allocation stamp cannot erase an earlier known
+          // remainder. extraAbsorbed itself keeps its numeric
           // value: capsFor/applyCaps hand that map to the cash
           // walk, which spends exactly the capped value per date
           // (a missing date defaults to zero), so nulling or
@@ -16384,57 +16396,10 @@
           const remainder = extraRemainderByDate[date] || 0;
           if (!splitDetermined || remainder > REMAINDER_DUST) {
             pubExtraAbsorbedUnknown[date] = true;
-            pubUnabsorbed = null;
             if (splitDetermined && record) {
               pubExtraDebtAllocation[date] = {
                 ...pubExtraDebtAllocation[date], status: 'partial' };
             }
-          }
-        }
-        // B1b remainder (obligation / planned-debt): the extra
-        // branch above qualifies the aggregate for extra remainders,
-        // but the same total also sums obligation and planned-debt
-        // leftovers, each computed from its named debt's balance on
-        // the day it applied. When that debt is tainted at-or-before
-        // that day — directly, or by the cascade spread above — the
-        // leftover is a dependent unknown and the aggregate carries
-        // it, so the aggregate is withheld: the same representation
-        // the extra remainder already gives this scalar. A remainder
-        // computed before its debt's first unknown, or on a debt the
-        // taint never reaches, is determined by known data and keeps
-        // the aggregate published exactly. obligationAbsorbed keeps
-        // its numeric values either way: capsFor/applyCaps hand that
-        // map to the cash walk, which spends exactly the capped
-        // value per date (a missing/null entry defaults to zero), so
-        // qualifying the aggregate must not touch the caps.
-        for (const src of unabsorbedSources) {
-          if (taintedFrom[src.debtId] != null && taintedFrom[src.debtId] <= src.date) {
-            pubUnabsorbed = null;
-            break;
-          }
-        }
-        // B1b remainder (omitted repayment): the sources above are
-        // remainders the walk actually computed. A repayment omitted
-        // because its own amount is unknown leaves no source, but
-        // its possible remainder still belongs to this aggregate
-        // whenever the payment could have met a balance: the target
-        // was live at its source position (a known balance above zero -
-        // the walk's own zero-balance bypass makes a payment against
-        // a known-gone balance a non-event with no remainder, so a
-        // known-zero or already-cleared target endangers nothing),
-        // or the balance at that date is itself unknowable (an
-        // earlier unknown on the debt — taintedFrom strictly before
-        // the date — or a same-day unknown capitalisation). When
-        // none of those holds, the omitted payment contributes
-        // exactly nothing in every resolution and the aggregate
-        // keeps its published figure.
-        for (const rec of omittedRepayments) {
-          const key = rec.debtId + '@' + rec.date;
-          if ((taintedFrom[rec.debtId] != null && taintedFrom[rec.debtId] < rec.date)
-            || (rec.balanceAtOmission != null && rec.balanceAtOmission > EPSILON)
-            || noncashUnknownAt.has(key)) {
-            pubUnabsorbed = null;
-            break;
           }
         }
       }
