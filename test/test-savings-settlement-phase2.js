@@ -301,3 +301,189 @@ test('backed allocation stays coherent: need and floor move together under relie
   const entry = pool.allocations.find(a => a.goalKey === 'commitment:near');
   assert.equal(entry.backed, 35, 'the confirmed allocation itself is untouched by relief');
 });
+
+// --- Repair round 2 (Systems Review BLOCKING 6267256478 on head 0e085808) ---
+// Round 1 published goal/sequence uncertainty but let the same commitment
+// drop out of the cash consumers as though its remaining cost were zero,
+// and let the funding timeline resurrect the original cost from an
+// explicitly-null remainingMax. The pins below assert the publication
+// level: the scheduled-amount gate names the unknown, the cash walk
+// withholds, the timeline withholds with its reason, the budget breakdown
+// drops the row, and the current-period action list keeps the commitment
+// visible with an unknown remaining — for BOTH uncertainty sources.
+function budgetOf(x, opts) {
+  return F.budgetBreakdown(x.plan, { periods: { ytd: { months: 3, spending: [] } } },
+    { ...opts, asOf: x.asOf });
+}
+
+function assertUncertainEverywhere(eff) {
+  const x = input();
+  const { goal, events, seq } = surfaces(x, { settlementEvidence: eff });
+  assert.equal(goal.target, 60, 'original cost still known');
+  assert.equal(goal.settlementUncertain, true);
+  assert.equal(goal.remaining, null, 'remaining withheld');
+  assert.equal(goal.linkedPaid, null, 'gross assigned not published as paid');
+  assert.equal(events.length, 0, 'no cash event is fabricated from uncertain evidence');
+  assert.equal(seq.need, null, 'funding sequence withholds the need');
+  assert.equal(seq.settlementUncertain, true);
+  // The scheduled-amount gate names the commitment as an unknown even
+  // though its original amount is finite.
+  const state = F.scheduledAmountState(x.plan, x.asOf, '2026-12-31', { settlementEvidence: eff });
+  assert.equal(state.status, 'unavailable', 'the scheduled-amount gate withholds');
+  assert.ok(state.unknowns.some(u => u.carrier === 'commitment' && u.id === 'near'
+    && u.reason === 'settlement-remaining-unknown'), 'the uncertain commitment is named an unknown');
+  // The cash walk withholds: no numeric ending publishes as though the
+  // remaining cost were zero. Withholding follows the established
+  // scheduled-amount semantics — the whole walk's ending/minimum claims
+  // are unavailable and the affected carrier total is nulled, while
+  // unaffected carrier totals stay published.
+  const sim = F.simulate(x.plan, x.asOf, { ...x.opts, settlementEvidence: eff });
+  assert.equal(sim.status, 'unavailable', 'the cash walk withholds');
+  assert.equal(sim.ending, null);
+  assert.equal(sim.min.balance, null);
+  assert.equal(sim.totals.commitments, null, 'the affected carrier total is withheld');
+  assert.equal(typeof sim.totals.bills, 'number', 'unaffected carrier totals stay published');
+  const advice = F.recommend(x.plan, x.asOf, { ...x.opts, settlementEvidence: eff, weeklyVariable: 0, debts: [] });
+  assert.equal(advice.sim.status, 'unavailable', 'recommend carries the withheld walk');
+  // The funding timeline withholds the projection rather than converting
+  // the explicit unknown back into the original known cost.
+  const gx = fx.fixture();
+  const group = goalOf(gx, { settlementEvidence: eff }, 'group:club');
+  assert.equal(group.settlementUncertain, true);
+  assert.equal(group.remainingMax, null, 'uncertainty publishes remainingMax as an explicit null');
+  const tl = F.savingsFundingTimeline(gx.plan, [], gx.asOf, { ...gx.opts, settlementEvidence: eff });
+  assert.equal(tl.status, 'unavailable', 'the timeline withholds instead of resurrecting the original cost');
+  assert.deepEqual(tl.goals, [], 'no timeline goal publishes a resurrected requirement');
+  assert.match(tl.reason, /uncertain|unknown/, 'the withholding publishes its reason');
+  // The budget breakdown drops the uncertain row: only the unaffected
+  // member feeds the sinking-fund figures.
+  const bd = budgetOf(gx, { settlementEvidence: eff });
+  const months = 91 / (365.25 / 12);
+  assert.equal(Math.round(bd.sinkingMonthly * 100), Math.round(170 / months * 100),
+    'only the unaffected member feeds the sinking total');
+  assert.ok(!bd.sinkingItems.some(i => i.label === 'Invented first club cost'),
+    'the uncertain row is absent from the sinking items');
+}
+
+test('over-assignment: unknown remaining withholds the walk, the timeline and the budget figures', () => {
+  assertUncertainEverywhere(buildEvidence([linkCmd({ assignedCents: 7000, evidenceCents: 9000 })]));
+});
+
+test('reversal-bearing link: unknown remaining withholds the walk, the timeline and the budget figures', () => {
+  assertUncertainEverywhere(buildEvidence([linkCmd({}), reverseCmd(op(1))]));
+});
+
+function periodInput() {
+  const x = fx.fixture();
+  x.plan.commitments.find(c => c.id === 'near').date = '2026-10-14'; // inside the current pay period
+  return x;
+}
+function obligationBills(x, opts) {
+  return F.currentPeriodObligationStates(x.plan, x.asOf, { ...x.opts, ...opts }).bills || [];
+}
+
+test('current-period bills: uncertain link effective before the walk origin stays visible with unknown remaining', () => {
+  // Origin 2026-10-02; the link is already effective on 2026-10-01, so
+  // expandEvents withholds its event at the walk pin — the row must not
+  // vanish from the action list as though nothing were owed.
+  for (const eff of [
+    buildEvidence([linkCmd({ assignedCents: 7000, evidenceCents: 9000, evidenceDate: '2026-10-01', asOf: '2026-10-02' })]),
+    buildEvidence([linkCmd({ evidenceDate: '2026-10-01', asOf: '2026-10-02' }), reverseCmd(op(1))]),
+  ]) {
+    const x = periodInput();
+    const row = obligationBills(x, { periodOrigin: '2026-10-02', settlementEvidence: eff }).find(b => b.id === 'near');
+    assert.ok(row, 'the commitment does not vanish from the action list');
+    assert.equal(row.planned, 60, 'planned stays the original cost');
+    assert.equal(row.remaining, null, 'remaining is unknown, not absent-as-zero');
+    assert.equal(row.linkedPaid, null);
+    const action = F.currentPeriodAction(x.plan, x.asOf, { ...x.opts, settlementEvidence: eff });
+    const actionRow = (action.bills || []).find(b => b.id === 'near');
+    assert.ok(actionRow, 'the default action surface keeps the row too');
+    assert.equal(actionRow.remaining, null);
+  }
+});
+
+test('current-period bills: uncertain link effective between origin and asOf stays visible with unknown remaining', () => {
+  const x = periodInput();
+  const eff = buildEvidence([linkCmd({ assignedCents: 7000, evidenceCents: 9000, evidenceDate: '2026-10-04' })]);
+  const row = obligationBills(x, { periodOrigin: '2026-10-02', settlementEvidence: eff }).find(b => b.id === 'near');
+  assert.ok(row, 'the commitment is on the action list');
+  assert.equal(row.planned, 60);
+  assert.equal(row.remaining, null, 'the asOf recheck withholds the remaining');
+  assert.equal(row.linkedPaid, null);
+});
+
+test('current-period bills: full relief effective before the origin stays absent, like settled', () => {
+  const x = periodInput();
+  const eff = buildEvidence([linkCmd({ assignedCents: 6000, evidenceDate: '2026-10-01', asOf: '2026-10-02' })]);
+  assert.ok(!obligationBills(x, { periodOrigin: '2026-10-02', settlementEvidence: eff }).some(b => b.id === 'near'),
+    'a known-zero remaining does not reappear');
+});
+
+test('funding timeline: known relief publishes relieved requirements; absent evidence keeps the original', () => {
+  const gx = fx.fixture();
+  const control = F.savingsFundingTimeline(gx.plan, [], gx.asOf, { ...gx.opts });
+  assert.equal(control.status, 'ready');
+  assert.equal(control.goals.find(g => g.key === 'group:club').requirement, 230,
+    'no evidence: the settlement fields are absent and the original requirement stands');
+  const partial = F.savingsFundingTimeline(gx.plan, [], gx.asOf,
+    { ...gx.opts, settlementEvidence: buildEvidence([linkCmd({})]) });
+  assert.equal(partial.status, 'ready');
+  const pg = partial.goals.find(g => g.key === 'group:club');
+  assert.equal(pg.requirement, 205, 'partial relief publishes the relieved requirement');
+  assert.equal(pg.requirementMax, 205);
+  const full = F.savingsFundingTimeline(gx.plan, [], gx.asOf,
+    { ...gx.opts, settlementEvidence: buildEvidence([linkCmd({ assignedCents: 6000 })]) });
+  assert.equal(full.status, 'ready');
+  assert.equal(full.goals.find(g => g.key === 'group:club').requirement, 170,
+    'full relief on one member leaves only the other member\u2019s requirement');
+});
+
+test('funding timeline: an uncertain goal outside the cash walk withholds at the goal gate itself', () => {
+  // An optional commitment is excused from the scheduled-amount gate and
+  // emits no cash event, so the trajectory walk stays ready and the
+  // timeline reaches its own goal-requirement gate. There the explicit
+  // null remainingMax must withhold — the targetMax fallback is valid
+  // only when the settlement fields are absent, not null-by-uncertainty.
+  const gx = fx.fixture();
+  gx.plan.commitments.find(c => c.id === 'near').optional = true;
+  const eff = buildEvidence([linkCmd({ assignedCents: 7000, evidenceCents: 9000 })]);
+  const group = goalOf(gx, { settlementEvidence: eff }, 'group:club');
+  assert.equal(group.settlementUncertain, true);
+  assert.equal(group.remainingMax, null);
+  const tl = F.savingsFundingTimeline(gx.plan, [], gx.asOf, { ...gx.opts, settlementEvidence: eff });
+  assert.equal(tl.status, 'unavailable', 'the goal gate withholds the projection');
+  assert.match(tl.reason, /goal requirement is unknown/);
+  assert.deepEqual(tl.goals, []);
+});
+
+test('cash walk: known partial and full relief stay numeric and ready', () => {
+  const x = input();
+  const control = F.simulate(x.plan, x.asOf, { ...x.opts });
+  const partial = F.simulate(x.plan, x.asOf, { ...x.opts, settlementEvidence: buildEvidence([linkCmd({})]) });
+  assert.notEqual(partial.status, 'unavailable', 'known relief does not withhold the walk');
+  assert.equal(partial.totals.commitments, 205, 'the walk carries the relieved commitment total');
+  assert.equal(Math.round(partial.ending * 100), Math.round((control.ending + 25) * 100),
+    'the ending rises by exactly the relieved amount');
+  const full = F.simulate(x.plan, x.asOf, { ...x.opts, settlementEvidence: buildEvidence([linkCmd({ assignedCents: 6000 })]) });
+  assert.notEqual(full.status, 'unavailable');
+  assert.equal(full.totals.commitments, 170, 'a fully relieved commitment contributes no cash event');
+  assert.equal(F.scheduledAmountState(x.plan, x.asOf, '2026-12-31',
+    { settlementEvidence: buildEvidence([linkCmd({})]) }).status, 'ready',
+    'the gate stays ready for known relief');
+});
+
+test('an uncertain sibling does not disturb a known commitment\u2019s goal or sequence need', () => {
+  const x = input();
+  x.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'commitment', id: 'near' }, { kind: 'commitment', id: 'far' }];
+  const eff = buildEvidence([linkCmd({ goalId: 'commitment:far', assignedCents: 20000, evidenceCents: 20000 })]);
+  const near = goalOf(x, { settlementEvidence: eff }, 'commitment:near');
+  assert.equal(near.settlementUncertain, false, 'the unlinked commitment is untouched');
+  assert.equal(near.remaining, 60);
+  const far = goalOf(x, { settlementEvidence: eff }, 'commitment:far');
+  assert.equal(far.settlementUncertain, true);
+  assert.equal(far.remaining, null);
+  const seq = F.fundingSequence(x.plan, x.asOf, { settlementEvidence: eff });
+  assert.equal(seq.find(e => e.id === 'near').need, 60, 'the known need stands');
+  assert.equal(seq.find(e => e.id === 'far').need, null, 'only the uncertain need withholds');
+});
