@@ -1,0 +1,1628 @@
+'use strict';
+// Settlement evidence store (ATLAS-080) — synthetic tests only.
+//
+// The store is the write side pairing the merged read loader: an inactive
+// commit/recovery state machine over dependency-injected adapters
+// (document / journal / pin / backup / quarantine / lock / clock). It
+// implements the ruled spec in state-machine-table-and-contracts.md as
+// corrected by Atlas (corrections 1-5, conditions 6-10, F-A..F-E):
+//   - the journal carries the COMPLETE frozen preview (F-A) and is
+//     re-hashed and verified against the appended operation at promotion;
+//   - a manifest hit must carry the same validated revision/digest/
+//     artifact binding as a put acknowledgement (F-B);
+//   - outcome() speaks committed | unknown only (F-C);
+//   - a failed quarantine blocks the overwrite it guards (F-D);
+//   - altered input on a known operation id is a conflict (F-E);
+//   - C8 CAS compares against the FROZEN candidate base, never a fresh
+//     pin substituted as the expected value (correction 1);
+//   - no receipt is ever issued for an operation absent from the pinned
+//     ledger, however well the journal matches the head (correction 2);
+//   - receipts name the operation's ORIGINAL committed revision and
+//     digest, derived from the validated immutable prefix (correction 3);
+//   - a reused id is compared against the qualified ledger AND a valid
+//     resident journal before any pre-pass mutation (correction 4);
+//   - a journal-write throw is durable-or-not ambiguity, never assumed
+//     absence (correction 5);
+//   - injected pin/journal/manifest shapes are validated inside the
+//     machine; unknown reads never select a destructive row (cond. 6);
+//   - serialization is by the shared injected lock across factory
+//     instances sharing adapters (condition 7);
+//   - bootstrap requires proven absence of ALL durable traces, staged
+//     temp artifacts included (condition 8);
+//   - a valid unlanded journal is discarded only after its exact base is
+//     proven to be the current pinned head and its operation absent; a
+//     torn or unrelated journal is quarantined as invalid (condition 9);
+//   - restore verifies household + pin, preserves divergent evidence,
+//     installs under the lock with fresh pin checks, and verifies
+//     readback before reporting restored (condition 10).
+//
+// No filesystem, environment, network, or provisioning anywhere: every
+// adapter below is an in-memory double with per-method fault injection
+// (failNext / crash simulation = discard the store instance, keep the
+// durable maps, construct a fresh instance over the same doubles).
+//
+// Tests first: against unmodified main this suite fails to load (the
+// store module does not exist). Every writer-reachable shape is asserted
+// through the REAL merged loader, driven end-to-end over the doubles.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const ROOT = process.env.ATLAS_TEST_APP_ROOT || path.resolve(__dirname, '..');
+const C = require(path.join(ROOT, 'scripts/planned-obligation-settlement-contract'));
+const L = require(path.join(ROOT, 'scripts/settlement-evidence-loader'));
+const S = require(path.join(ROOT, 'scripts/settlement-evidence-store'));
+
+const householdId = 'household-' + 'a'.repeat(32);
+const actorId = 'session-' + 'c'.repeat(64);
+const actor2 = 'session-' + 'd'.repeat(64);
+const op = n => 'operation-' + n.toString(16).padStart(32, '0');
+const tx = n => 'tx-' + n.toString(16).padStart(32, '0');
+const T0 = Date.parse('2026-10-04T12:00:00Z');
+
+// --- Contract command builders (real Phase 1 flow, synthetic facts) -----
+const ev = (over = {}) => ({
+  accountId: 'acct-main', currency: 'cad', direction: 'debit',
+  date: '2026-10-03', cents: 6000, posted: true, ...over,
+});
+const linkCmd = (over = {}) => {
+  const e = ev(over.evidence || {});
+  return {
+    version: 1, kind: 'link', goalId: over.goalId || 'commitment:near',
+    txRef: over.txRef || tx(1), evidence: e, evidenceDigest: C.digest(e),
+    assignedCents: over.assignedCents !== undefined ? over.assignedCents : 2500,
+    asOf: over.asOf || '2026-10-04',
+  };
+};
+const pinOf = bytes => {
+  const s = JSON.parse(bytes.toString('utf8'));
+  return { revision: s.revision, digest: s.digest };
+};
+const stateOf = bytes => JSON.parse(bytes.toString('utf8'));
+
+// --- In-memory adapter doubles with fault injection ----------------------
+// Fault modes per method (queued, one-shot unless noted):
+//   'throw'         -> throw without durable effect (journal.write and
+//                      backup.put default to NOT landed / NOT stored)
+//   'throw-landed'  -> apply the durable effect, then throw (lost ack)
+//   'false'         -> pin.advance only: return false, no effect
+//   'swap-garbage'  -> doc.commitTemp only: install garbage bytes instead
+//   'bad-ack-*'     -> backup.put only: store durably, return a bad ack
+//   function(perform, ...args) -> custom; perform() runs the default effect
+function makeLock() {
+  let tail = Promise.resolve();
+  return {
+    withLock(fn) {
+      const run = tail.then(fn, fn);
+      tail = run.then(() => {}, () => {});
+      return run;
+    },
+  };
+}
+function makeWorld() {
+  const durable = {
+    doc: null, temp: null, journal: null, pin: null, pinRaw: undefined,
+    backups: new Map(), quarantine: [], artifactSeq: 0,
+  };
+  const counts = {
+    docRead: 0, docWriteTemp: 0, docCommitTemp: 0, docDiscardTemp: 0, docReadStaged: 0,
+    journalRead: 0, journalWrite: 0, journalClear: 0,
+    pinRead: 0, pinAdvance: 0, pinAdvanceOk: 0,
+    backupPut: 0, backupGet: 0, backupList: 0, quarantinePut: 0,
+  };
+  const flags = { pinReadThrows: false };
+  const faults = new Map();
+  const failNext = (method, mode) => {
+    if (!faults.has(method)) faults.set(method, []);
+    faults.get(method).push(mode);
+  };
+  const takeFault = method => {
+    const q = faults.get(method);
+    return q && q.length ? q.shift() : null;
+  };
+  const writeCounts = () => ({
+    docWriteTemp: counts.docWriteTemp, docCommitTemp: counts.docCommitTemp,
+    docDiscardTemp: counts.docDiscardTemp, journalWrite: counts.journalWrite,
+    journalClear: counts.journalClear, pinAdvance: counts.pinAdvance,
+    backupPut: counts.backupPut, quarantinePut: counts.quarantinePut,
+  });
+  const noWritesSince = snap => {
+    const nowCounts = writeCounts();
+    for (const k of Object.keys(snap)) {
+      assert.equal(nowCounts[k], snap[k], `expected no ${k} since snapshot`);
+    }
+  };
+
+  const documentStore = {
+    async read() {
+      counts.docRead++;
+      const f = takeFault('doc.read');
+      if (f === 'throw') throw new Error('injected doc.read');
+      if (typeof f === 'function') return f(() => (durable.doc ? Buffer.from(durable.doc) : null));
+      return durable.doc ? Buffer.from(durable.doc) : null;
+    },
+    async readStaged() {
+      counts.docReadStaged++;
+      const f = takeFault('doc.readStaged');
+      if (f === 'throw') throw new Error('injected doc.readStaged');
+      return durable.temp ? Buffer.from(durable.temp) : null;
+    },
+    async writeTemp(bytes) {
+      counts.docWriteTemp++;
+      const f = takeFault('doc.writeTemp');
+      if (f === 'throw') throw new Error('injected doc.writeTemp');
+      durable.temp = Buffer.from(bytes);
+    },
+    async commitTemp() {
+      counts.docCommitTemp++;
+      const f = takeFault('doc.commitTemp');
+      if (f === 'throw') throw new Error('injected doc.commitTemp (not landed)');
+      if (f === 'throw-landed') {
+        durable.doc = durable.temp; durable.temp = null;
+        throw new Error('injected doc.commitTemp (landed, ack lost)');
+      }
+      if (f === 'swap-garbage') {
+        durable.doc = Buffer.from('garbage-not-a-document');
+        durable.temp = null;
+        return;
+      }
+      durable.doc = durable.temp; durable.temp = null;
+    },
+    async discardTemp() {
+      counts.docDiscardTemp++;
+      const f = takeFault('doc.discardTemp');
+      if (f === 'throw') throw new Error('injected doc.discardTemp');
+      durable.temp = null;
+    },
+  };
+  const journalStore = {
+    async read() {
+      counts.journalRead++;
+      const f = takeFault('journal.read');
+      if (f === 'throw') throw new Error('injected journal.read');
+      return durable.journal ? Buffer.from(durable.journal) : null;
+    },
+    async write(record) {
+      counts.journalWrite++;
+      const f = takeFault('journal.write');
+      if (f === 'throw') throw new Error('injected journal.write (not durable)');
+      durable.journal = Buffer.from(JSON.stringify(record));
+      if (f === 'throw-landed') throw new Error('injected journal.write (durable, ack lost)');
+    },
+    async clear() {
+      counts.journalClear++;
+      const f = takeFault('journal.clear');
+      if (f === 'throw') throw new Error('injected journal.clear');
+      durable.journal = null;
+    },
+  };
+  const pinStore = {
+    async read() {
+      counts.pinRead++;
+      const f = takeFault('pin.read');
+      if (f === 'throw' || flags.pinReadThrows) throw new Error('injected pin.read');
+      if (durable.pinRaw !== undefined) return durable.pinRaw;
+      return durable.pin ? { ...durable.pin } : null;
+    },
+    async advance(expected, next) {
+      counts.pinAdvance++;
+      const perform = () => {
+        const cur = durable.pin;
+        const match = expected === null
+          ? cur === null
+          : !!cur && cur.revision === expected.revision && cur.digest === expected.digest;
+        if (!match) return false;
+        durable.pin = { ...next };
+        counts.pinAdvanceOk++;
+        return true;
+      };
+      const f = takeFault('pin.advance');
+      if (f === 'throw') throw new Error('injected pin.advance');
+      if (f === 'false') return false;
+      if (typeof f === 'function') return f(perform, expected, next);
+      return perform();
+    },
+  };
+  const backupStore = {
+    async put(revision, digest, bytes) {
+      counts.backupPut++;
+      const storeIt = () => {
+        const key = revision + ':' + digest;
+        if (!durable.backups.has(key)) {
+          durable.backups.set(key, {
+            revision, digest, artifactId: 'artifact-' + (++durable.artifactSeq),
+            bytes: Buffer.from(bytes),
+          });
+        }
+        const e = durable.backups.get(key);
+        return { revision: e.revision, digest: e.digest, artifactId: e.artifactId };
+      };
+      const f = takeFault('backup.put');
+      if (f === 'throw') throw new Error('injected backup.put (not stored)');
+      if (f === 'throw-landed') { storeIt(); throw new Error('injected backup.put (stored, ack lost)'); }
+      if (f === 'bad-ack-digest') { const a = storeIt(); return { ...a, digest: '0'.repeat(64) }; }
+      if (f === 'bad-ack-no-artifact') { const a = storeIt(); return { revision: a.revision, digest: a.digest }; }
+      if (f === 'bad-ack-nonrecord') { storeIt(); return 'stored'; }
+      if (f === 'bad-ack-null') { storeIt(); return null; }
+      return storeIt();
+    },
+    async get(revision, digest) {
+      counts.backupGet++;
+      const f = takeFault('backup.get');
+      if (f === 'throw') throw new Error('injected backup.get');
+      const e = durable.backups.get(revision + ':' + digest);
+      return e ? Buffer.from(e.bytes) : null;
+    },
+    async list() {
+      counts.backupList++;
+      const f = takeFault('backup.list');
+      if (f === 'throw') throw new Error('injected backup.list');
+      if (typeof f === 'function') return f();
+      return [...durable.backups.values()].map(e => ({
+        revision: e.revision, digest: e.digest, artifactId: e.artifactId,
+      }));
+    },
+  };
+  const quarantine = {
+    async put(label, bytes) {
+      counts.quarantinePut++;
+      const f = takeFault('quarantine.put');
+      if (f === 'throw') throw new Error('injected quarantine.put');
+      durable.quarantine.push({ label, bytes: Buffer.from(bytes) });
+    },
+  };
+  let tick = T0;
+  const clock = {
+    now: () => tick,
+    advance: ms => { tick += ms; },
+    set: t => { tick = t; },
+  };
+  return {
+    durable, counts, flags, failNext, writeCounts, noWritesSince,
+    documentStore, journalStore, pinStore, backupStore, quarantine, clock,
+  };
+}
+function newStore(world, lock) {
+  return S.createSettlementEvidenceStore({
+    householdId,
+    documentStore: world.documentStore,
+    journalStore: world.journalStore,
+    pinStore: world.pinStore,
+    backupStore: world.backupStore,
+    quarantine: world.quarantine,
+    lock: lock || makeLock(),
+    now: world.clock.now,
+  });
+}
+// End-to-end interop: the REAL merged loader over the doubles' durable
+// state. Pin absence/unreadability is presented as a throwing readPin
+// (the spec's interop convention -> pin-unavailable).
+function loadFromWorld(world) {
+  return L.loadSettlementEvidence({
+    config: { householdId },
+    readDocument: () => (world.durable.doc ? Buffer.from(world.durable.doc) : null),
+    readPin: () => {
+      if (world.flags.pinReadThrows || !world.durable.pin) {
+        throw new Error('pin unavailable');
+      }
+      return { revision: world.durable.pin.revision, digest: world.durable.pin.digest };
+    },
+  });
+}
+const seenRows = new Set();
+function noteRow(report) { if (report && report.row) seenRows.add(report.row); return report; }
+
+async function bootWorld() {
+  const world = makeWorld();
+  const store = newStore(world);
+  const boot = await store.bootstrap();
+  assert.equal(boot.status, 'bootstrapped');
+  assert.equal(boot.revision, 0);
+  return { world, store };
+}
+async function prepareLink(store, n, over = {}) {
+  const prepared = await store.prepare({
+    actorId: over.actorId || actorId, operationId: op(n), command: linkCmd(over),
+  });
+  assert.ok(prepared.preview, 'prepare returns a contract preview');
+  return prepared;
+}
+async function commitLink(store, n, over = {}) {
+  const prepared = await prepareLink(store, n, over);
+  const receipt = await store.commit({
+    actorId: over.actorId || actorId,
+    preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(receipt.status, 'committed', 'synthetic link commits');
+  return receipt;
+}
+function snapshotWorld(world) {
+  return {
+    doc: world.durable.doc ? world.durable.doc.toString('hex') : null,
+    temp: world.durable.temp ? world.durable.temp.toString('hex') : null,
+    journal: world.durable.journal ? world.durable.journal.toString('hex') : null,
+    pin: world.durable.pin ? { ...world.durable.pin } : null,
+    backups: [...world.durable.backups.keys()].sort(),
+    quarantine: world.durable.quarantine.length,
+  };
+}
+function assertWorldUnchanged(world, snap, what) {
+  assert.deepEqual(snapshotWorld(world), snap, `${what}: store byte-identical`);
+}
+
+// === State-table rows =====================================================
+
+test('T1 R0: empty doubles -> unbootstrapped, zero writes; loader unavailable', async () => {
+  const world = makeWorld();
+  const store = newStore(world);
+  const snap = world.writeCounts();
+  const report = noteRow(await store.reconcile());
+  assert.equal(report.row, 'R0');
+  assert.equal(report.disposition, 'unbootstrapped');
+  world.noWritesSince(snap);
+  const view = loadFromWorld(world);
+  assert.equal(view.status, 'unavailable');
+  assert.equal(view.reason, 'pin-unavailable');
+  const out = await store.outcome({ actorId, operationId: op(1) });
+  assert.equal(out.status, 'unknown');
+  const c = await store.commit({
+    actorId, preview: { operationId: op(1) }, confirmationDigest: 'a'.repeat(64),
+  });
+  assert.equal(c.status, 'unavailable');
+  assert.equal(c.reason, 'unbootstrapped');
+});
+
+test('T2 R1: pin unreadable with document/journal/backup-only traces -> recovery-blocked', async () => {
+  for (const trace of ['document', 'journal', 'backup']) {
+    const world = makeWorld();
+    if (trace === 'document') world.durable.doc = C.adopt({ householdId });
+    if (trace === 'journal') {
+      world.durable.journal = Buffer.from(JSON.stringify({ version: 1, note: 'trace' }));
+    }
+    if (trace === 'backup') {
+      world.durable.backups.set('0:' + 'f'.repeat(64), {
+        revision: 0, digest: 'f'.repeat(64), artifactId: 'artifact-x', bytes: Buffer.from('x'),
+      });
+    }
+    world.flags.pinReadThrows = true;
+    const store = newStore(world);
+    const snap = world.writeCounts();
+    const report = noteRow(await store.reconcile());
+    assert.equal(report.row, 'R1', trace);
+    assert.equal(report.disposition, 'recovery-blocked', trace);
+    world.noWritesSince(snap);
+    const out = await store.outcome({ actorId, operationId: op(1) });
+    assert.equal(out.status, 'unknown', trace);
+    const boot = await store.bootstrap();
+    assert.notEqual(boot.status, 'bootstrapped', trace + ': bootstrap refused');
+    world.noWritesSince(snap);
+  }
+  // Pin absent (not throwing) while a trace exists is equally R1.
+  const world = makeWorld();
+  world.durable.doc = C.adopt({ householdId });
+  const store = newStore(world);
+  const report = noteRow(await store.reconcile());
+  assert.equal(report.row, 'R1');
+  assert.equal(report.disposition, 'recovery-blocked');
+});
+
+test('T3 R2: bootstrapped + one commit -> healthy, no writes', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  await commitLink(store, 1);
+  const snap = world.writeCounts();
+  const report = noteRow(await store.reconcile());
+  assert.equal(report.row, 'R2');
+  assert.equal(report.disposition, 'healthy');
+  world.noWritesSince(snap);
+  assert.equal(loadFromWorld(world).status, 'qualified');
+});
+
+test('T4 R3: crash after pin advance, before journal clear -> committed receipt, J deleted', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  world.failNext('journal.clear', 'throw');
+  const receipt = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(receipt.status, 'committed', 'C9 clear failure is non-fatal');
+  assert.equal(receipt.revision, 1);
+  assert.ok(world.durable.journal, 'leftover journal = shape W5');
+  assert.equal(loadFromWorld(world).status, 'qualified');
+  // Restart: fresh instance over the same durable maps.
+  const store2 = newStore(world);
+  const report = noteRow(await store2.reconcile());
+  assert.equal(report.row, 'R3');
+  assert.equal(report.disposition, 'committed-recovered');
+  assert.equal(report.receipt.operationId, op(1));
+  assert.equal(report.receipt.revision, 1);
+  assert.equal(report.receipt.digest, world.durable.pin.digest);
+  assert.equal(world.durable.journal, null, 'journal cleared by R3');
+  assert.equal(stateOf(world.durable.doc).revision, 1, 'document revision unchanged');
+  assert.equal(loadFromWorld(world).status, 'qualified');
+});
+
+test('T5 R4: crash after journal write / temp write / not-landed rename -> not-committed', async () => {
+  for (const faultAt of ['doc.writeTemp', 'doc.commitTemp']) {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext(faultAt, 'throw');
+    const res = await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.equal(res.status, 'unknown', faultAt);
+    assert.ok(world.durable.journal, 'journal resident (W2)');
+    assert.equal(stateOf(world.durable.doc).revision, 0, 'candidate never landed');
+    assert.equal(loadFromWorld(world).status, 'qualified', 'loader serves the pinned base');
+    const store2 = newStore(world);
+    const report = noteRow(await store2.reconcile());
+    assert.equal(report.row, 'R4', faultAt);
+    assert.equal(report.disposition, 'not-committed', faultAt);
+    assert.equal(report.operationId, op(1), faultAt);
+    assert.equal(world.durable.journal, null, 'journal deleted');
+    assert.equal(world.durable.temp, null, 'temp discarded');
+    assert.equal(world.durable.pin.revision, 0, 'pin untouched');
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+});
+
+test('T6 R4-torn: garbage journal bytes, H == P -> journal quarantined as invalid, removed', async () => {
+  const { world, store } = await bootWorld();
+  world.durable.journal = Buffer.from('this is not a journal record{{{');
+  const report = noteRow(await store.reconcile());
+  assert.equal(report.row, 'R4');
+  assert.equal(report.disposition, 'journal-quarantined');
+  assert.equal(world.durable.journal, null, 'journal removed after quarantine');
+  assert.equal(world.durable.quarantine.length, 1, 'torn bytes preserved in quarantine');
+  assert.equal(world.durable.quarantine[0].label, 'invalid-journal');
+  assert.equal(loadFromWorld(world).status, 'qualified');
+});
+
+test('T7 R5: crash after rename / after backup -> promote exactly once', async () => {
+  for (const faultAt of ['backup.put', 'pin.advance']) {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext(faultAt, 'throw');
+    const res = await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.equal(res.status, 'unknown', faultAt);
+    assert.equal(stateOf(world.durable.doc).revision, 1, 'candidate landed');
+    assert.equal(world.durable.pin.revision, 0, 'pin still at base (W3/W4)');
+    assert.equal(loadFromWorld(world).reason, 'document-ahead-of-pin');
+    const store2 = newStore(world);
+    const report = noteRow(await store2.reconcile());
+    assert.equal(report.row, 'R5', faultAt);
+    assert.equal(report.disposition, 'promoted', faultAt);
+    assert.equal(report.operationId, op(1));
+    assert.equal(report.revision, 1);
+    assert.equal(world.durable.pin.revision, 1, 'pin CAS-advanced');
+    assert.equal(world.durable.journal, null, 'journal deleted');
+    const view = loadFromWorld(world);
+    assert.equal(view.status, 'qualified', 'loader flips to qualified at P+1');
+    assert.equal(view.evidence.commitments.length, 1);
+    const again = noteRow(await store2.reconcile());
+    assert.equal(again.row, 'R2', 'second reconcile is a no-op');
+    assert.equal(again.disposition, 'healthy');
+  }
+});
+
+test('T8 R5-blocked: backup keeps failing -> promotion-pending, pin and J untouched', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  world.failNext('backup.put', 'throw');
+  const res = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(res.status, 'unknown');
+  assert.equal(res.reason, 'backup-ambiguous');
+  world.failNext('backup.put', 'throw');
+  const store2 = newStore(world);
+  const report = noteRow(await store2.reconcile());
+  assert.equal(report.row, 'R5');
+  assert.equal(report.disposition, 'promotion-pending');
+  assert.equal(report.reason, 'backup-ambiguous');
+  assert.equal(world.durable.pin.revision, 0, 'pin untouched');
+  assert.ok(world.durable.journal, 'journal untouched');
+  assert.equal(loadFromWorld(world).reason, 'document-ahead-of-pin');
+});
+
+test('T9 R6: ahead-of-pin forks restore the pinned revision and quarantine', async () => {
+  // (i) head two revisions ahead of the pin.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    await commitLink(store, 1);
+    let forged = world.durable.doc;
+    const p2 = C.prepare(forged, {
+      householdId, actorId, operationId: op(2), command: linkCmd({ txRef: tx(2) }),
+      now: world.clock.now() + 1,
+    });
+    forged = C.confirmCandidate(forged, {
+      householdId, actorId, preview: p2.preview,
+      confirmationDigest: p2.confirmationDigest, now: world.clock.now() + 2,
+    }).document;
+    const p3 = C.prepare(forged, {
+      householdId, actorId, operationId: op(3), command: linkCmd({ txRef: tx(3) }),
+      now: world.clock.now() + 3,
+    });
+    forged = C.confirmCandidate(forged, {
+      householdId, actorId, preview: p3.preview,
+      confirmationDigest: p3.confirmationDigest, now: world.clock.now() + 4,
+    }).document;
+    world.durable.doc = Buffer.from(forged);
+    assert.equal(loadFromWorld(world).reason, 'document-ahead-of-pin');
+    const report = noteRow(await store.reconcile());
+    assert.equal(report.row, 'R6');
+    assert.equal(report.disposition, 'restored-pinned');
+    assert.equal(stateOf(world.durable.doc).revision, 1, 'pinned revision restored');
+    assert.ok(world.durable.quarantine.some(q => q.bytes.equals(forged)), 'divergent head quarantined');
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+  // (ii) one ahead with no journal.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    await commitLink(store, 1);
+    const p2 = C.prepare(world.durable.doc, {
+      householdId, actorId, operationId: op(2), command: linkCmd({ txRef: tx(2) }),
+      now: world.clock.now() + 1,
+    });
+    const candidate = C.confirmCandidate(world.durable.doc, {
+      householdId, actorId, preview: p2.preview,
+      confirmationDigest: p2.confirmationDigest, now: world.clock.now() + 2,
+    }).document;
+    world.durable.doc = Buffer.from(candidate);
+    assert.equal(loadFromWorld(world).reason, 'document-ahead-of-pin');
+    const report = noteRow(await store.reconcile());
+    assert.equal(report.row, 'R6');
+    assert.equal(report.disposition, 'restored-pinned');
+    assert.equal(stateOf(world.durable.doc).revision, 1);
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+  // (iii) one ahead with J.baseDigest != pin digest.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('backup.put', 'throw');
+    await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    const j = JSON.parse(world.durable.journal.toString('utf8'));
+    j.baseDigest = 'e'.repeat(64);
+    j.preview = { ...j.preview, expectedDocumentDigest: 'e'.repeat(64) };
+    world.durable.journal = Buffer.from(JSON.stringify(j));
+    const report = noteRow(await store.reconcile());
+    assert.equal(report.row, 'R6');
+    assert.equal(report.disposition, 'restored-pinned');
+    assert.equal(stateOf(world.durable.doc).revision, 0, 'restored to the pinned genesis');
+    assert.equal(world.durable.journal, null);
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+  // (iv) one ahead with the journal's operation not the recorded one.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('backup.put', 'throw');
+    await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    const base = C.adopt({ householdId });
+    const p9 = C.prepare(base, {
+      householdId, actorId, operationId: op(9), command: linkCmd({ txRef: tx(9) }),
+      now: world.clock.now() + 1,
+    });
+    const other = C.confirmCandidate(base, {
+      householdId, actorId, preview: p9.preview,
+      confirmationDigest: p9.confirmationDigest, now: world.clock.now() + 2,
+    }).document;
+    world.durable.doc = Buffer.from(other);
+    const report = noteRow(await store.reconcile());
+    assert.equal(report.row, 'R6');
+    assert.equal(report.disposition, 'restored-pinned');
+    assert.equal(stateOf(world.durable.doc).revision, 0);
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+});
+
+test('T10 R6-tail: pinned backup corrupted -> recovery-blocked, divergent head left in place', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  await commitLink(store, 1);
+  const key = '0:' + pinOf(C.adopt({ householdId })).digest;
+  const entry = world.durable.backups.get(key);
+  assert.ok(entry, 'genesis backup exists');
+  entry.bytes = Buffer.from('corrupted-backup-bytes');
+  const forged = (() => {
+    const p2 = C.prepare(world.durable.doc, {
+      householdId, actorId, operationId: op(2), command: linkCmd({ txRef: tx(2) }),
+      now: world.clock.now() + 1,
+    });
+    return C.confirmCandidate(world.durable.doc, {
+      householdId, actorId, preview: p2.preview,
+      confirmationDigest: p2.confirmationDigest, now: world.clock.now() + 2,
+    }).document;
+  })();
+  // Move the pin back to genesis so the pinned backup is the corrupted one,
+  // and install a head two revisions past it.
+  world.durable.pin = {
+    revision: 0, digest: pinOf(C.adopt({ householdId })).digest, timestamp: world.clock.now(),
+  };
+  world.durable.doc = Buffer.from(forged);
+  const before = world.durable.doc;
+  const report = noteRow(await store.reconcile());
+  assert.equal(report.row, 'R6');
+  assert.equal(report.disposition, 'recovery-blocked');
+  assert.ok(world.durable.doc.equals(before), 'divergent head left in place, withheld');
+  assert.equal(world.durable.quarantine.length, 0, 'nothing quarantined without a verified restore');
+  assert.equal(loadFromWorld(world).status, 'unavailable');
+});
+
+test('T11 R7: behind-pin, same-revision fork, contract-invalid bytes -> restore', async () => {
+  // (i) prior-revision bytes (pin ahead).
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    await commitLink(store, 1);
+    world.durable.doc = C.adopt({ householdId });
+    assert.equal(loadFromWorld(world).reason, 'revision-mismatch');
+    const report = noteRow(await store.reconcile());
+    assert.equal(report.row, 'R7');
+    assert.equal(report.disposition, 'restored-pinned');
+    assert.equal(stateOf(world.durable.doc).revision, 1);
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+  // (ii) same revision, different digest (a different valid rev-1 document).
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    await commitLink(store, 1);
+    const base = C.adopt({ householdId });
+    const p9 = C.prepare(base, {
+      householdId, actorId, operationId: op(9), command: linkCmd({ txRef: tx(9) }),
+      now: world.clock.now() + 1,
+    });
+    const fork = C.confirmCandidate(base, {
+      householdId, actorId, preview: p9.preview,
+      confirmationDigest: p9.confirmationDigest, now: world.clock.now() + 2,
+    }).document;
+    world.durable.doc = Buffer.from(fork);
+    assert.equal(loadFromWorld(world).reason, 'digest-mismatch');
+    const report = noteRow(await store.reconcile());
+    assert.equal(report.row, 'R7');
+    assert.equal(report.disposition, 'restored-pinned');
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+  // (iii) contract-invalid bytes at the pinned header (tampered amount).
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    await commitLink(store, 1, { assignedCents: 2500 });
+    const tampered = Buffer.from(
+      world.durable.doc.toString('utf8').replace('"assignedCents":2500', '"assignedCents":2000'),
+    );
+    assert.ok(!tampered.equals(world.durable.doc), 'tamper changed bytes');
+    world.durable.doc = tampered;
+    assert.equal(loadFromWorld(world).reason, 'document-invalid');
+    const report = noteRow(await store.reconcile());
+    assert.equal(report.row, 'R7');
+    assert.equal(report.disposition, 'restored-pinned');
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+});
+
+test('T12 R8: document missing with pin present -> restore; backup also missing -> blocked', async () => {
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    await commitLink(store, 1);
+    world.durable.doc = null;
+    assert.equal(loadFromWorld(world).reason, 'document-missing');
+    const report = noteRow(await store.reconcile());
+    assert.equal(report.row, 'R8');
+    assert.equal(report.disposition, 'restored-pinned');
+    assert.equal(stateOf(world.durable.doc).revision, 1);
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+  {
+    const { world, store } = await bootWorld();
+    world.durable.doc = null;
+    world.durable.backups.clear();
+    const report = noteRow(await store.reconcile());
+    assert.equal(report.row, 'R8');
+    assert.equal(report.disposition, 'recovery-blocked');
+    assert.equal(world.durable.doc, null, 'nothing fabricated');
+    assert.equal(loadFromWorld(world).reason, 'document-missing');
+  }
+});
+
+// === Crash points ==========================================================
+
+test('T13: fault injection at each commit pipeline step', async () => {
+  // C3 journal write throws (not durable): unknown, nothing else written,
+  // retry after the fault commits cleanly.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('journal.write', 'throw');
+    const res = await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.equal(res.status, 'unknown');
+    assert.equal(res.reason, 'journal-write-ambiguous');
+    assert.equal(world.durable.journal, null);
+    assert.equal(world.durable.temp, null);
+    assert.equal(world.durable.pin.revision, 0);
+    const retry = await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.equal(retry.status, 'committed');
+    assert.equal(retry.revision, 1);
+  }
+  // C5 rename landed but ack lost: unknown; reconciler promotes (W3).
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('doc.commitTemp', 'throw-landed');
+    const res = await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.equal(res.status, 'unknown');
+    assert.equal(res.reason, 'rename-ambiguous');
+    assert.equal(stateOf(world.durable.doc).revision, 1, 'rename had in fact landed');
+    const report = noteRow(await newStore(world).reconcile());
+    assert.equal(report.row, 'R5');
+    assert.equal(report.disposition, 'promoted');
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+  // C6 readback: rename installs garbage -> readback fails -> unknown;
+  // reconciler classifies the garbage head as divergent and restores.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('doc.commitTemp', 'swap-garbage');
+    const res = await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.equal(res.status, 'unknown');
+    assert.equal(res.reason, 'readback-failed');
+    assert.equal(world.durable.pin.revision, 0, 'never proceeds to backup/pin on failed readback');
+    const report = noteRow(await newStore(world).reconcile());
+    assert.equal(report.row, 'R7');
+    assert.equal(report.disposition, 'restored-pinned');
+    assert.equal(stateOf(world.durable.doc).revision, 0);
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+  // C8 pin advance throws: unknown; shape W4 promotable by reconcile.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('pin.advance', 'throw');
+    const res = await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.equal(res.status, 'unknown');
+    assert.equal(res.reason, 'pin-advance-failed');
+    const report = noteRow(await newStore(world).reconcile());
+    assert.equal(report.row, 'R5');
+    assert.equal(report.disposition, 'promoted');
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+  // C8 pin advance returns false (spurious): abort, table re-run promotes,
+  // commit answers unknown/pin-moved; an identical retry returns the receipt.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('pin.advance', 'false');
+    const res = await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.equal(res.status, 'unknown');
+    assert.equal(res.reason, 'pin-moved');
+    assert.equal(world.durable.pin.revision, 1, 're-run promoted the candidate');
+    assert.equal(world.durable.journal, null);
+    const retry = await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.equal(retry.status, 'committed');
+    assert.equal(retry.revision, 1);
+    assert.equal(stateOf(world.durable.doc).revision, 1, 'no second revision');
+  }
+});
+
+test('correction 1: C8 CAS is against the frozen base — an external winner is never overwritten', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  await commitLink(store, 1);
+  const prepared = await prepareLink(store, 2, { txRef: tx(2) });
+  // An external writer wins between our backup and our pin advance: the
+  // advance observes a foreign pin installed over the frozen base, and
+  // the CAS against the frozen pair fails honestly.
+  const foreign = { revision: 2, digest: 'b'.repeat(64), timestamp: world.clock.now() };
+  world.failNext('pin.advance', perform => {
+    world.durable.pin = { ...foreign };
+    return perform();
+  });
+  const res = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(res.status, 'unknown');
+  assert.equal(res.reason, 'pin-moved');
+  assert.deepEqual(world.durable.pin, foreign, "the winner's pin was NOT overwritten");
+  assert.equal(stateOf(world.durable.doc).revision, 2,
+    'candidate bytes remain in place for classification');
+  // The foreign pin names no backup this store holds: recovery blocks
+  // with the head left in place rather than restoring over it blindly.
+  const report = noteRow(await newStore(world).reconcile());
+  assert.equal(report.disposition, 'recovery-blocked');
+  assert.deepEqual(world.durable.pin, foreign);
+  assert.equal(loadFromWorld(world).status, 'unavailable');
+});
+
+test('T14: identical retry of a committed operation -> already-recorded receipt, reads only', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  const first = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(first.status, 'committed');
+  const snap = world.writeCounts();
+  const worldSnap = snapshotWorld(world);
+  const retry = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(retry.status, 'committed');
+  assert.equal(retry.operationId, op(1));
+  assert.equal(retry.revision, first.revision);
+  assert.equal(retry.digest, first.digest);
+  world.noWritesSince(snap);
+  assertWorldUnchanged(world, worldSnap, 'T14');
+});
+
+test('T15: same operation id, altered input -> conflict in pinned / J-resident / landed states', async () => {
+  // (a) already pinned.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    const snap = snapshotWorld(world);
+    const altered = await prepareLink(store, 1, { assignedCents: 3000 }).catch(e => e);
+    // prepare refuses a recorded id through the contract; build the altered
+    // preview directly against the genesis bytes instead.
+    const alt = C.prepare(C.adopt({ householdId }), {
+      householdId, actorId, operationId: op(1), command: linkCmd({ assignedCents: 3000 }),
+      now: world.clock.now(),
+    });
+    assert.ok(altered instanceof Error, 'store.prepare surfaces the recorded id');
+    const res = await store.commit({
+      actorId, preview: alt.preview, confirmationDigest: alt.confirmationDigest,
+    });
+    assert.equal(res.status, 'conflict');
+    assertWorldUnchanged(world, snap, 'T15a');
+  }
+  // (b) J-resident unlanded (crash after journal write).
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('doc.writeTemp', 'throw');
+    await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.ok(world.durable.journal, 'journal resident');
+    const alt = C.prepare(C.adopt({ householdId }), {
+      householdId, actorId, operationId: op(1), command: linkCmd({ assignedCents: 3000 }),
+      now: world.clock.now(),
+    });
+    const snap = snapshotWorld(world);
+    const res = await store.commit({
+      actorId, preview: alt.preview, confirmationDigest: alt.confirmationDigest,
+    });
+    assert.equal(res.status, 'conflict');
+    assertWorldUnchanged(world, snap, 'T15b: conflict precedes any pre-pass mutation');
+    assert.ok(world.durable.journal, 'journal NOT cleaned up by the refused retry');
+  }
+  // (c) candidate landed but unpinned (W3).
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('backup.put', 'throw');
+    await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.equal(stateOf(world.durable.doc).revision, 1);
+    const alt = C.prepare(C.adopt({ householdId }), {
+      householdId, actorId, operationId: op(1), command: linkCmd({ assignedCents: 3000 }),
+      now: world.clock.now(),
+    });
+    const res = await store.commit({
+      actorId, preview: alt.preview, confirmationDigest: alt.confirmationDigest,
+    });
+    assert.equal(res.status, 'conflict');
+    // The original candidate is promoted by the pre-pass of a later honest
+    // retry; the altered input never lands.
+    const honest = await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.equal(honest.status, 'committed');
+    assert.equal(honest.revision, 1);
+    const ops = stateOf(world.durable.doc).operations;
+    assert.equal(ops.length, 1);
+    assert.equal(ops[0].command.assignedCents, 2500, 'original input is what committed');
+  }
+});
+
+test('T16: two confirms prepared against one base -> exactly one commits; loser re-prepares', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepA = await prepareLink(store, 1);
+  const prepB = await prepareLink(store, 2, { txRef: tx(2) });
+  const a = await store.commit({
+    actorId, preview: prepA.preview, confirmationDigest: prepA.confirmationDigest,
+  });
+  assert.equal(a.status, 'committed');
+  const b = await store.commit({
+    actorId, preview: prepB.preview, confirmationDigest: prepB.confirmationDigest,
+  });
+  assert.equal(b.status, 'conflict', 'revision-changed maps to conflict');
+  assert.equal(stateOf(world.durable.doc).revision, 1, 'exactly one winner');
+  world.clock.advance(10);
+  const prepB2 = await prepareLink(store, 2, { txRef: tx(2) });
+  const b2 = await store.commit({
+    actorId, preview: prepB2.preview, confirmationDigest: prepB2.confirmationDigest,
+  });
+  assert.equal(b2.status, 'committed');
+  assert.equal(b2.revision, 2);
+  assert.equal(loadFromWorld(world).status, 'qualified');
+});
+
+test('T17: backup down at C7 -> unknown, commits pause; healed -> promote exactly once', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  world.failNext('backup.put', 'throw');
+  const res = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(res.status, 'unknown');
+  assert.equal(res.reason, 'backup-ambiguous');
+  assert.equal(loadFromWorld(world).reason, 'document-ahead-of-pin');
+  // A different operation cannot commit behind the resident journal.
+  const prep2 = C.prepare(C.adopt({ householdId }), {
+    householdId, actorId, operationId: op(2), command: linkCmd({ txRef: tx(2) }),
+    now: world.clock.now(),
+  });
+  world.failNext('backup.put', 'throw');
+  const paused = await store.commit({
+    actorId, preview: prep2.preview, confirmationDigest: prep2.confirmationDigest,
+  });
+  assert.equal(paused.status, 'unavailable', 'new commits pause behind unresolved J');
+  // Heal the adapter: the same-id retry promotes exactly once.
+  const retry = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(retry.status, 'committed');
+  assert.equal(retry.revision, 1);
+  assert.equal(stateOf(world.durable.doc).revision, 1, 'exactly one revision ever results');
+  assert.equal(world.durable.pin.revision, 1);
+  assert.equal(world.durable.journal, null);
+  assert.equal(loadFromWorld(world).status, 'qualified');
+});
+
+test('T18: preview expired before commit -> rejected/preview-expired, zero durable writes', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  const snap = world.writeCounts();
+  const worldSnap = snapshotWorld(world);
+  world.clock.advance(C.TTL_MS + 1);
+  const res = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(res.status, 'rejected');
+  assert.equal(res.reason, 'preview-expired');
+  world.noWritesSince(snap);
+  assertWorldUnchanged(world, worldSnap, 'T18');
+});
+
+test('T19: bootstrap on empty doubles -> consistent genesis; second bootstrap refused', async () => {
+  const world = makeWorld();
+  const store = newStore(world);
+  const boot = await store.bootstrap();
+  assert.equal(boot.status, 'bootstrapped');
+  assert.equal(boot.revision, 0);
+  const genesis = C.adopt({ householdId });
+  assert.ok(world.durable.doc.equals(genesis), 'document is the adopted genesis');
+  assert.deepEqual(world.durable.pin, {
+    revision: 0, digest: pinOf(genesis).digest, timestamp: T0,
+  });
+  assert.equal(world.durable.backups.size, 1, 'genesis backup stored');
+  const view = loadFromWorld(world);
+  assert.equal(view.status, 'qualified');
+  assert.deepEqual(view.evidence, { commitments: [] }, 'genuinely empty evidence');
+  const snap = snapshotWorld(world);
+  const again = await store.bootstrap();
+  assert.equal(again.status, 'rejected');
+  assert.equal(again.reason, 'already-bootstrapped');
+  assertWorldUnchanged(world, snap, 'T19 second bootstrap');
+});
+
+test('T20: interrupted bootstrap -> reconcile R1 recovery-blocked; bootstrap still refused', async () => {
+  const world = makeWorld();
+  world.failNext('pin.advance', 'throw');
+  const store = newStore(world);
+  const boot = await store.bootstrap();
+  assert.equal(boot.status, 'unavailable');
+  assert.ok(world.durable.doc, 'genesis document installed before the crash point');
+  assert.equal(world.durable.pin, null, 'pin never advanced');
+  const report = noteRow(await newStore(world).reconcile());
+  assert.equal(report.row, 'R1');
+  assert.equal(report.disposition, 'recovery-blocked');
+  const again = await newStore(world).bootstrap();
+  assert.equal(again.status, 'rejected', 'no silent re-genesis over traces');
+  assert.equal(loadFromWorld(world).status, 'unavailable');
+});
+
+// === Loader-interop matrix ================================================
+
+test('T21: interop sweep — every writer shape through the real loader, before/after reconcile', async () => {
+  const cases = [];
+  // W1 healthy.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    await commitLink(store, 1);
+    cases.push(['W1', world, store, ['qualified', null], ['qualified', null]]);
+  }
+  // W2 journal-resident unlanded.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('doc.writeTemp', 'throw');
+    await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    cases.push(['W2', world, store, ['qualified', null], ['qualified', null]]);
+  }
+  // W3 promotable and W6 fork share document-ahead-of-pin before reconcile.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('backup.put', 'throw');
+    await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    cases.push(['W3', world, store,
+      ['unavailable', 'document-ahead-of-pin'], ['qualified', null]]);
+  }
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    await commitLink(store, 1);
+    const p2 = C.prepare(world.durable.doc, {
+      householdId, actorId, operationId: op(2), command: linkCmd({ txRef: tx(2) }),
+      now: world.clock.now() + 1,
+    });
+    world.durable.doc = Buffer.from(C.confirmCandidate(world.durable.doc, {
+      householdId, actorId, preview: p2.preview,
+      confirmationDigest: p2.confirmationDigest, now: world.clock.now() + 2,
+    }).document);
+    cases.push(['W6', world, store,
+      ['unavailable', 'document-ahead-of-pin'], ['qualified', null]]);
+  }
+  // W7 behind pin.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    await commitLink(store, 1);
+    world.durable.doc = C.adopt({ householdId });
+    cases.push(['W7', world, store,
+      ['unavailable', 'revision-mismatch'], ['qualified', null]]);
+  }
+  // W10 document missing.
+  {
+    const { world, store } = await bootWorld();
+    world.durable.doc = null;
+    cases.push(['W10', world, store,
+      ['unavailable', 'document-missing'], ['qualified', null]]);
+  }
+  // W11 pin unreadable with traces.
+  {
+    const { world, store } = await bootWorld();
+    world.flags.pinReadThrows = true;
+    cases.push(['W11', world, store,
+      ['unavailable', 'pin-unavailable'], ['unavailable', 'pin-unavailable']]);
+  }
+  // W12 nothing anywhere.
+  {
+    const world = makeWorld();
+    const store = newStore(world);
+    cases.push(['W12', world, store,
+      ['unavailable', 'pin-unavailable'], ['unavailable', 'pin-unavailable']]);
+  }
+  // W13 bytes move between the loader's verify and projection reads.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    await commitLink(store, 1);
+    let reads = 0;
+    const view = L.loadSettlementEvidence({
+      config: { householdId },
+      readDocument: () => {
+        reads++;
+        return reads === 1 ? Buffer.from(world.durable.doc) : C.adopt({ householdId });
+      },
+      readPin: () => ({
+        revision: world.durable.pin.revision, digest: world.durable.pin.digest,
+      }),
+    });
+    assert.equal(view.status, 'unavailable');
+    assert.equal(view.reason, 'document-changed');
+    cases.push(['W13-checked-inline', world, store, ['qualified', null], ['qualified', null]]);
+  }
+  for (const [name, world, store, before, after] of cases) {
+    const b = loadFromWorld(world);
+    assert.equal(b.status, before[0], name + ' before');
+    if (before[1]) assert.equal(b.reason, before[1], name + ' before reason');
+    if (b.status === 'qualified') {
+      // Qualified is only ever served on the pinned bytes.
+      assert.equal(b.evidence.commitments.length,
+        stateOf(world.durable.doc).operations.filter(o => o.command.kind === 'link').length,
+        name + ': qualified evidence comes from the pinned document');
+    }
+    noteRow(await store.reconcile());
+    const a = loadFromWorld(world);
+    assert.equal(a.status, after[0], name + ' after');
+    if (after[1]) assert.equal(a.reason, after[1], name + ' after reason');
+  }
+});
+
+// === Atlas fixtures and named regression pins ==============================
+
+test('T22 lost-acknowledgement: W5 retry and outcome() prove commitment before cleanup', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  world.failNext('journal.clear', 'throw');
+  const receipt = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(receipt.status, 'committed');
+  assert.ok(world.durable.journal, 'response dropped with J resident (W5)');
+  // outcome() returns committed BEFORE any journal cleanup (C1/F4).
+  const out = await store.outcome({ actorId, operationId: op(1) });
+  assert.equal(out.status, 'committed');
+  assert.equal(out.revision, 1);
+  assert.equal(out.digest, world.durable.pin.digest);
+  assert.ok(world.durable.journal, 'outcome() performed no cleanup');
+  // An identical retry returns the same receipt with no new revision.
+  const snap = world.writeCounts();
+  const retry = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(retry.status, 'committed');
+  assert.equal(retry.revision, receipt.revision);
+  assert.equal(retry.digest, receipt.digest);
+  world.noWritesSince(snap);
+  // reconcile then applies R3 and deletes J.
+  const report = noteRow(await store.reconcile());
+  assert.equal(report.row, 'R3');
+  assert.equal(world.durable.journal, null);
+});
+
+test('T23: concurrent stale reconciler — CAS defeats the stale advance; exactly one promotion', async () => {
+  const world = makeWorld();
+  const lock = makeLock();
+  const storeA = newStore(world, lock);
+  assert.equal((await storeA.bootstrap()).status, 'bootstrapped');
+  world.clock.advance(10);
+  await commitLink(storeA, 1);
+  // Build a promotable W3 shape.
+  const prepared = await prepareLink(storeA, 2, { txRef: tx(2) });
+  world.failNext('backup.put', 'throw');
+  const res = await storeA.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(res.status, 'unknown');
+  // Instance A observes the pin at revision 1.
+  const stale = await world.pinStore.read();
+  assert.equal(stale.revision, 1);
+  // Instance B promotes to revision 2.
+  const storeB = newStore(world, lock);
+  const report = noteRow(await storeB.reconcile());
+  assert.equal(report.row, 'R5');
+  assert.equal(report.disposition, 'promoted');
+  assert.equal(world.durable.pin.revision, 2);
+  const okCount = world.counts.pinAdvanceOk;
+  // A's stale CAS attempt is defeated.
+  const ok = await world.pinStore.advance(
+    { revision: stale.revision, digest: stale.digest },
+    { revision: 2, digest: stale.digest, timestamp: world.clock.now() },
+  );
+  assert.equal(ok, false, 'stale expected pair loses the CAS');
+  assert.equal(world.counts.pinAdvanceOk, okCount, 'no second successful advance');
+  const after = noteRow(await storeA.reconcile());
+  assert.equal(after.row, 'R2');
+  assert.equal(after.disposition, 'healthy');
+  assert.equal(loadFromWorld(world).status, 'qualified');
+});
+
+test('T24: pin unreachable -> commit refuses with zero writes; reconcile R1; outcome unknown', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  world.flags.pinReadThrows = true;
+  const snap = world.writeCounts();
+  const res = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(res.status, 'unavailable');
+  assert.equal(res.reason, 'pin-unavailable');
+  world.noWritesSince(snap);
+  const report = noteRow(await store.reconcile());
+  assert.equal(report.row, 'R1');
+  assert.equal(report.disposition, 'recovery-blocked');
+  world.noWritesSince(snap);
+  const out = await store.outcome({ actorId, operationId: op(1) });
+  assert.equal(out.status, 'unknown');
+});
+
+test('T25: altered-input replay of a committed operation -> conflict, store byte-identical', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  const alt = C.prepare(C.adopt({ householdId }), {
+    householdId, actorId, operationId: op(1), command: linkCmd({ assignedCents: 3000 }),
+    now: world.clock.now(),
+  });
+  const snap = snapshotWorld(world);
+  // Variant 1: original confirmationDigest, altered preview.
+  const v1 = await store.commit({
+    actorId, preview: alt.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(v1.status, 'conflict');
+  // Variant 2: altered preview with its OWN self-consistent digest
+  // (changed-but-self-consistent replay must still conflict).
+  const v2 = await store.commit({
+    actorId, preview: alt.preview, confirmationDigest: alt.confirmationDigest,
+  });
+  assert.equal(v2.status, 'conflict');
+  // Variant 3: the original request under a different actor.
+  const v3 = await store.commit({
+    actorId: actor2, preview: prepared.preview,
+    confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(v3.status, 'conflict');
+  assertWorldUnchanged(world, snap, 'T25');
+});
+
+test('T26: fork-prefix — a rewritten earlier operation defeats promotion; R6 restores', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  await commitLink(store, 1);
+  const pinned = world.durable.doc;
+  // Forge a rev-2 head whose FIRST operation is rewritten.
+  const forgedBasePrep = C.prepare(C.adopt({ householdId }), {
+    householdId, actorId, operationId: op(1), command: linkCmd({ txRef: tx(7) }),
+    now: world.clock.now() + 1,
+  });
+  const forgedBase = C.confirmCandidate(C.adopt({ householdId }), {
+    householdId, actorId, preview: forgedBasePrep.preview,
+    confirmationDigest: forgedBasePrep.confirmationDigest, now: world.clock.now() + 2,
+  }).document;
+  const p2 = C.prepare(forgedBase, {
+    householdId, actorId, operationId: op(2), command: linkCmd({ txRef: tx(2) }),
+    now: world.clock.now() + 3,
+  });
+  const forged = C.confirmCandidate(forgedBase, {
+    householdId, actorId, preview: p2.preview,
+    confirmationDigest: p2.confirmationDigest, now: world.clock.now() + 4,
+  }).document;
+  const forgedState = stateOf(forged);
+  const appended = forgedState.operations[1];
+  // A well-formed journal for the appended operation, based on the PINNED
+  // base bytes — every R5 check except the prefix equality can pass.
+  const j = {
+    version: 1, householdId, operationId: op(2), actorId,
+    baseRevision: 1, baseDigest: pinOf(pinned).digest,
+    baseBytes: Buffer.from(pinned).toString('base64'),
+    preview: p2.preview, requestDigest: C.digest(p2.preview),
+    resultingRevision: 2, resultingDigest: forgedState.digest,
+    recordedAt: appended.recordedAt,
+  };
+  world.durable.doc = Buffer.from(forged);
+  world.durable.journal = Buffer.from(JSON.stringify(j));
+  assert.equal(loadFromWorld(world).reason, 'document-ahead-of-pin');
+  const report = noteRow(await store.reconcile());
+  assert.equal(report.row, 'R6', 'prefix rewrite fails the R5 proof at step 5');
+  assert.equal(report.disposition, 'restored-pinned');
+  assert.equal(world.durable.pin.revision, 1, 'promotion never occurred');
+  assert.ok(world.durable.doc.equals(pinned), 'pinned revision restored');
+  assert.ok(world.durable.quarantine.some(q => q.bytes.equals(forged)), 'fork quarantined');
+  assert.equal(loadFromWorld(world).status, 'qualified');
+});
+
+test('T27 (condition 7): two factory instances sharing adapters and lock serialize commits', async () => {
+  const world = makeWorld();
+  const lock = makeLock();
+  const storeA = newStore(world, lock);
+  const storeB = newStore(world, lock);
+  assert.equal((await storeA.bootstrap()).status, 'bootstrapped');
+  world.clock.advance(10);
+  await commitLink(storeA, 1);
+  const prepA = await storeA.prepare({
+    actorId, operationId: op(2), command: linkCmd({ txRef: tx(2) }),
+  });
+  const prepB = await storeB.prepare({
+    actorId, operationId: op(3), command: linkCmd({ txRef: tx(3) }),
+  });
+  const [ra, rb] = await Promise.all([
+    storeA.commit({
+      actorId, preview: prepA.preview, confirmationDigest: prepA.confirmationDigest,
+    }),
+    storeB.commit({
+      actorId, preview: prepB.preview, confirmationDigest: prepB.confirmationDigest,
+    }),
+  ]);
+  const statuses = [ra.status, rb.status].sort();
+  assert.deepEqual(statuses, ['committed', 'conflict'],
+    'serialized: exactly one winner, the loser sees the moved base');
+  assert.equal(stateOf(world.durable.doc).revision, 2, 'no lost update, no fork');
+  assert.equal(world.durable.pin.revision, 2);
+  assert.equal(world.durable.journal, null);
+  assert.equal(loadFromWorld(world).status, 'qualified');
+  // Alternating instances continue coherently on the shared state.
+  world.clock.advance(10);
+  const loser = ra.status === 'conflict' ? { store: storeA, n: 2 } : { store: storeB, n: 3 };
+  const prep = await loser.store.prepare({
+    actorId, operationId: op(loser.n), command: linkCmd({ txRef: tx(loser.n) }),
+  });
+  const done = await loser.store.commit({
+    actorId, preview: prep.preview, confirmationDigest: prep.confirmationDigest,
+  });
+  assert.equal(done.status, 'committed');
+  assert.equal(done.revision, 3);
+  assert.equal(loadFromWorld(world).status, 'qualified');
+});
+
+test('correction 2: phantom R3 receipt — journal matching the head cannot invent a receipt', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  await commitLink(store, 1);
+  const genesis = C.adopt({ householdId });
+  const phantomPrep = C.prepare(genesis, {
+    householdId, actorId, operationId: op(77), command: linkCmd({ txRef: tx(77) }),
+    now: world.clock.now(),
+  });
+  // The deleted fallback would have fired: resultingDigest == P.digest and
+  // baseRevision == P.revision - 1, but op(77) is absent from the ledger.
+  const j = {
+    version: 1, householdId, operationId: op(77), actorId,
+    baseRevision: 0, baseDigest: pinOf(genesis).digest,
+    baseBytes: Buffer.from(genesis).toString('base64'),
+    preview: phantomPrep.preview, requestDigest: C.digest(phantomPrep.preview),
+    resultingRevision: 1, resultingDigest: world.durable.pin.digest,
+    recordedAt: world.clock.now(),
+  };
+  world.durable.journal = Buffer.from(JSON.stringify(j));
+  const report = noteRow(await store.reconcile());
+  assert.notEqual(report.disposition, 'committed-recovered', 'no phantom receipt');
+  assert.equal(report.receipt, undefined, 'no receipt issued');
+  assert.equal(report.row, 'R4');
+  assert.equal(report.disposition, 'journal-quarantined',
+    'base is not the current pinned head -> quarantined as invalid (condition 9)');
+  assert.equal(world.durable.journal, null, 'cleared only after quarantine');
+  assert.ok(world.durable.quarantine.some(q => q.label === 'invalid-journal'));
+  const out = await store.outcome({ actorId, operationId: op(77) });
+  assert.equal(out.status, 'unknown');
+  assert.equal(stateOf(world.durable.doc).revision, 1, 'ledger untouched');
+  assert.equal(loadFromWorld(world).status, 'qualified');
+});
+
+test('correction 3: receipts name the ORIGINAL revision/digest after later commits', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const r1 = await commitLink(store, 1);
+  world.clock.advance(10);
+  const r2 = await commitLink(store, 2, { txRef: tx(2) });
+  assert.equal(r1.revision, 1);
+  assert.equal(r2.revision, 2);
+  assert.notEqual(r1.digest, r2.digest);
+  const out1 = await store.outcome({ actorId, operationId: op(1) });
+  assert.equal(out1.status, 'committed');
+  assert.equal(out1.revision, 1, 'original revision, not the current head');
+  assert.equal(out1.digest, r1.digest, 'original digest, not the current head digest');
+  const out2 = await store.outcome({ actorId, operationId: op(2) });
+  assert.equal(out2.revision, 2);
+  assert.equal(out2.digest, r2.digest);
+});
+
+test('correction 3 (commit path): retry of an earlier operation reproduces its original receipt', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prep1 = await prepareLink(store, 1);
+  const r1 = await store.commit({
+    actorId, preview: prep1.preview, confirmationDigest: prep1.confirmationDigest,
+  });
+  assert.equal(r1.status, 'committed');
+  world.clock.advance(10);
+  const r2 = await commitLink(store, 2, { txRef: tx(2) });
+  assert.equal(r2.revision, 2);
+  const snap = world.writeCounts();
+  const retry = await store.commit({
+    actorId, preview: prep1.preview, confirmationDigest: prep1.confirmationDigest,
+  });
+  assert.equal(retry.status, 'committed');
+  assert.equal(retry.revision, 1, 'original revision after a later commit');
+  assert.equal(retry.digest, r1.digest, 'original digest after a later commit');
+  world.noWritesSince(snap);
+});
+
+test('correction 5: journal write durable-but-ack-lost -> unknown, resolved from actual state', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  world.failNext('journal.write', 'throw-landed');
+  const res = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(res.status, 'unknown');
+  assert.equal(res.reason, 'journal-write-ambiguous');
+  assert.ok(world.durable.journal, 'the journal DID land; absence was not assumed');
+  assert.equal(stateOf(world.durable.doc).revision, 0, 'no further writes after the ambiguous step');
+  assert.equal(world.durable.pin.revision, 0);
+  const out = await store.outcome({ actorId, operationId: op(1) });
+  assert.equal(out.status, 'unknown', 'journal-resident operation stays unknown (F4)');
+  // Identical retry: the pre-pass resolves the actual journal state
+  // (R4 not-committed) and the commit then executes — the journal is
+  // dispositioned by the reconciler, never blindly overwritten.
+  const writesBefore = world.counts.journalWrite;
+  const retry = await store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(retry.status, 'committed');
+  assert.equal(retry.revision, 1);
+  assert.equal(world.counts.journalWrite, writesBefore + 1,
+    'exactly one fresh journal write, after the reconciler cleared the old one');
+  assert.equal(world.durable.journal, null);
+  assert.equal(loadFromWorld(world).status, 'qualified');
+});
+
+test('F-B/F3: backup ack validation at C7 and manifest-hit binding at promotion', async () => {
+  for (const mode of ['bad-ack-digest', 'bad-ack-no-artifact', 'bad-ack-nonrecord', 'bad-ack-null', 'throw-landed']) {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('backup.put', mode);
+    const res = await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    assert.equal(res.status, 'unknown', mode);
+    assert.equal(res.reason, 'backup-ambiguous', mode);
+    assert.equal(world.durable.pin.revision, 0, mode + ': pin never advances on an ambiguous ack');
+    if (mode !== 'throw-landed' && !mode.startsWith('bad-ack')) continue;
+    // The artifact WAS stored: promotion completes from the validated
+    // manifest hit without a second put.
+    const putsBefore = world.counts.backupPut;
+    const report = noteRow(await newStore(world).reconcile());
+    assert.equal(report.row, 'R5', mode);
+    assert.equal(report.disposition, 'promoted', mode);
+    assert.equal(world.counts.backupPut, putsBefore, mode + ': manifest hit, no re-put');
+    assert.equal(loadFromWorld(world).status, 'qualified');
+  }
+  // A malformed manifest entry is NOT a hit: promotion must put.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('backup.put', 'throw');
+    await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    world.failNext('backup.list', () => [{ revision: 1 }]);
+    const putsBefore = world.counts.backupPut;
+    const report = noteRow(await newStore(world).reconcile());
+    assert.equal(report.row, 'R5');
+    assert.equal(report.disposition, 'promoted');
+    assert.equal(world.counts.backupPut, putsBefore + 1,
+      'malformed manifest entry ignored -> put performed');
+  }
+});
+
+test('condition 6: malformed pin shape inside the machine -> blocked, never absence', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  await commitLink(store, 1);
+  world.durable.pinRaw = { revision: 'one', digest: 42 };
+  const snap = world.writeCounts();
+  const report = noteRow(await store.reconcile());
+  assert.equal(report.row, 'R1');
+  assert.equal(report.disposition, 'recovery-blocked');
+  world.noWritesSince(snap);
+  const out = await store.outcome({ actorId, operationId: op(1) });
+  assert.equal(out.status, 'unknown');
+  const res = await store.commit({
+    actorId, preview: { operationId: op(2) }, confirmationDigest: 'a'.repeat(64),
+  });
+  assert.equal(res.status, 'unavailable');
+  world.noWritesSince(snap);
+  world.durable.pinRaw = undefined;
+  const healed = noteRow(await store.reconcile());
+  assert.equal(healed.row, 'R2', 'a readable pin again -> healthy');
+});
+
+test('condition 8: bootstrap refuses on staged-temp-only and other single traces', async () => {
+  for (const trace of ['temp', 'pin', 'journal', 'backup']) {
+    const world = makeWorld();
+    if (trace === 'temp') world.durable.temp = Buffer.from('staged-bytes');
+    if (trace === 'pin') {
+      const g = C.adopt({ householdId });
+      world.durable.pin = { revision: 0, digest: pinOf(g).digest, timestamp: T0 };
+    }
+    if (trace === 'journal') world.durable.journal = Buffer.from('{}');
+    if (trace === 'backup') {
+      world.durable.backups.set('0:' + 'f'.repeat(64), {
+        revision: 0, digest: 'f'.repeat(64), artifactId: 'a', bytes: Buffer.from('x'),
+      });
+    }
+    const store = newStore(world);
+    const boot = await store.bootstrap();
+    assert.equal(boot.status, 'rejected', trace);
+    assert.equal(boot.reason, 'already-bootstrapped', trace);
+  }
+});
+
+test('condition 10: restore verifies readback — a swapped install is recovery-blocked, not restored', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  await commitLink(store, 1);
+  world.durable.doc = C.adopt({ householdId }); // behind pin -> R7 restore
+  world.failNext('doc.commitTemp', 'swap-garbage');
+  const report = noteRow(await store.reconcile());
+  assert.equal(report.row, 'R7');
+  assert.equal(report.disposition, 'recovery-blocked');
+  assert.equal(report.reason, 'restore-readback-failed');
+  assert.equal(loadFromWorld(world).status, 'unavailable', 'no false restored claim');
+});
+
+test('condition 10 / F-D: quarantine failure blocks the overwrite; divergent bytes preserved', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  await commitLink(store, 1);
+  const genesis = C.adopt({ householdId });
+  world.durable.doc = Buffer.from(genesis); // behind pin -> R7
+  world.failNext('quarantine.put', 'throw');
+  const report = noteRow(await store.reconcile());
+  assert.equal(report.row, 'R7');
+  assert.equal(report.disposition, 'recovery-blocked');
+  assert.ok(world.durable.doc.equals(genesis), 'document NOT overwritten when quarantine fails');
+  // With quarantine healthy again the restore proceeds.
+  const healed = noteRow(await store.reconcile());
+  assert.equal(healed.disposition, 'restored-pinned');
+  assert.equal(loadFromWorld(world).status, 'qualified');
+});
+
+test('coverage: every reconciler row R0-R8 was exercised', () => {
+  assert.deepEqual([...seenRows].sort(),
+    ['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8']);
+});
