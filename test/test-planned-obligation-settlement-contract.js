@@ -261,6 +261,54 @@ const linksOf = (body, goalId) =>
     'a proven pending identity cannot be a counter-entry');
 }
 
+// --- Composed replay controls (Atlas review round, 2026-10-18) -------------
+{
+  // Partial reversal, then retraction, then fresh reassignment of the net.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence(), 10000));
+  body = record(body, 2, reverse(op(1), tx(9), refundEvidence({ cents: 3000 }), 3000));
+  const bytesAt2 = body;
+  body = record(body, 3, retract(op(1)));
+  body = record(body, 4, link('commitment:b', tx(1), evidence(), 7000));
+  refuses(() => prepare(body, 5, link('commitment:c', tx(1), evidence(), 1)),
+    'composed: reversed 3000 + reassigned 7000 exhaust the identity');
+  // Repeated retraction and repeated reversal are both refused.
+  refuses(() => prepare(body, 5, retract(op(1))), 'composed: a second retraction is refused');
+  refuses(() => prepare(body, 5, reverse(op(4), tx(9), refundEvidence({ cents: 1000 }), 1000)),
+    'composed: the same counter-entry identity cannot reverse twice');
+  // The composed history restores exactly, and the pinned pre-retraction
+  // bytes still show the link active with its reversal history intact.
+  eq(C.restore(body, C.pin(body, householdId)), body, 'composed: final document restores');
+  eq(C.restore(bytesAt2, C.pin(bytesAt2, householdId)), bytesAt2,
+    'composed: the pre-retraction revision restores byte-exact');
+  eq(linksOf(bytesAt2, 'commitment:a').length, 1,
+    'composed: the pre-retraction revision still shows the link active');
+  eq(linksOf(bytesAt2, 'commitment:a')[0].reversals.length, 1,
+    'composed: frozen evidence and reversal history survive retraction intact');
+}
+{
+  // Full reversal, then retraction: nothing returns to the budget.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence(), 10000));
+  body = record(body, 2, reverse(op(1), tx(9), refundEvidence({ cents: 10000 }), 10000));
+  body = record(body, 3, retract(op(1)));
+  refuses(() => prepare(body, 4, link('commitment:b', tx(1), evidence(), 1)),
+    'composed: a fully reversed link releases nothing when retracted');
+  refuses(() => prepare(body, 4, reverse(op(1), tx(10), refundEvidence({ cents: 1 }), 1)),
+    'composed: reversing a retracted link is refused');
+}
+{
+  // Role ordering, both directions: counter-entry first, then the same
+  // identity offered as a payment or proven as pending — both refused.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence(), 5000));
+  body = record(body, 2, reverse(op(1), tx(9), refundEvidence({ cents: 1000 }), 1000));
+  refuses(() => prepare(body, 3, link('commitment:b', tx(9), evidence({ date: '2030-03-12', cents: 1000 }), 1000)),
+    'composed: a counter-entry identity cannot later become a payment');
+  refuses(() => prepare(body, 3, lineage(tx(9), tx(1), C.digest(evidence()))),
+    'composed: a counter-entry identity cannot later be proven pending lineage');
+}
+
 // --- Deferred semantics stay unrepresentable -------------------------------
 {
   const body = adopt();
