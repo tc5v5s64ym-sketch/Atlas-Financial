@@ -137,7 +137,10 @@ function createSettlementEvidenceStore(deps) {
     let raw;
     try { raw = await backupStore.list(); } catch { return { kind: 'error' }; }
     if (!Array.isArray(raw)) return { kind: 'error' };
-    return { kind: 'ok', entries: raw };
+    // Entries are validated at read time: a manifest carrying malformed
+    // entries is not 'ok' and must never license a destructive row.
+    const malformed = raw.some(entry => !validManifestEntry(entry));
+    return { kind: malformed ? 'malformed' : 'ok', entries: raw };
   }
 
   // The contract is the only authority on document bytes: a document is
@@ -357,7 +360,24 @@ function createSettlementEvidenceStore(deps) {
     } catch {
       return { row: 'R5', disposition: 'promotion-pending', reason: 'pin-advance-failed' };
     }
-    if (!ok) return RESTART;
+    if (ok === false) return RESTART;
+    if (ok !== true) {
+      // B1: CAS success is the literal value true only. A malformed or
+      // lost ack proves nothing either way, so decide solely from the
+      // pin as freshly observed: if it observably covers the head, the
+      // promotion has in fact landed; if it is unchanged, the promotion
+      // stays pending with the journal resident.
+      const after = await readPinState();
+      if (after.kind === 'ok' && after.pin.revision === head.revision
+        && after.pin.digest === head.digest) {
+        // Landed — fall through to the journal clear below.
+      } else if (after.kind === 'ok' && after.pin.revision === pin.revision
+        && after.pin.digest === pin.digest) {
+        return { row: 'R5', disposition: 'promotion-pending', reason: 'pin-advance-failed' };
+      } else {
+        return RESTART;
+      }
+    }
     let cleared = true;
     try { await journalStore.clear(); } catch { cleared = false; }
     const report = {
@@ -425,6 +445,17 @@ function createSettlementEvidenceStore(deps) {
     return report;
   }
 
+  // B3: a destructive restore row (R6/R7/R8) may be selected only on a
+  // fully validated manifest. An unavailable or malformed manifest
+  // leaves every byte in place — no overwrite, no journal clear, no
+  // quarantine write — and blocks recovery instead.
+  async function restoreGated(row, pin, headBytes, journalRaw, M) {
+    if (M.kind !== 'ok') {
+      return { row: 'R1', disposition: 'recovery-blocked', reason: 'manifest-unavailable' };
+    }
+    return restorePinned(row, pin, headBytes, journalRaw);
+  }
+
   async function evaluateOnce() {
     const P = await readPinState();
     const H = await readDocState();
@@ -449,7 +480,7 @@ function createSettlementEvidenceStore(deps) {
     if (J.kind === 'error') {
       return { row: 'R1', disposition: 'recovery-blocked', reason: 'journal-unreadable' };
     }
-    if (!H.bytes) return restorePinned('R8', pin, null, J.raw);
+    if (!H.bytes) return restoreGated('R8', pin, null, J.raw, M);
     const head = docState(H.bytes);
     if (head && head.revision === pin.revision && head.digest === pin.digest) {
       if (!J.raw) return { row: 'R2', disposition: 'healthy' };
@@ -476,10 +507,10 @@ function createSettlementEvidenceStore(deps) {
           return promote(head, pin, parsed.journal, H.bytes, M);
         }
       }
-      return restorePinned('R6', pin, H.bytes, J.raw);
+      return restoreGated('R6', pin, H.bytes, J.raw, M);
     }
     // Behind the pin, a same-revision fork, or unverifiable bytes.
-    return restorePinned('R7', pin, H.bytes, J.raw);
+    return restoreGated('R7', pin, H.bytes, J.raw, M);
   }
 
   async function reconcileLocked() {
@@ -589,9 +620,16 @@ function createSettlementEvidenceStore(deps) {
         { revision: pin.revision, digest: pin.digest },
         { revision: candidate.revision, digest: candidate.digest, timestamp: tick() });
     } catch { return unknown('pin-advance-failed'); }
-    if (!advanced) {
+    if (advanced === false) {
       await reconcileLocked();
       return unknown('pin-moved');
+    }
+    if (advanced !== true) {
+      // B1: CAS success is the literal value true only. A malformed or
+      // lost ack never fabricates a commit: the journal stays resident
+      // and the reconciler (or an identical retry) resolves the actual
+      // pin state from observation.
+      return unknown('pin-advance-failed');
     }
     // C9: journal clear — non-fatal; a leftover journal is shape W5 and
     // belongs to the reconciler (R3). The operation is committed exactly
@@ -659,13 +697,16 @@ function createSettlementEvidenceStore(deps) {
         return knownInHead || knownInJournal
           ? { status: 'conflict' } : unavailable('invalid-request');
       }
-      // Correction 4: before any pre-pass mutation, a reused id is
-      // compared against a valid resident journal too. A changed preview
-      // — with the old digest or a new self-consistent one — conflicts
-      // without modifying storage.
+      // Correction 4 + B2: before any pre-pass mutation, a reused id is
+      // compared against a valid resident journal too — actor binding as
+      // well as the request digest. A retry under a different actor, or
+      // with a changed preview (old digest or a new self-consistent
+      // one), conflicts without modifying storage: the pre-pass must
+      // never clear or promote another actor's pending operation.
       if (parsed && parsed.kind === 'valid'
         && parsed.journal.operationId === operationId
-        && parsed.journal.requestDigest !== previewDigest) {
+        && (parsed.journal.actorId !== actorId
+          || parsed.journal.requestDigest !== previewDigest)) {
         return { status: 'conflict' };
       }
       // C0(c): resolve any resident journal or divergence first.
@@ -698,9 +739,18 @@ function createSettlementEvidenceStore(deps) {
         if (M.kind === 'error') return unavailable('backup-unavailable');
         // Condition 8: proven absence of ALL durable traces, staged
         // temp/bootstrap artifacts included. Any trace refuses genesis.
-        let staged;
-        try { staged = await documentStore.readStaged(); } catch {
+        // B1: the staged read is validated as bytes-or-null before it
+        // can prove anything — only the explicit absence representation
+        // (null) proves no staged artifact; bytes prove a trace; any
+        // other value is malformed and refuses genesis with no writes.
+        let stagedRaw;
+        try { stagedRaw = await documentStore.readStaged(); } catch {
           return unavailable('document-unavailable');
+        }
+        let staged = null;
+        if (stagedRaw !== null) {
+          staged = copyBytes(stagedRaw);
+          if (!staged) return unavailable('document-unavailable');
         }
         const traces = P.kind === 'ok' || !!H.bytes || !!J.raw
           || M.entries.length > 0 || !!staged;
@@ -726,7 +776,8 @@ function createSettlementEvidenceStore(deps) {
             revision: 0, digest: genesisState.digest, timestamp: tick(),
           });
         } catch { return unavailable('pin-advance-failed'); }
-        if (!advanced) return unavailable('pin-moved');
+        if (advanced === false) return unavailable('pin-moved');
+        if (advanced !== true) return unavailable('pin-advance-failed');
         return { status: 'bootstrapped', revision: 0, digest: genesisState.digest };
       } catch {
         return unavailable('internal-error');
@@ -761,9 +812,19 @@ function createSettlementEvidenceStore(deps) {
   }
 
   async function commit(input) {
+    // B2: take a validated, owned snapshot of the complete request at
+    // public entry, BEFORE waiting on the lock. The caller retains (and
+    // may mutate) the original object across our awaits; the snapshot's
+    // identity is the only one the pipeline, journal, and receipt use.
+    let snapshot;
+    try {
+      snapshot = deepCopy(input);
+    } catch {
+      return unavailable('invalid-request');
+    }
     return lock.withLock(async () => {
       try {
-        return await commitLocked(input);
+        return await commitLocked(snapshot);
       } catch {
         return unavailable('internal-error');
       }
