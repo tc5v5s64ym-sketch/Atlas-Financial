@@ -527,3 +527,90 @@ test('known undated protected floor is not silently freed for linked savings goa
   const out = run(input); period(out, 80, 0, 80, 0);
   assert.equal(row(out, 'group:club').thisPeriod, 0);
 });
+
+// --- Split-parent bridge parity (diagnosis addendum, Atlas-authorized
+// repair). The cash bridge inside savingsDailyFunding must apply the
+// same qualified parent-exclusion as postedAccountMovements: a group
+// parent is skipped only when matching children exist in the packet.
+// Conservation in every case: payday opening 20, income -200, grocery
+// spend 20 (split 12 + 8), current household chequing cash 200.
+const splitChild = (id, amount, extra = {}) => ({ id, date: '2026-10-03', amount, pending: false,
+  atlasAccountId: 'chequing-a', savingsPostingEvidence: 'posted', parentId: 'food-1',
+  accountRole: 'household-cash', currency: 'CAD', categoryId: 'groceries',
+  categoryLabel: 'Groceries', displayedPayee: 'Invented grocer split', ...extra });
+function splitInput(children) {
+  const input = fixture();
+  const txs = input.opts.currentPeriodActuals.transactions;
+  txs.find(t => t.id === 'food-1').isGroup = true;
+  txs.push(...children);
+  return input;
+}
+function childOnlyInput(children) {
+  const input = fixture();
+  const txs = input.opts.currentPeriodActuals.transactions;
+  txs.splice(txs.findIndex(t => t.id === 'food-1'), 1);
+  txs.push(...children);
+  return input;
+}
+test('split parent + children: bridge parity with child-only input', () => {
+  const kids = [splitChild('food-1a', 12), splitChild('food-1b', 8)];
+  const split = run(splitInput(kids));
+  assert.equal(split.period.status, 'ready');
+  assert.deepEqual(split, run(childOnlyInput(kids)),
+    'parent + children publishes exactly what children alone publish');
+  const probe = splitInput(kids);
+  const posted = F.postedAccountMovements(probe.plan, 'chequing-a',
+    { start: '2026-10-02', through: probe.asOf }, probe.opts);
+  assert.deepEqual(posted.movements.map(m => m.id), ['income-1', 'food-1a', 'food-1b'],
+    'the sibling path excludes the qualified parent');
+});
+test('group parent with no children still counts (parent-only preserved)', () => {
+  const input = fixture();
+  input.opts.currentPeriodActuals.transactions.find(t => t.id === 'food-1').isGroup = true;
+  assert.deepEqual(run(input), run(), 'an unqualified group parent is not skipped');
+});
+test('children with an unrelated parentId do not qualify the parent: double-count withholds', () => {
+  const kids = [splitChild('food-1a', 12, { parentId: 'food-999' }),
+    splitChild('food-1b', 8, { parentId: 'food-999' })];
+  fundingUnknown(run(splitInput(kids)));
+});
+test('duplicate identical child rows count once', () => {
+  const kids = [splitChild('food-1a', 12), splitChild('food-1a', 12), splitChild('food-1b', 8)];
+  const out = run(splitInput(kids));
+  assert.equal(out.period.status, 'ready');
+  assert.deepEqual(out, run(childOnlyInput([splitChild('food-1a', 12), splitChild('food-1b', 8)])));
+});
+test('duplicate child identity with contradictory amount withholds', () => {
+  const kids = [splitChild('food-1a', 12), splitChild('food-1a', 13), splitChild('food-1b', 8)];
+  fundingUnknown(run(splitInput(kids)));
+});
+test('pending children: parent excluded, pending legs uncounted, mismatch withholds', () => {
+  const kids = [splitChild('food-1a', 12, { pending: true }), splitChild('food-1b', 8, { pending: true })];
+  fundingUnknown(run(splitInput(kids)));
+});
+test('children outside the bridge window still qualify the parent under the packet rule', () => {
+  // The incumbent exclusion is packet-scoped: children present anywhere
+  // in the packet qualify the parent. The bridge must not publish on
+  // the in-window parent alone; the incoherent packet withholds.
+  const input = splitInput([splitChild('food-1a', 12, { date: '2026-10-01' }),
+    splitChild('food-1b', 8, { date: '2026-10-01' })]);
+  fundingUnknown(run(input));
+});
+test('split parity holds on the second chequing account', () => {
+  const onB = (input) => {
+    input.plan.startingCash.breakdown[0].value = 0;
+    input.plan.startingCash.breakdown[1].value = 200;
+    for (const tx of input.opts.currentPeriodActuals.transactions) tx.atlasAccountId = 'chequing-b';
+    return input;
+  };
+  const kidsB = [splitChild('food-1a', 12, { atlasAccountId: 'chequing-b' }),
+    splitChild('food-1b', 8, { atlasAccountId: 'chequing-b' })];
+  const split = run(onB(splitInput(kidsB)));
+  assert.equal(split.period.status, 'ready');
+  assert.deepEqual(split, run(onB(childOnlyInput(kidsB))));
+});
+test('a genuine cash mismatch still withholds', () => {
+  const input = fixture();
+  input.plan.startingCash.breakdown[0].value = 201;
+  fundingUnknown(run(input));
+});
