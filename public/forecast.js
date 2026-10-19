@@ -838,7 +838,62 @@
       && block.version === 1 && block.currency === 'CAD' && Array.isArray(block.pools) && !block.pools.length
       && Array.isArray(block.history) && !block.history.length);
   }
-  function savingsGoal(plan, ref, asOf) {
+  // Savings Phase 2 (ATLAS-080): settlement relief derived from ONE Phase 1
+  // effectiveEvidence output. The contract stays the sole evidence writer;
+  // this is a pure read — shape-validated, never mutating the evidence, the
+  // plan, or any plan row, and never writing settledOn. Returns null when no
+  // usable evidence was supplied, in which case every caller behaves exactly
+  // as before this seam existed. The index is keyed by commitment id over
+  // links effective on or before `cutoff`: linkedPaidCents sums the
+  // qualifying assignments; a link carrying any reversal — or a malformed
+  // assignment — contributes nothing and marks the commitment uncertain
+  // instead (a reversal establishes neither re-owed nor cancelled, so gross
+  // assigned is never read as net).
+  function settlementReliefIndex(evidence, cutoff) {
+    if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)
+        || !Array.isArray(evidence.commitments) || !savingsDate(cutoff)) return null;
+    const index = new Map();
+    for (const entry of evidence.commitments) {
+      if (!entry || typeof entry !== 'object' || typeof entry.goalId !== 'string'
+          || !entry.goalId.startsWith('commitment:') || !Array.isArray(entry.links)) continue;
+      const id = entry.goalId.slice('commitment:'.length);
+      if (!id) continue;
+      let linkedPaidCents = 0, uncertain = false, seen = false;
+      for (const link of entry.links) {
+        if (!link || typeof link !== 'object' || !savingsDate(link.effectiveDate)
+            || link.effectiveDate > cutoff) continue;
+        seen = true;
+        if (Array.isArray(link.reversals) && link.reversals.length) { uncertain = true; continue; }
+        if (!Number.isSafeInteger(link.assignedCents) || link.assignedCents < 0) { uncertain = true; continue; }
+        linkedPaidCents += link.assignedCents;
+        if (!Number.isSafeInteger(linkedPaidCents)) { uncertain = true; linkedPaidCents = 0; }
+      }
+      if (!seen) continue;
+      const prior = index.get(id);
+      if (prior) {
+        prior.uncertain = prior.uncertain || uncertain;
+        prior.linkedPaidCents += linkedPaidCents;
+        if (!Number.isSafeInteger(prior.linkedPaidCents)) prior.uncertain = true;
+      } else index.set(id, { linkedPaidCents, uncertain });
+    }
+    return index;
+  }
+  // Judge one commitment row against the index. null = the commitment has
+  // no qualifying links, so no relief surface applies and the caller keeps
+  // its existing figures untouched. Otherwise either an exact remaining for
+  // a fixed-cost row, or uncertain: v1 withholds the remaining figure (and
+  // dependent calculations withhold with it) for ranged rows,
+  // over-assignment (never silently capped to the row amount), and
+  // reversal-tainted or malformed link evidence.
+  function settlementRowRelief(index, row, amountCents) {
+    if (!index || !row || row.id == null) return null;
+    const entry = index.get(row.id);
+    if (!entry) return null;
+    if (entry.uncertain || row.amount == null || amountCents == null
+        || entry.linkedPaidCents > amountCents) return { uncertain: true };
+    return { linkedPaidCents: entry.linkedPaidCents, remainingCents: amountCents - entry.linkedPaidCents };
+  }
+  function savingsGoal(plan, ref, asOf, evidence) {
     const key = ref.kind + ':' + ref.id;
     const commitments = (plan && plan.commitments) || [];
     let rows = [];
@@ -856,7 +911,12 @@
         && !((plan && plan.bills) || []).some(b => b && b.id === ref.id))
       && group.length <= 1 && new Set(rows.map(r => r.id)).size === rows.length;
     const members = rows.map(row => 'goal:' + row.id);
+    // Settlement evidence relieves commitment/group goals only; the relief
+    // cutoff for a goal is its own asOf. Other goal kinds never see it.
+    const reliefIndex = evidence != null && ['commitment', 'group'].includes(ref.kind)
+      ? settlementReliefIndex(evidence, asOf) : null;
     let targetCents = 0, ceilingCents = 0, targetKnown = resolved, estimated = false;
+    let linkedPaidCents = 0, reliefUncertain = false;
     for (const row of rows) {
       const settled = ['commitment', 'group'].includes(ref.kind) && commitmentSettledBy(row, asOf);
       // Reserve requirements retain their existing Budget home. Reading the
@@ -872,14 +932,32 @@
         if (!Number.isSafeInteger(targetCents) || !Number.isSafeInteger(ceilingCents)) targetKnown = false;
       }
       if (row.confidence !== 'confirmed') estimated = true;
+      if (reliefIndex && !settled) {
+        const judged = settlementRowRelief(reliefIndex, row,
+          row.amount != null ? savingsCents(row.amount) : null);
+        if (judged) {
+          if (judged.uncertain) reliefUncertain = true;
+          else linkedPaidCents += judged.linkedPaidCents;
+        }
+      }
     }
-    return { key, ref: { kind: ref.kind, id: ref.id }, resolved, members,
+    const goal = { key, ref: { kind: ref.kind, id: ref.id }, resolved, members,
       label: ref.kind === 'group' ? group[0]?.label || rows[0]?.groupLabel || ref.id : rows[0]?.label || ref.id,
       target: targetKnown ? targetCents / 100 : null,
       targetMax: targetKnown ? ceilingCents / 100 : null,
       targetTrust: targetKnown ? (estimated ? 'estimated' : 'calculated') : 'unknown',
       settled: resolved && ['commitment', 'group'].includes(ref.kind) && rows.every(r => commitmentSettledBy(r, asOf)),
     };
+    // Beside the untouched original target: linked paid and remaining are
+    // their own figures, present only when evidence was supplied to this
+    // call. Uncertain relief publishes neither as a known amount.
+    if (reliefIndex) {
+      goal.linkedPaid = reliefUncertain ? null : linkedPaidCents / 100;
+      goal.remaining = !reliefUncertain && targetKnown ? (targetCents - linkedPaidCents) / 100 : null;
+      goal.remainingMax = !reliefUncertain && targetKnown ? (ceilingCents - linkedPaidCents) / 100 : null;
+      goal.settlementUncertain = reliefUncertain;
+    }
+    return goal;
   }
   function savingsEarmarksState(plan, asOf) {
     const block = plan && plan.savingsEarmarks;
@@ -1012,7 +1090,8 @@
     if (reported) Object.defineProperty(stock, savingsReportedCents, { value: totalCents });
     return stock;
   }
-  function savingsInventory(plan, asOf) {
+  function savingsInventory(plan, asOf, opts) {
+    const settlementEvidence = opts ? opts.settlementEvidence : null;
     const config = savingsEarmarksState(plan, asOf);
     const packet = { status: config.status, asOf, currency: config.currency || 'CAD', reason: config.reason || null,
       source: 'Forecast.savingsInventory', nonAdditive: true, intentSource: 'plan.savingsEarmarks',
@@ -1056,7 +1135,7 @@
         backed: 'All confirmed earmarks are backed by current observed pool cash.' };
       const row = { id: pool.id, accountId: pool.accountId, label: pool.label || pool.id, status, reason: reasons[status],
         purpose: pool.purpose || null,
-        plannedGoals: (pool.goalRefs || []).map(ref => ({ ...savingsGoal(plan, ref, asOf), intent: null, backed: null, backedTrust: 'unknown' })),
+        plannedGoals: (pool.goalRefs || []).map(ref => ({ ...savingsGoal(plan, ref, asOf, settlementEvidence), intent: null, backed: null, backedTrust: 'unknown' })),
         observedCash: trusted ? valueCents / 100 : null, observedTrust: trusted ? 'verified' : 'unknown',
         observedAsOf: cash && cash.evidenceDate || null, currency: config.currency,
         intentKnown, intent: intentKnown ? total / 100 : null, intentTrust: intentKnown ? 'calculated' : 'unknown',
@@ -1086,7 +1165,7 @@
       intent: goal.intentCents / 100, backed: goal.backingKnown ? goal.backedCents / 100 : null,
       backedTrust: goal.backingKnown ? 'calculated' : 'unknown', pools: goal.pools,
       release: 'Confirmation required; paying or reducing a goal never releases its earmark automatically.' }));
-    const funding = reserveFundingState(plan, asOf, {}, packet);
+    const funding = reserveFundingState(plan, asOf, opts || {}, packet);
     if (funding.status === 'ready') {
       packet.incrementalInstructions = 'eligible';
       packet.instructionReason = 'Funding proposals require matching payments and count backed assignments once. New contributions are proposals, not saved balances or transfers.';
@@ -1970,12 +2049,49 @@
           reason: 'scheduled-amount-unknown' });
       }
     }
+    // Phase 2 (ATLAS-080): the settlement relief index is judged at this
+    // scan's own start — the same pin expandEvents applies to the walk
+    // being classified. A link effective on or before the walk opens
+    // either relieves the commitment's event exactly or withholds it as
+    // uncertain; a later link does not reach this walk at all. Null when
+    // no evidence was supplied, in which case nothing below changes.
+    const reliefIndex = settlementReliefIndex(opts.settlementEvidence, start);
     for (const c of plan.commitments || []) {
       if (!c || disabled.has(c.id)) continue;
       if (commitmentSettledBy(c, start)) continue;
       if (commitmentFlexibility(c) === 'optional') continue;
       const cashDate = commitmentCashDate(c);
       if (!cashDate) continue;
+      // Settlement uncertainty is judged BEFORE the range exemption
+      // below (repair round 3): the exemption excuses an incumbent
+      // no-evidence range, but a valid ranged commitment carrying an
+      // effective link has an uncertain remaining under v1, and letting
+      // the exemption swallow the judgment let the walk publish as
+      // though that remaining were zero. The judgment runs for exactly
+      // the rows this gate can quantify — a finite amount, judged on
+      // the amount, or a range, judged as a range (any qualifying link
+      // makes a ranged remaining uncertain) — and only when a
+      // qualifying link actually judges the row; an unlinked row, and
+      // every row when no evidence was supplied, falls through to
+      // exactly its incumbent treatment.
+      if (reliefIndex) {
+        const amount = scheduledAmountValue(c.amount);
+        if (amount != null || commitmentHasRange(c)) {
+          const judged = settlementRowRelief(reliefIndex, c,
+            amount != null ? savingsCents(amount) : null);
+          if (judged && judged.uncertain) {
+            // A commitment whose settlement remaining is uncertain
+            // emits no cash event — neither the original amount nor
+            // zero is a known remaining — so the walk cannot quantify
+            // it. Name it unknown here; otherwise the walk would
+            // publish a numeric result as though the remaining cost
+            // were zero while the goal and sequence say unknown.
+            unknowns.push({ carrier: 'commitment', id: c.id || null, date: cashDate,
+              reason: 'settlement-remaining-unknown' });
+            continue;
+          }
+        }
+      }
       if (commitmentHasRange(c)) continue;
       if (scheduledAmountValue(c.amount) != null) continue;
       unknowns.push({ carrier: 'commitment', id: c.id || null, date: cashDate,
@@ -2063,7 +2179,12 @@
     return { status: 'unavailable', start, end, source: 'Forecast.scheduledAmountState',
       unknowns,
       issues: Array.from(new Set(unknowns.map(u => u.reason))),
-      reason: 'A dated scheduled amount is missing or unparseable, so the totals and spending claims that depend on it are unknown.' };
+      // The published reason names the actual cause: a settlement-
+      // remaining unknown is neither missing nor unparseable — its
+      // original amount is finite and its remaining is uncertain.
+      reason: unknowns.every(u => u.reason === 'settlement-remaining-unknown')
+        ? 'A dated commitment\u2019s remaining cost is uncertain on its settlement evidence, so the totals and spending claims that depend on it are unknown.'
+        : 'A dated scheduled amount is missing or unparseable, so the totals and spending claims that depend on it are unknown.' };
   }
 
   function walkDays(plan, asOf, opts) {
@@ -2670,6 +2791,9 @@
         });
       }
     }
+    // Settlement relief for cash math is pinned to this walk's start: only
+    // links effective on or before the walk opens relieve its events.
+    const reliefIndex = settlementReliefIndex(opts.settlementEvidence, start);
     for (const c of plan.commitments) {
       if (disabled.has(c.id)) continue;
       // A settled commitment keeps its history and its scheduled date.
@@ -2690,6 +2814,17 @@
         // scheduledAmountState names it unknown and consumers withhold.
         const amount = scheduledAmountValue(c.amount);
         if (amount == null) continue;
+        const judged = settlementRowRelief(reliefIndex, c, savingsCents(amount));
+        // Uncertain relief emits no event: neither the original amount nor
+        // zero is a known remaining, and consumers withhold on the absent
+        // match. Full relief also emits no event — the commitment is NOT
+        // settled (settledOn is never written); the linked payment stays
+        // the single observed transaction fact and is not deducted again.
+        if (judged && (judged.uncertain || !judged.remainingCents)) continue;
+        if (judged) {
+          events.push({ date: cashDate, amount: -judged.remainingCents / 100, kind: 'commitment', label: c.label, id: c.id, confidence: c.confidence, plannedAmount: amount, linkedPaid: judged.linkedPaidCents / 100 });
+          continue;
+        }
         events.push({ date: cashDate, amount: -amount, kind: 'commitment', label: c.label, id: c.id, confidence: c.confidence });
       }
     }
@@ -3408,14 +3543,30 @@
     opts = opts || {};
     const disabled = new Set(opts.disabled || []);
     const groupMeta = commitmentGroupMeta(plan);
+    const reliefIndex = settlementReliefIndex(opts.settlementEvidence, asOf);
     const rows = [];
     (plan.commitments || []).forEach((c, index) => {
       if (disabled.has(c.id)) return;
       if (commitmentSettledBy(c, asOf)) return;
-      const need = commitmentNeed(c);
+      let need = commitmentNeed(c);
       const range = commitmentRange(c);
       if (need == null && range.amountMin == null && range.amountMax == null) return;
-      const bounds = commitmentBounds(c);
+      let bounds = commitmentBounds(c);
+      // Settlement relief lands at this derivation, never per consumer:
+      // need and bounds.floor move together so reserve funding's
+      // floor === need coherence survives relief. Uncertain relief
+      // withholds the point need (bounds stay the owner's stated range).
+      const judged = settlementRowRelief(reliefIndex, c,
+        c.amount != null ? savingsCents(c.amount) : null);
+      let settlementMark = null;
+      if (judged) {
+        if (judged.uncertain) { need = null; settlementMark = { settlementUncertain: true }; }
+        else {
+          need = judged.remainingCents / 100;
+          bounds = { floor: need, ceiling: need, flexibility: bounds.flexibility };
+          settlementMark = { linkedPaid: judged.linkedPaidCents / 100 };
+        }
+      }
       const groupId = typeof c.group === 'string' && c.group ? c.group : null;
       rows.push({
         id: c.id,
@@ -3433,6 +3584,7 @@
         amountMin: range.amountMin,
         amountMax: range.amountMax,
         bounds,
+        ...(settlementMark || {}),
         flexibility: bounds.flexibility,
         confidence: c.confidence || null,
         adjustable: !!c.adjustable,
@@ -6373,9 +6525,27 @@
       // action list instead answers what is still required at asOf. A
       // commitment satisfied since that earlier start must not reappear as
       // unverified; keep its dated history and the existing cash walk intact.
+      let settlementLinkedPaid, settlementRemaining, plannedOverride;
       if (e.kind === 'commitment') {
         const row = (plan.commitments || []).find(c => c && c.id === e.id);
         if (row && commitmentSettledBy(row, asOf)) continue;
+        // Settlement relief for this list is pinned to asOf, not to the
+        // walk start the event was expanded from: a link effective between
+        // origin and asOf still relieves here. Planned stays the original
+        // stated cost (the event carries it as plannedAmount when the walk
+        // already relieved it); only remaining moves. Uncertain evidence
+        // withholds remaining (null) rather than printing a known figure.
+        if (row && opts && opts.settlementEvidence != null) {
+          const plannedCents = e.plannedAmount != null ? savingsCents(e.plannedAmount) : savingsCents(-e.amount);
+          const judged = settlementRowRelief(
+            settlementReliefIndex(opts.settlementEvidence, asOf), row, plannedCents);
+          if (judged) {
+            if (plannedCents != null) plannedOverride = plannedCents / 100;
+            if (judged.uncertain) { settlementLinkedPaid = null; settlementRemaining = null; }
+            else if (!judged.remainingCents) continue; // fully relieved by asOf: like settled, it does not reappear
+            else { settlementLinkedPaid = judged.linkedPaidCents / 100; settlementRemaining = judged.remainingCents / 100; }
+          }
+        }
       }
       const amt = e.minimumAmount != null ? e.minimumAmount : -e.amount;
       if (!(amt > EPSILON)) continue;
@@ -6393,11 +6563,11 @@
       } else if (e.date >= asOf) {
         settlement = 'upcoming';
         actual = 0;
-        remaining = roundCent(amt);
+        remaining = settlementRemaining !== undefined ? settlementRemaining : roundCent(amt);
       } else {
         settlement = 'unverified';
         actual = null;
-        remaining = roundCent(amt);
+        remaining = settlementRemaining !== undefined ? settlementRemaining : roundCent(amt);
       }
       const sent = minimumPaymentFor(plan, e, asOf, opts);
       items.push({
@@ -6405,7 +6575,8 @@
         label: e.label,
         kind: e.kind,
         date: e.date,
-        planned: roundCent(amt),
+        planned: roundCent(plannedOverride !== undefined ? plannedOverride : amt),
+        ...(settlementLinkedPaid !== undefined ? { linkedPaid: settlementLinkedPaid } : {}),
         actual,
         remaining,
         settlement,
@@ -6419,6 +6590,62 @@
           settlement: sent.issuerMinimumStatus === 'satisfied' ? 'represented' : 'unverified' } : {}),
         ...occurrenceTrustFields(e),
       });
+    }
+    // A settlement-uncertain commitment whose link was already effective
+    // at the walk origin emitted no event at all (expandEvents withholds
+    // it), so the loop above never saw it: without this pass it would
+    // vanish from the action list as though nothing were owed. Name it
+    // here with its original planned cost and an unknown (null)
+    // remaining — the same fail-closed shape the asOf recheck gives an
+    // uncertain row that did emit an event. Known full relief stays
+    // absent, exactly like settled; represented payment stays the
+    // incumbent publication and is not re-opened here.
+    if (opts && opts.settlementEvidence != null) {
+      const reliefAtAsOf = settlementReliefIndex(opts.settlementEvidence, asOf);
+      if (reliefAtAsOf) {
+        // The disabled exclusion expandEvents applies binds this pass
+        // too (repair round 3): a disabled commitment is omitted from
+        // expansion, and the fallback must not resurrect it.
+        const disabled = new Set(opts.disabled || []);
+        for (const row of plan.commitments || []) {
+          if (!row || row.id == null) continue;
+          if (disabled.has(row.id)) continue;
+          if (commitmentSettledBy(row, asOf)) continue;
+          if (commitmentFlexibility(row) === 'optional') continue;
+          const cashDate = commitmentCashDate(row);
+          if (!cashDate || cashDate < origin || cashDate > periodLast) continue;
+          if (represented.has(row.id + '@' + cashDate)) continue;
+          const amount = scheduledAmountValue(row.amount);
+          // Settlement uncertainty is judged BEFORE the absent-amount
+          // skip (repair round 3): a ranged commitment has no fixed
+          // amount to price, but a qualifying link still makes its
+          // remaining uncertain under v1, and skipping on the absent
+          // amount dropped it from the action list entirely. Judged
+          // with no amount, an unpriced row is uncertain exactly when
+          // a qualifying link names it; unlinked rows keep their
+          // incumbent absence, and planned publishes null for a row
+          // with no single stated cost.
+          const judged = settlementRowRelief(reliefAtAsOf, row,
+            amount != null ? savingsCents(amount) : null);
+          if (!judged || !judged.uncertain) continue;
+          const key = (row.id || row.label) + '@' + cashDate;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          items.push({
+            id: row.id,
+            label: row.label,
+            kind: 'commitment',
+            date: cashDate,
+            planned: amount != null ? roundCent(amount) : null,
+            linkedPaid: null,
+            actual: cashDate >= asOf ? 0 : null,
+            remaining: null,
+            settlement: cashDate >= asOf ? 'upcoming' : 'unverified',
+            evidenceDate: null,
+            ...occurrenceTrustFields({ confidence: row.confidence }),
+          });
+        }
+      }
     }
     return items;
   }
@@ -15770,16 +15997,53 @@
     // fees; netting the season fees off the recurring line concluded that
     // normal sports spending was $0, which is not what the household budgeted.
     // Sinking-fund commitments are therefore tracked apart, not subtracted.
-    const sinking = { total: 0, items: [] };
+    const sinking = { total: 0, items: [], unknown: false };
     const asOf = opts.asOf || opts.start || null;
     const targetAsOf = opts.budgetTargetAsOf || asOf || periods.asOf || plan.opening && plan.opening.asOf || null;
+    const reliefIndex = settlementReliefIndex(opts.settlementEvidence, asOf);
     for (const c of plan.commitments || []) {
       if ((opts.disabled || []).indexOf(c.id) >= 0) continue;
       if (commitmentSettledBy(c, asOf)) continue;
-      // Rows with no cash date or unpriced rows are on the master plan.
-      // They are not smeared across the 91-day window as if they had a due day.
-      if (!commitmentCashDate(c) || c.amount == null) continue;
-      const perMonth = c.amount / monthsInWindow;
+      // Rows with no cash date are on the master plan; they are not
+      // smeared across the 91-day window as if they had a due day.
+      if (!commitmentCashDate(c)) continue;
+      // Settlement uncertainty is judged BEFORE the absent-amount
+      // exclusion below (repair round 4, mirroring the round-3 gate and
+      // action-list ordering): the exclusion excuses an incumbent
+      // no-evidence range, but a valid ranged commitment carrying an
+      // effective link has an uncertain remaining under v1, and letting
+      // the exclusion swallow the judgment made the linked range vanish
+      // from the aggregates — the sinking publication printed the known
+      // members' subtotal as the total and a dated range left its
+      // category figures numeric. The judgment runs for exactly the rows
+      // this loop can judge — a fixed amount judged on the amount, a
+      // range judged as a range — and only when a qualifying link
+      // actually judges the row; an unlinked row, a row whose links are
+      // not yet effective, and every row when no evidence was supplied
+      // falls through to exactly its incumbent treatment.
+      // A linked payment reduces the future dated draw this figure stands
+      // for. Uncertain relief neither smears a figure that is not known
+      // nor drops the row (repair round 3): the row keeps its identity
+      // with an unknown amount, and the aggregate it feeds is withheld
+      // below rather than published as the known items' subtotal.
+      const judged = settlementRowRelief(reliefIndex, c,
+        c.amount == null ? null : savingsCents(c.amount));
+      if (judged && judged.uncertain) {
+        if (c.sinkingFund) {
+          sinking.unknown = true;
+          sinking.items.push({ label: c.label, amount: null, category: c.budgetCategory });
+        } else if (c.budgetCategory) {
+          const acc = (datedByCategory[c.budgetCategory]
+            = datedByCategory[c.budgetCategory] || { total: 0, items: [] });
+          acc.unknown = true;
+          acc.items.push({ label: c.label, amount: null, kind: 'commitment' });
+        }
+        continue;
+      }
+      // Unpriced rows are on the master plan: with no judgment above,
+      // a ranged row keeps exactly its incumbent exclusion here.
+      if (c.amount == null) continue;
+      const perMonth = (judged ? judged.remainingCents / 100 : c.amount) / monthsInWindow;
       if (c.sinkingFund) {
         sinking.total += perMonth;
         sinking.items.push({ label: c.label, amount: perMonth, category: c.budgetCategory });
@@ -15814,15 +16078,24 @@
         : cardPaidMonthly > 0 ? cardPaidMonthly
         : null;
       const regime = current != null;
+      // A dated aggregate containing an unknown item is itself unknown:
+      // it publishes null, and the figures that consume it (the regime
+      // gross that adds it, the planned remainder that nets it off)
+      // withhold with it rather than treating the unknown as zero.
+      // Independent bases — an owner target, the historical average —
+      // stay known (repair round 3).
+      const datedTotal = dated.unknown ? null : dated.total;
       const gross = target != null ? target
-        : regime ? (undatedCurrent || 0) + dated.total
+        : regime ? (datedTotal == null ? null : (undatedCurrent || 0) + datedTotal)
         : historical;
       const reserved = target == null && undatedCurrent != null ? undatedCurrent : 0;
-      const planned = Math.max(0, gross - dated.total - reserved);
-      const sinkingHere = sinking.items.filter(s => s.category === c.id)
-        .reduce((a, s) => a + s.amount, 0);
+      const planned = datedTotal == null ? null
+        : Math.max(0, gross - datedTotal - reserved);
+      const sinkingHereItems = sinking.items.filter(s => s.category === c.id);
+      const sinkingHere = sinkingHereItems.some(s => s.amount == null) ? null
+        : sinkingHereItems.reduce((a, s) => a + s.amount, 0);
       return Object.assign({}, c, {
-        historical, dated: dated.total, datedItems: dated.items, target,
+        historical, dated: datedTotal, datedItems: dated.items, target,
         current,
         // gross is the pre-dated monthly amount — owner target if one exists,
         // else current-regime (undated current + dated), else the historical
@@ -15839,16 +16112,28 @@
         // A category whose dated items already exceed its historical average is
         // fully accounted for on the calendar — the dated figure is the better
         // current authority and nothing extra belongs in the weekly cap.
-        fullyDated: dated.total > 0 && gross - dated.total <= 0,
+        fullyDated: datedTotal != null && datedTotal > 0 && gross - datedTotal <= 0,
         source: target != null ? 'owner-target'
           : regime ? 'current-regime'
           : 'historical-actual',
       });
     });
 
-    const spend = c => (c.planned || 0) + (c.reserved || 0);
-    const sum = (pred, field) => categories.filter(pred)
-      .reduce((s, c) => s + (field ? c[field] : spend(c)), 0);
+    // A category whose planned figure is withheld (its dated aggregate
+    // is unknown) withholds the totals it feeds rather than contributing
+    // a silent zero (repair round 3). With no withheld figure — every
+    // plan without an uncertain dated item — these sums are exactly the
+    // incumbent ones.
+    const spend = c => c.planned == null ? null : c.planned + (c.reserved || 0);
+    const sum = (pred, field) => {
+      let total = 0;
+      for (const c of categories.filter(pred)) {
+        const value = field ? c[field] : spend(c);
+        if (value == null) return null;
+        total += value;
+      }
+      return total;
+    };
     const isClass = k => c => c.class === k;
     const isRequired = c => c.class === 'essential' || c.class === 'unknown';
 
@@ -15867,11 +16152,12 @@
       discretionaryMonthly,
       unknownMonthly: sum(isClass('unknown')),
       reserveMonthly: sum(isClass('reserve')),
-      datedMonthly: categories.reduce((s, c) => s + c.dated, 0),
+      datedMonthly: categories.some(c => c.dated == null) ? null
+        : categories.reduce((s, c) => s + c.dated, 0),
       historicalMonthly: categories.reduce((s, c) => s + c.historical, 0),
       // Major dated commitments the household saves for rather than absorbing
       // into a monthly line — the lacrosse season, camps, registrations.
-      sinkingMonthly: sinking.total,
+      sinkingMonthly: sinking.unknown ? null : sinking.total,
       sinkingItems: sinking.items,
       ownerTargetCount: categories.filter(c => c.target != null).length,
       requiredMonthly,
@@ -15879,7 +16165,8 @@
       // caller says which cap is on screen. Null when none was given — a
       // caller that has not named a cap is asking about the categories, not
       // for a verdict on one.
-      cap: againstCap(categories, inCapRequiredMonthly, inCapDiscretionaryMonthly, opts),
+      cap: categories.some(c => c.planned == null) ? null
+        : againstCap(categories, inCapRequiredMonthly, inCapDiscretionaryMonthly, opts),
     };
   }
 
@@ -20607,6 +20894,7 @@
       incomeOverrides: opts.incomeOverrides,
       representedEvents: opts.representedEvents,
       paypalPerMonth: opts.paypalPerMonth,
+      settlementEvidence: opts.settlementEvidence,
       periods,
       incomeOccurrenceAdjust: (stream, date) => {
         if (!isDalePayrollStream(stream) || date < DALE_PAYROLL_REGIME_FROM) return null;
@@ -20942,7 +21230,7 @@
       const item={key,id:row.id,label:row.label,date:row.date||null,scheduledDate:row.date||null,
         when:row.when||null,group:row.group||null,groupLabel:row.groupLabel||null,source:row.source||null,
         rank:row.rank || Number.MAX_SAFE_INTEGER,needed:need==null?null:need/100,
-        neededRange:need==null&&row.amountMin!=null&&row.amountMax!=null?{min:row.amountMin,max:row.amountMax}:null,
+        neededRange:need==null&&!row.settlementUncertain&&row.amountMin!=null&&row.amountMax!=null?{min:row.amountMin,max:row.amountMax}:null,
         saved:null,inactive:false,trust,poolId:'combined-savings',needCents:need,savedCents:0,
         event:matches.length===1?matches[0]:null,dateBasis:'cash-planning-date'};
       if(!row.date || need==null || trust==='unknown') unresolved.push({...item,saved:null,contribution:null,
@@ -20970,10 +21258,20 @@
         need:savingsCents(category.plannedAmount)==null?null:category.plannedAmount,
         confidence:category.confidence,source:'dated-reserve-planning'});
     }
+    const reliefIndex = settlementReliefIndex(opts.settlementEvidence, day);
     for(const c of plan.commitments || []) if(c.sinkingFund===true && !disabled.has(c.id)
-        && commitmentFlexibility(c) !== 'optional' && !commitmentSettledBy(c,day) && !seq.some(r=>r.id===c.id)) append({id:c.id,label:c.label,
-          date:commitmentCashDate(c),when:c.when,group:c.group,confidence:c.confidence,need:commitmentNeed(c),
-          ...commitmentRange(c)});
+        && commitmentFlexibility(c) !== 'optional' && !commitmentSettledBy(c,day) && !seq.some(r=>r.id===c.id)) {
+          // Same relief judgement as the sequence rows above: this fallback
+          // derives the need from the row itself, so it must not resurrect
+          // a relieved or uncertain amount the sequence already withheld.
+          const judged = settlementRowRelief(reliefIndex, c,
+            c.amount != null ? savingsCents(c.amount) : null);
+          append({id:c.id,label:c.label,
+            date:commitmentCashDate(c),when:c.when,group:c.group,confidence:c.confidence,
+            need: judged ? (judged.uncertain ? null : judged.remainingCents / 100) : commitmentNeed(c),
+            ...(judged && judged.uncertain ? { settlementUncertain: true } : {}),
+            ...commitmentRange(c)});
+        }
     items.sort((a,b)=>a.date.localeCompare(b.date)||a.rank-b.rank||a.key.localeCompare(b.key));
     let reason=config.status!=='ready'?config.reason:!stockKnown?'Both savings accounts require current, clear CAD cents evidence.'
       :inventory.pools.some(p=>p.observedCash<0)?'Negative savings stock remains a protected deficit.'
@@ -21071,6 +21369,7 @@
       trust: safeStock ? 'calculated' : 'unknown', evidenceTrust: safeStock ? 'verified' : 'unknown', currency: 'CAD',
       basis: 'observed-savings-stock', nonAdditive: true, accountIds: config.pools.map(pool => pool.accountId) };
     const policyKnown = savingsDailyPolicy(opts.savingsAllocationPolicy, day);
+    const reliefIndex = settlementReliefIndex(opts.settlementEvidence, day);
     const rawOpts = { ...opts, savingsAllocationPolicy: undefined };
     const horizon = knowledgeHorizon(normalized, day, rawOpts), events = expandEvents(normalized, day, horizon.end, rawOpts);
     const seq = fundingSequence(normalized, day, rawOpts), disabled = new Set(opts.disabled || []);
@@ -21092,7 +21391,20 @@
           if (byKey.has(key)) { result.push(byKey.get(key)); continue; }
           const inactive = commitment && commitmentSettledBy(commitment, day) || disabled.has(id);
           const amount = inactive ? 0 : reserve ? reserve.plannedAmount : source?.amount;
-          const need = savingsCents(amount), low = need ?? savingsCents(source?.amountMin), high = need ?? savingsCents(source?.amountMax);
+          let need = savingsCents(amount), low = need ?? savingsCents(source?.amountMin), high = need ?? savingsCents(source?.amountMax);
+          // This loop derives the requirement a fourth time, from the row
+          // itself; settlement relief must land here too or backing would
+          // reserve against the relieved cash events. Uncertain relief
+          // leaves need and range null, so the item stays encumbering and
+          // the pool withholds — the same treatment as an unknown amount.
+          if (!inactive && commitment) {
+            const judged = settlementRowRelief(reliefIndex, commitment,
+              commitment.amount != null ? savingsCents(commitment.amount) : null);
+            if (judged) {
+              if (judged.uncertain) { need = null; low = null; high = null; }
+              else need = judged.remainingCents;
+            }
+          }
           const matches = matched.filter(e => e.date === date);
           const item = { key, id, label: source?.label || id, date: matches.length === 1 ? cashWalkDate(matches[0], day) : date,
             scheduledDate: date, rank: seq.find(c => c.id === id)?.rank || Number.MAX_SAFE_INTEGER,
@@ -21818,8 +22130,13 @@
     const payments = [], goals = [], claimed = new Set(), gaps = [];
     for (const pool of pools) {
       for (const ref of plan.savingsEarmarks.pools.find(row => row.id === pool.id).goalRefs || []) {
-        const goal = savingsGoal(plan, ref, day);
-        const requirement = savingsCents(goal.targetMax);
+        const goal = savingsGoal(plan, ref, day, opts.settlementEvidence);
+        // The targetMax fallback is valid only when the settlement
+        // fields are ABSENT (no evidence was supplied for this goal).
+        // Evidence that makes the remaining explicitly unknown publishes
+        // remainingMax as a present null; falling back on null would
+        // resurrect the original cost as a known requirement.
+        const requirement = savingsCents(Object.hasOwn(goal, 'remainingMax') ? goal.remainingMax : goal.targetMax);
         if (!goal.resolved || requirement == null) return unavailable('A configured goal requirement is unknown; the projection is withheld.');
         if (goal.members.some(id => claimed.has(id))) return unavailable('A goal belongs to more than one pool; projected location is ambiguous.');
         goal.members.forEach(id => claimed.add(id));
@@ -21844,8 +22161,8 @@
         pool.protection += protection;
         if (!Number.isSafeInteger(pool.protection)) return unavailable('Protected requirements are outside supported cents.');
         if (protection) gaps.push({ goalKey: goal.key, reason: 'Requirement without an in-horizon cash component stays protected; no payment date is invented.' });
-        goals.push({ key: goal.key, label: goal.label, poolId: pool.id, requirement: goal.target,
-          requirementMax: goal.targetMax, requirementTrust: goal.targetTrust,
+        goals.push({ key: goal.key, label: goal.label, poolId: pool.id, requirement: Object.hasOwn(goal, 'remaining') ? goal.remaining : goal.target,
+          requirementMax: Object.hasOwn(goal, 'remainingMax') ? goal.remainingMax : goal.targetMax, requirementTrust: goal.targetTrust,
           actualSaved: null, actualContribution: null, actualTrust: 'unknown', protectedRequirement: protection / 100 });
       }
     }
