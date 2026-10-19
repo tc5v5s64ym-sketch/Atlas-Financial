@@ -198,6 +198,8 @@ function readIfExists(dir, name) {
 //   hold-lock  — take the adapter lock and never release it
 //   crash      — run a real store commit that process.exit(3)s at the
 //                named pipeline step (writeTemp | commitTemp | pinAdvance)
+//   roundtrip  — bootstrap + commit + loader over the directory with
+//                in-child pin/backup doubles, print JSON (cwd proof)
 const harnessDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-settlement-harness-'));
 const childPath = path.join(harnessDir, 'child.js');
 const CHILD_SOURCE = `
@@ -292,6 +294,70 @@ if (mode === 'load') {
     });
     fs.writeSync(2, 'commit returned without crashing: ' + JSON.stringify(res));
     process.exit(9);
+  })().catch(e => { fs.writeSync(2, String(e && e.stack || e)); process.exit(8); });
+} else if (mode === 'roundtrip') {
+  const adapter = A.createSettlementEvidenceFileAdapter(dir);
+  let pinState = null;
+  const pinStore = {
+    read: async () => (pinState ? Object.assign({}, pinState) : null),
+    advance: async (expected, next) => {
+      const cur = pinState;
+      const match = expected === null
+        ? cur === null
+        : !!cur && cur.revision === expected.revision && cur.digest === expected.digest;
+      if (!match) return false;
+      pinState = Object.assign({}, next);
+      return true;
+    },
+  };
+  const backups = new Map();
+  const backupStore = {
+    put: async (revision, digest, bytes) => {
+      const key = revision + ':' + digest;
+      if (!backups.has(key)) {
+        backups.set(key, { revision, digest, artifactId: 'artifact-' + revision, bytes: Buffer.from(bytes) });
+      }
+      const e = backups.get(key);
+      return { revision: e.revision, digest: e.digest, artifactId: e.artifactId };
+    },
+    get: async (revision, digest) => {
+      const e = backups.get(revision + ':' + digest);
+      return e ? Buffer.from(e.bytes) : null;
+    },
+    list: async () => [...backups.values()].map(e => ({
+      revision: e.revision, digest: e.digest, artifactId: e.artifactId,
+    })),
+  };
+  const store = S.createSettlementEvidenceStore({
+    householdId, documentStore: adapter.documentStore, journalStore: adapter.journalStore,
+    pinStore, backupStore, quarantine: adapter.quarantine,
+    lock: adapter.lock, now: () => T0 + 5000,
+  });
+  (async () => {
+    const boot = await store.bootstrap();
+    if (boot.status !== 'bootstrapped') {
+      fs.writeSync(2, 'bootstrap failed: ' + JSON.stringify(boot));
+      process.exit(9);
+    }
+    const prepared = await store.prepare({
+      actorId, operationId: op(1), command: linkCmd({}),
+    });
+    if (!prepared.preview) {
+      fs.writeSync(2, 'prepare failed: ' + JSON.stringify(prepared));
+      process.exit(9);
+    }
+    const receipt = await store.commit({
+      actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+    });
+    const view = L.loadSettlementEvidence({
+      config: { householdId },
+      readDocument: () => {
+        try { return fs.readFileSync(path.join(dir, 'document.json')); }
+        catch (e) { if (e.code === 'ENOENT') return null; throw e; }
+      },
+      readPin: () => ({ revision: pinState.revision, digest: pinState.digest }),
+    });
+    process.stdout.write(JSON.stringify({ boot, receipt, view }));
   })().catch(e => { fs.writeSync(2, String(e && e.stack || e)); process.exit(8); });
 } else {
   process.exit(7);
@@ -869,4 +935,32 @@ test('factory validation over an empty private directory succeeds and writes not
   assert.strictEqual(await adapter.journalStore.read(), null);
   assert.strictEqual(await adapter.documentStore.readStaged(), null);
   assert.deepEqual(listing(dir), [], 'reads create nothing');
+});
+
+// === 9. cwd independence: repository membership is determined for the
+// supplied directory (and the module tree), never from the caller's
+// working directory. A plain non-git tree must behave exactly like a
+// checkout: before the fix, adapter construction in such a tree died on
+// an escaped `git worktree list` exit-128 for EVERY directory. ===
+
+test('cwd independence: a child process running from a plain non-git directory completes bootstrap + commit + loader round trip over a private directory', async () => {
+  const storeDir = makeDir();
+  const cwdDir = makeDir(); // plain, non-git: no repository above it
+  const res = spawnSync(process.execPath, [childPath, 'roundtrip', storeDir], {
+    cwd: cwdDir,
+    env: { ...process.env, ATLAS_TEST_APP_ROOT: ROOT },
+    encoding: 'utf8', timeout: 60000,
+  });
+  assert.equal(res.status, 0, 'child stderr: ' + res.stderr);
+  const out = JSON.parse(res.stdout);
+  assert.equal(out.boot.status, 'bootstrapped');
+  assert.equal(out.receipt.status, 'committed');
+  assert.equal(out.receipt.revision, 1);
+  assert.equal(out.view.status, 'qualified');
+  assert.equal(out.view.evidence.commitments.length, 1);
+  assert.equal(out.view.evidence.commitments[0].links[0].assignedCents, 2500);
+  const docState = stateOf(readIfExists(storeDir, 'document.json'));
+  assert.equal(docState.revision, 1);
+  assert.equal(docState.digest, out.receipt.digest);
+  assert.deepEqual(fs.readdirSync(cwdDir), [], 'the child wrote nothing into its plain cwd');
 });

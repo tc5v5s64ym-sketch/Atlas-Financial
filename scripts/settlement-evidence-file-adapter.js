@@ -74,6 +74,24 @@ function within(parent, child) {
   const rel = path.relative(parent, child);
   return rel === '' || (!rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel));
 }
+function moduleWorktreeRoots() {
+  // Linked worktrees of the module's own repository, enumerated by
+  // asking git about the module tree itself — never the caller's
+  // working directory and never the supplied directory. A module tree
+  // that is not itself a repository has no worktrees to enumerate, so
+  // a clean "not a git repository" answer means the empty list. Any
+  // other git failure (missing binary, unexpected error) leaves
+  // membership unprovable and fails closed.
+  let out;
+  try {
+    out = execFileSync('git', ['-C', ROOT, 'worktree', 'list', '--porcelain'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    if (e && e.status === 128 && /not a git repository/.test(String(e.stderr || ''))) return [];
+    fail('repository or worktree state cannot be determined');
+  }
+  return out.split('\n').filter(line => line.startsWith('worktree ')).map(line => line.slice(9));
+}
 function privateRoot(root) {
   // The incumbent POSIX private-store convention; Windows ACL/directory
   // durability is unqualified.
@@ -97,10 +115,7 @@ function privateRoot(root) {
     'directory is inside a repository');
     if (dir === path.dirname(dir)) break;
   }
-  const worktrees = execFileSync('git', ['worktree', 'list', '--porcelain'],
-    { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
-    .split('\n').filter(line => line.startsWith('worktree ')).map(line => line.slice(9));
-  check(![ROOT, ...worktrees].some(repo => within(repo, root) || within(root, repo)),
+  check(![ROOT, ...moduleWorktreeRoots()].some(repo => within(repo, root) || within(root, repo)),
     'directory overlaps a repository or worktree');
   let stat;
   try { stat = fs.lstatSync(root); } catch {
