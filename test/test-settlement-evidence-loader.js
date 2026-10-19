@@ -119,6 +119,31 @@ test('invalid-configuration: partial configuration never reads as unconfigured',
     'invalid-configuration'); // malformed expected household
 });
 
+// --- Malformed supplied fields are refused, never normalized into absence --
+// Repair round (Systems Review B1 on head 3b71036f): a field that is
+// present but malformed is a configuration defect. It must not be
+// normalized away before the absent path is chosen, and a malformed
+// readPin must not silently fall back to the static config pin.
+test('invalid-configuration: malformed supplied fields are refused outright', () => {
+  expectUnavailable(L.loadSettlementEvidence({ config: 'bad' }),
+    'invalid-configuration'); // a non-record config is supplied, not absent
+  expectUnavailable(L.loadSettlementEvidence({ config: [] }),
+    'invalid-configuration'); // an array config is supplied, not absent
+  expectUnavailable(L.loadSettlementEvidence({ readDocument: 'bad' }),
+    'invalid-configuration'); // a non-function document reader is supplied
+  expectUnavailable(L.loadSettlementEvidence({ readPin: 'bad' }),
+    'invalid-configuration'); // a non-function pin reader is supplied
+});
+
+test('invalid-configuration: a malformed readPin never falls back to config.pin', () => {
+  // Everything else here is usable — valid household, valid static pin,
+  // working document reader — yet the explicitly malformed readPin must
+  // refuse the load instead of silently using the static pin.
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readPin: 'bad',
+      readDocument: reader(doc1) }), 'invalid-configuration');
+});
+
 // --- Pin sourcing ----------------------------------------------------------
 test('pin-invalid: a malformed pin from any source yields no evidence', () => {
   expectUnavailable(L.loadSettlementEvidence(
@@ -351,6 +376,41 @@ test('document-changed: a stability re-read that throws is not qualified', () =>
   expectUnavailable(L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) }, readDocument: flaky }),
     'document-changed');
+});
+
+// --- Snapshot ownership -------------------------------------------------------
+// Repair round (Systems Review B2 on head 3b71036f): the byte snapshot the
+// loader verifies and projects from must be its own copy. A caller-owned
+// Buffer mutated in place between the two reads — same length, embedded
+// digest left stale — must not compare equal to itself and qualify on a
+// changed, now-invalid document.
+test('document-changed: in-place mutation of a shared Buffer between reads', () => {
+  const shared = Buffer.from(doc1);
+  let calls = 0;
+  const mutating = () => {
+    calls += 1;
+    if (calls === 2) {
+      const text = shared.toString('utf8')
+        .replace('"assignedCents":2500', '"assignedCents":2000');
+      assert.equal(text.length, shared.length, 'the mutation preserves length');
+      shared.write(text, 0, 'utf8');
+    }
+    return shared;
+  };
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: mutating }),
+    'document-changed');
+});
+
+test('snapshot controls: stable Buffer and Uint8Array readers still qualify', () => {
+  const fromBuffer = expectQualified(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) },
+      readDocument: reader(Buffer.from(doc1)) }));
+  assert.deepEqual(fromBuffer, C.effectiveEvidence(stateOf(doc1)));
+  const fromArray = expectQualified(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) },
+      readDocument: reader(new Uint8Array(doc1)) }));
+  assert.deepEqual(fromArray, C.effectiveEvidence(stateOf(doc1)));
 });
 
 // --- Reason coverage ------------------------------------------------------------

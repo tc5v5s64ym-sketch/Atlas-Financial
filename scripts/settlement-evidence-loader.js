@@ -58,7 +58,10 @@ function unavailable(reason) {
   return Object.freeze({ status: 'unavailable', reason });
 }
 function normalizeBytes(value) {
-  if (Buffer.isBuffer(value)) return value;
+  // Always a loader-owned copy: a caller may retain and mutate a Buffer
+  // it handed over, and the snapshot the loader verifies and projects
+  // from must never move underneath it.
+  if (Buffer.isBuffer(value)) return Buffer.from(value);
   if (value instanceof Uint8Array) return Buffer.from(value);
   if (typeof value === 'string') return Buffer.from(value, 'utf8');
   return null;
@@ -80,6 +83,22 @@ function parsePin(record) {
 function loadSettlementEvidence(input) {
   if (input === undefined || input === null) return Object.freeze({ status: 'unconfigured' });
   if (!isRecord(input)) return unavailable('invalid-configuration');
+  // Validate supplied fields BEFORE any absent path or pin source is
+  // selected: a field that is present but malformed is a configuration
+  // defect, never deliberate absence, and a malformed readPin must not
+  // silently fall back to the static config pin. Absence is expressed
+  // only by an undefined or null field (the documented absent forms).
+  if (input.config !== undefined && input.config !== null && !isRecord(input.config)) {
+    return unavailable('invalid-configuration');
+  }
+  if (input.readDocument !== undefined && input.readDocument !== null
+    && typeof input.readDocument !== 'function') {
+    return unavailable('invalid-configuration');
+  }
+  if (input.readPin !== undefined && input.readPin !== null
+    && typeof input.readPin !== 'function') {
+    return unavailable('invalid-configuration');
+  }
   const config = isRecord(input.config) ? input.config : null;
   const readDocument = typeof input.readDocument === 'function' ? input.readDocument : null;
   const readPin = typeof input.readPin === 'function' ? input.readPin : null;
@@ -109,7 +128,9 @@ function loadSettlementEvidence(input) {
   const pin = parsePin(pinRecord);
   if (!pin) return unavailable('pin-invalid');
 
-  // First read: the one immutable byte snapshot everything derives from.
+  // First read: copied (normalizeBytes) into the one loader-owned byte
+  // snapshot everything derives from; the stability re-read below is a
+  // separate copy compared against this preserved snapshot.
   let first;
   try { first = readDocument(); } catch { return unavailable('document-unavailable'); }
   if (first === null || first === undefined) return unavailable('document-missing');
