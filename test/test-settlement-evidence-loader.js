@@ -1,0 +1,360 @@
+'use strict';
+// Settlement evidence loader foundation (ATLAS-080) — synthetic tests only.
+//
+// The loader is the read path between a persisted Phase 1 settlement
+// document and Forecast's Phase 2 seam: injected bytes + an independently
+// supplied pin {revision, digest} in, one explicit outcome out —
+// unconfigured, qualified (carrying ONLY the contract's effectiveEvidence
+// projection), or unavailable with a stable reason and no evidence.
+// No filesystem, environment, network, or provisioning anywhere: every
+// read below is an injected callback over contract-built synthetic bytes.
+//
+// Tests first: against unmodified main this suite fails to load (the
+// loader module does not exist). Every unavailable fixture isolates one
+// defect, and the closing test proves each enumerated reason was hit.
+const test = require('node:test'), assert = require('node:assert/strict');
+const path = require('node:path');
+const ROOT = process.env.ATLAS_TEST_APP_ROOT || path.resolve(__dirname, '..');
+const F = require(path.join(ROOT, 'public/forecast'));
+const C = require(path.join(ROOT, 'scripts/planned-obligation-settlement-contract'));
+const L = require(path.join(ROOT, 'scripts/settlement-evidence-loader'));
+const fx = require('./fixtures/savings-daily-allocation-contract');
+
+const householdId = 'household-' + 'a'.repeat(32);
+const otherHousehold = 'household-' + 'b'.repeat(32);
+const actorId = 'session-' + 'c'.repeat(64);
+const op = n => 'operation-' + n.toString(16).padStart(32, '0');
+const tx = n => 'tx-' + n.toString(16).padStart(32, '0');
+const T0 = Date.parse('2026-10-04T12:00:00Z');
+
+// --- Contract document builders (real Phase 1 flow, synthetic facts) -----
+const ev = (over = {}) => ({
+  accountId: 'acct-main', currency: 'cad', direction: 'debit',
+  date: '2026-10-03', cents: 6000, posted: true, ...over,
+});
+const linkCmd = (over = {}) => {
+  const e = ev(over.evidence || {});
+  return {
+    version: 1, kind: 'link', goalId: over.goalId || 'commitment:near',
+    txRef: over.txRef || tx(1), evidence: e, evidenceDigest: C.digest(e),
+    assignedCents: over.assignedCents !== undefined ? over.assignedCents : 2500,
+    asOf: over.asOf || '2026-10-04',
+  };
+};
+function recordInto(body, hh, n, command) {
+  const prepared = C.prepare(body,
+    { householdId: hh, actorId, operationId: op(n), command, now: T0 + n * 2 });
+  const confirmed = C.confirmCandidate(body,
+    { householdId: hh, actorId, preview: prepared.preview,
+      confirmationDigest: prepared.confirmationDigest, now: T0 + n * 2 + 1 });
+  assert.equal(confirmed.status, 'candidate', 'synthetic command records');
+  return confirmed.document;
+}
+function docWith(commands, hh = householdId) {
+  let body = C.adopt({ householdId: hh });
+  commands.forEach((command, i) => { body = recordInto(body, hh, i + 1, command); });
+  return body;
+}
+const pinOf = bytes => {
+  const s = JSON.parse(bytes.toString('utf8'));
+  return { revision: s.revision, digest: s.digest };
+};
+const stateOf = bytes => {
+  const s = JSON.parse(bytes.toString('utf8'));
+  return { householdId: s.householdId, revision: s.revision, operations: s.operations };
+};
+const reader = bytes => () => bytes;
+const seenReasons = new Set();
+
+function expectUnavailable(outcome, reason) {
+  assert.equal(outcome.status, 'unavailable');
+  assert.equal(outcome.reason, reason);
+  assert.deepEqual(Object.keys(outcome).sort(), ['reason', 'status'],
+    'an unavailable outcome carries a reason and nothing else');
+  assert.ok(!('evidence' in outcome), 'an unavailable outcome carries no evidence');
+  seenReasons.add(reason);
+}
+function expectQualified(outcome) {
+  assert.equal(outcome.status, 'qualified');
+  assert.deepEqual(Object.keys(outcome).sort(), ['evidence', 'status'],
+    'a qualified outcome carries only the evidence projection');
+  return outcome.evidence;
+}
+
+// Canonical synthetic store: genesis, a rev-1 document (25 of 60 link),
+// a rev-2 document (plus a second commitment's link), a rev-1 fork twin.
+const genesis = C.adopt({ householdId });
+const doc1 = docWith([linkCmd({})]);
+const doc2 = docWith([linkCmd({}),
+  linkCmd({ goalId: 'commitment:far', txRef: tx(2), assignedCents: 1000 })]);
+const docFork = docWith([linkCmd({ assignedCents: 2000 })]);
+const happyArgs = () => ({ config: { householdId, pin: pinOf(doc1) }, readDocument: reader(doc1) });
+
+// --- Unconfigured: deliberate absence of any configuration ----------------
+test('unconfigured: wholly absent configuration is its own outcome', () => {
+  for (const args of [undefined, null, {}, { config: null }, { config: undefined }, { config: {} }]) {
+    const outcome = L.loadSettlementEvidence(args);
+    assert.equal(outcome.status, 'unconfigured');
+    assert.deepEqual(Object.keys(outcome), ['status'],
+      'an unconfigured outcome carries nothing else');
+    assert.ok(!('evidence' in outcome), 'unconfigured is not empty evidence');
+  }
+});
+
+// --- Partial or invalid configuration is unavailable, never unconfigured --
+test('invalid-configuration: partial configuration never reads as unconfigured', () => {
+  expectUnavailable(L.loadSettlementEvidence({ config: { householdId } }),
+    'invalid-configuration'); // no pin source, no document reader
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) } }),
+    'invalid-configuration'); // pin but no document reader
+  expectUnavailable(L.loadSettlementEvidence({ readDocument: reader(doc1) }),
+    'invalid-configuration'); // reader but no household, no pin
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { pin: pinOf(doc1) }, readDocument: reader(doc1) }),
+    'invalid-configuration'); // pin but no household
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId: 'household-not-a-real-id', pin: pinOf(doc1) },
+      readDocument: reader(doc1) }),
+    'invalid-configuration'); // malformed expected household
+});
+
+// --- Pin sourcing ----------------------------------------------------------
+test('pin-invalid: a malformed pin from any source yields no evidence', () => {
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: { revision: 1, digest: 'not-a-digest' } },
+      readDocument: reader(doc1) }), 'pin-invalid');
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: { revision: -1, digest: pinOf(doc1).digest } },
+      readDocument: reader(doc1) }), 'pin-invalid');
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => null, readDocument: reader(doc1) }),
+    'pin-invalid');
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => Buffer.from('not json'),
+      readDocument: reader(doc1) }), 'pin-invalid');
+});
+
+test('pin-unavailable: a pin read that throws is unavailable, not unconfigured', () => {
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId },
+      readPin: () => { throw new Error('pin store unreachable'); },
+      readDocument: reader(doc1) }), 'pin-unavailable');
+});
+
+test('pin sources: readPin is the live source when both are supplied', () => {
+  const evidence = expectQualified(L.loadSettlementEvidence(
+    { config: { householdId, pin: { revision: 9, digest: 'f'.repeat(64) } },
+      readPin: () => pinOf(doc1), readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
+test('pin sources: pin.json-shaped bytes (extra timestamp key) qualify', () => {
+  const pinBytes = Buffer.from(JSON.stringify(
+    { ...pinOf(doc1), pinnedAt: '2026-10-04T12:00:00.000Z' }));
+  const evidence = expectQualified(L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => pinBytes, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
+// --- Qualified paths --------------------------------------------------------
+test('qualified: genesis bytes under a genesis pin give empty evidence', () => {
+  const evidence = expectQualified(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(genesis) }, readDocument: reader(genesis) }));
+  assert.deepEqual(evidence, { commitments: [] },
+    'a pinned empty store is qualified empty evidence, not absence');
+});
+
+test('qualified: the projection is exactly the contract effectiveEvidence', () => {
+  const outcome = L.loadSettlementEvidence(happyArgs());
+  const evidence = expectQualified(outcome);
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)),
+    'loader evidence deep-equals effectiveEvidence(state) for the same state');
+  assert.ok(Object.isFrozen(outcome), 'outcomes are frozen shells');
+  assert.deepEqual(Object.keys(evidence), ['commitments'],
+    'no document, operations, or history rides along');
+});
+
+// --- Qualified evidence drives Phase 2 relief through recommend -----------
+function input() {
+  const x = fx.fixture();
+  x.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'commitment', id: 'near' }];
+  return x;
+}
+function surfaces(x, opts) {
+  const inventory = F.savingsInventory(x.plan, x.asOf, opts);
+  const pool = (inventory.pools || []).find(p => p.id === 'club-pool');
+  const goal = pool && pool.plannedGoals.find(g => g.key === 'commitment:near');
+  const events = F.expandEvents(x.plan, x.asOf, '2026-11-30', opts)
+    .filter(e => e.kind === 'commitment' && e.id === 'near');
+  const advice = F.recommend(x.plan, x.asOf, { ...x.opts, ...opts, weeklyVariable: 0, debts: [] });
+  const seq = (advice.fundingSequence || []).find(e => e.id === 'near');
+  return { goal, events, seq };
+}
+
+test('relief: loader-qualified evidence partially relieves through Forecast', () => {
+  const evidence = expectQualified(L.loadSettlementEvidence(happyArgs()));
+  const { goal, events, seq } = surfaces(input(), { settlementEvidence: evidence });
+  assert.equal(goal.target, 60, 'original cost preserved');
+  assert.equal(goal.linkedPaid, 25, 'the confirmed 25 link is the linked paid figure');
+  assert.equal(goal.remaining, 35, 'remaining = original - linked paid');
+  assert.equal(events.length, 1);
+  assert.equal(events[0].amount, -35, 'the cash event carries the relieved amount');
+  assert.equal(seq.need, 35, 'recommend funds only the remaining');
+});
+
+test('relief: loader-qualified full link suppresses the requirement, unsettled', () => {
+  const full = docWith([linkCmd({ assignedCents: 6000 })]);
+  const evidence = expectQualified(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(full) }, readDocument: reader(full) }));
+  const { goal, events, seq } = surfaces(input(), { settlementEvidence: evidence });
+  assert.equal(goal.linkedPaid, 60);
+  assert.equal(goal.remaining, 0, 'fully relieved');
+  assert.equal(goal.settled, false, 'a link is not settlement; history is retained');
+  assert.equal(events.length, 0, 'no cash event for a fully relieved commitment');
+  assert.equal(seq.need, 0, 'recommend requires nothing further');
+});
+
+test('control: unconfigured outcome means no evidence reaches Forecast', () => {
+  const outcome = L.loadSettlementEvidence();
+  assert.equal(outcome.status, 'unconfigured');
+  const { goal, events, seq } = surfaces(input(), {});
+  assert.equal(goal.target, 60);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].amount, -60, 'without evidence the full cost is still required');
+  assert.equal(seq.need, 60);
+});
+
+// --- Document read failures --------------------------------------------------
+test('document-unavailable: a document read that throws yields no evidence', () => {
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) },
+      readDocument: () => { throw new Error('store unreachable'); } }),
+    'document-unavailable');
+});
+
+test('document-missing: a configured but absent store is unavailable', () => {
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: () => null }),
+    'document-missing');
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: () => Buffer.alloc(0) }),
+    'document-missing');
+});
+
+test('document-malformed: unparseable or shapeless bytes yield no evidence', () => {
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) },
+      readDocument: reader(Buffer.from('this is not a settlement document')) }),
+    'document-malformed');
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) },
+      readDocument: reader(Buffer.from('[1,2,3]')) }), 'document-malformed');
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) },
+      readDocument: reader(Buffer.from('{"schema":"atlas-planned-obligation-settlements/v1"}')) }),
+    'document-malformed');
+});
+
+// --- Pin/document disagreement: never evidence, never silent resumption ----
+test('household-mismatch: a document for another household never qualifies', () => {
+  const foreign = docWith([linkCmd({})], otherHousehold);
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(foreign) }, readDocument: reader(foreign) }),
+    'household-mismatch');
+});
+
+test('revision-mismatch: a document behind the pin is not the pinned revision', () => {
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc2) }, readDocument: reader(doc1) }),
+    'revision-mismatch');
+});
+
+test('document-ahead-of-pin: a newer document is never served or promoted', () => {
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: reader(doc2) }),
+    'document-ahead-of-pin');
+});
+
+test('document-ahead-of-pin: an unpinned candidate operation stays unresolved', () => {
+  // A candidate document from confirmCandidate is a confirmed-but-unpinned
+  // write: the loader must not serve it against the genesis pin, and must
+  // not promote it. In loader terms it is ahead-of-pin state.
+  let body = C.adopt({ householdId });
+  const prepared = C.prepare(body,
+    { householdId, actorId, operationId: op(1), command: linkCmd({}), now: T0 });
+  const candidate = C.confirmCandidate(body,
+    { householdId, actorId, preview: prepared.preview,
+      confirmationDigest: prepared.confirmationDigest, now: T0 + 1 });
+  assert.equal(candidate.status, 'candidate');
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(genesis) },
+      readDocument: reader(candidate.document) }), 'document-ahead-of-pin');
+});
+
+test('digest-mismatch: same revision, different digest — altered or forked', () => {
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: reader(docFork) }),
+    'digest-mismatch');
+});
+
+test('fork: of two documents at the pin revision, only the pinned one qualifies', () => {
+  const evidence = expectQualified(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(docFork) }, readDocument: reader(docFork) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(docFork)));
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(docFork) }, readDocument: reader(doc1) }),
+    'digest-mismatch');
+});
+
+test('document-invalid: tampered content under a stale embedded digest fails verification', () => {
+  // The embedded digest field still matches the pin, so staging passes;
+  // the contract's own digest/replay verification must refuse the bytes.
+  const tampered = Buffer.from(
+    doc1.toString('utf8').replace('"assignedCents":2500', '"assignedCents":2000'));
+  assert.notEqual(tampered.toString('utf8'), doc1.toString('utf8'),
+    'the tamper changed the bytes');
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: reader(tampered) }),
+    'document-invalid');
+});
+
+test('document-invalid: replayed-invalid history fails contract verification', () => {
+  // Bytes whose embedded digest honestly covers an operation history the
+  // contract refuses (an over-budget second link): the digest staging
+  // cannot see it; contract replay must.
+  const state = stateOf(doc1);
+  const badOps = [...state.operations, {
+    revision: 2, operationId: op(2), actorId, recordedAt: T0 + 4,
+    requestDigest: 'e'.repeat(64),
+    command: linkCmd({ goalId: 'commitment:far', assignedCents: 99999 }),
+  }];
+  const data = { schema: C.SCHEMA, householdId, revision: 2, operations: badOps };
+  const body = Buffer.from(JSON.stringify({ ...data, digest: C.digest(data) }));
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: { revision: 2, digest: JSON.parse(body.toString('utf8')).digest } },
+      readDocument: reader(body) }), 'document-invalid');
+});
+
+// --- Read consistency ---------------------------------------------------------
+test('document-changed: bytes that move between verification and projection', () => {
+  let calls = 0;
+  const unstable = () => (++calls === 1 ? doc1 : docFork);
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: unstable }),
+    'document-changed');
+});
+
+test('document-changed: a stability re-read that throws is not qualified', () => {
+  let calls = 0;
+  const flaky = () => { if (++calls === 1) return doc1; throw new Error('store moved'); };
+  expectUnavailable(L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: flaky }),
+    'document-changed');
+});
+
+// --- Reason coverage ------------------------------------------------------------
+test('coverage: every enumerated unavailable reason was exercised above', () => {
+  assert.deepEqual([...seenReasons].sort(), [...L.REASONS].sort(),
+    'the suite pins each reason code the module enumerates');
+});

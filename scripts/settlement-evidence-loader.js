@@ -1,0 +1,164 @@
+'use strict';
+
+// Settlement evidence loader (ATLAS-080) — the qualified read path between
+// a persisted Phase 1 settlement document and Forecast's Phase 2 seam.
+//
+// The loader is pure and dependency-injected: callers supply the expected
+// household, an independently supplied pin, and read callbacks. It performs
+// no filesystem, environment, network, or provisioning access of its own,
+// and it never bootstraps, adopts, repairs, promotes, or falls back to
+// empty evidence.
+//
+// Persisted envelope (defined by the Phase 1 contract, not invented here):
+// the document is the contract's own encoded bytes — the canonical record
+// {schema, householdId, revision, operations, digest} produced by
+// adopt/confirmCandidate — and the pin is the pair {revision, digest}
+// naming the last qualified committed revision, where digest is the
+// document's embedded digest. A self-consistent document digest alone is
+// not authority: the bytes are verified through the contract under the
+// expected household and compared against that independent pin, and only
+// then projected through effectiveEvidence. A qualified outcome carries
+// the effectiveEvidence projection and nothing else — never the raw
+// document or its operation history.
+//
+// Outcomes are explicit and frozen:
+//   { status: 'unconfigured' }            — the caller supplied no
+//     configuration at all (no config content, no pin, no readers). This
+//     is a caller input state, never a store state: a configured store
+//     that is absent, partial, or divergent is unavailable, below.
+//   { status: 'qualified', evidence }     — the pinned bytes verified.
+//   { status: 'unavailable', reason }     — anything else, with one of
+//     the stable REASONS codes and no evidence.
+
+const C = require('./planned-obligation-settlement-contract');
+
+const REASONS = Object.freeze([
+  'invalid-configuration', // some configuration supplied, but incomplete or malformed
+  'pin-unavailable', // the pin read itself failed (threw)
+  'pin-invalid', // the pin record is malformed (revision or digest shape)
+  'document-unavailable', // the document read itself failed (threw)
+  'document-missing', // configured, but the store returned no bytes
+  'document-malformed', // bytes are not a parseable document record
+  'household-mismatch', // the document belongs to another household
+  'revision-mismatch', // the document is behind the pinned revision
+  'document-ahead-of-pin', // the document is past the pin (incl. unpinned candidates); never promoted
+  'digest-mismatch', // same revision as the pin, different document digest
+  'document-invalid', // contract verification refused the bytes (digest/replay)
+  'document-changed', // the bytes moved between verification and projection
+]);
+
+const householdIdValid = value =>
+  typeof value === 'string' && /^household-[a-f0-9]{32}$/.test(value);
+const hashValid = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    && Object.getPrototypeOf(value) === Object.prototype;
+}
+function unavailable(reason) {
+  return Object.freeze({ status: 'unavailable', reason });
+}
+function normalizeBytes(value) {
+  if (Buffer.isBuffer(value)) return value;
+  if (value instanceof Uint8Array) return Buffer.from(value);
+  if (typeof value === 'string') return Buffer.from(value, 'utf8');
+  return null;
+}
+// The pin record may arrive as an object or as stored pin bytes (the
+// design's pin record also carries a timestamp; extra keys are not the
+// loader's concern). Only revision and digest are load-bearing.
+function parsePin(record) {
+  let value = record;
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array || typeof value === 'string') {
+    try { value = JSON.parse(normalizeBytes(value).toString('utf8')); } catch { return null; }
+  }
+  if (!isRecord(value)) return null;
+  if (!Number.isSafeInteger(value.revision) || value.revision < 0) return null;
+  if (!hashValid(value.digest)) return null;
+  return { revision: value.revision, digest: value.digest };
+}
+
+function loadSettlementEvidence(input) {
+  if (input === undefined || input === null) return Object.freeze({ status: 'unconfigured' });
+  if (!isRecord(input)) return unavailable('invalid-configuration');
+  const config = isRecord(input.config) ? input.config : null;
+  const readDocument = typeof input.readDocument === 'function' ? input.readDocument : null;
+  const readPin = typeof input.readPin === 'function' ? input.readPin : null;
+  const householdId = config && typeof config.householdId === 'string'
+    ? config.householdId : null;
+  const hasConfig = !!config && (householdId !== null || config.pin !== undefined
+    || Object.keys(config).length > 0);
+
+  // Deliberate wholly-unconfigured input is the only unconfigured outcome.
+  if (!hasConfig && !readDocument && !readPin) {
+    return Object.freeze({ status: 'unconfigured' });
+  }
+  // Anything partially supplied is a configuration defect, not absence.
+  if (!householdIdValid(householdId)) return unavailable('invalid-configuration');
+  if (!readDocument) return unavailable('invalid-configuration');
+
+  // Resolve the independently supplied pin: a live pin reader when one is
+  // injected, otherwise the static pin carried in config.
+  let pinRecord;
+  if (readPin) {
+    try { pinRecord = readPin(); } catch { return unavailable('pin-unavailable'); }
+  } else if (config.pin !== undefined) {
+    pinRecord = config.pin;
+  } else {
+    return unavailable('invalid-configuration');
+  }
+  const pin = parsePin(pinRecord);
+  if (!pin) return unavailable('pin-invalid');
+
+  // First read: the one immutable byte snapshot everything derives from.
+  let first;
+  try { first = readDocument(); } catch { return unavailable('document-unavailable'); }
+  if (first === null || first === undefined) return unavailable('document-missing');
+  const bytes = normalizeBytes(first);
+  if (bytes && bytes.length === 0) return unavailable('document-missing');
+  if (!bytes) return unavailable('document-malformed');
+
+  // Staging: parse the snapshot to attribute divergence precisely. These
+  // checks name the reason; the contract verification below is the
+  // authority — staging never qualifies anything by itself.
+  let doc;
+  try { doc = JSON.parse(bytes.toString('utf8')); } catch { return unavailable('document-malformed'); }
+  if (!isRecord(doc) || typeof doc.householdId !== 'string'
+    || !Number.isSafeInteger(doc.revision) || typeof doc.digest !== 'string') {
+    return unavailable('document-malformed');
+  }
+  if (doc.householdId !== householdId) return unavailable('household-mismatch');
+  if (doc.revision > pin.revision) return unavailable('document-ahead-of-pin');
+  if (doc.revision < pin.revision) return unavailable('revision-mismatch');
+  if (doc.digest !== pin.digest) return unavailable('digest-mismatch');
+
+  // Authoritative verification of the same bytes through the Phase 1
+  // contract, under the expected household, against the independent pin:
+  // the contract pin over these bytes must equal the pin hash derived
+  // from the supplied {revision, digest}. This refuses corrupt bytes,
+  // stale embedded digests, and replayed-invalid histories alike.
+  let verifiedPin;
+  try { verifiedPin = C.pin(bytes, householdId); } catch { return unavailable('document-invalid'); }
+  const expectedPin = C.digest({
+    householdId, revision: pin.revision, documentDigest: pin.digest,
+  });
+  if (verifiedPin !== expectedPin) return unavailable('document-invalid');
+
+  // Read consistency: the store must still hold the verified bytes before
+  // anything is projected from them. Projection uses the first snapshot.
+  let second;
+  try { second = readDocument(); } catch { return unavailable('document-changed'); }
+  const secondBytes = normalizeBytes(second);
+  if (!secondBytes || !secondBytes.equals(bytes)) return unavailable('document-changed');
+
+  // Projection: the contract replays the verified snapshot's state and
+  // publishes active evidence only. No raw document leaves the loader.
+  let evidence;
+  try {
+    evidence = C.effectiveEvidence({
+      householdId: doc.householdId, revision: doc.revision, operations: doc.operations,
+    });
+  } catch { return unavailable('document-invalid'); }
+  return Object.freeze({ status: 'qualified', evidence });
+}
+
+module.exports = { loadSettlementEvidence, REASONS };
