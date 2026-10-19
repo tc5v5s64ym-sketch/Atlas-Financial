@@ -246,6 +246,67 @@ async function conservation() {
     [[savedId, false]],
     'a refund arriving after the payment requalifies the joint bound: claim withheld');
 }
+async function conservationRepairRound() {
+  // Repair round (Systems BLOCKING 6256681905 on the first ATLAS-044 head):
+  // two ways the first joint bound still failed — a reversal-blind gross
+  // bound, and a retained claim that vanished when its record broke.
+  const withRefund = (x, refundAmount) => {
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 80004,
+      amount: -refundAmount, category_name: 'Refund', payee: 'Invented grocer refund' });
+    x.data.plan.cardPurchaseCoverage.refunds.push({ confirmed: true,
+      purchaseRef: fixture.ref(x, 80001), refundRef: fixture.ref(x, 80004) });
+    return x;
+  };
+  const pairAmount = (x, amount) => {
+    x.payload.transactions[1].amount = amount; x.payload.transactions[2].amount = -amount;
+    return x;
+  };
+  // Finding 2: refund 30 + payment 80 whose own confirmed reversal returns
+  // 30 nets covered 50 — a prefix-conserved valid history stays qualified.
+  const reversalLegs = x => {
+    x.payload.transactions.push(
+      { id: 80402, account_id: 3004, date: x.asOf, amount: 30, currency: 'cad',
+        category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false },
+      { id: 80403, account_id: 3001, date: x.asOf, amount: -30, currency: 'cad',
+        category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false });
+    x.data.plan.cardPurchaseCoverage.reversals.push({ confirmed: true,
+      paymentId: 'decision-' + 'a'.repeat(32),
+      cardDebitRef: fixture.ref(x, 80402), cashCreditRef: fixture.ref(x, 80403),
+      allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: 30 }], otherAmount: 0 });
+    return x;
+  };
+  // The controller mints opaque record ids at prepare time, so a reversal
+  // naming its payment is exercised at the Forecast validator seam the
+  // controller itself calls (the coverage suite pins the same history at
+  // the publication surface with a stable payment id).
+  const nettedX = ledger(reversalLegs(withRefund(seed(), 30)));
+  eq(F.validateCardPaymentDecision({ ...observed(nettedX), record: record(nettedX, 80),
+    retainedRecords: [] }).status, 'ready',
+    'payment 80 + own reversal 30 + refund 30 validates: net claims are 80');
+  // Unqualified reversal evidence creates no capacity: drop the cash leg
+  // and the same candidate is judged on its gross claim again.
+  const unqualifiedX = reversalLegs(withRefund(seed(), 30));
+  unqualifiedX.payload.transactions = unqualifiedX.payload.transactions.filter(tx => tx.id !== 80403);
+  eq(F.validateCardPaymentDecision({ ...observed(ledger(unqualifiedX)),
+    record: record(unqualifiedX, 80), retainedRecords: [] }).status, 'unavailable',
+    'a reversal with a missing leg releases nothing: gross 80 + refund 30 is rejected');
+  // Finding 1: a retained confirmed claim whose debit leg is gone does not
+  // release its cents. Retained 30 + refund 30 leave exactly 20 of room.
+  const kept = setup(ledger(pairAmount(withRefund(seed(), 30), 30)));
+  await save(kept, record(kept.x, 30));
+  const broken = pairAmount(withRefund(seed(), 30), 30);
+  pair(broken, 80102, 80103, 50); pair(broken, 80202, 80203, 20); pair(broken, 80302, 80303, 20.01);
+  broken.payload.transactions = broken.payload.transactions.filter(tx => tx.id !== 80002);
+  kept.change(ledger(broken));
+  eq((await kept.controller.input()).plan.cardPurchaseCoverage.payments[0].confirmed, false,
+    'the broken retained payment is itself withheld');
+  eq(await prepare(kept, choice(broken, 80102, 80103, 80001, 50)), { status: 'unavailable' },
+    'retained 30 + refund 30 + candidate 50 totals 110: rejected');
+  eq(await prepare(kept, choice(broken, 80302, 80303, 80001, 20.01)), { status: 'unavailable' },
+    'one cent past the retained room is rejected');
+  eq((await prepare(kept, choice(broken, 80202, 80203, 80001, 20))).status, 'prepared',
+    'candidate 20 fits retained 30 + refund 30 exactly');
+}
 async function retainedLifecycle() {
   for (const missing of ['credit', 'debit']) for (const overlap of missing === 'credit' ? ['debit-and-purchase', 'debit-only', 'purchase-only'] : ['credit']) {
     const s = setup(); await save(s, record(s.x));
@@ -536,6 +597,7 @@ async function main() {
   await retainedLifecycle();
   await corrections();
   await conservation();
+  await conservationRepairRound();
   console.log('PASS private card decision foundation: ' + checks + ' synthetic provider/controller checks');
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });

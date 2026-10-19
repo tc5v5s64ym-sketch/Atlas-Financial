@@ -10469,7 +10469,30 @@
       row.audit.push({ kind: 'confirmed-refund', ref: tx.coverageRef, amount: amount / 100 });
       used.add(tx.coverageRef);
     }
-    const paymentIds = new Set(), accepted = new Map();
+    const paymentIds = new Set(), accepted = new Map(), heldIds = new Set();
+    // ATLAS-044 repair round (Systems BLOCKING 6256681905): the payment
+    // bound is judged on a shadow ledger, not the mutating covered counter.
+    // The shadow (a) credits a payment only with the release from its own
+    // intrinsically qualified confirmed reversals, so a prefix-conserved
+    // history that nets inside the bound stays qualified, and (b) keeps
+    // the declared claim of a confirmed record that cannot apply, so a
+    // broken retained record cannot silently free its cents for a later
+    // candidate. Pass order and the real counters are unchanged; whenever
+    // every claim applies, the shadow converges to the same end state.
+    const boundCovered = new Map();
+    for (const [ref, row] of purchases) boundCovered.set(ref, savingsCents(row.covered));
+    const declaredLegCounts = new Map();
+    const countDeclaredLeg = ref => {
+      if (typeof ref === 'string' && ref) declaredLegCounts.set(ref, (declaredLegCounts.get(ref) || 0) + 1);
+    };
+    for (const record of Array.isArray(records) ? records : []) {
+      if (record?.confirmed !== true) continue;
+      countDeclaredLeg(record.debitRef); countDeclaredLeg(record.creditRef);
+    }
+    for (const reversal of policy && Array.isArray(policy.reversals) ? policy.reversals : []) {
+      if (reversal?.confirmed !== true) continue;
+      countDeclaredLeg(reversal.cardDebitRef); countDeclaredLeg(reversal.cashCreditRef);
+    }
     const postedPurchase = ref => {
       const tx = byRef.get(ref);
       // Current rows require explicit posted status. The producer's optional
@@ -10495,19 +10518,75 @@
         && (!other || ['prior-debt', 'required-payment', 'other'].includes(record.otherPurpose));
       for (const part of parts) {
         const row = purchases.get(part && part.purchaseRef), cents = part && savingsCents(part.amount);
-        // Joint conservation (ATLAS-044): refunds and payment allocations
-        // share one bound — covered + refunded + this allocation may not
-        // exceed the purchase amount. An overallocating record is rejected
-        // whole, never clamped, reclassified or absorbed.
         if (!row || !postedPurchase(part.purchaseRef) || row.accountId !== account || cents == null || cents <= 0
-          || split.has(part.purchaseRef) || row.date > credit?.date
-          || savingsCents(row.covered) + savingsCents(row.refunded) + cents > savingsCents(row.amount)) valid = false;
+          || split.has(part.purchaseRef) || row.date > credit?.date) valid = false;
         else split.set(part.purchaseRef, cents);
+      }
+      // The release this record may claim from its own confirmed reversals.
+      // A reversal releases only when it is intrinsically qualified under
+      // the same predicates the reversal pass below applies (legs, dates,
+      // cumulative split and other bounds, exact total, unambiguous legs);
+      // unqualified reversal evidence creates no capacity.
+      const release = new Map();
+      if (valid) {
+        const reversedSoFar = new Map(); let otherReleased = 0;
+        for (const reversal of policy && Array.isArray(policy.reversals) ? policy.reversals : []) {
+          if (!reversal || reversal.confirmed !== true || reversal.paymentId !== record.id) continue;
+          const cardDebit = checkedRow(reversal.cardDebitRef, 1, account);
+          const cashCredit = checkedRow(reversal.cashCreditRef, -1, 'chequing-a');
+          const rAmount = cardDebit && money(cardDebit);
+          const rOther = savingsCents(reversal.otherAmount);
+          const rSplit = new Map();
+          let rValid = cardDebit && cashCredit && paymentLike(cardDebit) && paymentLike(cashCredit)
+            && rAmount === -money(cashCredit) && cashCredit.accountRole === 'household-cash'
+            && cardDebit.date >= credit.date && cashCredit.date >= debit.date
+            && (declaredLegCounts.get(reversal.cardDebitRef) || 0) === 1
+            && (declaredLegCounts.get(reversal.cashCreditRef) || 0) === 1
+            && rOther != null && otherReleased + rOther <= other;
+          for (const part of Array.isArray(reversal.allocations) ? reversal.allocations : []) {
+            const cents = part && savingsCents(part.amount), ref = part && part.purchaseRef;
+            if (cents == null || cents <= 0 || rSplit.has(ref)
+              || (reversedSoFar.get(ref) || 0) + cents > (split.get(ref) || 0)) rValid = false;
+            else rSplit.set(ref, cents);
+          }
+          if (!rValid || Array.from(rSplit.values()).reduce((a, b) => a + b, 0) + rOther !== rAmount) continue;
+          for (const [ref, cents] of rSplit) {
+            reversedSoFar.set(ref, (reversedSoFar.get(ref) || 0) + cents);
+            release.set(ref, (release.get(ref) || 0) + cents);
+          }
+          otherReleased += rOther;
+        }
+      }
+      // Joint conservation (ATLAS-044): refunds and payment allocations
+      // share one bound — covered + refunded + this allocation, net of the
+      // record's own qualified reversal release, may not exceed the
+      // purchase amount. An overallocating record is rejected whole, never
+      // clamped, reclassified or absorbed.
+      if (valid) for (const [ref, cents] of split) {
+        const row = purchases.get(ref);
+        if ((boundCovered.get(ref) || 0) + savingsCents(row.refunded)
+          + cents - (release.get(ref) || 0) > savingsCents(row.amount)) valid = false;
       }
       const backfill = Array.from(split.values()).reduce((a,b) => a+b, 0);
       if (!valid || backfill + other !== amount) {
         if (paymentIds.has(record?.id)) conflictingPaymentIds?.add(record.id);
+        // A rejected confirmed record keeps its declared claim in the
+        // shadow: its cents are not freed for later records in this
+        // reconciliation (a missing leg does not release retained cents).
+        if (record && record.confirmed === true && record.id
+          && !paymentIds.has(record.id) && !heldIds.has(record.id)) {
+          heldIds.add(record.id);
+          for (const part of parts) {
+            const row = purchases.get(part && part.purchaseRef), cents = part && savingsCents(part.amount);
+            if (row && cents != null && cents > 0) {
+              boundCovered.set(part.purchaseRef, (boundCovered.get(part.purchaseRef) || 0) + cents);
+            }
+          }
+        }
         issue('coverage-payment-intent-or-pair-unconfirmed', record && record.creditRef); continue;
+      }
+      for (const [ref, cents] of split) {
+        boundCovered.set(ref, (boundCovered.get(ref) || 0) + cents - (release.get(ref) || 0));
       }
       paymentIds.add(record.id); used.add(record.creditRef); used.add(record.debitRef);
       const covered = [];
@@ -10692,7 +10771,16 @@
       const amount = purchase && savingsCents(purchase.amount);
       const openingCovered = purchase?.audit.find(row => row.kind === 'confirmed-opening')?.amount || 0;
       const initial = savingsCents(openingCovered);
-      if (group.invalid || amount == null || initial == null || group.total > amount - initial) {
+      // Declared payment claims share the bound with refunds that actually
+      // applied: the cohort total must fit beside opening cover and the
+      // purchase's refunded cents, not the gross amount alone. Reversals
+      // that actually applied against accepted payments net out of the
+      // declared total; unqualified reversal declarations change nothing.
+      const refunded = purchase && savingsCents(purchase.refunded);
+      let appliedReversed = 0;
+      for (const payment of accepted.values()) appliedReversed += payment.reversed.get(ref) || 0;
+      if (group.invalid || amount == null || initial == null || refunded == null
+        || group.total - appliedReversed > amount - initial - refunded) {
         conflict(group.refs, 'coverage-allocation-conflict');
       }
     }

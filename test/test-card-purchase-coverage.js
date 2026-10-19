@@ -294,4 +294,66 @@ function refundClaim(x, amount, id = 80006) {
     'opening covered 50 + refunded 30 + allocated 1 exceeds the 80 purchase');
 }
 
+{ // Repair round, Finding 2: a confirmed reversal relaxes its own payment.
+  // Refund 30 + payment 80 + confirmed reversal 30 nets covered 50 +
+  // refunded 30 = 80: the valid history publishes, it is not rejected at
+  // the payment's gross claim before the reversal can release it.
+  const x = refundClaim(fixture('backfill'), 30);
+  fixture.confirm(x, 'joint-rev', 80002, 80003, [[80001, 80]]);
+  x.payload.transactions.push(
+    { id: 80010, account_id: 3004, date: x.asOf, amount: 30, currency: 'cad',
+      category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false },
+    { id: 80011, account_id: 3001, date: x.asOf, amount: -30, currency: 'cad',
+      category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false });
+  x.data.plan.cardPurchaseCoverage.reversals.push({ confirmed: true, paymentId: 'joint-rev',
+    cardDebitRef: fixture.ref(x, 80010), cashCreditRef: fixture.ref(x, 80011),
+    allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: 30 }], otherAmount: 0 });
+  const pub = run(jointLedger(x)).advice.cardPurchaseCoverage;
+  assert.equal(pub.status, 'ready', 'net covered 50 + refunded 30 publishes');
+  assert.equal(pub.purchases[0].covered, 50);
+  assert.equal(pub.purchases[0].refunded, 30);
+  assert.equal(pub.purchases[0].remaining, 0);
+  assert.equal(pub.reservedCash, 0);
+  // The same history with the reversal's cash leg missing gains no
+  // release: the gross claim is judged and rejected.
+  const broken = refundClaim(fixture('backfill'), 30);
+  fixture.confirm(broken, 'joint-rev-broken', 80002, 80003, [[80001, 80]]);
+  broken.payload.transactions.push(
+    { id: 80010, account_id: 3004, date: broken.asOf, amount: 30, currency: 'cad',
+      category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false });
+  broken.data.plan.cardPurchaseCoverage.reversals.push({ confirmed: true, paymentId: 'joint-rev-broken',
+    cardDebitRef: fixture.ref(broken, 80010), cashCreditRef: 'pc-missing-cash-leg',
+    allocations: [{ purchaseRef: fixture.ref(broken, 80001), amount: 30 }], otherAmount: 0 });
+  assert.equal(run(jointLedger(broken)).advice.cardPurchaseCoverage.status, 'unavailable',
+    'unqualified reversal evidence creates no capacity');
+}
+{ // Repair round, Finding 1: a confirmed record that cannot apply (its
+  // debit leg is gone) still holds its declared claim against the bound.
+  // Retained 30 + refund 30 leave exactly 20 for a later candidate.
+  const build = candidate => {
+    const x = refundClaim(fixture('backfill'), 30);
+    x.payload.transactions.push({ id: 80007, account_id: 3004, date: x.asOf, amount: -30,
+      currency: 'cad', category_name: 'Credit Card Payment', payee: 'Invented retained credit', is_pending: false });
+    x.payload.transactions.push(
+      { ...x.payload.transactions[1], id: 80008, amount: candidate },
+      { ...x.payload.transactions[2], id: 80009, amount: -candidate });
+    const missingDebitRef = fixture.ref(x, 80002);
+    x.data.plan.cardPurchaseCoverage.payments.push({ id: 'joint-retained', confirmed: true,
+      debitRef: missingDebitRef, creditRef: fixture.ref(x, 80007),
+      allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: 30 }], otherAmount: 0, otherPurpose: null });
+    fixture.confirm(x, 'joint-candidate', 80008, 80009, [[80001, candidate]]);
+    x.payload.transactions = x.payload.transactions.filter(t => t.id !== 80002);
+    return run(jointLedger(x)).advice.cardPurchaseCoverage;
+  };
+  const over = build(50);
+  assert.equal(over.status, 'unavailable');
+  assert.equal(over.purchases[0].covered, 0,
+    'retained 30 + refund 30 reject candidate 50 before it can apply');
+  assert.equal(over.purchases[0].refunded, 30);
+  const fits = build(20);
+  assert.equal(fits.status, 'unavailable', 'the broken retained record still withholds publication');
+  assert.equal(fits.purchases[0].covered, 20, 'candidate 20 fits the retained bound exactly');
+  assert.equal(fits.purchases[0].remaining, 30);
+}
+
 console.log('PASS independent observed cash/debt/spending ledger: purchase, partial and combined backfill, pending, intent/currency unknown and directed replacement');
