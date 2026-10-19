@@ -16004,15 +16004,30 @@
     for (const c of plan.commitments || []) {
       if ((opts.disabled || []).indexOf(c.id) >= 0) continue;
       if (commitmentSettledBy(c, asOf)) continue;
-      // Rows with no cash date or unpriced rows are on the master plan.
-      // They are not smeared across the 91-day window as if they had a due day.
-      if (!commitmentCashDate(c) || c.amount == null) continue;
+      // Rows with no cash date are on the master plan; they are not
+      // smeared across the 91-day window as if they had a due day.
+      if (!commitmentCashDate(c)) continue;
+      // Settlement uncertainty is judged BEFORE the absent-amount
+      // exclusion below (repair round 4, mirroring the round-3 gate and
+      // action-list ordering): the exclusion excuses an incumbent
+      // no-evidence range, but a valid ranged commitment carrying an
+      // effective link has an uncertain remaining under v1, and letting
+      // the exclusion swallow the judgment made the linked range vanish
+      // from the aggregates — the sinking publication printed the known
+      // members' subtotal as the total and a dated range left its
+      // category figures numeric. The judgment runs for exactly the rows
+      // this loop can judge — a fixed amount judged on the amount, a
+      // range judged as a range — and only when a qualifying link
+      // actually judges the row; an unlinked row, a row whose links are
+      // not yet effective, and every row when no evidence was supplied
+      // falls through to exactly its incumbent treatment.
       // A linked payment reduces the future dated draw this figure stands
       // for. Uncertain relief neither smears a figure that is not known
       // nor drops the row (repair round 3): the row keeps its identity
       // with an unknown amount, and the aggregate it feeds is withheld
       // below rather than published as the known items' subtotal.
-      const judged = settlementRowRelief(reliefIndex, c, savingsCents(c.amount));
+      const judged = settlementRowRelief(reliefIndex, c,
+        c.amount == null ? null : savingsCents(c.amount));
       if (judged && judged.uncertain) {
         if (c.sinkingFund) {
           sinking.unknown = true;
@@ -16025,6 +16040,9 @@
         }
         continue;
       }
+      // Unpriced rows are on the master plan: with no judgment above,
+      // a ranged row keeps exactly its incumbent exclusion here.
+      if (c.amount == null) continue;
       const perMonth = (judged ? judged.remainingCents / 100 : c.amount) / monthsInWindow;
       if (c.sinkingFund) {
         sinking.total += perMonth;

@@ -608,3 +608,94 @@ test('current-period bills: the uncertain fallback honours the disabled exclusio
   assert.ok(namedRow && namedRow.remaining === null,
     'control: the same row without the represented name is the uncertain fallback row');
 });
+
+// --- Repair round 4 (Systems Review BLOCKING 6268532833 on head 9b449ad8) ---
+// Round 3 taught the budget breakdown to retain an uncertain row, but its
+// commitment loop still applied the incumbent absent-amount exclusion
+// BEFORE the relief judgment: a valid ranged commitment has no fixed
+// amount, so a linked range never reached the uncertainty handling and
+// vanished from the aggregates — the sinking publication printed the
+// known members' subtotal as the total, and a dated range left its
+// category figures numeric. The pins below assert the judgment-first
+// ordering at both budget shapes, with the incumbent range exclusion
+// preserved exactly when evidence is absent or not yet effective.
+
+test('budget breakdown: a linked ranged sinking commitment is retained as uncertain and withholds the sinking total', () => {
+  const rangedSinking = () => {
+    const x = fx.fixture();
+    const row = x.plan.commitments.find(c => c.id === 'near');
+    delete row.amount; row.amountMin = 50; row.amountMax = 70;
+    return x;
+  };
+  const months = 91 / (365.25 / 12);
+  // Effective 25 link against the ranged near commitment; the known far
+  // commitment (170, fixed) remains.
+  const eff = buildEvidence([linkCmd({})]);
+  const bd = budgetOf(rangedSinking(), { settlementEvidence: eff });
+  const retained = bd.sinkingItems.find(i => i.label === 'Invented first club cost');
+  assert.ok(retained, 'the linked ranged row keeps its identity in the sinking items');
+  assert.equal(retained.amount, null, 'its amount is unknown — not zero, not dropped');
+  const farItem = bd.sinkingItems.find(i => i.label === 'Invented second club cost');
+  assert.ok(farItem, 'the known member stays in the sinking items');
+  assert.equal(Math.round(farItem.amount * 100), Math.round(170 / months * 100),
+    'the known member keeps its own figure beside the unknown one');
+  assert.equal(bd.sinkingMonthly, null,
+    'the sinking aggregate is withheld, not the known member\u2019s subtotal');
+  assert.equal(typeof bd.datedMonthly, 'number',
+    'the independent dated aggregate stays published');
+  // Preservation: with NO evidence the incumbent range exclusion is
+  // exact — the ranged row is not a sinking item and the total is the
+  // known member alone, exactly as before Phase 2.
+  const plain = budgetOf(rangedSinking(), {});
+  assert.ok(!plain.sinkingItems.some(i => i.label === 'Invented first club cost'),
+    'no evidence: the ranged row stays excluded');
+  assert.equal(Math.round(plain.sinkingMonthly * 100), Math.round(170 / months * 100),
+    'no evidence: the sinking total is the known member alone');
+  // And a link not yet effective at the breakdown's asOf excludes the
+  // row exactly as no evidence does.
+  const futureEff = buildEvidence([linkCmd({ evidenceDate: '2026-10-06', asOf: '2026-10-06' })]);
+  const future = budgetOf(rangedSinking(), { settlementEvidence: futureEff });
+  assert.ok(!future.sinkingItems.some(i => i.label === 'Invented first club cost'),
+    'not yet effective: the ranged row stays excluded');
+  assert.equal(Math.round(future.sinkingMonthly * 100), Math.round(170 / months * 100),
+    'not yet effective: the sinking total is unchanged');
+});
+
+test('budget breakdown: a linked ranged dated commitment withholds its category dated and planned figures', () => {
+  const rangedDated = () => {
+    const x = fx.fixture();
+    x.plan.commitments.push({ id: 'market', label: 'Invented market restock', date: '2026-10-24',
+      amountMin: 100, amountMax: 140, confidence: 'confirmed', adjustable: false, budgetCategory: 'groceries' });
+    return x;
+  };
+  const months = 91 / (365.25 / 12);
+  const eff = buildEvidence([linkCmd({ goalId: 'commitment:market' })]);
+  const bd = budgetOf(rangedDated(), { settlementEvidence: eff });
+  const g = bd.categories.find(c => c.id === 'groceries');
+  const retained = g.datedItems.find(i => i.label === 'Invented market restock');
+  assert.ok(retained, 'the linked ranged row keeps its identity in the category items');
+  assert.equal(retained.amount, null, 'its amount is unknown — not zero, not dropped');
+  assert.equal(g.dated, null, 'the category dated aggregate is withheld');
+  assert.equal(bd.datedMonthly, null, 'the dated publication is withheld, not a partial total');
+  assert.equal(g.planned, null, 'the planned figure withholds with the dated amount it nets off');
+  assert.equal(typeof g.historical, 'number', 'the independent historical basis stays known');
+  assert.equal(Math.round(bd.sinkingMonthly * 100), Math.round(230 / months * 100),
+    'the independent sinking aggregate stays published in full');
+  // Preservation: with NO evidence the incumbent range exclusion is
+  // exact — no dated item, and the category figures stay numeric.
+  const plain = budgetOf(rangedDated(), {});
+  const gp = plain.categories.find(c => c.id === 'groceries');
+  assert.ok(!gp.datedItems.some(i => i.label === 'Invented market restock'),
+    'no evidence: the ranged row stays excluded');
+  assert.equal(gp.dated, 0, 'no evidence: the category dated total is its known zero');
+  assert.equal(plain.datedMonthly, 0, 'no evidence: the dated publication stays numeric');
+  assert.equal(typeof gp.planned, 'number', 'no evidence: the planned figure stays numeric');
+  // And a link not yet effective at the breakdown's asOf changes nothing.
+  const futureEff = buildEvidence([linkCmd({ goalId: 'commitment:market', evidenceDate: '2026-10-06', asOf: '2026-10-06' })]);
+  const future = budgetOf(rangedDated(), { settlementEvidence: futureEff });
+  const gf = future.categories.find(c => c.id === 'groceries');
+  assert.ok(!gf.datedItems.some(i => i.label === 'Invented market restock'),
+    'not yet effective: the ranged row stays excluded');
+  assert.equal(gf.dated, 0, 'not yet effective: the category dated total is unchanged');
+  assert.equal(future.datedMonthly, 0, 'not yet effective: the dated publication stays numeric');
+});
