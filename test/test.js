@@ -76,6 +76,7 @@ const suites = [
   ['explicit private comparison save from complete loaded inputs only', 'test-private-comparison-download.js'],
   ['inactive private planned-input correction contract and synthetic validation', 'test-planned-input-contract.js'],
   ['inactive planned-obligation settlement evidence contract and synthetic validation', 'test-planned-obligation-settlement-contract.js'],
+  ['settlement evidence relief through Forecast: remaining, cash events and backing (Phase 2)', 'test-savings-settlement-phase2.js'],
   ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
