@@ -14968,6 +14968,12 @@
             if (tx.pending !== false || tx.savingsPostingEvidence !== 'posted'
                 || tx.pendingPostedAmbiguous || tx.pendingPostedDuplicate || tx.contradictoryEvidence
                 || isInternalHouseholdTransfer(tx) && !movements.byTxId.has(String(tx.id))) return null;
+            // A qualified split parent is counted through its children,
+            // never in addition to them (the incumbent packet-scoped rule,
+            // as in postedAccountMovements and the daily-funding bridge).
+            // The skip sits after every strict check above, so a pending,
+            // unpaired or otherwise defective parent still poisons the stock.
+            if (skipSplitParent(tx, packet)) continue;
             flow -= cents(tx.amount);
             if (!Number.isSafeInteger(flow)) return null;
           }
@@ -21475,8 +21481,13 @@
     const snapshot = establishPaydaySnapshot(plan, cycle.start, opts);
     if (!snapshot) return unknown('No original payday cash observation supports the cycle bridge.');
     let bridgedCash = savingsCents(snapshot.opening, true);
+    const bridgePacket = { transactions: Array.from(unique.values()) };
     for (const tx of unique.values()) if (tx.date >= cycle.start && tx.date <= day && tx.pending !== true
-        && HOUSEHOLD_CHEQUING_IDS.includes(String(tx.atlasAccountId || tx.accountId || tx.account))) {
+        && HOUSEHOLD_CHEQUING_IDS.includes(String(tx.atlasAccountId || tx.accountId || tx.account))
+        // Same qualified parent exclusion as postedAccountMovements: a
+        // split group parent is skipped only when matching children
+        // exist in the packet; otherwise the parent counts itself.
+        && !skipSplitParent(tx, bridgePacket)) {
       bridgedCash -= savingsCents(tx.amount, true);
     }
     if (!Number.isSafeInteger(bridgedCash) || bridgedCash !== savingsCents(startingCashAmount(plan), true)) {
