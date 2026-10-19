@@ -389,4 +389,84 @@ function refundClaim(x, amount, id = 80006) {
   assert.equal(legit.purchases[0].remaining, 30);
 }
 
+{ // Reversal cohort (Atlas ruling on the order-dependence reproduction):
+  // one cohort qualification governs release capacity and publication. A
+  // payment's confirmed reversals whose valid parts total MORE than the
+  // split are conflicted as a whole: no first-fit subset may reduce
+  // published covered cents, in any array order.
+  const reversalPair = (x, debit, credit, amount) => {
+    x.payload.transactions.push(
+      { id: debit, account_id: 3004, date: x.asOf, amount, currency: 'cad',
+        category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false },
+      { id: credit, account_id: 3001, date: x.asOf, amount: -amount, currency: 'cad',
+        category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false });
+    return { confirmed: true, paymentId: 'cohort-case',
+      cardDebitRef: fixture.ref(x, debit), cashCreditRef: fixture.ref(x, credit),
+      allocations: [{ purchaseRef: fixture.ref(x, 80001), amount }], otherAmount: 0 };
+  };
+  const build = (allocation, otherAmount, amounts) => {
+    const x = refundClaim(fixture('backfill'), 30);
+    const pairTotal = allocation + otherAmount;
+    x.payload.transactions[1].amount = pairTotal; x.payload.transactions[2].amount = -pairTotal;
+    x.data.plan.cardPurchaseCoverage.payments.push({ id: 'cohort-case', confirmed: true,
+      debitRef: fixture.ref(x, 80002), creditRef: fixture.ref(x, 80003),
+      allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: allocation }],
+      otherAmount, otherPurpose: otherAmount ? 'required-payment' : null });
+    amounts.forEach((amount, i) =>
+      x.data.plan.cardPurchaseCoverage.reversals.push(reversalPair(x, 80010 + i * 2, 80011 + i * 2, amount)));
+    return run(jointLedger(x)).advice.cardPurchaseCoverage;
+  };
+  for (const amounts of [[30, 60], [60, 30], [20, 70], [70, 20]]) {
+    const cov = build(80, 0, amounts);
+    assert.equal(cov.purchases[0].covered, 0,
+      'cohort ' + amounts.join('+') + ' is conflicted as a whole: the payment gains no release and does not reconcile');
+    assert.equal(cov.purchases[0].refunded, 30);
+    assert.equal(cov.purchases[0].remaining, 50);
+  }
+  { // A parent independently acceptable without reversal credit publishes
+    // gross: allocation 50 + refund 30 meets the bound; the conflicted
+    // cohort reduces nothing.
+    const cov = build(50, 30, [30, 60]);
+    assert.equal(cov.purchases[0].covered, 50,
+      'independently acceptable parent publishes covered 50: conflicted reversals make no publication mutation');
+    assert.equal(cov.purchases[0].remaining, 0);
+  }
+  { // Valid multiple reversals within the split still apply in full.
+    const cov = build(80, 0, [30, 20]);
+    assert.equal(cov.purchases[0].covered, 30, 'cohort 30+20 within the split publishes covered 30');
+    assert.equal(cov.purchases[0].remaining, 20);
+  }
+  { // Cohort total exactly equal to the split applies in full.
+    const cov = build(80, 0, [30, 50]);
+    assert.equal(cov.purchases[0].covered, 0, 'cohort 30+50 equal to the split publishes covered 0');
+    assert.equal(cov.purchases[0].remaining, 50);
+  }
+  { // Distinct-parent isolation: payment A's conflicted cohort neither
+    // applies nor touches payment B's valid reversal on the same purchase.
+    const x = fixture('backfill');
+    x.data.plan.cardPurchaseCoverage.payments.push(
+      { id: 'cohort-a', confirmed: true,
+        debitRef: fixture.ref(x, 80002), creditRef: fixture.ref(x, 80003),
+        allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: 40 }],
+        otherAmount: 0, otherPurpose: null });
+    x.payload.transactions[1].amount = 40; x.payload.transactions[2].amount = -40;
+    x.payload.transactions.push(
+      { ...x.payload.transactions[1], id: 80020, amount: 40 },
+      { ...x.payload.transactions[2], id: 80021, amount: -40 });
+    x.data.plan.cardPurchaseCoverage.payments.push(
+      { id: 'cohort-b', confirmed: true,
+        debitRef: fixture.ref(x, 80020), creditRef: fixture.ref(x, 80021),
+        allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: 40 }],
+        otherAmount: 0, otherPurpose: null });
+    const revA = reversalPair(x, 80010, 80011, 30); revA.paymentId = 'cohort-a';
+    const revA2 = reversalPair(x, 80012, 80013, 60); revA2.paymentId = 'cohort-a';
+    const revB = reversalPair(x, 80022, 80023, 20); revB.paymentId = 'cohort-b';
+    x.data.plan.cardPurchaseCoverage.reversals.push(revA, revA2, revB);
+    const cov = run(jointLedger(x)).advice.cardPurchaseCoverage;
+    assert.equal(cov.purchases[0].covered, 60,
+      'A publishes its gross 40 (conflicted cohort applies nothing); B publishes 40 net of its valid reversal 20');
+    assert.equal(cov.purchases[0].remaining, 20);
+  }
+}
+
 console.log('PASS independent observed cash/debt/spending ledger: purchase, partial and combined backfill, pending, intent/currency unknown and directed replacement');

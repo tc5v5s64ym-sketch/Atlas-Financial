@@ -306,6 +306,47 @@ async function conservationRepairRound() {
   eq(F.validateCardPaymentDecision({ ...observed(ledger(capX)),
     record: capControl, retainedRecords: [] }).status, 'ready',
     'allocation 80 + other 30 is the legitimate representation and validates');
+  // Reversal cohort (Atlas ruling on the order-dependence reproduction):
+  // one cohort qualification governs release capacity and publication. A
+  // payment's confirmed reversals whose valid parts total MORE than the
+  // split they reverse are conflicted as a whole — no first-fit subset
+  // releases capacity, in any array order.
+  const cohortLegs = (x, amounts) => {
+    amounts.forEach((amount, i) => {
+      const debit = 80502 + i * 100, credit = 80503 + i * 100;
+      x.payload.transactions.push(
+        { id: debit, account_id: 3004, date: x.asOf, amount, currency: 'cad',
+          category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false },
+        { id: credit, account_id: 3001, date: x.asOf, amount: -amount, currency: 'cad',
+          category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false });
+      x.data.plan.cardPurchaseCoverage.reversals.push({ confirmed: true,
+        paymentId: 'decision-' + 'a'.repeat(32),
+        cardDebitRef: fixture.ref(x, debit), cashCreditRef: fixture.ref(x, credit),
+        allocations: [{ purchaseRef: fixture.ref(x, 80001), amount }], otherAmount: 0 });
+    });
+    return x;
+  };
+  for (const amounts of [[30, 60], [60, 30], [20, 70], [70, 20]]) {
+    const cx = ledger(cohortLegs(withRefund(seed(), 30), amounts));
+    eq(F.validateCardPaymentDecision({ ...observed(cx), record: record(cx, 80),
+      retainedRecords: [] }).status, 'unavailable',
+      'reversal cohort ' + amounts.join('+') + ' exceeds the 80 split: conflicted as a whole, no first-fit release in any order');
+  }
+  for (const amounts of [[30, 20], [30, 50]]) {
+    const cx = ledger(cohortLegs(withRefund(seed(), 30), amounts));
+    eq(F.validateCardPaymentDecision({ ...observed(cx), record: record(cx, 80),
+      retainedRecords: [] }).status, 'ready',
+      'reversal cohort ' + amounts.join('+') + ' within the split (incl. equality) releases in full');
+  }
+  { // A parent independently acceptable without reversal credit stays
+    // acceptable: the conflicted cohort contributes nothing and poisons
+    // nothing. Pair 80 = allocation 50 + otherAmount 30; refund 30.
+    const cx = ledger(cohortLegs(withRefund(seed(), 30), [30, 60]));
+    const independent = { ...record(cx, 50), otherAmount: 30, otherPurpose: 'required-payment' };
+    eq(F.validateCardPaymentDecision({ ...observed(cx), record: independent,
+      retainedRecords: [] }).status, 'ready',
+      'allocation 50 + refund 30 meets the bound without reversal credit; the conflicted cohort changes nothing');
+  }
   // Finding 1: a retained confirmed claim whose debit leg is gone does not
   // release its cents. Retained 30 + refund 30 leave exactly 20 of room.
   const kept = setup(ledger(pairAmount(withRefund(seed(), 30), 30)));

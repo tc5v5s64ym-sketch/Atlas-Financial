@@ -10493,6 +10493,56 @@
       if (reversal?.confirmed !== true) continue;
       countDeclaredLeg(reversal.cardDebitRef); countDeclaredLeg(reversal.cashCreditRef);
     }
+    // Reversal cohort qualification (ATLAS-044, Atlas ruling on the
+    // order-dependence reproduction): ONE qualification shared by the
+    // payment bound's release credit and the publication reversal pass, so
+    // the two agree in every array order. A reversal is first judged
+    // statically — confirmed, its payment's legs pair it, dates follow the
+    // payment, its declared legs are unambiguous, its parts are positive,
+    // unique and inside the payment's split, and parts plus otherAmount
+    // equal its pair amount exactly — with NO cumulative first-fit bound.
+    // The cohort is the set of statically valid reversals of one payment:
+    // when their parts for a purchase total more than the split (or their
+    // otherAmount total exceeds the payment's other), that cohort is
+    // conflicted as a whole and NONE of its reversals releases capacity or
+    // reduces published covered cents; an unconflicted cohort applies in
+    // full. Returns a Map from each qualified reversal record to its split.
+    const reversalCohort = (paymentId, splitMap, otherTotal, account, creditDate, cashDate) => {
+      const statics = [];
+      for (const reversal of policy && Array.isArray(policy.reversals) ? policy.reversals : []) {
+        if (!reversal || reversal.confirmed !== true || reversal.paymentId !== paymentId) continue;
+        const cardDebit = checkedRow(reversal.cardDebitRef, 1, account);
+        const cashCredit = checkedRow(reversal.cashCreditRef, -1, 'chequing-a');
+        const rAmount = cardDebit && money(cardDebit);
+        const rOther = savingsCents(reversal.otherAmount);
+        const rSplit = new Map();
+        let rValid = cardDebit && cashCredit && paymentLike(cardDebit) && paymentLike(cashCredit)
+          && rAmount === -money(cashCredit) && cashCredit.accountRole === 'household-cash'
+          && cardDebit.date >= creditDate && cashCredit.date >= cashDate
+          && (declaredLegCounts.get(reversal.cardDebitRef) || 0) === 1
+          && (declaredLegCounts.get(reversal.cashCreditRef) || 0) === 1
+          && rOther != null;
+        for (const part of Array.isArray(reversal.allocations) ? reversal.allocations : []) {
+          const cents = part && savingsCents(part.amount), ref = part && part.purchaseRef;
+          if (cents == null || cents <= 0 || rSplit.has(ref) || !splitMap.has(ref)) rValid = false;
+          else rSplit.set(ref, cents);
+        }
+        if (!rValid || Array.from(rSplit.values()).reduce((a, b) => a + b, 0) + rOther !== rAmount) continue;
+        statics.push({ reversal, split: rSplit, other: rOther });
+      }
+      const totals = new Map(); let otherSum = 0;
+      for (const entry of statics) {
+        for (const [ref, cents] of entry.split) totals.set(ref, (totals.get(ref) || 0) + cents);
+        otherSum += entry.other;
+      }
+      const qualified = new Map();
+      for (const entry of statics) {
+        let ok = otherSum <= otherTotal;
+        for (const ref of entry.split.keys()) if (totals.get(ref) > splitMap.get(ref)) ok = false;
+        if (ok) qualified.set(entry.reversal, entry.split);
+      }
+      return qualified;
+    };
     const postedPurchase = ref => {
       const tx = byRef.get(ref);
       // Current rows require explicit posted status. The producer's optional
@@ -10529,39 +10579,15 @@
           || cents > savingsCents(row.amount)) valid = false;
         else split.set(part.purchaseRef, cents);
       }
-      // The release this record may claim from its own confirmed reversals.
-      // A reversal releases only when it is intrinsically qualified under
-      // the same predicates the reversal pass below applies (legs, dates,
-      // cumulative split and other bounds, exact total, unambiguous legs);
-      // unqualified reversal evidence creates no capacity.
+      // The release this record may claim from its own confirmed reversals:
+      // exactly the qualified members of its reversal cohort (see
+      // reversalCohort above) — a conflicted cohort releases nothing, an
+      // unconflicted cohort releases in full, in any array order, and the
+      // publication pass below applies the same qualification.
       const release = new Map();
       if (valid) {
-        const reversedSoFar = new Map(); let otherReleased = 0;
-        for (const reversal of policy && Array.isArray(policy.reversals) ? policy.reversals : []) {
-          if (!reversal || reversal.confirmed !== true || reversal.paymentId !== record.id) continue;
-          const cardDebit = checkedRow(reversal.cardDebitRef, 1, account);
-          const cashCredit = checkedRow(reversal.cashCreditRef, -1, 'chequing-a');
-          const rAmount = cardDebit && money(cardDebit);
-          const rOther = savingsCents(reversal.otherAmount);
-          const rSplit = new Map();
-          let rValid = cardDebit && cashCredit && paymentLike(cardDebit) && paymentLike(cashCredit)
-            && rAmount === -money(cashCredit) && cashCredit.accountRole === 'household-cash'
-            && cardDebit.date >= credit.date && cashCredit.date >= debit.date
-            && (declaredLegCounts.get(reversal.cardDebitRef) || 0) === 1
-            && (declaredLegCounts.get(reversal.cashCreditRef) || 0) === 1
-            && rOther != null && otherReleased + rOther <= other;
-          for (const part of Array.isArray(reversal.allocations) ? reversal.allocations : []) {
-            const cents = part && savingsCents(part.amount), ref = part && part.purchaseRef;
-            if (cents == null || cents <= 0 || rSplit.has(ref)
-              || (reversedSoFar.get(ref) || 0) + cents > (split.get(ref) || 0)) rValid = false;
-            else rSplit.set(ref, cents);
-          }
-          if (!rValid || Array.from(rSplit.values()).reduce((a, b) => a + b, 0) + rOther !== rAmount) continue;
-          for (const [ref, cents] of rSplit) {
-            reversedSoFar.set(ref, (reversedSoFar.get(ref) || 0) + cents);
-            release.set(ref, (release.get(ref) || 0) + cents);
-          }
-          otherReleased += rOther;
+        for (const rSplit of reversalCohort(record.id, split, other, account, credit.date, debit.date).values()) {
+          for (const [ref, cents] of rSplit) release.set(ref, (release.get(ref) || 0) + cents);
         }
       }
       // Joint conservation (ATLAS-044): refunds and payment allocations
@@ -10613,24 +10639,18 @@
       paymentLinks?.set(record.creditRef, { index: payments.length - 1,
         refs: [record.debitRef, record.creditRef, ...split.keys()] });
     }
+    const cohortByPayment = new Map();
     for (const reversal of policy && Array.isArray(policy.reversals) ? policy.reversals : []) {
       const payment = accepted.get(reversal && reversal.paymentId);
       const cardDebit = reversal && checkedRow(reversal.cardDebitRef, 1, payment && payment.account);
-      const cashCredit = reversal && checkedRow(reversal.cashCreditRef, -1, 'chequing-a');
-      const amount = cardDebit && money(cardDebit), split = new Map();
+      const amount = cardDebit && money(cardDebit);
       const other = reversal && savingsCents(reversal.otherAmount);
-      let valid = reversal && reversal.confirmed === true && payment && cardDebit && cashCredit
-        && paymentLike(cardDebit) && paymentLike(cashCredit) && amount === -money(cashCredit)
-        && cashCredit.accountRole === 'household-cash'
-        && cardDebit.date >= payment.date && cashCredit.date >= payment.cashDate
-        && other != null && other + payment.otherReversed <= payment.other;
-      for (const part of reversal && Array.isArray(reversal.allocations) ? reversal.allocations : []) {
-        const cents = part && savingsCents(part.amount), ref = part && part.purchaseRef;
-        if (!payment || cents == null || cents <= 0 || split.has(ref)
-          || cents + (payment.reversed.get(ref) || 0) > (payment.split.get(ref) || 0)) valid = false;
-        else split.set(ref, cents);
+      if (payment && !cohortByPayment.has(reversal.paymentId)) {
+        cohortByPayment.set(reversal.paymentId, reversalCohort(reversal.paymentId,
+          payment.split, payment.other, payment.account, payment.date, payment.cashDate));
       }
-      if (!valid || Array.from(split.values()).reduce((a,b) => a+b, 0) + other !== amount) {
+      const split = payment ? cohortByPayment.get(reversal.paymentId).get(reversal) : undefined;
+      if (!split || Array.from(split.values()).reduce((a, b) => a + b, 0) + other !== amount) {
         if (reversal?.cardDebitRef) conflictingReversalRefs?.add(reversal.cardDebitRef);
         issue('coverage-reversal-unconfirmed'); continue;
       }
