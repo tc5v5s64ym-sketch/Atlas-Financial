@@ -177,7 +177,7 @@ const linksOf = (body, goalId) =>
   let body = adopt();
   body = record(body, 1, link('commitment:a', tx(1), evidence(), 10000));
   body = record(body, 2, reverse(op(1), tx(9), refundEvidence(), 3000));
-  body = record(body, 3, reverse(op(1), tx(10), refundEvidence({ date: '2030-03-12' }), 7000));
+  body = record(body, 3, reverse(op(1), tx(10), refundEvidence({ date: '2030-03-12', cents: 7000 }), 7000));
   const entry = linksOf(body, 'commitment:a')[0];
   eq(entry.reversals.map(r => r.cents), [3000, 7000], 'partial reversals accumulate against the link');
   eq(entry.reversals[0].counterTxRef, tx(9), 'each reversal names its exact counter-entry');
@@ -216,6 +216,49 @@ const linksOf = (body, goalId) =>
     'the pending identity can never be linked after lineage is proven');
   refuses(() => prepare(body, 5, lineage(tx(5), tx(1), C.digest(evidence()))),
     'lineage for one pending identity is recorded once');
+}
+
+// --- Review round: a reversal is bounded by its own counter-entry (C1) -----
+{
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence(), 10000));
+  refuses(() => prepare(body, 2, reverse(op(1), tx(9), refundEvidence(), 7000)),
+    'a reversal may not exceed the cents its counter-entry actually carries');
+  refuses(() => prepare(body, 2, reverse(op(1), tx(9), refundEvidence(), 4001)),
+    'one cent beyond the counter-entry is refused');
+  body = record(body, 2, reverse(op(1), tx(9), refundEvidence(), 4000));
+  eq(linksOf(body, 'commitment:a')[0].reversals[0].cents, 4000,
+    'a reversal at exactly the counter-entry amount stands');
+}
+
+// --- Review round: retraction releases only unreversed cents (C2) ----------
+{
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence(), 10000));
+  body = record(body, 2, reverse(op(1), tx(9), refundEvidence({ cents: 3000 }), 3000));
+  body = record(body, 3, retract(op(1)));
+  refuses(() => prepare(body, 4, link('commitment:b', tx(1), evidence(), 10000)),
+    'reversed cents stay consumed after retraction — no double capacity');
+  body = record(body, 4, link('commitment:b', tx(1), evidence(), 7000));
+  eq(linksOf(body, 'commitment:b')[0].assignedCents, 7000,
+    'the net unreversed remainder can be linked again');
+  refuses(() => prepare(body, 5, link('commitment:c', tx(1), evidence(), 1)),
+    'reversed 3000 plus relinked 7000 exhausts the identity');
+}
+
+// --- Review round: one identity, one role (C3) ------------------------------
+{
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence(), 5000));
+  body = record(body, 2, link('commitment:b', tx(2), evidence(), 5000));
+  refuses(() => prepare(body, 3, reverse(op(2), tx(1), refundEvidence({ cents: 1000 }), 1000)),
+    'an identity already holding the payment role cannot be a counter-entry');
+  let lin = adopt();
+  lin = record(lin, 1, link('commitment:a', tx(1), evidence(), 5000));
+  lin = record(lin, 2, lineage(tx(5), tx(1), C.digest(evidence())));
+  lin = record(lin, 3, link('commitment:b', tx(2), evidence(), 5000));
+  refuses(() => prepare(lin, 4, reverse(op(3), tx(5), refundEvidence({ cents: 1000 }), 1000)),
+    'a proven pending identity cannot be a counter-entry');
 }
 
 // --- Deferred semantics stay unrepresentable -------------------------------

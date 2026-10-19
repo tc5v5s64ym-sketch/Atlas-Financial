@@ -144,11 +144,17 @@ function applyCommand(ledger, command, operationId) {
     if (!target || !target.active) fail();
     target.active = false;
     target.retractedBy = operationId;
-    ledger.budgets.get(target.txRef).usedCents -= target.assignedCents;
+    // Only the unreversed part of the claim is released. Cents already
+    // reversed against this link stay consumed for the identity: the
+    // counter-entry is a separate fact and the reversed portion of the
+    // original payment cannot become fresh positive capacity.
+    ledger.budgets.get(target.txRef).usedCents -= target.assignedCents - target.reversedCents;
   } else if (command.kind === 'reverse') {
     const target = ledger.links.get(command.targetOperationId);
     if (!target || !target.active || command.counterTxRef === target.txRef
       || ledger.counters.has(command.counterTxRef)
+      || ledger.budgets.has(command.counterTxRef) || ledger.pending.has(command.counterTxRef)
+      || command.cents > command.counterEvidence.cents
       || target.reversedCents + command.cents > target.assignedCents) fail();
     target.reversedCents += command.cents;
     target.reversals.push({
