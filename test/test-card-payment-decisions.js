@@ -347,6 +347,61 @@ async function conservationRepairRound() {
       retainedRecords: [] }).status, 'ready',
       'allocation 50 + refund 30 meets the bound without reversal credit; the conflicted cohort changes nothing');
   }
+  // Whole-payment cohort (Atlas ruling on the multi-purchase probe): the
+  // cohort is the parent payment's WHOLE reversal cohort across every
+  // purchase it allocates. Parent pair 160 = A80 + B80; reversals A30,
+  // A60 (A subtotal 90 over its split) and B20 — B20 is disqualified with
+  // the rest, so a refund of 20 on B leaves B claiming 100 and the parent
+  // is rejected. Without the refund the parent qualifies on gross claims.
+  const multiSetup = (specs, refundOnB) => {
+    const x = seed();
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 80005,
+      amount: 80, date: '2026-09-19' });
+    x.payload.transactions[1].amount = 160; x.payload.transactions[2].amount = -160;
+    if (refundOnB) {
+      x.payload.transactions.push({ ...x.payload.transactions[0], id: 80006,
+        amount: -20, category_name: 'Refund', payee: 'Invented grocer refund' });
+      x.data.plan.cardPurchaseCoverage.refunds.push({ confirmed: true,
+        purchaseRef: fixture.ref(x, 80005), refundRef: fixture.ref(x, 80006) });
+    }
+    specs.forEach(([purchaseId, amount], i) => {
+      const debit = 80702 + i * 100, credit = 80703 + i * 100;
+      x.payload.transactions.push(
+        { id: debit, account_id: 3004, date: x.asOf, amount, currency: 'cad',
+          category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false },
+        { id: credit, account_id: 3001, date: x.asOf, amount: -amount, currency: 'cad',
+          category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false });
+      x.data.plan.cardPurchaseCoverage.reversals.push({ confirmed: true,
+        paymentId: 'decision-' + 'a'.repeat(32),
+        cardDebitRef: fixture.ref(x, debit), cashCreditRef: fixture.ref(x, credit),
+        allocations: [{ purchaseRef: fixture.ref(x, purchaseId), amount }], otherAmount: 0 });
+    });
+    return ledger(x);
+  };
+  const multiRecord = x => ({ id: 'decision-' + 'a'.repeat(32), confirmed: true,
+    debitRef: fixture.ref(x, 80002), creditRef: fixture.ref(x, 80003),
+    allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: 80 },
+      { purchaseRef: fixture.ref(x, 80005), amount: 80 }],
+    otherAmount: 0, otherPurpose: null });
+  const multiSpecs = [[80001, 30], [80001, 60], [80005, 20]];
+  for (const specs of [multiSpecs, [multiSpecs[2], multiSpecs[0], multiSpecs[1]]]) {
+    const cx = multiSetup(specs, true);
+    eq(F.validateCardPaymentDecision({ ...observed(cx), record: multiRecord(cx),
+      retainedRecords: [] }).status, 'unavailable',
+      'whole-payment cohort conflicted by A: B20 releases nothing, so refund 20 + allocation 80 overclaims B');
+  }
+  {
+    const cx = multiSetup(multiSpecs, false);
+    eq(F.validateCardPaymentDecision({ ...observed(cx), record: multiRecord(cx),
+      retainedRecords: [] }).status, 'ready',
+      'without the refund the parent qualifies on gross claims; the disqualified cohort is irrelevant to capacity');
+  }
+  {
+    const cx = multiSetup([[80001, 30], [80005, 20]], true);
+    eq(F.validateCardPaymentDecision({ ...observed(cx), record: multiRecord(cx),
+      retainedRecords: [] }).status, 'ready',
+      'a valid multi-purchase cohort releases on both purchases (B: refund 20 + allocation 80 - release 20 = 80)');
+  }
   // Finding 1: a retained confirmed claim whose debit leg is gone does not
   // release its cents. Retained 30 + refund 30 leave exactly 20 of room.
   const kept = setup(ledger(pairAmount(withRefund(seed(), 30), 30)));

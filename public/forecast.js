@@ -10535,12 +10535,15 @@
         for (const [ref, cents] of entry.split) totals.set(ref, (totals.get(ref) || 0) + cents);
         otherSum += entry.other;
       }
+      // The cohort is the payment's WHOLE reversal cohort: one overclaimed
+      // split — or an overclaimed otherAmount total — disqualifies every
+      // reversal of this payment, including reversals for a disjoint
+      // purchase whose own subtotal fits. Only a separate payment forms a
+      // separate cohort.
+      let conflicted = otherSum > otherTotal;
+      for (const [ref, total] of totals) if (total > splitMap.get(ref)) conflicted = true;
       const qualified = new Map();
-      for (const entry of statics) {
-        let ok = otherSum <= otherTotal;
-        for (const ref of entry.split.keys()) if (totals.get(ref) > splitMap.get(ref)) ok = false;
-        if (ok) qualified.set(entry.reversal, entry.split);
-      }
+      if (!conflicted) for (const entry of statics) qualified.set(entry.reversal, entry.split);
       return qualified;
     };
     const postedPurchase = ref => {

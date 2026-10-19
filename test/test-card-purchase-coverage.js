@@ -469,4 +469,83 @@ function refundClaim(x, amount, id = 80006) {
   }
 }
 
+{ // Whole-payment cohort (Atlas ruling on the multi-purchase probe): the
+  // cohort is the PARENT PAYMENT's whole reversal cohort — one overclaimed
+  // split disqualifies every reversal of that payment, including a
+  // reversal for a disjoint purchase whose own subtotal fits. A separate
+  // payment is a separate cohort and is untouched.
+  const revLeg = (x, debit, credit, amount, paymentId, purchaseId) => {
+    x.payload.transactions.push(
+      { id: debit, account_id: 3004, date: x.asOf, amount, currency: 'cad',
+        category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false },
+      { id: credit, account_id: 3001, date: x.asOf, amount: -amount, currency: 'cad',
+        category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false });
+    return { confirmed: true, paymentId,
+      cardDebitRef: fixture.ref(x, debit), cashCreditRef: fixture.ref(x, credit),
+      allocations: [{ purchaseRef: fixture.ref(x, purchaseId), amount }], otherAmount: 0 };
+  };
+  const buildMulti = (specs, refund) => {
+    const x = fixture('backfill');
+    x.payload.transactions.push(
+      { ...x.payload.transactions[0], id: 80005, amount: 80, date: '2026-09-19' },
+      { ...x.payload.transactions[0], id: 80006, amount: 80, date: '2026-09-18' });
+    x.payload.transactions[1].amount = 160; x.payload.transactions[2].amount = -160;
+    x.data.plan.cardPurchaseCoverage.payments.push({ id: 'multi-case', confirmed: true,
+      debitRef: fixture.ref(x, 80002), creditRef: fixture.ref(x, 80003),
+      allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: 80 },
+        { purchaseRef: fixture.ref(x, 80005), amount: 80 }],
+      otherAmount: 0, otherPurpose: null });
+    x.payload.transactions.push(
+      { ...x.payload.transactions[1], id: 80020, amount: 40 },
+      { ...x.payload.transactions[2], id: 80021, amount: -40 });
+    x.data.plan.cardPurchaseCoverage.payments.push({ id: 'separate-case', confirmed: true,
+      debitRef: fixture.ref(x, 80020), creditRef: fixture.ref(x, 80021),
+      allocations: [{ purchaseRef: fixture.ref(x, 80006), amount: 40 }],
+      otherAmount: 0, otherPurpose: null });
+    if (refund) {
+      x.payload.transactions.push({ id: 80007, account_id: 3004, date: x.asOf, amount: -20,
+        currency: 'cad', category_name: 'Refund', payee: 'Invented refund', is_pending: false });
+      x.data.plan.cardPurchaseCoverage.refunds.push({ confirmed: true,
+        purchaseRef: fixture.ref(x, 80005), refundRef: fixture.ref(x, 80007) });
+    }
+    specs.forEach(([purchaseId, amount], i) =>
+      x.data.plan.cardPurchaseCoverage.reversals.push(
+        revLeg(x, 80010 + i * 2, 80011 + i * 2, amount, 'multi-case', purchaseId)));
+    x.data.plan.cardPurchaseCoverage.reversals.push(
+      revLeg(x, 80030, 80031, 10, 'separate-case', 80006));
+    return run(jointLedger(x)).advice.cardPurchaseCoverage;
+  };
+  const rowFor = (cov, date) => cov.purchases.find(p => p.date === date);
+  const A = '2026-09-20', B = '2026-09-19', C = '2026-09-18';
+  const cohortSpecs = [[80001, 30], [80001, 60], [80005, 20]];
+  const permutations = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]
+    .map(order => order.map(i => cohortSpecs[i]));
+  for (const specs of permutations) {
+    const cov = buildMulti(specs, true);
+    assert.equal(rowFor(cov, A).covered, 0, 'refund case: the whole parent cohort is disqualified, A publishes nothing');
+    assert.equal(rowFor(cov, A).remaining, 80);
+    assert.equal(rowFor(cov, B).covered, 0, 'refund case: B20 belongs to the conflicted parent cohort and applies nothing');
+    assert.equal(rowFor(cov, B).refunded, 20);
+    assert.equal(rowFor(cov, B).remaining, 60);
+    assert.equal(rowFor(cov, C).covered, 30, 'the separate payment is a separate cohort: its reversal 10 still applies');
+    assert.equal(rowFor(cov, C).remaining, 50);
+  }
+  { // Without the refund the parent qualifies on gross claims, and the
+    // disqualified cohort still changes nothing.
+    const cov = buildMulti(cohortSpecs, false);
+    assert.equal(rowFor(cov, A).covered, 80, 'no-refund case: A publishes gross 80, cohort reversal or not');
+    assert.equal(rowFor(cov, B).covered, 80, 'no-refund case: B publishes gross 80 — B20 does not apply');
+    assert.equal(rowFor(cov, B).remaining, 0);
+    assert.equal(rowFor(cov, C).covered, 30);
+  }
+  { // A valid multi-purchase cohort (every purchase total within its
+    // split) still applies in full on both purchases.
+    const cov = buildMulti([[80001, 30], [80005, 20]], true);
+    assert.equal(rowFor(cov, A).covered, 50, 'valid cohort: A reversal 30 applies');
+    assert.equal(rowFor(cov, B).covered, 60, 'valid cohort: B reversal 20 applies beside refund 20');
+    assert.equal(rowFor(cov, B).refunded, 20);
+    assert.equal(rowFor(cov, B).remaining, 0);
+  }
+}
+
 console.log('PASS independent observed cash/debt/spending ledger: purchase, partial and combined backfill, pending, intent/currency unknown and directed replacement');
