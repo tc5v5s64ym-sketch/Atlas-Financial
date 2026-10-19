@@ -356,4 +356,37 @@ function refundClaim(x, amount, id = 80006) {
   assert.equal(fits.purchases[0].remaining, 30);
 }
 
+{ // Allocation cap (Atlas ruling on the d1c5432e boundary question): an
+  // allocation of 110 against the 80 purchase is invalid even though its
+  // qualified reversal 30 would net it to 80 — a reversal acts on a
+  // previously allocated amount. The legitimate representation of the
+  // same pair (allocation 80 + otherAmount 30) publishes covered 50.
+  const build = (allocation, otherAmount) => {
+    const x = fixture('backfill');
+    x.payload.transactions[1].amount = 110; x.payload.transactions[2].amount = -110;
+    x.payload.transactions.push(
+      { id: 80010, account_id: 3004, date: x.asOf, amount: 30, currency: 'cad',
+        category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false },
+      { id: 80011, account_id: 3001, date: x.asOf, amount: -30, currency: 'cad',
+        category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false });
+    x.data.plan.cardPurchaseCoverage.payments.push({ id: 'cap-case', confirmed: true,
+      debitRef: fixture.ref(x, 80002), creditRef: fixture.ref(x, 80003),
+      allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: allocation }],
+      otherAmount, otherPurpose: otherAmount ? 'required-payment' : null });
+    x.data.plan.cardPurchaseCoverage.reversals.push({ confirmed: true, paymentId: 'cap-case',
+      cardDebitRef: fixture.ref(x, 80010), cashCreditRef: fixture.ref(x, 80011),
+      allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: 30 }], otherAmount: 0 });
+    return run(jointLedger(x)).advice.cardPurchaseCoverage;
+  };
+  const over = build(110, 0);
+  assert.equal(over.status, 'unavailable');
+  assert.equal(over.purchases[0].covered, 0,
+    'allocation 110 against the 80 purchase never applies, reversal or not');
+  assert.equal(over.purchases[0].remaining, 80);
+  const legit = build(80, 30);
+  assert.equal(legit.purchases[0].covered, 50,
+    'allocation 80 + other 30 with reversal 30 publishes covered 50');
+  assert.equal(legit.purchases[0].remaining, 30);
+}
+
 console.log('PASS independent observed cash/debt/spending ledger: purchase, partial and combined backfill, pending, intent/currency unknown and directed replacement');

@@ -10518,8 +10518,15 @@
         && (!other || ['prior-debt', 'required-payment', 'other'].includes(record.otherPurpose));
       for (const part of parts) {
         const row = purchases.get(part && part.purchaseRef), cents = part && savingsCents(part.amount);
+        // Per-allocation gross cap (Atlas ruling on the repair-round
+        // boundary question): a single allocation may not exceed the
+        // purchase itself, with no reversal credit — a reversal acts on
+        // a previously allocated amount, and excess pair money belongs
+        // in otherAmount. The net shadow bound below governs cumulative
+        // claims; this cap governs the allocation's own legitimacy.
         if (!row || !postedPurchase(part.purchaseRef) || row.accountId !== account || cents == null || cents <= 0
-          || split.has(part.purchaseRef) || row.date > credit?.date) valid = false;
+          || split.has(part.purchaseRef) || row.date > credit?.date
+          || cents > savingsCents(row.amount)) valid = false;
         else split.set(part.purchaseRef, cents);
       }
       // The release this record may claim from its own confirmed reversals.

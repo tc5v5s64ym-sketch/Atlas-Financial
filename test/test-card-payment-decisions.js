@@ -290,6 +290,22 @@ async function conservationRepairRound() {
   eq(F.validateCardPaymentDecision({ ...observed(ledger(unqualifiedX)),
     record: record(unqualifiedX, 80), retainedRecords: [] }).status, 'unavailable',
     'a reversal with a missing leg releases nothing: gross 80 + refund 30 is rejected');
+  // Allocation cap (Atlas ruling on the d1c5432e boundary question): an
+  // allocation may not exceed the purchase itself, with no reversal
+  // credit — a reversal acts on a previously allocated amount, and excess
+  // pair money belongs in otherAmount. Pair 110, allocation 110, reversal
+  // 30 is rejected; allocation 80 + other 30 with the same reversal is
+  // the legitimate representation and validates.
+  const capX = seed();
+  capX.payload.transactions[1].amount = 110; capX.payload.transactions[2].amount = -110;
+  reversalLegs(capX);
+  eq(F.validateCardPaymentDecision({ ...observed(ledger(capX)),
+    record: record(capX, 110), retainedRecords: [] }).status, 'unavailable',
+    'allocation 110 against the 80 purchase is rejected even with a qualified reversal 30');
+  const capControl = { ...record(capX, 80), otherAmount: 30, otherPurpose: 'required-payment' };
+  eq(F.validateCardPaymentDecision({ ...observed(ledger(capX)),
+    record: capControl, retainedRecords: [] }).status, 'ready',
+    'allocation 80 + other 30 is the legitimate representation and validates');
   // Finding 1: a retained confirmed claim whose debit leg is gone does not
   // release its cents. Retained 30 + refund 30 leave exactly 20 of room.
   const kept = setup(ledger(pairAmount(withRefund(seed(), 30), 30)));
