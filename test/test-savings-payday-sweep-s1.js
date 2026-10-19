@@ -1320,3 +1320,92 @@ test('embedded outbound: midperiod stock without a boundary withholds; it never 
   assert.equal(viewAt(a, '2026-10-16').paydaySweep, null, 'dependent paydaySweep stays unknown');
   assert.equal(viewAt(a, '2026-10-30').opening, null, 'dependent opening stays unknown');
 });
+
+// Split-parent qualification in the S1 Bills-stock loop (PR #653 extension,
+// Atlas ruling 2026-10-18): the loop that reconciles the payday-snapshot
+// basis against current cash must exclude a qualified split parent exactly
+// like the savingsDailyFunding bridge and postedAccountMovements do —
+// counting parent plus children misses the closure by the parent amount
+// and withholds every future opening, sweep and closing. The skip sits
+// AFTER the loop's strict validation, duplicate, pending and
+// unpaired-transfer checks, so a defective parent still poisons the stock.
+const s1Row = (id, amount, extra = {}) => ({ id, date: '2026-10-04', amount, currency: 'CAD',
+  pending: false, savingsPostingEvidence: 'posted', atlasAccountId: 'chequing-a',
+  accountRole: 'household-cash', displayedPayee: 'Invented split', ...extra });
+function s1Shape(rows, cashA = 60) {
+  const x = input();
+  x.plan.startingCash.breakdown[0].value = cashA;
+  x.opts.currentPeriodActuals.transactions.push(...rows);
+  return x;
+}
+function downstream(a) {
+  const starts = ['2026-10-16', '2026-10-30', '2026-11-13', '2026-11-27', '2026-12-11'];
+  const views = starts.map(start => {
+    const v = (a.payPeriodViews || []).find(p => p.start === start);
+    return { start, opening: v?.opening ?? null, sweep: v?.paydaySweep ?? null };
+  });
+  const closings = starts.map(start => {
+    const view = a.savingsFunding.periodViews.find(p => p.start === start);
+    const pub = F.savingsFundingPublication(a.savingsFunding,
+      { asOf: a.savingsFunding.asOf, advice: a, periodId: view.id });
+    const c = pub.forecastClosing;
+    return { start, status: c?.status ?? 'ready', stock: c?.stock ?? null, contribution: c?.contribution ?? null };
+  });
+  return { views, closings };
+}
+const childOnlyRows = () => [s1Row('sp-1a', 12, { parentId: 'sp-1' }), s1Row('sp-1b', 8, { parentId: 'sp-1' })];
+const splitRows = () => [s1Row('sp-1', 20, { isGroup: true }), ...childOnlyRows()];
+function assertWithheld(a, why) {
+  const d = downstream(a);
+  assert.equal(d.views[0].opening, null, why + ': future opening withheld');
+  assert.equal(d.views[0].sweep, null, why + ': future sweep withheld');
+  assert.ok(d.closings.every(c => c.status === 'unavailable'), why + ': every closing unavailable');
+}
+
+test('S1 split: parent+children downstream equals child-only (openings, sweeps, closings)', () => {
+  const child = downstream(advice(s1Shape(childOnlyRows())));
+  assert.deepEqual(child.views[0], { start: '2026-10-16', opening: 60, sweep: 1060 },
+    'child-only control: the conserved 20 spend reconciles the S1 closure');
+  assert.deepEqual(child.closings.map(c => c.stock), [119, 1179, 2179, 2179, 679],
+    'child-only control: closings ready at the hand-derived stocks');
+  assert.deepEqual(downstream(advice(s1Shape(splitRows()))), child,
+    'a qualified split parent is excluded from the S1 flow: parent+children publishes exactly the child-only downstream');
+});
+
+test('S1 split: parent-only still counts the parent once', () => {
+  const child = downstream(advice(s1Shape(childOnlyRows())));
+  assert.deepEqual(downstream(advice(s1Shape([s1Row('sp-1', 20)]))), child,
+    'a split parent with no children in the packet is an ordinary movement');
+});
+
+test('S1 split: contradictory duplicate parent still withholds', () => {
+  const rows = [...splitRows(), s1Row('sp-1', 21, { isGroup: true })];
+  assertWithheld(advice(s1Shape(rows)), 'contradictory duplicate parent rows');
+});
+
+test('S1 split: pending parent still withholds (pending check stays ahead of the skip)', () => {
+  const rows = [s1Row('sp-1', 20, { isGroup: true, pending: true }), ...childOnlyRows()];
+  assertWithheld(advice(s1Shape(rows)), 'pending split parent');
+});
+
+test('S1 split: unpaired transfer parent still withholds (pairing check stays ahead of the skip)', () => {
+  const rows = [s1Row('sp-1', 20, { isGroup: true, kindHint: 'transfer',
+    originalMerchant: 'SP TFR-TO Invented', excludeFromTotals: true }), ...childOnlyRows()];
+  assertWithheld(advice(s1Shape(rows)), 'unpaired transfer parent');
+});
+
+test('S1 split: outside-window children still exclude the parent (packet-scoped rule)', () => {
+  // Children dated before the window start, parent inside it: the
+  // incumbent packet-scoped qualification excludes the parent, so the S1
+  // closure cannot reconcile on the parent alone and withholds — the same
+  // changed behaviour the bridge pin records, not a parity case.
+  const rows = [s1Row('sp-1', 20, { isGroup: true }),
+    s1Row('sp-1a', 12, { parentId: 'sp-1', date: '2026-10-01' }),
+    s1Row('sp-1b', 8, { parentId: 'sp-1', date: '2026-10-01' })];
+  assertWithheld(advice(s1Shape(rows)), 'outside-window children');
+});
+
+test('S1 split: genuine cash mismatch still withholds', () => {
+  assertWithheld(advice(s1Shape(childOnlyRows(), 55)),
+    'cash 55 against a reconciled flow of 60');
+});

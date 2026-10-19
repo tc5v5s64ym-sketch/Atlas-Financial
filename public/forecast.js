@@ -14968,6 +14968,12 @@
             if (tx.pending !== false || tx.savingsPostingEvidence !== 'posted'
                 || tx.pendingPostedAmbiguous || tx.pendingPostedDuplicate || tx.contradictoryEvidence
                 || isInternalHouseholdTransfer(tx) && !movements.byTxId.has(String(tx.id))) return null;
+            // A qualified split parent is counted through its children,
+            // never in addition to them (the incumbent packet-scoped rule,
+            // as in postedAccountMovements and the daily-funding bridge).
+            // The skip sits after every strict check above, so a pending,
+            // unpaired or otherwise defective parent still poisons the stock.
+            if (skipSplitParent(tx, packet)) continue;
             flow -= cents(tx.amount);
             if (!Number.isSafeInteger(flow)) return null;
           }
