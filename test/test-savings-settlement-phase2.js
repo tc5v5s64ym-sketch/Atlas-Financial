@@ -309,7 +309,8 @@ test('backed allocation stays coherent: need and floor move together under relie
 // explicitly-null remainingMax. The pins below assert the publication
 // level: the scheduled-amount gate names the unknown, the cash walk
 // withholds, the timeline withholds with its reason, the budget breakdown
-// drops the row, and the current-period action list keeps the commitment
+// withholds the aggregates the uncertain row feeds while retaining its
+// identity, and the current-period action list keeps the commitment
 // visible with an unknown remaining — for BOTH uncertainty sources.
 function budgetOf(x, opts) {
   return F.budgetBreakdown(x.plan, { periods: { ytd: { months: 3, spending: [] } } },
@@ -355,14 +356,17 @@ function assertUncertainEverywhere(eff) {
   assert.equal(tl.status, 'unavailable', 'the timeline withholds instead of resurrecting the original cost');
   assert.deepEqual(tl.goals, [], 'no timeline goal publishes a resurrected requirement');
   assert.match(tl.reason, /uncertain|unknown/, 'the withholding publishes its reason');
-  // The budget breakdown drops the uncertain row: only the unaffected
-  // member feeds the sinking-fund figures.
+  // The budget breakdown retains the uncertain row's identity and
+  // withholds the aggregate it feeds: the sinking total is unknown,
+  // never the unaffected member's subtotal presented as the total.
+  // Independent figures (the dated aggregate, which no sinking item
+  // composes) stay published.
   const bd = budgetOf(gx, { settlementEvidence: eff });
-  const months = 91 / (365.25 / 12);
-  assert.equal(Math.round(bd.sinkingMonthly * 100), Math.round(170 / months * 100),
-    'only the unaffected member feeds the sinking total');
-  assert.ok(!bd.sinkingItems.some(i => i.label === 'Invented first club cost'),
-    'the uncertain row is absent from the sinking items');
+  const retained = bd.sinkingItems.find(i => i.label === 'Invented first club cost');
+  assert.ok(retained, 'the uncertain row keeps its identity in the sinking items');
+  assert.equal(retained.amount, null, 'its amount is unknown — not zero, not dropped');
+  assert.equal(bd.sinkingMonthly, null, 'the sinking aggregate is withheld, not a partial total');
+  assert.equal(typeof bd.datedMonthly, 'number', 'the independent dated aggregate stays published');
 }
 
 test('over-assignment: unknown remaining withholds the walk, the timeline and the budget figures', () => {
@@ -486,4 +490,121 @@ test('an uncertain sibling does not disturb a known commitment\u2019s goal or se
   const seq = F.fundingSequence(x.plan, x.asOf, { settlementEvidence: eff });
   assert.equal(seq.find(e => e.id === 'near').need, 60, 'the known need stands');
   assert.equal(seq.find(e => e.id === 'far').need, null, 'only the uncertain need withholds');
+});
+
+// --- Repair round 3 (Systems Review BLOCKING 6267789614 on head 521dbff4) ---
+// Round 2 withheld the walk, the timeline and the action list for FINITE
+// fixed-cost uncertainty, but three gaps remained: the budget breakdown
+// still dropped the uncertain row and published the known subtotal as
+// the aggregate (and a round-2 pin encoded that defect — corrected in
+// assertUncertainEverywhere above: the test was wrong, not the contract);
+// a valid RANGED commitment with an effective link bypassed the cash
+// gate through the incumbent range exemption and vanished from the
+// action list on its absent fixed amount; and the action-list fallback
+// resurrected DISABLED commitments expansion had omitted. The pins below
+// assert the approved uncertainty contract at each surface, with the
+// no-evidence behaviour of ranges and disabled rows preserved exactly.
+
+test('budget breakdown: an uncertain dated commitment withholds the dated aggregate and keeps its identity', () => {
+  const x = fx.fixture();
+  x.plan.commitments.push({ id: 'hall', label: 'Invented hall rental', date: '2026-10-24',
+    amount: 120, confidence: 'confirmed', adjustable: false, budgetCategory: 'groceries' });
+  const months = 91 / (365.25 / 12);
+  const control = budgetOf(x, {});
+  const gControl = control.categories.find(c => c.id === 'groceries');
+  assert.equal(Math.round(control.datedMonthly * 100), Math.round(120 / months * 100),
+    'control: the dated aggregate is the known dated draw');
+  assert.equal(Math.round(gControl.dated * 100), Math.round(120 / months * 100),
+    'control: the category dated total is known');
+  const eff = buildEvidence([linkCmd({ goalId: 'commitment:hall', assignedCents: 15000, evidenceCents: 20000 })]);
+  const bd = budgetOf(x, { settlementEvidence: eff });
+  const g = bd.categories.find(c => c.id === 'groceries');
+  const retained = g.datedItems.find(i => i.label === 'Invented hall rental');
+  assert.ok(retained, 'the uncertain dated row keeps its identity in the category items');
+  assert.equal(retained.amount, null, 'its amount is unknown — not zero, not dropped');
+  assert.equal(g.dated, null, 'the category dated aggregate is withheld');
+  assert.equal(bd.datedMonthly, null, 'the dated publication is withheld, not a partial total');
+  assert.equal(g.planned, null, 'the planned figure withholds with the dated amount it nets off');
+  assert.equal(Math.round(bd.sinkingMonthly * 100), Math.round(230 / months * 100),
+    'the independent sinking aggregate stays published in full');
+});
+
+test('ranged commitment with an effective link: the walk withholds and the action list retains the item', () => {
+  const rangedInput = () => {
+    const x = periodInput();
+    const row = x.plan.commitments.find(c => c.id === 'near');
+    delete row.amount; row.amountMin = 50; row.amountMax = 70;
+    return x;
+  };
+  const eff = buildEvidence([linkCmd({ evidenceDate: '2026-10-01', asOf: '2026-10-02' })]);
+  const x = rangedInput();
+  // The scheduled-amount gate judges settlement uncertainty BEFORE the
+  // incumbent range exemption: a valid ranged commitment carrying an
+  // effective link has an uncertain remaining under v1.
+  const state = F.scheduledAmountState(x.plan, x.asOf, '2026-12-31', { settlementEvidence: eff });
+  assert.equal(state.status, 'unavailable', 'the gate withholds for a linked range');
+  assert.ok(state.unknowns.some(u => u.carrier === 'commitment' && u.id === 'near'
+    && u.reason === 'settlement-remaining-unknown'), 'the linked range is named an unknown');
+  const sim = F.simulate(x.plan, x.asOf, { ...x.opts, settlementEvidence: eff });
+  assert.equal(sim.status, 'unavailable', 'the cash walk withholds');
+  assert.equal(sim.ending, null);
+  assert.equal(sim.totals.commitments, null, 'the affected carrier total is withheld');
+  // The action list retains the item with an unknown remaining rather
+  // than dropping it with its absent fixed amount.
+  const row = obligationBills(x, { periodOrigin: '2026-10-02', settlementEvidence: eff }).find(b => b.id === 'near');
+  assert.ok(row, 'the linked range stays on the action list');
+  assert.equal(row.remaining, null, 'remaining is unknown');
+  assert.equal(row.linkedPaid, null);
+  assert.equal(row.planned, null, 'a range has no single stated cost to publish as planned');
+  // Preservation: with NO evidence the incumbent range behaviour is
+  // exact — the gate excuses the range, the walk publishes, and the
+  // action list carries no row for it, exactly as before Phase 2.
+  const plain = rangedInput();
+  assert.equal(F.scheduledAmountState(plain.plan, plain.asOf, '2026-12-31', {}).status, 'ready',
+    'no evidence: the range exemption stands');
+  const plainSim = F.simulate(plain.plan, plain.asOf, { ...plain.opts });
+  assert.equal(typeof plainSim.ending, 'number', 'no evidence: the walk publishes');
+  assert.ok(!obligationBills(plain, { periodOrigin: '2026-10-02' }).some(b => b.id === 'near'),
+    'no evidence: a ranged commitment is not an action-list row');
+  // And a link not yet effective at the walk opening changes nothing.
+  const future = rangedInput();
+  const futureEff = buildEvidence([linkCmd({ evidenceDate: '2026-10-06', asOf: '2026-10-06' })]);
+  assert.equal(F.scheduledAmountState(future.plan, future.asOf, '2026-12-31',
+    { settlementEvidence: futureEff }).status, 'ready',
+    'a link effective after the walk opens does not reach it');
+  assert.ok(!obligationBills(future, { periodOrigin: '2026-10-02', settlementEvidence: futureEff })
+    .some(b => b.id === 'near'), 'a not-yet-effective link adds no action-list row');
+});
+
+test('current-period bills: the uncertain fallback honours the disabled exclusion and the represented/settled guards', () => {
+  const eff = buildEvidence([linkCmd({ assignedCents: 7000, evidenceCents: 9000, evidenceDate: '2026-10-01', asOf: '2026-10-02' })]);
+  // Disabled: expansion omits the commitment, and the fallback must not
+  // resurrect it — the established disabled exclusion binds both passes.
+  const disabled = periodInput();
+  assert.ok(!obligationBills(disabled, { periodOrigin: '2026-10-02', disabled: ['near'], settlementEvidence: eff })
+    .some(b => b.id === 'near'), 'a disabled uncertain commitment stays absent');
+  // Enabled: the same evidence keeps the row visible, remaining unknown.
+  const enabled = periodInput();
+  const row = obligationBills(enabled, { periodOrigin: '2026-10-02', settlementEvidence: eff }).find(b => b.id === 'near');
+  assert.ok(row, 'an enabled uncertain commitment stays visible');
+  assert.equal(row.remaining, null);
+  assert.equal(row.planned, 60, 'planned stays the original cost');
+  // Settled: settledOn remains the commitment's settlement fact; the
+  // fallback does not re-open a settled row as uncertain.
+  const settled = periodInput();
+  settled.plan.commitments.find(c => c.id === 'near').settledOn = '2026-10-03';
+  assert.ok(!obligationBills(settled, { periodOrigin: '2026-10-02', settlementEvidence: eff })
+    .some(b => b.id === 'near'), 'a settled uncertain commitment stays absent');
+  // Represented: a commitment already represented at its date is not
+  // re-opened as an uncertain fallback row either.
+  const represented = fx.fixture();
+  represented.plan.commitments.find(c => c.id === 'near').date = '2026-10-05';
+  represented.plan.opening.representedEvents.push({ id: 'near', date: '2026-10-05' });
+  assert.ok(!obligationBills(represented, { periodOrigin: '2026-10-02', settlementEvidence: eff })
+    .some(b => b.id === 'near'), 'a represented uncertain commitment is not resurrected');
+  const named = fx.fixture();
+  named.plan.commitments.find(c => c.id === 'near').date = '2026-10-05';
+  const namedRow = obligationBills(named, { periodOrigin: '2026-10-02', settlementEvidence: eff }).find(b => b.id === 'near');
+  assert.ok(namedRow && namedRow.remaining === null,
+    'control: the same row without the represented name is the uncertain fallback row');
 });
