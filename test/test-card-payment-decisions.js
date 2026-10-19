@@ -199,6 +199,226 @@ async function corrections() {
     eq(await legacy.storage.read(), body, 'reader failure never initializes over existing state');
   }
 }
+async function conservation() {
+  // Joint conservation (ATLAS-044): a confirmed refund and payment
+  // allocations against the same purchase share one bound —
+  // covered + refunded <= purchase amount in exact cents. The validator
+  // rejects an overallocating candidate; it never clamps or absorbs it.
+  const withRefund = (x, refundAmount) => {
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 80004,
+      amount: -refundAmount, category_name: 'Refund', payee: 'Invented grocer refund' });
+    x.data.plan.cardPurchaseCoverage.refunds.push({ confirmed: true,
+      purchaseRef: fixture.ref(x, 80001), refundRef: fixture.ref(x, 80004) });
+    return x;
+  };
+  const pairAmount = (x, amount) => {
+    x.payload.transactions[1].amount = amount; x.payload.transactions[2].amount = -amount;
+    return x;
+  };
+  const over = setup(ledger(withRefund(seed(), 30)));
+  eq(await prepare(over, record(over.x, 80)), { status: 'unavailable' },
+    'refund 30 + allocation 80 overallocates the 80 purchase: validator rejects');
+  eq(await prepare(over, record(over.x, 80)), { status: 'unavailable' },
+    'the same overallocating candidate replays to the same rejection');
+  const centOver = setup(ledger(pairAmount(withRefund(seed(), 30), 50.01)));
+  eq(await prepare(centOver, record(centOver.x, 50.01)), { status: 'unavailable' },
+    'refund 30 + allocation 50.01 exceeds the purchase by one cent');
+  const exact = setup(ledger(pairAmount(withRefund(seed(), 30), 50)));
+  await save(exact, record(exact.x, 50));
+  const afterExact = await exact.controller.input();
+  eq(afterExact.plan.cardPurchaseCoverage.payments.length, 1);
+  eq(afterExact.plan.cardPurchaseCoverage.payments[0].confirmed, true,
+    'refund 30 + allocation 50 meets the bound exactly and stays confirmed');
+  // Cumulative: a second payment of 1 on a fresh pair pushes claims to 81.
+  const cumulativeX = pairAmount(withRefund(seed(), 30), 50); pair(cumulativeX, 80102, 80103, 1);
+  const cumulative = setup(ledger(cumulativeX));
+  await save(cumulative, record(cumulative.x, 50));
+  eq(await cumulative.controller.prepare({ session: 'A', selection: choice(cumulative.x, 80102, 80103, 80001, 1) }),
+    { status: 'unavailable' }, 'cumulative claims 50 + 30 + 1 exceed the 80 purchase');
+  // Input order does not matter: a payment saved before its refund exists is
+  // requalified jointly once the refund evidence arrives.
+  const ordered = setup(ledger(seed()));
+  await save(ordered, record(ordered.x, 80));
+  const savedId = (await ordered.store.snapshot()).decisions[0].record.id;
+  ordered.change(ledger(withRefund(ordered.x, 30)));
+  const requalified = await ordered.controller.input();
+  eq(requalified.plan.cardPurchaseCoverage.payments.map(d => [d.id, d.confirmed]),
+    [[savedId, false]],
+    'a refund arriving after the payment requalifies the joint bound: claim withheld');
+}
+async function conservationRepairRound() {
+  // Repair round (Systems BLOCKING 6256681905 on the first ATLAS-044 head):
+  // two ways the first joint bound still failed — a reversal-blind gross
+  // bound, and a retained claim that vanished when its record broke.
+  const withRefund = (x, refundAmount) => {
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 80004,
+      amount: -refundAmount, category_name: 'Refund', payee: 'Invented grocer refund' });
+    x.data.plan.cardPurchaseCoverage.refunds.push({ confirmed: true,
+      purchaseRef: fixture.ref(x, 80001), refundRef: fixture.ref(x, 80004) });
+    return x;
+  };
+  const pairAmount = (x, amount) => {
+    x.payload.transactions[1].amount = amount; x.payload.transactions[2].amount = -amount;
+    return x;
+  };
+  // Finding 2: refund 30 + payment 80 whose own confirmed reversal returns
+  // 30 nets covered 50 — a prefix-conserved valid history stays qualified.
+  const reversalLegs = x => {
+    x.payload.transactions.push(
+      { id: 80402, account_id: 3004, date: x.asOf, amount: 30, currency: 'cad',
+        category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false },
+      { id: 80403, account_id: 3001, date: x.asOf, amount: -30, currency: 'cad',
+        category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false });
+    x.data.plan.cardPurchaseCoverage.reversals.push({ confirmed: true,
+      paymentId: 'decision-' + 'a'.repeat(32),
+      cardDebitRef: fixture.ref(x, 80402), cashCreditRef: fixture.ref(x, 80403),
+      allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: 30 }], otherAmount: 0 });
+    return x;
+  };
+  // The controller mints opaque record ids at prepare time, so a reversal
+  // naming its payment is exercised at the Forecast validator seam the
+  // controller itself calls (the coverage suite pins the same history at
+  // the publication surface with a stable payment id).
+  const nettedX = ledger(reversalLegs(withRefund(seed(), 30)));
+  eq(F.validateCardPaymentDecision({ ...observed(nettedX), record: record(nettedX, 80),
+    retainedRecords: [] }).status, 'ready',
+    'payment 80 + own reversal 30 + refund 30 validates: net claims are 80');
+  // Unqualified reversal evidence creates no capacity: drop the cash leg
+  // and the same candidate is judged on its gross claim again.
+  const unqualifiedX = reversalLegs(withRefund(seed(), 30));
+  unqualifiedX.payload.transactions = unqualifiedX.payload.transactions.filter(tx => tx.id !== 80403);
+  eq(F.validateCardPaymentDecision({ ...observed(ledger(unqualifiedX)),
+    record: record(unqualifiedX, 80), retainedRecords: [] }).status, 'unavailable',
+    'a reversal with a missing leg releases nothing: gross 80 + refund 30 is rejected');
+  // Allocation cap (Atlas ruling on the d1c5432e boundary question): an
+  // allocation may not exceed the purchase itself, with no reversal
+  // credit — a reversal acts on a previously allocated amount, and excess
+  // pair money belongs in otherAmount. Pair 110, allocation 110, reversal
+  // 30 is rejected; allocation 80 + other 30 with the same reversal is
+  // the legitimate representation and validates.
+  const capX = seed();
+  capX.payload.transactions[1].amount = 110; capX.payload.transactions[2].amount = -110;
+  reversalLegs(capX);
+  eq(F.validateCardPaymentDecision({ ...observed(ledger(capX)),
+    record: record(capX, 110), retainedRecords: [] }).status, 'unavailable',
+    'allocation 110 against the 80 purchase is rejected even with a qualified reversal 30');
+  const capControl = { ...record(capX, 80), otherAmount: 30, otherPurpose: 'required-payment' };
+  eq(F.validateCardPaymentDecision({ ...observed(ledger(capX)),
+    record: capControl, retainedRecords: [] }).status, 'ready',
+    'allocation 80 + other 30 is the legitimate representation and validates');
+  // Reversal cohort (Atlas ruling on the order-dependence reproduction):
+  // one cohort qualification governs release capacity and publication. A
+  // payment's confirmed reversals whose valid parts total MORE than the
+  // split they reverse are conflicted as a whole — no first-fit subset
+  // releases capacity, in any array order.
+  const cohortLegs = (x, amounts) => {
+    amounts.forEach((amount, i) => {
+      const debit = 80502 + i * 100, credit = 80503 + i * 100;
+      x.payload.transactions.push(
+        { id: debit, account_id: 3004, date: x.asOf, amount, currency: 'cad',
+          category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false },
+        { id: credit, account_id: 3001, date: x.asOf, amount: -amount, currency: 'cad',
+          category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false });
+      x.data.plan.cardPurchaseCoverage.reversals.push({ confirmed: true,
+        paymentId: 'decision-' + 'a'.repeat(32),
+        cardDebitRef: fixture.ref(x, debit), cashCreditRef: fixture.ref(x, credit),
+        allocations: [{ purchaseRef: fixture.ref(x, 80001), amount }], otherAmount: 0 });
+    });
+    return x;
+  };
+  for (const amounts of [[30, 60], [60, 30], [20, 70], [70, 20]]) {
+    const cx = ledger(cohortLegs(withRefund(seed(), 30), amounts));
+    eq(F.validateCardPaymentDecision({ ...observed(cx), record: record(cx, 80),
+      retainedRecords: [] }).status, 'unavailable',
+      'reversal cohort ' + amounts.join('+') + ' exceeds the 80 split: conflicted as a whole, no first-fit release in any order');
+  }
+  for (const amounts of [[30, 20], [30, 50]]) {
+    const cx = ledger(cohortLegs(withRefund(seed(), 30), amounts));
+    eq(F.validateCardPaymentDecision({ ...observed(cx), record: record(cx, 80),
+      retainedRecords: [] }).status, 'ready',
+      'reversal cohort ' + amounts.join('+') + ' within the split (incl. equality) releases in full');
+  }
+  { // A parent independently acceptable without reversal credit stays
+    // acceptable: the conflicted cohort contributes nothing and poisons
+    // nothing. Pair 80 = allocation 50 + otherAmount 30; refund 30.
+    const cx = ledger(cohortLegs(withRefund(seed(), 30), [30, 60]));
+    const independent = { ...record(cx, 50), otherAmount: 30, otherPurpose: 'required-payment' };
+    eq(F.validateCardPaymentDecision({ ...observed(cx), record: independent,
+      retainedRecords: [] }).status, 'ready',
+      'allocation 50 + refund 30 meets the bound without reversal credit; the conflicted cohort changes nothing');
+  }
+  // Whole-payment cohort (Atlas ruling on the multi-purchase probe): the
+  // cohort is the parent payment's WHOLE reversal cohort across every
+  // purchase it allocates. Parent pair 160 = A80 + B80; reversals A30,
+  // A60 (A subtotal 90 over its split) and B20 — B20 is disqualified with
+  // the rest, so a refund of 20 on B leaves B claiming 100 and the parent
+  // is rejected. Without the refund the parent qualifies on gross claims.
+  const multiSetup = (specs, refundOnB) => {
+    const x = seed();
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 80005,
+      amount: 80, date: '2026-09-19' });
+    x.payload.transactions[1].amount = 160; x.payload.transactions[2].amount = -160;
+    if (refundOnB) {
+      x.payload.transactions.push({ ...x.payload.transactions[0], id: 80006,
+        amount: -20, category_name: 'Refund', payee: 'Invented grocer refund' });
+      x.data.plan.cardPurchaseCoverage.refunds.push({ confirmed: true,
+        purchaseRef: fixture.ref(x, 80005), refundRef: fixture.ref(x, 80006) });
+    }
+    specs.forEach(([purchaseId, amount], i) => {
+      const debit = 80702 + i * 100, credit = 80703 + i * 100;
+      x.payload.transactions.push(
+        { id: debit, account_id: 3004, date: x.asOf, amount, currency: 'cad',
+          category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false },
+        { id: credit, account_id: 3001, date: x.asOf, amount: -amount, currency: 'cad',
+          category_name: 'Credit Card Payment', payee: 'Invented reversal', is_pending: false });
+      x.data.plan.cardPurchaseCoverage.reversals.push({ confirmed: true,
+        paymentId: 'decision-' + 'a'.repeat(32),
+        cardDebitRef: fixture.ref(x, debit), cashCreditRef: fixture.ref(x, credit),
+        allocations: [{ purchaseRef: fixture.ref(x, purchaseId), amount }], otherAmount: 0 });
+    });
+    return ledger(x);
+  };
+  const multiRecord = x => ({ id: 'decision-' + 'a'.repeat(32), confirmed: true,
+    debitRef: fixture.ref(x, 80002), creditRef: fixture.ref(x, 80003),
+    allocations: [{ purchaseRef: fixture.ref(x, 80001), amount: 80 },
+      { purchaseRef: fixture.ref(x, 80005), amount: 80 }],
+    otherAmount: 0, otherPurpose: null });
+  const multiSpecs = [[80001, 30], [80001, 60], [80005, 20]];
+  for (const specs of [multiSpecs, [multiSpecs[2], multiSpecs[0], multiSpecs[1]]]) {
+    const cx = multiSetup(specs, true);
+    eq(F.validateCardPaymentDecision({ ...observed(cx), record: multiRecord(cx),
+      retainedRecords: [] }).status, 'unavailable',
+      'whole-payment cohort conflicted by A: B20 releases nothing, so refund 20 + allocation 80 overclaims B');
+  }
+  {
+    const cx = multiSetup(multiSpecs, false);
+    eq(F.validateCardPaymentDecision({ ...observed(cx), record: multiRecord(cx),
+      retainedRecords: [] }).status, 'ready',
+      'without the refund the parent qualifies on gross claims; the disqualified cohort is irrelevant to capacity');
+  }
+  {
+    const cx = multiSetup([[80001, 30], [80005, 20]], true);
+    eq(F.validateCardPaymentDecision({ ...observed(cx), record: multiRecord(cx),
+      retainedRecords: [] }).status, 'ready',
+      'a valid multi-purchase cohort releases on both purchases (B: refund 20 + allocation 80 - release 20 = 80)');
+  }
+  // Finding 1: a retained confirmed claim whose debit leg is gone does not
+  // release its cents. Retained 30 + refund 30 leave exactly 20 of room.
+  const kept = setup(ledger(pairAmount(withRefund(seed(), 30), 30)));
+  await save(kept, record(kept.x, 30));
+  const broken = pairAmount(withRefund(seed(), 30), 30);
+  pair(broken, 80102, 80103, 50); pair(broken, 80202, 80203, 20); pair(broken, 80302, 80303, 20.01);
+  broken.payload.transactions = broken.payload.transactions.filter(tx => tx.id !== 80002);
+  kept.change(ledger(broken));
+  eq((await kept.controller.input()).plan.cardPurchaseCoverage.payments[0].confirmed, false,
+    'the broken retained payment is itself withheld');
+  eq(await prepare(kept, choice(broken, 80102, 80103, 80001, 50)), { status: 'unavailable' },
+    'retained 30 + refund 30 + candidate 50 totals 110: rejected');
+  eq(await prepare(kept, choice(broken, 80302, 80303, 80001, 20.01)), { status: 'unavailable' },
+    'one cent past the retained room is rejected');
+  eq((await prepare(kept, choice(broken, 80202, 80203, 80001, 20))).status, 'prepared',
+    'candidate 20 fits retained 30 + refund 30 exactly');
+}
 async function retainedLifecycle() {
   for (const missing of ['credit', 'debit']) for (const overlap of missing === 'credit' ? ['debit-and-purchase', 'debit-only', 'purchase-only'] : ['credit']) {
     const s = setup(); await save(s, record(s.x));
@@ -488,6 +708,8 @@ async function main() {
   eq(await setup().controller.prepare({ session: 'not authenticated', selection: record(seed()) }), { status: 'unavailable' }, 'missing authentication adapter result fails closed');
   await retainedLifecycle();
   await corrections();
+  await conservation();
+  await conservationRepairRound();
   console.log('PASS private card decision foundation: ' + checks + ' synthetic provider/controller checks');
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });
