@@ -64,21 +64,77 @@ const SETTLEMENT_EVIDENCE_REASONS = new Set([
   'digest-mismatch', 'document-invalid', 'document-changed',
 ]);
 
+// The effective projection's structural contract, mirrored from
+// planned-obligation-settlement-contract.js (goalId, operation and
+// txRef formats, positive safe-integer cents, real calendar dates,
+// sha256 evidence digests, reversal records). Forecast's settlement
+// index silently SKIPS entries and links that fail these shapes
+// while still applying the rest — under a qualified label that
+// would publish legacy figures as if the evidence were whole. The
+// projection is keyed one entry per goal with unique operation
+// identities, so duplicates are malformed too. A shared txRef
+// across goals is NOT malformed: the contract budgets one payment
+// across split assignments.
+function settlementDateValid(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(value + 'T00:00:00Z');
+  return Number.isFinite(parsed.getTime())
+    && parsed.toISOString().slice(0, 10) === value;
+}
+
 function settlementEvidenceValid(evidence) {
   if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return false;
   if (!Array.isArray(evidence.commitments)) return false;
-  return evidence.commitments.every(entry => entry
-    && typeof entry === 'object' && !Array.isArray(entry)
-    && typeof entry.goalId === 'string' && Array.isArray(entry.links));
+  const goals = new Set();
+  const operations = new Set();
+  for (const entry of evidence.commitments) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    if (typeof entry.goalId !== 'string'
+      || !entry.goalId.startsWith('commitment:')
+      || !/^[a-z0-9][a-z0-9-]{0,127}$/.test(entry.goalId.slice('commitment:'.length))) return false;
+    if (goals.has(entry.goalId)) return false;
+    goals.add(entry.goalId);
+    if (!Array.isArray(entry.links) || entry.links.length === 0) return false;
+    for (const link of entry.links) {
+      if (!link || typeof link !== 'object' || Array.isArray(link)) return false;
+      if (typeof link.operationId !== 'string'
+        || !/^operation-[a-f0-9]{32}$/.test(link.operationId)) return false;
+      if (operations.has(link.operationId)) return false;
+      operations.add(link.operationId);
+      if (typeof link.txRef !== 'string' || !/^tx-[a-f0-9]{32}$/.test(link.txRef)) return false;
+      if (!Number.isSafeInteger(link.assignedCents) || link.assignedCents <= 0) return false;
+      if (!settlementDateValid(link.effectiveDate) || !settlementDateValid(link.asOf)) return false;
+      if (typeof link.evidenceDigest !== 'string'
+        || !/^[a-f0-9]{64}$/.test(link.evidenceDigest)) return false;
+      if (!Array.isArray(link.reversals)) return false;
+      for (const reversal of link.reversals) {
+        if (!reversal || typeof reversal !== 'object' || Array.isArray(reversal)) return false;
+        if (typeof reversal.operationId !== 'string'
+          || !/^operation-[a-f0-9]{32}$/.test(reversal.operationId)) return false;
+        if (operations.has(reversal.operationId)) return false;
+        operations.add(reversal.operationId);
+        if (typeof reversal.counterTxRef !== 'string'
+          || !/^tx-[a-f0-9]{32}$/.test(reversal.counterTxRef)) return false;
+        if (!Number.isSafeInteger(reversal.cents) || reversal.cents <= 0) return false;
+        if (!settlementDateValid(reversal.date)) return false;
+      }
+    }
+  }
+  return true;
 }
 
 function settlementOutcomeOf(data) {
   const status = data ? data.settlementEvidenceStatus : undefined;
   const evidence = data ? data.settlementEvidence : undefined;
-  const hasStatus = status !== undefined && status !== null;
+  const invalid = { kind: 'unavailable', reason: 'invalid-configuration' };
+  // A published null status is a malformed outcome, not an omitted
+  // one: omitted (undefined) is the unconfigured seam, while null is
+  // a configured outcome that failed to serialize — fail closed
+  // rather than equate it with inactivity.
+  if (status === null) return invalid;
+  const hasStatus = status !== undefined;
   const hasEvidence = evidence !== undefined && evidence !== null;
   if (!hasStatus && !hasEvidence) return { kind: 'unconfigured' };
-  const invalid = { kind: 'unavailable', reason: 'invalid-configuration' };
   if (!hasStatus || typeof status !== 'object' || Array.isArray(status)) return invalid;
   if (status.status === 'unconfigured') {
     return hasEvidence ? invalid : { kind: 'unconfigured' };

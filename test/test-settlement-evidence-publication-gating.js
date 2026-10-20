@@ -247,13 +247,52 @@ function makeFakeDom() {
         dataset: {}, style: {}, attrs: {}, children: [], value: '',
         checked: false, disabled: false, offsetWidth: 120, offsetHeight: 40,
         offsetLeft: 0, offsetTop: 0, scrollWidth: 240, clientWidth: 240, scrollLeft: 0,
+        // The Plan page's wiring reaches external mounts through
+        // mount.ownerDocument (the #budget-attention-bottom move and
+        // its remount teardown); the fake document is the registry
+        // below, resolved lazily so element creation order is free.
+        get ownerDocument() { return document; },
         setAttribute(k, v) { this.attrs[k] = String(v); },
         getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
         removeAttribute(k) { delete this.attrs[k]; },
         addEventListener() {}, removeEventListener() {},
+        dispatchEvent(evt) { (this.events ||= []).push(evt && evt.type); return true; },
         appendChild(c) { this.children.push(c); return c; },
         append(...kids) { this.children.push(...kids); },
-        querySelector() { return element(id + '>q'); },
+        contains(node) { return node != null && this.children.includes(node); },
+        // Move/clear semantics for the one externally moved card:
+        // adopting an attention slice node removes its HTML from
+        // the origin element (a move, not a copy); calling with no
+        // nodes clears the mount, as budgetRemount's teardown does.
+        replaceChildren(...nodes) {
+          for (const node of nodes) {
+            if (node && node._attentionSlice && node._origin) {
+              node._origin.innerHTML = node._origin.innerHTML.replace(node._attentionSlice, '');
+            }
+          }
+          this.children = nodes.slice();
+          this.innerHTML = nodes.map(n => (n && n._attentionSlice) || '').join('');
+        },
+        querySelector(sel) {
+          // The attention card is produced as HTML inside the
+          // operating mount; model finding it as a node whose HTML
+          // slice can then be moved by replaceChildren above.
+          if (sel === '[data-budget-browse="attention"]') {
+            const marker = this.innerHTML.indexOf('data-budget-browse="attention"');
+            if (marker < 0) return null;
+            const start = this.innerHTML.lastIndexOf('<section', marker);
+            const close = this.innerHTML.indexOf('</section>', marker);
+            if (start < 0 || close < 0) return null;
+            const slice = this.innerHTML.slice(start, close + '</section>'.length);
+            return {
+              _attentionSlice: slice, _origin: this,
+              contains: () => false,
+              getAttribute: () => null,
+              querySelector: () => null, querySelectorAll: () => [],
+            };
+          }
+          return element(id + '>q');
+        },
         querySelectorAll() { return []; },
         closest() { return null; },
         getContext() { return drawStub; },
@@ -271,6 +310,7 @@ function makeFakeDom() {
     // app.js builds chart SVG through document.createElementNS.
     createElementNS: (ns, tag) => element('createdNS:' + tag),
     addEventListener() {},
+    activeElement: null,
     body: element('body'),
     documentElement: element('html'),
   };
@@ -290,6 +330,8 @@ function loadBrowserScripts(files) {
     // app.js boot constructs an AbortController for its (here inert)
     // data fetch; the vm global does not inherit Node's web globals.
     AbortController, AbortSignal,
+    // budgetRemount dispatches a real Event on the operating mount.
+    Event,
     getComputedStyle: () => ({
       getPropertyValue: () => '',
       visibility: 'visible',
@@ -510,4 +552,199 @@ test('plan: malformed status fails closed', () => {
   assert.equal(mounts['status-band'].planStatus, 'unavailable');
   const allHtml = Object.values(mounts).map(m => m.innerHTML + m.textContent).join('\n');
   assert.ok(allHtml.includes('invalid-configuration'));
+});
+
+/* ------------------------- Systems Review repair round (B1–B3) */
+/* Added for the consolidated BLOCKING review of head bf3eb47b
+ * (PR #661, comment 6296256340). Each test was first run against
+ * that head's production files and failed for the stated reason. */
+
+// B3: the validators must enforce the effective projection's
+// structural contract (planned-obligation-settlement-contract.js
+// effectiveEvidence): contract-shaped identities, positive safe
+// integer cents, real calendar dates, sha256 digests, array
+// reversals of contract-shaped records, one entry per goal, unique
+// operation identities. Anything Forecast's settlement index would
+// silently skip or misread must fail closed at the surface.
+test('packet: malformed effective evidence fails closed, contract-shaped evidence stays qualified (B3)', () => {
+  const malformed = {
+    'link is null': ev => { ev.commitments[0].links = [null]; },
+    'link assignedCents is a string': ev => { ev.commitments[0].links[0].assignedCents = '2500'; },
+    'link assignedCents is zero': ev => { ev.commitments[0].links[0].assignedCents = 0; },
+    'link assignedCents is negative': ev => { ev.commitments[0].links[0].assignedCents = -100; },
+    'link assignedCents is fractional': ev => { ev.commitments[0].links[0].assignedCents = 2500.5; },
+    'link operationId is not the contract format': ev => { ev.commitments[0].links[0].operationId = 'operation-1'; },
+    'link txRef is not the contract format': ev => { ev.commitments[0].links[0].txRef = 'tx-1'; },
+    'link evidenceDigest is not a sha256 hex': ev => { ev.commitments[0].links[0].evidenceDigest = 'abc'; },
+    'link effectiveDate is not a real date': ev => { ev.commitments[0].links[0].effectiveDate = '2026-13-40'; },
+    'link asOf is not a real date': ev => { ev.commitments[0].links[0].asOf = 'yesterday'; },
+    'entry goalId has an empty commitment id': ev => { ev.commitments[0].goalId = 'commitment:'; },
+    'entry goalId is not a commitment goal': ev => { ev.commitments[0].goalId = 'group:near'; },
+    'entry goalId id is not an identifier': ev => { ev.commitments[0].goalId = 'commitment:Near'; },
+    'entry links is empty': ev => { ev.commitments[0].links = []; },
+    'duplicate goal entry': ev => {
+      ev.commitments.push({ goalId: 'commitment:near', links: [{ ...ev.commitments[0].links[0], operationId: op(7) }] });
+    },
+    'duplicate operation identity across goals': ev => {
+      ev.commitments.push({ goalId: 'commitment:far', links: [{ ...ev.commitments[0].links[0] }] });
+    },
+    'reversals is not an array': ev => { ev.commitments[0].links[0].reversals = {}; },
+    'reversal entry is null': ev => { ev.commitments[0].links[0].reversals = [null]; },
+    'reversal cents is not positive': ev => {
+      ev.commitments[0].links[0].reversals = [{ operationId: op(8), counterTxRef: tx(8), cents: -1, date: '2026-10-04' }];
+    },
+  };
+  for (const [name, mutate] of Object.entries(malformed)) {
+    const evidence = linkEvidence();
+    mutate(evidence);
+    const packet = buildFor(fixtureInput(), { status: { status: 'qualified' }, evidence });
+    assert.deepEqual(packet.metadata.settlementEvidence,
+      { status: 'unavailable', reason: 'invalid-configuration' }, `fails closed: ${name}`);
+    assert.equal(packet.forecast.status, 'unavailable', `forecast withheld: ${name}`);
+    assert.equal(packet.forecast.reason, 'invalid-configuration', `reason named: ${name}`);
+  }
+  // Controls: contract-shaped variations stay qualified.
+  const empty = buildFor(fixtureInput(), { status: { status: 'qualified' }, evidence: { commitments: [] } });
+  assert.deepEqual(empty.metadata.settlementEvidence, { status: 'qualified', reason: null },
+    'a qualified store with no active links is valid evidence');
+  const nearEmpty = (empty.forecast.majorPlanFunding.items || []).find(i => i.id === 'near');
+  assert.equal(nearEmpty.need, 60, 'no links, no relief — full cost under a qualified label');
+  const withReversal = linkEvidence();
+  withReversal.commitments[0].links[0].reversals = [
+    { operationId: op(2), counterTxRef: tx(2), cents: 500, date: '2026-10-04' },
+  ];
+  const reversed = buildFor(fixtureInput(), { status: { status: 'qualified' }, evidence: withReversal });
+  assert.deepEqual(reversed.metadata.settlementEvidence, { status: 'qualified', reason: null },
+    'a contract-shaped reversal record stays qualified (Forecast judges it uncertain)');
+  const nearReversed = (reversed.forecast.majorPlanFunding.items || []).find(i => i.id === 'near');
+  assert.equal(nearReversed.need, null, 'Forecast withholds the reversed row itself');
+  const split = linkEvidence();
+  split.commitments.push({
+    goalId: 'commitment:far',
+    links: [{ ...split.commitments[0].links[0], operationId: op(3), assignedCents: 500 }],
+  });
+  const splitPacket = buildFor(fixtureInput(), { status: { status: 'qualified' }, evidence: split });
+  assert.deepEqual(splitPacket.metadata.settlementEvidence, { status: 'qualified', reason: null },
+    'one payment split across two goals (shared txRef, distinct operations) is contract-shaped');
+});
+
+// B3 (continued): an explicit null served status is a published
+// outcome that is malformed — distinct from an omitted status,
+// which is the unconfigured seam. Null must fail closed, never
+// read as "never configured".
+test('packet: explicit null status fails closed and is not omitted status (B3)', () => {
+  const omitted = buildFor(fixtureInput(), null);
+  assert.equal(omitted.metadata.settlementEvidence, undefined, 'omitted status stays unconfigured');
+  const explicitNull = buildFor(fixtureInput(), { status: null });
+  assert.deepEqual(explicitNull.metadata.settlementEvidence,
+    { status: 'unavailable', reason: 'invalid-configuration' },
+    'explicit null status is malformed, not unconfigured');
+  assert.equal(explicitNull.forecast.status, 'unavailable');
+  const nullWithEvidence = buildFor(fixtureInput(), { status: null, evidence: linkEvidence() });
+  assert.deepEqual(nullWithEvidence.metadata.settlementEvidence,
+    { status: 'unavailable', reason: 'invalid-configuration' },
+    'null status with evidence also fails closed');
+});
+
+test('planning + plan: malformed effective evidence fails closed at the page surfaces (B3)', () => {
+  const badEvidence = () => {
+    const ev = linkEvidence();
+    ev.commitments[0].links = [null];
+    return { status: { status: 'qualified' }, evidence: ev };
+  };
+  const { sandbox, dom } = loadPlanning();
+  sandbox.renderPlanning(servedData(fixtureInput(), badEvidence()), periods());
+  const road = dom.element('planning-road-ahead').innerHTML;
+  assert.match(road, /data-settlement-evidence="unavailable"/, 'planning withholds on malformed evidence');
+  assert.ok(road.includes('invalid-configuration'), 'planning names invalid-configuration');
+  const mounts = renderPlanPage(loadPlan(), fixtureInput(), badEvidence());
+  assert.equal(mounts['status-band'].planStatus, 'unavailable', 'plan withholds on malformed evidence');
+  const allHtml = Object.values(mounts).map(m => m.innerHTML + m.textContent).join('\n');
+  assert.ok(allHtml.includes('invalid-configuration'), 'plan names invalid-configuration');
+  const nullMounts = renderPlanPage(loadPlan(), fixtureInput(), { status: null });
+  assert.equal(nullMounts['status-band'].planStatus, 'unavailable',
+    'explicit null status fails closed on the plan page too');
+});
+
+// B1: the Month trajectory and funding-schedule caches must follow
+// the settlement outcome on the SAME page instance. Other inputs —
+// including an explicit weekly override — are held constant; the
+// expected figures are the fresh Forecast output for each outcome.
+test('plan: month caches follow the settlement outcome on the same page instance (B1)', () => {
+  const x = fixtureInput();
+  const renderMonth = (loaded, settlement) => {
+    const { sandbox } = loaded;
+    vm.runInContext(`state.debts = []; state.extraFacilities = undefined;`, sandbox);
+    vm.runInContext(`loadKnobs({ scenario: 'expected', targetBuffer: 20, extraDebtMonthly: 0 });`, sandbox);
+    vm.runInContext(`state.weeklyVariable = 300; budgetGranularity = 'month'; budgetSelectedMonth = '2026-10';`, sandbox);
+    sandbox.renderPlan(servedData(x, settlement), periods(), []);
+    return snapshotMounts(loaded.dom)['operating-surface-body'].innerHTML;
+  };
+  const UNRELIEVED = '−$1,205.43'; // October result with no relief
+  const RELIEVED = '−$1,180.43';   // October result with the $25.00 link relief
+  const freshQualified = renderMonth(loadPlan(), QUALIFIED());
+  assert.ok(freshQualified.includes(RELIEVED), 'oracle: fresh qualified month render is relieved');
+  // unconfigured -> qualified on one instance
+  const pg = loadPlan();
+  assert.ok(renderMonth(pg, null).includes(UNRELIEVED), 'prime: unconfigured month render');
+  const bSame = renderMonth(pg, QUALIFIED());
+  assert.ok(bSame.includes(RELIEVED) && !bSame.includes(UNRELIEVED),
+    'same-instance qualified render must not reuse the unconfigured trajectory');
+  assert.equal(bSame, freshQualified, 'same-instance qualified render matches fresh Forecast output');
+  // qualified -> unconfigured on the same instance
+  const back = renderMonth(pg, null);
+  assert.ok(back.includes(UNRELIEVED) && !back.includes(RELIEVED),
+    'same-instance unconfigured render must not reuse the qualified trajectory');
+  // withheld -> qualified (prime, withhold, then qualify)
+  const pg2 = loadPlan();
+  renderMonth(pg2, null);
+  renderMonth(pg2, UNAVAILABLE('pin-unavailable'));
+  const afterWithheld = renderMonth(pg2, QUALIFIED());
+  assert.ok(afterWithheld.includes(RELIEVED),
+    'qualified render after a withheld render uses the qualified trajectory');
+  // qualified A -> qualified B with different relief, same instance
+  const evA = { status: { status: 'qualified' }, evidence: linkEvidence(1000) };
+  const freshA = renderMonth(loadPlan(), evA);
+  const pg3 = loadPlan();
+  renderMonth(pg3, evA);
+  const bAfterA = renderMonth(pg3, QUALIFIED());
+  assert.equal(bAfterA, freshQualified, 'qualified B after qualified A matches fresh B output');
+  assert.notEqual(bAfterA, freshA, 'qualified B differs from qualified A');
+});
+
+// B2: the wired attention card is moved OUT of the operating mount
+// into #budget-attention-bottom by the normal render. The
+// unavailable transition must tear that external mount down too,
+// or its Forecast figures survive under an unavailable page. The
+// budget-surface fixture produces a nonempty card; the harness
+// models the move with real state (see makeFakeDom).
+test('plan: unavailable transition tears down the moved attention card (B2)', () => {
+  const bsFixture = require('./fixtures/budget-surface-data');
+  const loaded = loadPlan();
+  const { sandbox, dom } = loaded;
+  const render = data => {
+    vm.runInContext(`state.debts = []; state.extraFacilities = undefined;`, sandbox);
+    vm.runInContext(`loadKnobs({ scenario: 'expected', targetBuffer: 20, extraDebtMonthly: 0 });`, sandbox);
+    sandbox.renderPlan(data, periods(), []);
+    return snapshotMounts(dom);
+  };
+  const first = render(bsFixture.served());
+  const bottom = first['budget-attention-bottom'];
+  assert.ok(bottom && bottom.innerHTML.includes('Worth a look'),
+    'the nonempty attention card was moved into the external mount');
+  assert.ok(bottom.innerHTML.includes('budget-attention-item')
+    && bottom.innerHTML.includes('to confirm'),
+    'the moved card carries its dependent bill/category actions');
+  assert.ok(!first['operating-surface-body'].innerHTML.includes('data-budget-browse="attention"'),
+    'the card no longer lives inside the operating mount (it was moved, not copied)');
+  const second = render({
+    ...bsFixture.served(),
+    settlementEvidenceStatus: { status: 'unavailable', reason: 'pin-unavailable' },
+  });
+  assert.equal(second['status-band'].planStatus, 'unavailable');
+  const bottomAfter = second['budget-attention-bottom'];
+  assert.ok(!bottomAfter || bottomAfter.innerHTML === '',
+    'the external attention mount is empty after the unavailable transition');
+  assert.ok(!bottomAfter || !bottomAfter.innerHTML.includes('Worth a look'),
+    'no stale attention card survives the unavailable transition');
 });
