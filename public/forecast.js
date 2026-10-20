@@ -5004,7 +5004,7 @@
     /7[\s-]*eleven|\b7-11\b|\b7eleven\b|circle\s*k|mac'?s\s*(convenience)?|on\s*the\s*run/i;
   const FUEL_EVIDENCE_RE = /\b(fuel|gas|petrol|gasoline)\b/i;
   const CANADIAN_TIRE_RE = /canadian\s*tire/i;
-  const EATING_OUT_LABELS = new Set(['restaurants', 'fast food', 'food delivery']);
+  const EATING_OUT_LABELS = new Set(['restaurants', 'fast food', 'food delivery', 'coffee shops']);
   const BILL_BUDGET_IDS = new Set(['subscriptions', 'insurance', 'telecom']);
   const BILL_CATEGORY_LABELS = new Set([
     'mortgage', 'bills', 'bill', 'subscription', 'subscriptions',
@@ -5548,7 +5548,10 @@
   // merchant-category spend, or payday household-spend. Amazon merchant + canonical travelvisa
   // (Dale 2026-09-03) is Amanda guilt-free when the Lunch Money category
   // is not Dale, never a Prime bill, and never Amanda merely because the
-  // card is MBNA. Eating out is Restaurants + Fast Food + Food Delivery.
+  // card is MBNA. Eating out is Restaurants + Fast Food + Food Delivery
+  // + Coffee Shops (ATLAS-043: the owner-confirmed Lunch Money Coffee
+  // Shops label is an Eating Out alias; labels stay owned by Lunch
+  // Money, no merchant or amount rule is added here).
   // Ordinary Canadian Tire retail is not Household. An exact Lunch
   // Money Fuel category is itself tx-level fuel evidence
   // (Dale 2026-10-14, superseding the 2026-09-23 convenience-store
