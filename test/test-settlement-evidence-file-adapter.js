@@ -186,6 +186,11 @@ function plant(dir, name, bytes) {
   const target = path.join(dir, name);
   try { fs.unlinkSync(target); } catch { /* absent is fine */ }
   fs.writeFileSync(target, bytes, { mode: 0o600 });
+  // The planted mode is part of the fixture's meaning (the adapter
+  // validates planted traces as owner-private files); pin it explicitly
+  // so a restrictive process umask (hosted CI runs umask 077) cannot
+  // silently narrow it.
+  fs.chmodSync(target, 0o600);
 }
 function readIfExists(dir, name) {
   try { return fs.readFileSync(path.join(dir, name)); }
@@ -597,6 +602,7 @@ test('a pre-existing lock file blocks bootstrap and operations with zero writes'
   await bootDir(dir, auth);
   const namesBefore = listing(dir);
   fs.writeFileSync(path.join(dir, 'store.lock'), '', { mode: 0o600 });
+  fs.chmodSync(path.join(dir, 'store.lock'), 0o600);
   const { store } = newStore(dir, auth);
   await assert.rejects(store.reconcile(), /settlement-file-adapter/);
   await assert.rejects(store.bootstrap(), /settlement-file-adapter/);
@@ -860,7 +866,10 @@ test('bootstrap is refused over every pre-existing trace and writes nothing', as
     if (trace === 'document') plant(dir, 'document.json', C.adopt({ householdId }));
     if (trace === 'journal') plant(dir, 'journal.json', Buffer.from('{}'));
     if (trace === 'staged temp') plant(dir, '.document-' + 'ab'.repeat(16), Buffer.from('staged'));
-    if (trace === 'lock') fs.writeFileSync(path.join(dir, 'store.lock'), '', { mode: 0o600 });
+    if (trace === 'lock') {
+      fs.writeFileSync(path.join(dir, 'store.lock'), '', { mode: 0o600 });
+      fs.chmodSync(path.join(dir, 'store.lock'), 0o600);
+    }
     // B1 (round 3): adapter-owned traces beyond the staged slot — a
     // transient journal-write artifact and retained quarantine
     // evidence are durable traces too; genesis over either would bury
@@ -869,6 +878,7 @@ test('bootstrap is refused over every pre-existing trace and writes nothing', as
     let quarantineEvidence = null;
     if (trace === 'quarantine evidence') {
       fs.mkdirSync(path.join(dir, 'quarantine'), { mode: 0o700 });
+      fs.chmodSync(path.join(dir, 'quarantine'), 0o700);
       quarantineEvidence = 'divergent-head-r1-' + 'ef'.repeat(16);
       plant(path.join(dir, 'quarantine'), quarantineEvidence, Buffer.from('divergent-head-bytes'));
     }
@@ -932,6 +942,7 @@ test('path safety: symlinked, repo-contained, missing, non-directory, non-privat
   // Symlinked directory: a fully private real target behind a link.
   const realDir = path.join(base, 'real-store');
   fs.mkdirSync(realDir, { mode: 0o700 });
+  fs.chmodSync(realDir, 0o700);
   const linkPath = path.join(base, 'linked-store');
   fs.symlinkSync(realDir, linkPath, 'dir');
   assert.throws(() => A.createSettlementEvidenceFileAdapter(linkPath), /settlement-file-adapter/);
@@ -963,6 +974,10 @@ test('path safety: symlinked, repo-contained, missing, non-directory, non-privat
   // Directory that is not owner-private.
   const loose = path.join(base, 'loose');
   fs.mkdirSync(loose, { mode: 0o755 });
+  // Pin the planted mode explicitly: mkdir's mode is narrowed by the
+  // process umask, and under umask 077 (hosted CI) 0o755 would land as
+  // 0o700 — owner-private — and the expected refusal would never fire.
+  fs.chmodSync(loose, 0o755);
   assert.throws(() => A.createSettlementEvidenceFileAdapter(loose), /settlement-file-adapter/);
   assert.deepEqual(fs.readdirSync(loose), []);
   // A static-serving component name anywhere in the path.
