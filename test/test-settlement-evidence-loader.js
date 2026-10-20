@@ -240,6 +240,132 @@ test('relief: loader-qualified full link suppresses the requirement, unsettled',
   assert.equal(seq.need, 0, 'recommend requires nothing further');
 });
 
+// Integration regression: the same pinned evidence and frozen synthetic
+// ledger reach both the current publication and native future closes.
+// The earlier goal/event/sequence tests do not exercise this closing gate.
+const chronological = require('./fixtures/chronological-savings-data');
+function freezeJson(value) {
+  if (value && typeof value === 'object') {
+    Object.values(value).forEach(freezeJson);
+    Object.freeze(value);
+  }
+  return value;
+}
+function savingsPublications(x, evidence) {
+  const advice = F.recommend(x.plan, x.asOf,
+    { ...x.opts, settlementEvidence: evidence, weeklyVariable: 0, debts: [] });
+  const context = { asOf: x.asOf, advice };
+  const current = F.savingsFundingPublication(advice.savingsFunding, context);
+  assert.ok(current, 'current publication qualifies through Forecast');
+  const closing = start => {
+    const view = current.periodViews.find(p => p.start === start);
+    assert.ok(view, 'native selected period exists');
+    const packet = F.savingsFundingPublication(current, { ...context, periodId: view.id });
+    assert.ok(packet, 'selected publication qualifies through Forecast');
+    return packet.forecastClosing;
+  };
+  return { current, closing };
+}
+const closingStarts = ['2026-10-16', '2026-10-30', '2026-11-13'];
+const fullLink = () => docWith([linkCmd({ assignedCents: 6000 })]);
+function qualifiedDocument(bytes) {
+  const pin = freezeJson(pinOf(bytes)); // independent of each read callback
+  return freezeJson(expectQualified(L.loadSettlementEvidence(
+    { config: { householdId, pin }, readDocument: reader(bytes) })));
+}
+
+for (const paid of [25, 60]) test('Savings publications: loader-qualified ' + paid + '/60 relief conserves current and future stock', () => {
+  const x = freezeJson(chronological.ledger());
+  const evidence = qualifiedDocument(docWith([linkCmd({ assignedCents: paid * 100 })]));
+  const before = JSON.stringify({ x, evidence });
+  const result = savingsPublications(x, evidence);
+  const goal = F.savingsInventory(x.plan, x.asOf, { settlementEvidence: evidence })
+    .pools.find(p => p.id === 'club-pool').plannedGoals.find(g => g.key === 'group:club');
+  assert.equal(goal.target, 60, 'original cost stays distinct from relief');
+  assert.equal(goal.linkedPaid, paid);
+  assert.equal(goal.remaining, 60 - paid);
+  assert.equal(goal.target, goal.linkedPaid + goal.remaining);
+  assert.equal(goal.settled, false, 'linked evidence never writes settledOn');
+  const item = result.current.backing.items.find(i => i.id === 'near');
+  assert.equal(item.needed, 60 - paid);
+  assert.equal(item.saved, 60 - paid, 'backed is the remaining allocation, not linked paid');
+  assert.equal(result.current.stock.amount, 119, 'the reported 30 + 89 is not debited again');
+  assert.equal(result.current.backing.unallocated + item.saved, 119);
+  // Independent cents ledger: the only future goal debit is 6000-paid.
+  // The existing 8000 Bills remainder sweeps Oct 30; the Nov 2 receipt
+  // 7700 sweeps Nov 13. Neither is credited before its own sweep.
+  const expected = [3000 + 8900, 3000 + 8900 + 8000, 3000 + 8900 + 8000 + 7700]
+    .map(stock => (stock - (6000 - paid * 100)) / 100);
+  const closes = closingStarts.map((start, i) => {
+    const close = result.closing(start);
+    assert.equal(close.status, 'ready', close.reason);
+    assert.equal(close.stock, expected[i]);
+    assert.equal(close.projectedDraws, 60 - paid, 'only remaining cost is deducted once');
+    assert.equal(close.actualSaved, null);
+    assert.equal(close.moneyMovementPermission, 'not-granted');
+    return close;
+  });
+  const currentBeforeNavigation = JSON.stringify(result.current);
+  for (const index of [2, 0, 1, 0, 2]) assert.deepEqual(result.closing(closingStarts[index]), closes[index]);
+  assert.equal(JSON.stringify(result.current), currentBeforeNavigation);
+  const repeated = savingsPublications(x, evidence);
+  assert.deepEqual(repeated.current, result.current);
+  closingStarts.forEach((start, i) => assert.deepEqual(repeated.closing(start), closes[i]));
+  assert.equal(JSON.stringify({ x, evidence }), before, 'evaluation and navigation preserve the identical inputs');
+});
+
+const expenseHold = 'A Savings requirement has no unique matching native expense.';
+test('Savings publications: an ordinary zero retains its ready legacy behavior without settlement evidence', () => {
+  const x = chronological.ledger();
+  x.plan.commitments[0].amount = 0;
+  freezeJson(x);
+  const result = savingsPublications(x);
+  assert.equal(result.current.stock.amount, 119);
+  for (const [index, expectedStock] of [119, 199, 276].entries()) {
+    const close = result.closing(closingStarts[index]);
+    assert.equal(close.status, 'ready', close.reason);
+    assert.equal(close.stock, expectedStock);
+    assert.equal(close.projectedDraws, 0);
+  }
+});
+
+for (const mode of ['overassigned-zero', 'duplicate-commitment', 'ambiguous-expense', 'reversal', 'missing-stock', 'pending-stock', 'incomplete-movement'])
+  test('Savings full-relief closing keeps the existing hold: ' + mode, () => {
+    const x = chronological.ledger();
+    let bytes = fullLink();
+    if (mode === 'overassigned-zero') x.plan.commitments[0].amount = 0;
+    if (mode === 'duplicate-commitment') x.plan.commitments.push({ ...x.plan.commitments[0] });
+    if (mode === 'ambiguous-expense') {
+      bytes = docWith([linkCmd({ assignedCents: 2500 })]);
+      x.plan.bills = [{ id: 'near', label: 'Invented conflicting bill', frequency: 'once',
+        date: '2026-10-21', amount: 35, confidence: 'confirmed', jointCash: false }];
+    }
+    if (mode === 'reversal') {
+      const counterEvidence = ev({ direction: 'credit', date: '2026-10-04' });
+      bytes = docWith([linkCmd({ assignedCents: 6000 }), { version: 1, kind: 'reverse',
+        targetOperationId: op(1), counterTxRef: tx(9), counterEvidence,
+        counterEvidenceDigest: C.digest(counterEvidence), cents: 500 }]);
+    }
+    if (mode === 'missing-stock') x.plan.savingsPoolObservation.accounts.pop();
+    if (mode === 'pending-stock') x.plan.savingsPoolObservation.accounts[0].pendingState = 'unresolved';
+    if (mode === 'incomplete-movement') x.opts.currentPeriodActuals.transactionCoverage.complete = false;
+    const evidence = qualifiedDocument(bytes);
+    const before = JSON.stringify({ x, evidence });
+    freezeJson(x);
+    const result = savingsPublications(x, evidence);
+    for (const start of closingStarts) {
+      const close = result.closing(start);
+      assert.equal(close.status, 'unavailable', mode);
+      assert.equal(close.stock, null);
+      assert.equal(close.actualSaved, null);
+      assert.equal(close.moneyMovementPermission, 'not-granted');
+      if (mode === 'duplicate-commitment') assert.equal(close.reason, expenseHold);
+      if (mode === 'ambiguous-expense')
+        assert.equal(close.reason, 'A backed requirement lacks one uniquely matched dated payment.');
+    }
+    assert.equal(JSON.stringify({ x, evidence }), before);
+  });
+
 test('control: unconfigured outcome means no evidence reaches Forecast', () => {
   const outcome = L.loadSettlementEvidence();
   assert.equal(outcome.status, 'unconfigured');
