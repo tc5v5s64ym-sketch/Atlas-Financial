@@ -32,10 +32,17 @@
 // even after preview expiry, later commits or restart. A restarted controller
 // has no uncommitted previews. Household effects are read independently through
 // the existing loader; receipt ownership does not hide those effects.
+// Preview capacity is active work, never a lifetime quota: expired entries
+// without an attempted write and definitive no-write outcomes are reclaimed;
+// attempted/in-flight/unknown entries survive TTL until a durable receipt is
+// verified. Each generation receives an independent random 256-bit token,
+// returned only with the sanitized preview. The token is neither identity nor
+// the store confirmation digest and is never persisted or sent to the store.
 // Authorization and selection qualification are observations. The store lock
 // does not atomically lock provider data or session revocation.
 
 const { isDeepStrictEqual } = require('node:util');
+const crypto = require('node:crypto');
 const C = require('./planned-obligation-settlement-contract');
 
 const HOUSEHOLD = /^household-[a-f0-9]{32}$/;
@@ -144,9 +151,30 @@ function createSettlementEvidenceConfirmation(deps) {
     || !store || ['prepare', 'commitWithoutRecovery', 'outcome'].some(k => typeof store[k] !== 'function')) {
     throw new TypeError('settlement-confirmation: incomplete trusted dependencies');
   }
-  const previews = new Map(), preparing = new Set();
+  const previews = new Map(), preparing = new Map();
   let writeInFlight = false, uncertainOperation = null;
   function tick() { const value = now(); if (!positive(value)) fail(); return value; }
+  function retire(operationId, expected) {
+    // A delayed result may belong to a reclaimed generation. It must never
+    // delete a replacement (including an identical command/operation ID).
+    if (expected && previews.get(operationId) === expected) previews.delete(operationId);
+  }
+  function sweepExpired() {
+    const time = tick();
+    for (const [operationId, entry] of previews) {
+      // Read-only confirmations may be paused across this sweep. Their final
+      // identity/token check prevents them from committing after replacement.
+      // Once a write is attempted, TTL alone can no longer establish safety.
+      if (!entry.attempted && time >= entry.preview.expiresAt) retire(operationId, entry);
+    }
+  }
+  function terminal(operationId, entry, reason, definitiveAttempt = false) {
+    // Another confirmation can enter the sole write while this read-only
+    // validation awaits. Its uncertainty takes precedence over a stale refusal.
+    if (entry.attempted && !definitiveAttempt) return unknown(operationId);
+    retire(operationId, entry);
+    return rejected(reason);
+  }
   async function authorityFor(context) {
     const value = snapshot(await authorize(context));
     if (!shape(value, ['householdId', 'actorId']) || value.householdId !== householdId
@@ -156,27 +184,29 @@ function createSettlementEvidenceConfirmation(deps) {
   async function sameAuthority(context, original) {
     if (!isDeepStrictEqual(await authorityFor(context), original)) fail();
   }
-  async function originalOutcome(context, authority, operationId) {
+  async function originalOutcome(context, authority, operationId, expected = previews.get(operationId)) {
     const result = snapshot(await store.outcome({ actorId: authority.actorId, operationId }));
     await sameAuthority(context, authority);
     if (result.status === 'unknown') return null;
     const original = receipt(result, authority, operationId);
     if (!original) fail();
     if (uncertainOperation === operationId) uncertainOperation = null;
+    retire(operationId, expected);
     return original;
   }
 
   async function prepare(context, input) {
-    let request, ownedContext, reserved = false;
+    let request, ownedContext, reservation;
     try {
       ownedContext = snapshot(context); request = snapshot(input);
       if (!record(ownedContext) || !shape(request, ['operationId', 'selection', 'assignedCents'])
         || !matches(OPERATION, request.operationId) || !validSelection(request.selection)
         || !positive(request.assignedCents)) return unavailable('invalid-request');
+      sweepExpired();
       if (uncertainOperation) return unavailable('outcome-unresolved');
       if (previews.has(request.operationId) || preparing.has(request.operationId)
         || previews.size + preparing.size >= MAX_PREVIEWS) return unavailable('preview-unavailable');
-      preparing.add(request.operationId); reserved = true;
+      reservation = {}; preparing.set(request.operationId, reservation);
       const authority = await authorityFor(ownedContext);
       const selection = qualified(snapshot(await resolveSelection({ authority, selection: request.selection })), authority);
       const command = link(selection, request.assignedCents);
@@ -185,21 +215,28 @@ function createSettlementEvidenceConfirmation(deps) {
       const preview = validPreview(result, authority, request.operationId, command, tick());
       await sameAuthority(ownedContext, authority);
       if (tick() >= preview.expiresAt) return rejected('preview-expired');
+      if (uncertainOperation) return unavailable('outcome-unresolved');
+      const previewToken = crypto.randomBytes(32).toString('hex');
+      // Convert the reservation to a live entry without counting both slots.
+      preparing.delete(request.operationId);
       previews.set(request.operationId, { authority, selection, request, preview,
-        confirmationDigest: result.confirmationDigest, attempted: false });
+        confirmationDigest: result.confirmationDigest, previewToken, attempted: false });
       return snapshot({ status: 'prepared', operationId: request.operationId,
+        previewToken,
         selection: request.selection, assignedCents: command.assignedCents,
         currency: command.evidence.currency, date: command.evidence.date, asOf: command.asOf,
         operation: { version: 1, kind: 'link' }, expiresAt: preview.expiresAt });
     } catch { return unavailable('prepare-unavailable'); }
-    finally { if (reserved) preparing.delete(request.operationId); }
+    finally {
+      if (reservation && preparing.get(request.operationId) === reservation) preparing.delete(request.operationId);
+    }
   }
 
   async function confirm(context, input) {
     let request, enteredCommit = false;
     try {
       const ownedContext = snapshot(context); request = snapshot(input);
-      if (!record(ownedContext) || !shape(request, ['operationId'], ['confirmed'])
+      if (!record(ownedContext) || !shape(request, ['operationId'], ['confirmed', 'previewToken'])
         || !matches(OPERATION, request.operationId)
         || (Object.hasOwn(request, 'confirmed') && typeof request.confirmed !== 'boolean')) {
         return unavailable('invalid-request');
@@ -212,15 +249,16 @@ function createSettlementEvidenceConfirmation(deps) {
       if (uncertainOperation || writeInFlight) return unknown(request.operationId);
       const retained = previews.get(request.operationId);
       if (!retained || !isDeepStrictEqual(retained.authority, authority)) return unknown(request.operationId);
+      if (!matches(HASH, request.previewToken) || request.previewToken !== retained.previewToken) return rejected('preview-token-invalid');
       if (retained.attempted) return unknown(request.operationId);
       if (request.confirmed !== true) return rejected('confirmation-required');
-      if (tick() >= retained.preview.expiresAt) return rejected('preview-expired');
+      if (tick() >= retained.preview.expiresAt) return terminal(request.operationId, retained, 'preview-expired');
       let fresh;
       try {
         fresh = qualified(snapshot(await resolveSelection({ authority,
           selection: retained.request.selection })), authority);
-      } catch { return rejected('selection-unavailable'); }
-      if (!isDeepStrictEqual(fresh, retained.selection)) return rejected('selection-changed');
+      } catch { return retained.attempted ? unknown(request.operationId) : rejected('selection-unavailable'); }
+      if (!isDeepStrictEqual(fresh, retained.selection)) return terminal(request.operationId, retained, 'selection-changed');
       // Read-only optimization only: another caller can change the store
       // after this probe releases the lock (including during authorization).
       // commitWithoutRecovery owns the atomic no-recovery decision under the
@@ -233,27 +271,30 @@ function createSettlementEvidenceConfirmation(deps) {
       } catch { return unavailable('store-unavailable'); }
       if (current.expectedRevision !== retained.preview.expectedRevision
         || current.expectedDocumentDigest !== retained.preview.expectedDocumentDigest) {
-        return rejected('store-conflict');
+        return terminal(request.operationId, retained, 'store-conflict');
       }
       await sameAuthority(ownedContext, authority);
-      if (tick() >= retained.preview.expiresAt) return rejected('preview-expired');
+      if (tick() >= retained.preview.expiresAt) return terminal(request.operationId, retained, 'preview-expired');
       // No await between this check, consuming the sole attempt and invoking
       // commit. The store sees the original frozen preview, never a rebase.
       if (retained.attempted || writeInFlight || uncertainOperation) return unknown(request.operationId);
+      if (previews.get(request.operationId) !== retained || request.previewToken !== retained.previewToken) {
+        return rejected('preview-token-invalid');
+      }
       retained.attempted = true; enteredCommit = true; writeInFlight = true;
       uncertainOperation = request.operationId;
       const result = snapshot(await store.commitWithoutRecovery({ actorId: authority.actorId,
         preview: retained.preview, confirmationDigest: retained.confirmationDigest }));
       await sameAuthority(ownedContext, authority);
       const committed = receipt(result, authority, request.operationId);
-      if (committed) { uncertainOperation = null; return committed; }
+      if (committed) { uncertainOperation = null; retire(request.operationId, retained); return committed; }
       if (result.status === 'rejected' && result.reason === 'preview-expired') {
-        uncertainOperation = null; return rejected('preview-expired');
+        uncertainOperation = null; return terminal(request.operationId, retained, 'preview-expired', true);
       }
       if (result.status === 'rejected' && result.reason === 'recovery-required') {
-        uncertainOperation = null; return rejected('recovery-required');
+        uncertainOperation = null; return terminal(request.operationId, retained, 'recovery-required', true);
       }
-      if (result.status === 'conflict') { uncertainOperation = null; return rejected('store-conflict'); }
+      if (result.status === 'conflict') { uncertainOperation = null; return terminal(request.operationId, retained, 'store-conflict', true); }
       return unknown(request.operationId);
     } catch {
       return enteredCommit ? unknown(request.operationId) : unavailable('confirmation-unavailable');

@@ -4,7 +4,7 @@
 // contract/store/POSIX adapter write only into disposable private OS temp
 // directories. Authorization, identity mappings, independent pin and backups
 // are deterministic fixtures; none is a production identity implementation.
-// Intentionally unregistered: Muse owns test/test.js and the server lane.
+// Registered through the shared manifest; no production controller consumer.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -49,7 +49,7 @@ async function world(t) {
   fs.chmodSync(dir, 0o700);
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const w = {
-    dir, time: T0, pin: null, backups: new Map(), writes: [], calls: [],
+    dir, time: T0, pin: null, backups: new Map(), writes: [], calls: [], tokens: new Map(),
     authority: { householdId, actorId }, source: resolved(),
     authHook: null, resolveHook: null, prepareHook: null, commitHook: null, outcomeHook: null,
     lostPinAck: false, unreadablePin: false, failBackup: false,
@@ -103,7 +103,8 @@ async function world(t) {
   };
   w.resolve = async input => {
     w.calls.push('resolve');
-    assert.deepEqual(input.authority, { householdId, actorId });
+    assert.equal(input.authority.householdId, householdId);
+    assert([actorId, otherActor].includes(input.authority.actorId));
     assert.deepEqual(input.selection, selection);
     // Exact fixture mapping only: content never participates in txRef identity.
     if (w.resolveHook) return w.resolveHook(input);
@@ -130,8 +131,16 @@ async function world(t) {
     },
   });
   w.controller = w.newController();
-  w.prepare = (n = 1, cents = 2500) => w.controller.prepare(context, request(n, cents));
-  w.confirm = (n = 1, confirmed = true, ctx = context) => w.controller.confirm(ctx, { operationId: op(n), confirmed });
+  w.prepare = async (n = 1, cents = 2500, ctx = context) => {
+    const result = await w.controller.prepare(ctx, request(n, cents));
+    if (result.status === 'prepared') w.tokens.set(op(n), result.previewToken);
+    return result;
+  };
+  w.confirm = (n = 1, confirmed = true, ctx = context) => {
+    const previewToken = w.tokens.get(op(n));
+    return w.controller.confirm(ctx, { operationId: op(n), confirmed,
+      ...(previewToken === undefined ? {} : { previewToken }) });
+  };
   w.outcome = (n = 1, ctx = context) => w.controller.outcome(ctx, { operationId: op(n) });
   w.document = () => JSON.parse(fs.readFileSync(path.join(dir, 'document.json'), 'utf8'));
   w.load = () => L.loadSettlementEvidence({ config: { householdId },
@@ -148,11 +157,285 @@ function privateFree(value) {
   }
 }
 
+test('B2 capacity: 200 live previews block 201, but expiry admits new work', async t => {
+  const w = await world(t);
+  for (let n = 1; n <= 200; n++) assert.equal((await w.prepare(n, 1)).status, 'prepared', 'live preview ' + n);
+  assert.equal((await w.prepare(201, 1)).status, 'unavailable');
+  w.time += C.TTL_MS;
+  assert.equal((await w.prepare(201, 1)).status, 'prepared', 'expired never-attempted previews must not consume lifetime capacity');
+  assert.deepEqual(w.writes, []);
+});
+
+test('B2 capacity: more than 200 real successful operations reclaim committed previews', async t => {
+  const w = await world(t), tokens = new Set();
+  let first;
+  for (let n = 1; n <= 205; n++) {
+    const prepared = await w.prepare(n, 1);
+    assert.equal(prepared.status, 'prepared', 'success cycle ' + n);
+    assert.match(prepared.previewToken, /^[a-f0-9]{64}$/);
+    assert(!tokens.has(prepared.previewToken)); tokens.add(prepared.previewToken);
+    const result = await w.confirm(n);
+    assert.equal(result.status, 'committed', 'success cycle ' + n);
+    first ||= result;
+  }
+  assert.equal(w.document().operations.length, 205);
+  assert.equal(w.count('commitWithoutRecovery'), 205);
+  w.time += C.TTL_MS;
+  assert.deepEqual(await w.controller.confirm(context, { operationId: op(1) }), first);
+  assert.deepEqual(await w.outcome(1), first);
+});
+
+test('B2 terminal refusal: over 200 no-write cycles can reuse an operation without retaining old generations', async t => {
+  const w = await world(t), tokens = new Set();
+  for (let n = 0; n < 205; n++) {
+    const prepared = await w.prepare(1, 1);
+    assert.equal(prepared.status, 'prepared', 'refusal cycle ' + n);
+    assert(!tokens.has(prepared.previewToken)); tokens.add(prepared.previewToken);
+    const mode = n % 4;
+    if (mode === 0) w.source.goalBinding = 'synthetic-changed-goal';
+    if (mode === 1) w.commitHook = async () => ({ status: 'conflict' });
+    if (mode === 2) w.commitHook = async () => ({ status: 'rejected', reason: 'recovery-required' });
+    if (mode === 3) w.time += C.TTL_MS;
+    const result = await w.confirm();
+    assert.deepEqual(result, { status: 'rejected', reason: ['selection-changed', 'store-conflict', 'recovery-required', 'preview-expired'][mode] });
+    w.source = resolved(); w.commitHook = null;
+  }
+  assert.deepEqual(w.writes, []);
+  assert.equal((await w.prepare(1, 1)).status, 'prepared');
+});
+
+test('B2 generation: expired ID reuse requires the new token and wrong tokens do not retire it', async t => {
+  const w = await world(t);
+  const old = await w.prepare();
+  w.time += C.TTL_MS;
+  const next = await w.prepare();
+  assert.equal(next.status, 'prepared');
+  assert.notEqual(next.previewToken, old.previewToken);
+  for (const previewToken of [undefined, old.previewToken, 'f'.repeat(64), 42]) {
+    const result = await w.controller.confirm(context, { operationId: op(1), confirmed: true,
+      ...(previewToken === undefined ? {} : { previewToken }) });
+    assert.equal(result.status, 'rejected');
+    assert.equal(w.count('commitWithoutRecovery'), 0);
+    assert.deepEqual(w.writes, []);
+  }
+  assert.equal((await w.prepare()).status, 'unavailable', 'bad tokens must not retire the current live generation');
+  assert.equal((await w.confirm()).status, 'committed');
+});
+
+test('B2 generation: identical command, frozen clock and rejected ID reuse still get a fresh random token', async t => {
+  const w = await world(t), privatePreviews = [];
+  w.prepareHook = async (input, store) => {
+    const result = await store.prepare(input); privatePreviews.push(clone(result.preview)); return result;
+  };
+  const old = await w.prepare();
+  w.source.goalBinding = 'synthetic-changed-goal';
+  assert.equal((await w.confirm()).reason, 'selection-changed');
+  w.source = resolved();
+  const next = await w.prepare();
+  assert.equal(next.status, 'prepared');
+  assert.deepEqual(privatePreviews[0], privatePreviews[1], 'store preview/digest/clock are identical across generations');
+  assert.equal(w.time, T0);
+  assert.match(old.previewToken, /^[a-f0-9]{64}$/); assert.match(next.previewToken, /^[a-f0-9]{64}$/);
+  assert.notEqual(next.previewToken, old.previewToken);
+  assert.notEqual(next.previewToken, C.digest(privatePreviews[1]));
+  assert.notEqual((await w.controller.confirm(context, { operationId: op(1), previewToken: old.previewToken, confirmed: true })).status, 'committed');
+  assert.equal((await w.confirm()).status, 'committed');
+});
+
+test('B2 tokens: operation and actor swaps fail without committing or retiring either live generation', async t => {
+  const w = await world(t);
+  const a = await w.prepare(1), b = await w.prepare(2, 1, otherContext);
+  assert.equal(a.status, 'prepared'); assert.equal(b.status, 'prepared');
+  for (const [ctx, operationId, previewToken] of [
+    [context, op(1), b.previewToken], [otherContext, op(2), a.previewToken],
+    [context, op(2), b.previewToken], [otherContext, op(1), a.previewToken],
+  ]) assert.notEqual((await w.controller.confirm(ctx, { operationId, previewToken, confirmed: true })).status, 'committed');
+  assert.deepEqual(w.writes, []);
+  assert.equal(w.count('commitWithoutRecovery'), 0);
+  assert.equal((await w.confirm(1, false)).reason, 'confirmation-required');
+  assert.equal((await w.confirm(2, false, otherContext)).reason, 'confirmation-required');
+  assert.equal((await w.confirm(2, true, otherContext)).status, 'committed');
+});
+
+test('B2 nonterminal: confirmation-required and temporarily unavailable selection keep the same generation', async t => {
+  const w = await world(t);
+  await w.prepare();
+  assert.equal((await w.confirm(1, false)).reason, 'confirmation-required');
+  assert.equal((await w.prepare()).status, 'unavailable');
+  w.resolveHook = async () => { throw Error('synthetic temporarily unavailable'); };
+  assert.equal((await w.confirm()).reason, 'selection-unavailable');
+  assert.equal((await w.prepare()).status, 'unavailable');
+  w.resolveHook = null;
+  assert.equal((await w.confirm()).status, 'committed');
+});
+
+test('B2 generation race: a paused old confirmation cannot commit after cleanup/reprepare even after clock rollback', async t => {
+  const w = await world(t), entered = deferred(), release = deferred();
+  const old = await w.prepare();
+  let pause = true;
+  w.resolveHook = async () => {
+    if (pause) { pause = false; entered.resolve(); await release.promise; }
+    return resolved();
+  };
+  const pending = w.controller.confirm(context, { operationId: op(1), previewToken: old.previewToken, confirmed: true });
+  await entered.promise;
+  w.time += C.TTL_MS;
+  const next = await w.prepare(); assert.equal(next.status, 'prepared');
+  // Adversarial injected-clock rollback ensures expiry cannot mask a missing
+  // final generation-identity check. Restore the new generation's time later.
+  w.time = T0;
+  release.resolve();
+  assert.notEqual((await pending).status, 'committed');
+  assert.equal(w.count('commitWithoutRecovery'), 0);
+  assert.deepEqual(w.writes, []);
+  w.time = T0 + C.TTL_MS;
+  assert.equal((await w.prepare()).status, 'unavailable', 'old cleanup must not delete the replacement');
+  assert.equal((await w.confirm()).status, 'committed');
+});
+
+test('B2 cleanup race: a terminal result from an old generation cannot delete its replacement', async t => {
+  const w = await world(t), entered = deferred(), release = deferred();
+  await w.prepare();
+  let pause = true;
+  w.resolveHook = async () => {
+    if (pause) {
+      pause = false; entered.resolve(); await release.promise;
+      return { ...resolved(), goalBinding: 'synthetic-old-selection-changed' };
+    }
+    return resolved();
+  };
+  const pending = w.confirm(); await entered.promise;
+  w.time += C.TTL_MS;
+  assert.equal((await w.prepare()).status, 'prepared');
+  release.resolve(); assert.equal((await pending).reason, 'selection-changed');
+  assert.equal((await w.prepare()).status, 'unavailable');
+  assert.deepEqual(w.writes, []);
+  assert.equal((await w.confirm()).status, 'committed');
+});
+
+test('B2 unknown: past TTL never retries or permits reprepare; only a verified receipt releases it', async t => {
+  const w = await world(t);
+  const prepared = await w.prepare();
+  w.commitHook = async (input, store) => { await store.commitWithoutRecovery(input); throw Error('synthetic lost controller reply'); };
+  assert.equal((await w.confirm()).status, 'unknown');
+  w.unreadablePin = true; w.time += C.TTL_MS * 2;
+  const writes = clone(w.writes);
+  assert.equal((await w.prepare()).status, 'unavailable');
+  assert.equal((await w.prepare(2, 1)).status, 'unavailable');
+  assert.equal((await w.confirm()).status, 'unknown');
+  assert.deepEqual(w.writes, writes);
+  assert.equal(w.count('commitWithoutRecovery'), 1);
+  w.unreadablePin = false;
+  const receipt = await w.outcome(); assert.equal(receipt.status, 'committed');
+  assert.deepEqual(await w.controller.confirm(context, { operationId: op(1) }), receipt);
+  assert.deepEqual(await w.controller.confirm(context, { operationId: op(1), previewToken: 'wrong', confirmed: false }), receipt);
+  w.commitHook = null;
+  assert.equal((await w.prepare(2, 1)).status, 'prepared');
+  assert.equal((await w.confirm(2)).status, 'committed');
+  assert.deepEqual(await w.controller.confirm(context, { operationId: op(1) }), receipt);
+  assert.equal(w.document().operations.length, 2);
+  assert.equal(typeof prepared.previewToken, 'string');
+});
+
+test('B2 unknown race: stale selection refusal cannot retire a generation whose other confirmation attempted a write', async t => {
+  const w = await world(t), entered = deferred(), release = deferred();
+  await w.prepare();
+  let pause = true;
+  w.resolveHook = async () => {
+    if (pause) {
+      pause = false; entered.resolve(); await release.promise;
+      return { ...resolved(), goalBinding: 'synthetic-stale-goal' };
+    }
+    return resolved();
+  };
+  const old = w.confirm(); await entered.promise;
+  w.commitHook = async () => ({ status: 'unknown' });
+  assert.equal((await w.confirm()).status, 'unknown');
+  release.resolve(); assert.equal((await old).status, 'unknown');
+  w.time += C.TTL_MS * 2;
+  assert.equal((await w.prepare()).status, 'unavailable');
+  assert.equal((await w.confirm()).status, 'unknown');
+  assert.equal(w.count('commitWithoutRecovery'), 1);
+  assert.deepEqual(w.writes, []);
+});
+
+test('B2 in-flight: TTL cannot evict an attempted generation while the sole commit awaits', async t => {
+  const w = await world(t), entered = deferred(), release = deferred();
+  const old = await w.prepare();
+  w.commitHook = async (input, store) => { entered.resolve(); await release.promise; return store.commitWithoutRecovery(input); };
+  const pending = w.confirm(); await entered.promise;
+  w.time += C.TTL_MS;
+  assert.equal((await w.prepare()).status, 'unavailable');
+  assert.equal((await w.prepare(2, 1)).status, 'unavailable');
+  release.resolve(); assert.equal((await pending).reason, 'preview-expired');
+  assert.deepEqual(w.writes, []);
+  w.commitHook = null;
+  const next = await w.prepare(); assert.equal(next.status, 'prepared');
+  assert.notEqual(next.previewToken, old.previewToken);
+});
+
+test('B2 reservation cap: 200 concurrent preparing reservations block a 201st before awaiting', async t => {
+  const w = await world(t), entered = deferred(), release = deferred();
+  // This POSIX adapter refuses overlapping lock acquisitions. Schedule the
+  // fixture's read-only probes serially so the test isolates controller slots.
+  let probes = Promise.resolve();
+  w.prepareHook = (input, store) => {
+    const result = probes.then(() => store.prepare(input));
+    probes = result.catch(() => {});
+    return result;
+  };
+  let count = 0;
+  w.authHook = async () => {
+    if (++count === 200) entered.resolve();
+    await release.promise; return { householdId, actorId };
+  };
+  const pending = Array.from({ length: 200 }, (_, i) => w.prepare(i + 1, 1));
+  await entered.promise;
+  assert.equal((await w.prepare(201, 1)).status, 'unavailable');
+  assert.equal(count, 200);
+  release.resolve();
+  const results = await Promise.all(pending);
+  assert(results.every(result => result.status === 'prepared'));
+  assert.equal(new Set(results.map(result => result.previewToken)).size, 200);
+  assert.equal((await w.prepare(201, 1)).status, 'unavailable');
+  assert.deepEqual(w.writes, []);
+});
+
+test('B2 reservation cap: active previews and failing reservations share the same 200 slots', async t => {
+  const w = await world(t), entered = deferred(), release = deferred();
+  for (let n = 1; n <= 199; n++) assert.equal((await w.prepare(n, 1)).status, 'prepared');
+  w.authHook = async () => { entered.resolve(); await release.promise; return null; };
+  const pending = w.prepare(200, 1); await entered.promise;
+  assert.equal((await w.prepare(201, 1)).status, 'unavailable');
+  release.resolve(); assert.equal((await pending).status, 'unavailable');
+  w.authHook = null;
+  assert.equal((await w.prepare(201, 1)).status, 'prepared', 'failed reservation releases only its own slot');
+  assert.deepEqual(w.writes, []);
+});
+
+test('B2 token boundary: nonce is never accepted at prepare or forwarded to store/document/journal', async t => {
+  const w = await world(t), storeInputs = [];
+  assert.equal((await w.controller.prepare(context, { ...request(), previewToken: 'f'.repeat(64) })).status, 'unavailable');
+  w.prepareHook = async (input, store) => { storeInputs.push(clone(input)); return store.prepare(input); };
+  w.commitHook = async (input, store) => { storeInputs.push(clone(input)); return store.commitWithoutRecovery(input); };
+  const prepared = await w.prepare();
+  w.failBackup = true;
+  assert.equal((await w.confirm()).status, 'unknown');
+  const privateState = JSON.stringify(storeInputs) + fs.readFileSync(path.join(w.dir, 'document.json'), 'utf8')
+    + fs.readFileSync(path.join(w.dir, 'journal.json'), 'utf8')
+    + [...w.backups.values()].map(entry => entry.bytes.toString('utf8')).join('');
+  assert(!privateState.includes('previewToken'));
+  assert(!privateState.includes(prepared.previewToken));
+  assert.equal(w.count('commitWithoutRecovery'), 1);
+});
+
 test('prepare is read-only and returns only the exact sanitized selection/amount/date/operation/expiry', async t => {
   const w = await world(t);
   const before = fs.readFileSync(path.join(w.dir, 'document.json'));
   const result = await w.prepare();
-  assert.deepEqual(result, { status: 'prepared', operationId: op(1), selection,
+  const { previewToken, ...shown } = result;
+  assert.match(previewToken, /^[a-f0-9]{64}$/);
+  assert.deepEqual(shown, { status: 'prepared', operationId: op(1), selection,
     assignedCents: 2500, currency: 'cad', date: '2026-10-19', asOf: '2026-10-20',
     operation: { version: 1, kind: 'link' }, expiresAt: T0 + C.TTL_MS });
   privateFree(result);
@@ -383,7 +666,9 @@ test('snapshot caller context and selection before the first authorization await
   const ctx = clone(context), input = request();
   const pending = w.controller.prepare(ctx, input); await entered.promise;
   ctx.ticket = 'forged'; input.assignedCents = 6000; input.selection.transaction = 'pc-1'; input.operationId = op(99);
-  release.resolve(); assert.equal((await pending).operationId, op(1));
+  release.resolve();
+  const prepared = await pending;
+  assert.equal(prepared.operationId, op(1)); w.tokens.set(op(1), prepared.previewToken);
   assert.equal((await w.confirm()).status, 'committed');
   assert.equal(w.document().operations[0].command.assignedCents, 2500);
 });
@@ -454,7 +739,7 @@ test('confirmation request is owned before authorization awaits, including its e
   const w = await world(t), entered = deferred(), release = deferred();
   await w.prepare();
   w.authHook = async () => { entered.resolve(); await release.promise; return { householdId, actorId }; };
-  const input = { operationId: op(1), confirmed: true }, ctx = clone(context);
+  const input = { operationId: op(1), previewToken: w.tokens.get(op(1)), confirmed: true }, ctx = clone(context);
   const pending = w.controller.confirm(ctx, input); await entered.promise;
   input.operationId = op(99); input.confirmed = false; ctx.ticket = 'forged';
   release.resolve();
@@ -599,7 +884,7 @@ test('confirmation snapshots explicit confirmation and rechecks authority/expiry
   await w.prepare();
   const entered = deferred(), release = deferred();
   w.resolveHook = async () => { entered.resolve(); await release.promise; return resolved(); };
-  const input = { operationId: op(1), confirmed: false };
+  const input = { operationId: op(1), previewToken: w.tokens.get(op(1)), confirmed: false };
   const denied = w.controller.confirm(context, input); input.confirmed = true;
   assert.notEqual((await denied).status, 'committed');
   const pending = w.confirm(); await entered.promise;
