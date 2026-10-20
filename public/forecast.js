@@ -15484,6 +15484,7 @@
           end: period.end, role: period.timelineRole, funding: period.plannedCostFunding, progress: period.budgetProgress }));
         const closingSavings = savingsClosingProjection(savingsFunding,
           { ...savingsClosingWalks.get(payPeriodTimelinePack.views), currentPlanning: savingsPlanning.current,
+            plan, settlementEvidence: paydayOpts.settlementEvidence,
             openingQualified: Number.isSafeInteger(paydayOpts.s1CurrentBillsStockCents) }, asOf);
         // A location reprint of this same native walk and serial schedule. New
         // projected top-ups move cash between locations; expenses remain once.
@@ -21573,10 +21574,25 @@
     const items = funding.backing.items;
     if (funding.unresolved.length || items.some(i => savingsCents(i.needed) == null || !savingsDate(i.date)))
       return hold('A required Savings amount or planning date is unavailable.');
+    const reliefIndex = settlementReliefIndex(context.settlementEvidence, asOf);
     const events = [];
     for (const item of items.filter(i => i.date <= through)) {
       const matches = sim.events.filter(e => e.id === item.id && e.date === item.date
         && ['commitment', 'bill', 'reserve'].includes(e.kind));
+      // Full relief deliberately emits no future expense. Reuse the same
+      // effective settlement judgement, bound to one original commitment;
+      // zero alone, missing evidence or an ambiguous identity cannot excuse
+      // the native-expense match. The reported stock already includes paid
+      // transactions, so there is no second draw to put into this ledger.
+      if (!matches.length && savingsCents(item.needed) === 0) {
+        const sources = (context.plan?.commitments || []).filter(row => row?.id === item.id);
+        const competing = [...(context.plan?.bills || []), ...(context.plan?.budget?.categories || [])]
+          .some(row => row?.id === item.id);
+        const source = sources.length === 1 && !competing
+          && commitmentCashDate(sources[0]) === item.date ? sources[0] : null;
+        const relief = settlementRowRelief(reliefIndex, source, savingsCents(source?.amount));
+        if (relief && !relief.uncertain && relief.linkedPaidCents > 0 && relief.remainingCents === 0) continue;
+      }
       if (matches.length !== 1 || savingsCents(-matches[0].amount) !== savingsCents(item.needed))
         return hold('A Savings requirement has no unique matching native expense.');
       const e = matches[0], seeded = e.reserveFunding ? savingsCents(e.reserveFunding.amount) : 0;
