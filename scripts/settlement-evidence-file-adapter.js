@@ -33,7 +33,12 @@
 //     never removed by anyone but its holder on release. Recovery from
 //     an orphan lock is an out-of-band operator act, not this module's.
 //
-// Absence is the literal null (the store's adapter convention). Reads
+// Absence is the literal null (the store's adapter convention). The
+// staged read doubles as the store's bootstrap absence evidence, so
+// it reports a trace for every adapter-owned durable trace class —
+// staged candidates, transient write artifacts, the document/journal
+// files, a leftover lock, and retained quarantine evidence — and any
+// inspection failure throws rather than reading as absence. Reads
 // return fresh loader-owned byte copies; writes copy caller bytes.
 // Malformed inputs are refused, never coerced. Windows filesystem
 // security/durability is unqualified (the incumbent convention refuses
@@ -210,9 +215,42 @@ function createSettlementEvidenceFileAdapter(destination) {
     },
     async readStaged() {
       directory();
-      const names = stagedNames();
-      if (!names.length) return null;
-      return readFileOrNull(path.join(root, names[0]), 'staged document');
+      const entries = fs.readdirSync(root);
+      const staged = entries.filter(n => n.startsWith(STAGED_PREFIX)).sort();
+      if (staged.length) return readFileOrNull(path.join(root, staged[0]), 'staged document');
+      // B1 (round 3): the store's bootstrap absence determination
+      // consumes this read, so absence evidence must account for EVERY
+      // adapter-owned durable trace class — not only staged candidates.
+      // A transient journal-write artifact, the document/journal files,
+      // a leftover lock this instance does not hold, and any retained
+      // quarantine evidence each prove the directory is not pristine.
+      // Unrelated operator files are not adapter-owned traces and are
+      // ignored. Any inspection failure throws: the determination
+      // stays unknown, never absence.
+      const transient = entries.filter(n => n.startsWith(TEMP_PREFIX)).sort();
+      if (transient.length) return readFileOrNull(path.join(root, transient[0]), 'transient artifact');
+      if (entries.includes(DOCUMENT_NAME)) return readFileOrNull(paths.documentFile, 'document');
+      if (entries.includes(JOURNAL_NAME)) return readFileOrNull(paths.journalFile, 'journal');
+      if (entries.includes(LOCK_NAME) && !held) {
+        return readFileOrNull(paths.lockFile, 'lock');
+      }
+      if (entries.includes(QUARANTINE_NAME)) {
+        let qstat;
+        try { qstat = fs.lstatSync(paths.quarantineDir); } catch {
+          fail('quarantine directory cannot be inspected');
+        }
+        check(qstat.isDirectory() && !qstat.isSymbolicLink(),
+          'quarantine path is not an inspectable directory');
+        let qentries;
+        try { qentries = fs.readdirSync(paths.quarantineDir); } catch {
+          fail('quarantine directory cannot be inspected');
+        }
+        if (qentries.length) {
+          qentries.sort();
+          return readFileOrNull(path.join(paths.quarantineDir, qentries[0]), 'quarantine evidence');
+        }
+      }
+      return null;
     },
     async writeTemp(bytes) {
       const copy = copyBytesArg(bytes, 'document temp');

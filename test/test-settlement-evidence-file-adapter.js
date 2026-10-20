@@ -854,13 +854,24 @@ test('a document file with group/other permissions is refused by adapter reads (
 // === 6. No bootstrap over traces ===
 
 test('bootstrap is refused over every pre-existing trace and writes nothing', async () => {
-  for (const trace of ['document', 'journal', 'staged temp', 'lock']) {
+  for (const trace of ['document', 'journal', 'staged temp', 'lock', 'transient temp', 'quarantine evidence']) {
     const dir = makeDir();
     const auth = makeAuthorities();
     if (trace === 'document') plant(dir, 'document.json', C.adopt({ householdId }));
     if (trace === 'journal') plant(dir, 'journal.json', Buffer.from('{}'));
     if (trace === 'staged temp') plant(dir, '.document-' + 'ab'.repeat(16), Buffer.from('staged'));
     if (trace === 'lock') fs.writeFileSync(path.join(dir, 'store.lock'), '', { mode: 0o600 });
+    // B1 (round 3): adapter-owned traces beyond the staged slot — a
+    // transient journal-write artifact and retained quarantine
+    // evidence are durable traces too; genesis over either would bury
+    // the only copy of an interrupted commit's evidence.
+    if (trace === 'transient temp') plant(dir, '.tmp-' + 'cd'.repeat(16), Buffer.from('journal-write-residue'));
+    let quarantineEvidence = null;
+    if (trace === 'quarantine evidence') {
+      fs.mkdirSync(path.join(dir, 'quarantine'), { mode: 0o700 });
+      quarantineEvidence = 'divergent-head-r1-' + 'ef'.repeat(16);
+      plant(path.join(dir, 'quarantine'), quarantineEvidence, Buffer.from('divergent-head-bytes'));
+    }
     const namesBefore = listing(dir);
     const { store } = newStore(dir, auth);
     if (trace === 'lock') {
@@ -873,6 +884,44 @@ test('bootstrap is refused over every pre-existing trace and writes nothing', as
     assert.deepEqual(listing(dir), namesBefore, trace + ': refused attempt wrote nothing');
     assert.equal(auth.durable.pin, null, trace + ': pin double untouched');
     assert.equal(auth.durable.backups.size, 0, trace + ': backup double untouched');
+    if (trace === 'transient temp') {
+      assert.ok(readIfExists(dir, '.tmp-' + 'cd'.repeat(16)).equals(Buffer.from('journal-write-residue')),
+        'transient artifact bytes preserved byte-identical');
+    }
+    if (trace === 'quarantine evidence') {
+      assert.ok(readIfExists(path.join(dir, 'quarantine'), quarantineEvidence)
+        .equals(Buffer.from('divergent-head-bytes')),
+      'quarantine evidence preserved byte-identical');
+    }
+  }
+});
+
+test('bootstrap absence inspection failure stays unknown: genesis refused, never absence, zero writes', async () => {
+  // The quarantine path is adapter-owned namespace. If it exists in a
+  // shape the adapter cannot inspect as its own directory (a regular
+  // file, a symlink), the absence determination FAILS: the result must
+  // be unknown (unavailable), never a collapse to "no trace" that lets
+  // genesis proceed over uninspectable state.
+  for (const shape of ['regular file', 'symlink']) {
+    const dir = makeDir();
+    const auth = makeAuthorities();
+    const qpath = path.join(dir, 'quarantine');
+    if (shape === 'regular file') {
+      fs.writeFileSync(qpath, Buffer.from('not a directory'), { mode: 0o600 });
+    } else {
+      fs.symlinkSync(makeDir(), qpath, 'dir');
+    }
+    const namesBefore = listing(dir);
+    const { store } = newStore(dir, auth);
+    const boot = await store.bootstrap();
+    assert.equal(boot.status, 'unavailable', shape + ': inspection failure is unknown, not genesis');
+    assert.deepEqual(listing(dir), namesBefore, shape + ': refused attempt wrote nothing');
+    assert.equal(auth.durable.pin, null, shape + ': pin double untouched');
+    assert.equal(auth.durable.backups.size, 0, shape + ': backup double untouched');
+    if (shape === 'regular file') {
+      assert.equal(fs.readFileSync(qpath, 'utf8'), 'not a directory',
+        'planted bytes preserved');
+    }
   }
 });
 
