@@ -386,6 +386,73 @@ console.log('\n=== 6. Other spending is not a total of spending outside planned 
     'printed copy does not claim a total of spending outside the planned categories');
 }
 
+console.log('\n=== 7. ATLAS-043: Coffee Shops is an Eating Out label alias, counted once ===');
+{
+  const COFFEE = 30;
+  const coffeeTx = {
+    id: 'tx-coffee', date: '2026-08-30', amount: COFFEE, pending: false,
+    categoryLabel: 'Coffee Shops', accountRole: 'household-cash',
+    displayedPayee: 'Starbucks', originalMerchant: 'Starbucks',
+  };
+  const plan = syntheticPlan();
+  const coffeeCls = F.classifyCurrentPeriodTransaction(coffeeTx, plan);
+  const eatCls = F.classifyCurrentPeriodTransaction(fixtureTxs[2], plan);
+  ok(coffeeCls.kind === 'spend' && coffeeCls.categoryId === 'restaurants',
+    'Coffee Shops tx classifies as Eating out');
+  ok(JSON.stringify(coffeeCls) === JSON.stringify(eatCls),
+    'Coffee Shops classification is identical to the Restaurants classification',
+    JSON.stringify(coffeeCls));
+  const variant = label => F.classifyCurrentPeriodTransaction(
+    Object.assign({}, coffeeTx, { categoryLabel: label }), plan);
+  ok(variant(' Coffee Shops ').categoryId === 'restaurants'
+      && variant('COFFEE SHOPS').categoryId === 'restaurants'
+      && variant('coffee shops').categoryId === 'restaurants',
+    'trim/case variants of Coffee Shops classify as Eating out under the incumbent normalization');
+  ok(variant(' Restaurants ').categoryId === 'restaurants'
+      && variant('FAST FOOD').categoryId === 'restaurants',
+    'the same trim/case variants behave identically for the incumbent Eating Out labels');
+  ok(variant('Coffee Shop').categoryId !== 'restaurants'
+      && variant('Coffee Shop').needsConfirmation === true,
+    'singular Coffee Shop is not the Lunch Money label and stays unassigned');
+  ok(variant('Coffee  Shops').categoryId !== 'restaurants'
+      && variant('Coffee  Shops').needsConfirmation === true,
+    'double-spaced Coffee  Shops is not normalized into the alias (trim/lowercase only)');
+  ok(variant('Fast Food').categoryId === 'restaurants'
+      && variant('Food Delivery').categoryId === 'restaurants',
+    'Fast Food and Food Delivery still classify as Eating out');
+  const alcoholCls = variant('Alcohol, Bars');
+  ok(alcoholCls.categoryId !== 'restaurants' && alcoholCls.needsConfirmation === true,
+    'Alcohol, Bars is not aliased into Eating Out; it stays in the unassigned residual');
+
+  const advice = recommend(fixtureTxs.concat([coffeeTx]));
+  const active = period(advice.defaultView, 'this-pay-period');
+  const eating = budgetRow(active, 'restaurants');
+  const other = (active.householdBudget || []).find(r => r.otherSpending);
+  ok(eating && near(eating.spent, EATING + COFFEE),
+    'Eating out spent is the constructed $25 Restaurants + $30 Coffee Shops = $55',
+    eating && String(eating.spent));
+  ok(other && near(other.spent, OTHER_TOTAL) && near(other.hold, OTHER_TOTAL),
+    'Other spending stays the constructed $100 residual — Coffee Shops is excluded from it',
+    other && String(other.spent));
+  let spentSum = 0;
+  const reconIds = [];
+  for (const row of active.householdBudget || []) {
+    spentSum = roundCent(spentSum + (Number(row.spent) || 0));
+    for (const tx of row.recon || []) {
+      if (tx && tx.id) reconIds.push(tx.id);
+    }
+  }
+  ok(near(spentSum, RELEVANT_TOTAL + COFFEE),
+    'bucket totals conserve: $275 relevant + $30 Coffee Shops = $305 across all rows',
+    String(spentSum));
+  ok(reconIds.filter(id => id === 'tx-coffee').length === 1,
+    'the Coffee Shops tx appears exactly once across Household Budget rows');
+  ok((eating.recon || []).some(tx => tx.id === 'tx-coffee'),
+    'the Coffee Shops tx is represented on the Eating out row');
+  ok(!(other.recon || []).some(tx => tx.id === 'tx-coffee'),
+    'the Coffee Shops tx is not represented on the Other spending row');
+}
+
 if (failures) {
   console.log('\nFAILED ' + failures);
   process.exit(1);

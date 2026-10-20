@@ -1533,6 +1533,23 @@ console.log('\n=== ET. outgoing e-transfer review publication (additional visibi
   ok(namedAction.outgoingETransfers.count === 0,
     'a confirmed named spending category row is excluded despite the residual transfer hint');
 
+  // ATLAS-043: 'Coffee Shops' joins the same named-category authority as
+  // the incumbent Eating Out labels (Restaurants / Fast Food / Food
+  // Delivery). The helper's behaviour changes for coffee-labelled rows
+  // only in that they are now named; the row's own classification is
+  // untouched, exactly as for the Groceries row above.
+  const coffeeNamedRow = etRow('ex-coffee-named', { categoryLabel: 'Coffee Shops', kindHint: 'transfer' });
+  const coffeeNamedCls = F.classifyCurrentPeriodTransaction(coffeeNamedRow, etPlan(),
+    { currentPeriodActuals: etPacket([coffeeNamedRow]) });
+  ok(coffeeNamedCls.kind === 'transfer',
+    'setup: the Coffee Shops row with a transfer hint really does classify as transfer', coffeeNamedCls.kind);
+  const coffeeNamedAction = F.currentPeriodAction(etPlan(), MID, opts({
+    currentPeriodActuals: etPacket([groceryRow, coffeeNamedRow]),
+  }));
+  ok(coffeeNamedAction.outgoingETransfers.count === 0
+    && !coffeeNamedAction.outgoingETransfers.items.some(i => i.id === 'ex-coffee-named'),
+    'a Coffee Shops-labelled row is a confirmed named category and is excluded from the e-transfer publication');
+
   // Coverage states.
   const missing = F.currentPeriodAction(etPlan(), MID, opts());
   ok(missing.outgoingETransfers.status === 'unavailable-missing'
