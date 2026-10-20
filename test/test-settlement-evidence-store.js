@@ -363,6 +363,19 @@ function assertWorldUnchanged(world, snap, what) {
   assert.deepEqual(snapshotWorld(world), snap, `${what}: store byte-identical`);
 }
 
+// B1 confirmation boundary proof includes every retained byte, not only the
+// incumbent snapshot's backup keys / quarantine length.
+function retainedBytes(world) {
+  return {
+    ...snapshotWorld(world), artifactSeq: world.durable.artifactSeq,
+    backups: [...world.durable.backups.values()].map(entry => ({ ...entry, bytes: entry.bytes.toString('hex') })),
+    quarantine: world.durable.quarantine.map(entry => ({ ...entry, bytes: entry.bytes.toString('hex') })),
+  };
+}
+const confirmedRequest = (prepared, actor = actorId) => ({
+  actorId: actor, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+});
+
 // === State-table rows =====================================================
 
 test('T1 R0: empty doubles -> unbootstrapped, zero writes; loader unavailable', async () => {
@@ -1648,6 +1661,237 @@ test('coverage: every reconciler row R0-R8 was exercised', () => {
 // a resident journal binds the supplied actor as well as the digest.
 // B3: an unavailable or malformed backup manifest never selects a
 // destructive reconciliation row (R6/R7/R8).
+
+// B1 caller-boundary repair: a distinct lock-scoped no-recovery capability.
+// All incumbent ordinary commit/reconcile controls below remain intact.
+test('B1 no-recovery: capability is distinct and ordinary commits remain available', async () => {
+  const { store } = await bootWorld();
+  assert.equal(typeof store.commitWithoutRecovery, 'function');
+  assert.notEqual(store.commitWithoutRecovery, store.commit);
+  const prepared = await prepareLink(store, 1);
+  assert.equal((await store.commitWithoutRecovery(confirmedRequest(prepared))).status, 'committed');
+});
+
+test('B1 no-recovery: recovery policy is private, never a caller request option', async () => {
+  const { world, store } = await bootWorld();
+  const prepared = await prepareLink(store, 1);
+  const interrupted = await prepareLink(store, 2, { txRef: tx(2), actorId: actor2 });
+  world.failNext('backup.put', 'throw');
+  assert.equal((await store.commit(confirmedRequest(interrupted, actor2))).status, 'unknown');
+  const before = retainedBytes(world), writes = world.writeCounts();
+  assert.deepEqual(await store.commitWithoutRecovery({ ...confirmedRequest(prepared), allowRecovery: true }),
+    { status: 'rejected', reason: 'recovery-required' });
+  world.noWritesSince(writes); assert.deepEqual(retainedBytes(world), before);
+  assert.deepEqual(await store.commit({ ...confirmedRequest(prepared), allowRecovery: false }), { status: 'conflict' });
+  assert.equal(world.durable.pin.revision, 1, 'ordinary commit still performed R5 despite the ignored caller option');
+  assert.equal(world.durable.journal, null);
+});
+
+for (const state of ['valid-unlanded-journal', 'valid-landed-journal', 'torn-journal',
+  'unrelated-journal', 'missing-head', 'corrupt-head', 'behind-head', 'forked-pin', 'missing-pin']) {
+  test('B1 no-recovery: definite pre-write refusal preserves all bytes for ' + state, async () => {
+    const { world, store } = await bootWorld();
+    const genesis = Buffer.from(world.durable.doc);
+    const prepared = await prepareLink(store, 1);
+    if (state.startsWith('valid-') || state === 'unrelated-journal') {
+      const other = await prepareLink(store, 2, { actorId: actor2, txRef: tx(2) });
+      world.failNext(state === 'valid-landed-journal' ? 'backup.put' : 'doc.writeTemp', 'throw');
+      assert.equal((await store.commit(confirmedRequest(other, actor2))).status, 'unknown');
+      if (state === 'unrelated-journal') {
+        const journal = JSON.parse(world.durable.journal);
+        journal.baseDigest = 'f'.repeat(64); // valid shape but unrelated base: ordinary R4 would quarantine.
+        world.durable.journal = Buffer.from(JSON.stringify(journal));
+      }
+    } else if (state === 'torn-journal') world.durable.journal = Buffer.from('{');
+    else if (state === 'missing-head') world.durable.doc = null;
+    else if (state === 'corrupt-head') world.durable.doc = Buffer.from('synthetic-corruption');
+    else if (state === 'behind-head') { await commitLink(store, 2); world.durable.doc = genesis; }
+    else if (state === 'forked-pin') world.durable.pin.digest = 'f'.repeat(64);
+    else if (state === 'missing-pin') world.durable.pin = null;
+    world.durable.temp = Buffer.from('synthetic-retained-stage');
+    world.durable.quarantine.push({ label: 'synthetic-retained', bytes: Buffer.from('synthetic-quarantine') });
+    const before = retainedBytes(world), writes = world.writeCounts();
+    assert.deepEqual(await store.commitWithoutRecovery(confirmedRequest(prepared)), { status: 'rejected', reason: 'recovery-required' });
+    world.noWritesSince(writes);
+    assert.deepEqual(retainedBytes(world), before);
+    assert.equal((await store.outcome({ actorId, operationId: op(1) })).status, 'unknown');
+  });
+}
+
+test('B1 no-recovery: committed receipt precedes expiry/later head/restart and leaves every residual journal untouched', async () => {
+  const { world, store } = await bootWorld();
+  const prepared = await prepareLink(store, 1);
+  const receipt = await store.commitWithoutRecovery(confirmedRequest(prepared));
+  await commitLink(store, 2, { txRef: tx(2) });
+  world.clock.advance(C.TTL_MS + 1);
+  const restarted = newStore(world);
+  for (const residual of [null, Buffer.from('{'), Buffer.from(JSON.stringify({ unrelated: true }))]) {
+    world.durable.journal = residual;
+    const before = retainedBytes(world), writes = world.writeCounts();
+    assert.deepEqual(await restarted.commitWithoutRecovery(confirmedRequest(prepared)), receipt);
+    world.noWritesSince(writes); assert.deepEqual(retainedBytes(world), before);
+  }
+  world.failNext('journal.read', 'throw');
+  assert.deepEqual(await restarted.commitWithoutRecovery(confirmedRequest(prepared)), receipt,
+    'pin and valid ledger prove the original receipt even when journal reads are unavailable');
+  assert.notEqual(receipt.digest, stateOf(world.durable.doc).digest);
+});
+
+test('B1 no-recovery: C1 pre-write recheck refuses newly divergent bytes without recovery', async () => {
+  const { world, store } = await bootWorld();
+  const prepared = await prepareLink(store, 1);
+  let atChange, writesAtChange;
+  world.failNext('doc.read', read => {
+    const previous = read();
+    world.durable.doc = Buffer.from('synthetic-changed-between-C0-and-C1');
+    atChange = retainedBytes(world); writesAtChange = world.writeCounts();
+    return previous;
+  });
+  assert.deepEqual(await store.commitWithoutRecovery(confirmedRequest(prepared)),
+    { status: 'rejected', reason: 'recovery-required' });
+  world.noWritesSince(writesAtChange); assert.deepEqual(retainedBytes(world), atChange);
+});
+
+test('B1 no-recovery: altered previews and foreign actors conflict before any recovery or mutation', async () => {
+  for (const committed of [false, true]) {
+    const { world, store } = await bootWorld();
+    const prepared = await prepareLink(store, 1);
+    if (!committed) world.failNext('doc.writeTemp', 'throw');
+    await store.commit(confirmedRequest(prepared));
+    const changed = JSON.parse(JSON.stringify(prepared));
+    changed.preview.command.assignedCents++;
+    for (const input of [confirmedRequest(prepared, actor2), confirmedRequest(changed),
+      { ...confirmedRequest(changed), confirmationDigest: C.digest(changed.preview) }]) {
+      const before = retainedBytes(world), writes = world.writeCounts();
+      assert.deepEqual(await store.commitWithoutRecovery(input), { status: 'conflict' });
+      world.noWritesSince(writes); assert.deepEqual(retainedBytes(world), before);
+    }
+  }
+});
+
+for (const method of ['commitWithoutRecovery', 'commit']) {
+  test('B1 C8 fresh-pin mismatch: ' + method + ' keeps its recovery policy', async () => {
+    const { world, store } = await bootWorld();
+    const prepared = await prepareLink(store, 1);
+    let atMovement, writesAtMovement;
+    world.failNext('backup.put', (put, revision, digest) => {
+      const ack = put();
+      world.durable.pin = { revision, digest, timestamp: world.clock.now() };
+      atMovement = retainedBytes(world); writesAtMovement = world.writeCounts();
+      return ack;
+    });
+    assert.deepEqual(await store[method](confirmedRequest(prepared)), { status: 'unknown', reason: 'pin-moved' });
+    if (method === 'commitWithoutRecovery') {
+      world.noWritesSince(writesAtMovement);
+      assert.deepEqual(retainedBytes(world), atMovement, 'interrupted bytes survive despite an externally advanced pin');
+      const before = retainedBytes(world), writes = world.writeCounts();
+      assert.equal((await store.commitWithoutRecovery(confirmedRequest(prepared))).status, 'committed');
+      world.noWritesSince(writes); assert.deepEqual(retainedBytes(world), before, 'receipt retry does not clear the residual journal');
+    } else assert.equal(world.durable.journal, null, 'ordinary commit still executes R3 recovery');
+  });
+
+  test('B1 C8 CAS false: ' + method + ' keeps its recovery policy', async () => {
+    const { world, store } = await bootWorld();
+    const prepared = await prepareLink(store, 1);
+    let atFailure, writesAtFailure;
+    world.failNext('pin.advance', () => {
+      atFailure = retainedBytes(world); writesAtFailure = world.writeCounts(); return false;
+    });
+    assert.deepEqual(await store[method](confirmedRequest(prepared)), { status: 'unknown', reason: 'pin-moved' });
+    if (method === 'commitWithoutRecovery') {
+      world.noWritesSince(writesAtFailure); assert.deepEqual(retainedBytes(world), atFailure);
+      assert.equal(world.durable.pin.revision, 0);
+      assert(world.durable.journal);
+      const before = retainedBytes(world), writes = world.writeCounts();
+      assert.deepEqual(await store.commitWithoutRecovery(confirmedRequest(prepared)), { status: 'rejected', reason: 'recovery-required' });
+      world.noWritesSince(writes); assert.deepEqual(retainedBytes(world), before);
+      assert.equal((await store.reconcile()).disposition, 'promoted', 'explicit ordinary R5 recovery remains available');
+    } else {
+      assert.equal(world.durable.pin.revision, 1, 'ordinary commit still promotes via R5');
+      assert.equal(world.durable.journal, null);
+    }
+  });
+}
+
+for (const [method, fault, landed] of [
+  ['journal.write', 'throw-landed', false], ['doc.commitTemp', 'throw-landed', false],
+  ['backup.put', 'throw-landed', false], ['pin.advance', () => ({ ok: true }), false],
+  ['pin.advance', perform => { perform(); throw Error('synthetic lost pin ack'); }, true],
+  ['pin.advance', perform => { perform(); return { ok: true }; }, true],
+]) {
+  test('B1 no-recovery: uncertainty from ' + method + ' preserves interrupted state; landed=' + landed, async () => {
+    const { world, store } = await bootWorld();
+    const prepared = await prepareLink(store, 1);
+    world.failNext(method, fault);
+    assert.equal((await store.commitWithoutRecovery(confirmedRequest(prepared))).status, 'unknown');
+    assert(world.durable.journal);
+    const before = retainedBytes(world), writes = world.writeCounts();
+    const retry = await newStore(world).commitWithoutRecovery(confirmedRequest(prepared));
+    assert.equal(retry.status, landed ? 'committed' : 'rejected');
+    if (!landed) assert.equal(retry.reason, 'recovery-required');
+    world.noWritesSince(writes); assert.deepEqual(retainedBytes(world), before);
+  });
+}
+
+test('B1 no-recovery: owns caller input before one shared-lock wait', async () => {
+  const world = makeWorld(), baseLock = makeLock();
+  let lockCalls = 0;
+  const lock = { withLock(fn) { lockCalls++; return baseLock.withLock(fn); } };
+  const store = newStore(world, lock);
+  await store.bootstrap();
+  const prepared = await prepareLink(store, 1);
+  let enter, release;
+  const entered = new Promise(resolve => { enter = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  const holding = baseLock.withLock(async () => { enter(); await gate; });
+  await entered;
+  const request = confirmedRequest(JSON.parse(JSON.stringify(prepared)));
+  const previousLockCalls = lockCalls;
+  const pending = store.commitWithoutRecovery(request);
+  request.actorId = actor2; request.preview.operationId = op(99);
+  request.preview.command.assignedCents = 6000; request.confirmationDigest = 'f'.repeat(64);
+  release(); await holding;
+  const result = await pending;
+  assert.equal(lockCalls, previousLockCalls + 1, 'exactly one lock acquisition, no nested wrapper lock');
+  assert.equal(result.status, 'committed'); assert.equal(result.operationId, op(1));
+  assert.equal(stateOf(world.durable.doc).operations[0].command.assignedCents, 2500);
+});
+
+test('B1 no-recovery: two instances share the same lock for duplicate and stale operations', async () => {
+  for (const duplicate of [true, false]) {
+    const world = makeWorld(), lock = makeLock();
+    const first = newStore(world, lock), second = newStore(world, lock);
+    await first.bootstrap();
+    const a = await prepareLink(first, 1), b = duplicate ? a : await prepareLink(second, 2);
+    const before = world.counts.journalWrite;
+    const [ra, rb] = await Promise.all([first.commitWithoutRecovery(confirmedRequest(a)), second.commitWithoutRecovery(confirmedRequest(b))]);
+    assert.equal(ra.status, 'committed');
+    if (duplicate) assert.deepEqual(rb, ra); else assert.deepEqual(rb, { status: 'conflict' });
+    assert.equal(world.counts.journalWrite, before + 1);
+    assert.equal(world.durable.pin.revision, 1);
+    assert.equal(stateOf(world.durable.doc).operations.length, 1);
+  }
+});
+
+test('B1 no-recovery: expiry/revision/conservation and successful own finalization remain contract-owned', async () => {
+  const { world, store } = await bootWorld();
+  const stale = await prepareLink(store, 1), current = await prepareLink(store, 2);
+  const receipt = await store.commitWithoutRecovery(confirmedRequest(current));
+  assert.equal(receipt.status, 'committed'); assert.equal(world.durable.journal, null);
+  const writes = world.writeCounts();
+  assert.deepEqual(await store.commitWithoutRecovery(confirmedRequest(stale)), { status: 'conflict' });
+  world.noWritesSince(writes);
+  const expired = await prepareLink(store, 3);
+  world.clock.advance(C.TTL_MS);
+  assert.deepEqual(await store.commitWithoutRecovery(confirmedRequest(expired)), { status: 'rejected', reason: 'preview-expired' });
+  world.noWritesSince(writes);
+  world.clock.advance(1);
+  const oversized = await prepareLink(store, 4);
+  oversized.preview.command.assignedCents = 3501; // 2500 + 3501 > 6000 independently.
+  oversized.confirmationDigest = C.digest(oversized.preview);
+  assert.equal((await store.commitWithoutRecovery(confirmedRequest(oversized))).status, 'unavailable');
+  world.noWritesSince(writes);
+});
 
 test('B1 commit: a truthy non-boolean advance ack never commits', async () => {
   const { world, store } = await bootWorld();

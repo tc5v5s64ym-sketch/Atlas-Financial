@@ -116,10 +116,11 @@ async function world(t) {
         w.calls.push('prepare');
         return w.prepareHook ? w.prepareHook(input, store) : store.prepare(input);
       },
-      async commit(input) {
-        w.calls.push('commit');
-        return w.commitHook ? w.commitHook(input, store) : store.commit(input);
+      async commitWithoutRecovery(input) {
+        w.calls.push('commitWithoutRecovery');
+        return w.commitHook ? w.commitHook(input, store) : store.commitWithoutRecovery(input);
       },
+      commit() { assert.fail('controller must never fall back to ordinary recovering commit'); },
       async outcome(input) {
         w.calls.push('outcome');
         return w.outcomeHook ? w.outcomeHook(input, store) : store.outcome(input);
@@ -163,7 +164,7 @@ test('prepare is read-only and returns only the exact sanitized selection/amount
   assert.notEqual((await w.confirm(1, false)).status, 'committed');
   assert.notEqual((await w.controller.confirm(context, { operationId: op(1) })).status, 'committed');
   assert.deepEqual(w.writes, []);
-  assert.equal(w.count('commit'), 0);
+  assert.equal(w.count('commitWithoutRecovery'), 0);
 });
 
 test('explicit confirmation lands one original receipt and the independent loader sees household evidence', async t => {
@@ -183,7 +184,7 @@ test('explicit confirmation lands one original receipt and the independent loade
   assert.deepEqual(await w.confirm(), receipt);
   assert.deepEqual(await w.outcome(), receipt);
   assert.deepEqual(w.writes, frozen);
-  assert.equal(w.count('commit'), 1);
+  assert.equal(w.count('commitWithoutRecovery'), 1);
 });
 
 for (const field of ['actorId', 'householdId', 'command', 'evidence', 'evidenceDigest', 'txRef', 'goalId', 'asOf', 'preview', 'confirmationDigest']) {
@@ -247,7 +248,7 @@ for (const [name, change] of [
     const result = await w.confirm();
     assert.notEqual(result.status, 'committed'); privateFree(result);
     assert.deepEqual(w.writes, []);
-    assert.equal(w.count('commit'), 0);
+    assert.equal(w.count('commitWithoutRecovery'), 0);
   });
 }
 
@@ -326,13 +327,13 @@ test('lost pin acknowledgement remains unknown until explicit read; no retry or 
   assert.equal(receipt.status, 'committed');
   assert.deepEqual(await w.confirm(), receipt);
   assert.deepEqual(w.writes, writes);
-  assert.equal(w.count('commit'), 1);
+  assert.equal(w.count('commitWithoutRecovery'), 1);
 });
 
 test('a lost controller acknowledgement recovers the same receipt, including after a later commit', async t => {
   const w = await world(t);
   await w.prepare();
-  w.commitHook = async (input, store) => { await store.commit(input); throw Error('synthetic lost reply'); };
+  w.commitHook = async (input, store) => { await store.commitWithoutRecovery(input); throw Error('synthetic lost reply'); };
   assert.deepEqual(await w.confirm(), { status: 'unknown', operationId: op(1) });
   const first = await w.outcome();
   assert.equal(first.status, 'committed');
@@ -350,7 +351,7 @@ test('unresolved write uncertainty never auto-retries, recovers or replaces its 
   await w.prepare(); await w.prepare(2); w.failBackup = true;
   assert.equal((await w.confirm()).status, 'unknown');
   assert.equal(w.load().status, 'unavailable');
-  const writes = clone(w.writes), calls = w.count('commit');
+  const writes = clone(w.writes), calls = w.count('commitWithoutRecovery');
   w.failBackup = false;
   assert.deepEqual(await w.confirm(), { status: 'unknown', operationId: op(1) });
   assert.deepEqual(await w.confirm(2), { status: 'unknown', operationId: op(2) });
@@ -358,7 +359,7 @@ test('unresolved write uncertainty never auto-retries, recovers or replaces its 
   assert.equal((await w.prepare()).status, 'unavailable');
   assert.equal((await w.prepare(3)).status, 'unavailable');
   assert.deepEqual(w.writes, writes);
-  assert.equal(w.count('commit'), calls);
+  assert.equal(w.count('commitWithoutRecovery'), calls);
   w.controller = w.newController(w.openStore());
   assert.deepEqual(await w.confirm(), { status: 'unknown', operationId: op(1) });
   assert.deepEqual(w.writes, writes);
@@ -368,11 +369,11 @@ test('concurrent explicit confirmations issue at most one store commit', async t
   const w = await world(t);
   await w.prepare();
   const entered = deferred(), release = deferred();
-  w.commitHook = async (input, store) => { entered.resolve(); await release.promise; return store.commit(input); };
+  w.commitHook = async (input, store) => { entered.resolve(); await release.promise; return store.commitWithoutRecovery(input); };
   const first = w.confirm(); await entered.promise;
   assert.deepEqual(await w.confirm(), { status: 'unknown', operationId: op(1) });
   release.resolve(); assert.equal((await first).status, 'committed');
-  assert.equal(w.count('commit'), 1);
+  assert.equal(w.count('commitWithoutRecovery'), 1);
   assert.equal(w.document().operations.length, 1);
 });
 
@@ -488,9 +489,77 @@ test('fresh store qualification refuses resident journals or divergence without 
   const before = fs.readFileSync(path.join(w.dir, 'document.json'));
   assert.equal((await w.confirm()).status, 'unavailable');
   assert.deepEqual(w.writes, []);
-  assert.equal(w.count('commit'), 0);
+  assert.equal(w.count('commitWithoutRecovery'), 0);
   assert.deepEqual(fs.readFileSync(path.join(w.dir, 'document.json')), before);
   assert.equal(fs.readFileSync(path.join(w.dir, 'journal.json'), 'utf8'), 'synthetic-torn-journal');
+});
+
+test('B1 race: a journal arriving after the probe cannot be recovered by confirmation', async t => {
+  const w = await world(t), entered = deferred(), release = deferred();
+  let prepares = 0, pauseNextAuthorization = false;
+  w.prepareHook = async (input, store) => {
+    const result = await store.prepare(input);
+    if (++prepares === 2) pauseNextAuthorization = true;
+    return result;
+  };
+  w.authHook = async () => {
+    if (pauseNextAuthorization) {
+      pauseNextAuthorization = false; entered.resolve(); await release.promise;
+    }
+    return { householdId, actorId };
+  };
+  await w.prepare();
+  const pendingA = w.confirm();
+  await entered.promise; // A's probe released the real shared file lock at revision 0.
+  assert.equal(w.pin.revision, 0);
+  const source = resolved();
+  const commandB = { version: 1, kind: 'link', goalId: 'commitment:synthetic-b', txRef: tx(2),
+    evidence: source.evidence, evidenceDigest: C.digest(source.evidence), assignedCents: 3000, asOf: source.asOf };
+  const previewB = await w.store.prepare({ actorId: otherActor, operationId: op(2), command: commandB });
+  w.failBackup = true;
+  assert.deepEqual(await w.store.commit({ actorId: otherActor, preview: previewB.preview,
+    confirmationDigest: previewB.confirmationDigest }), { status: 'unknown', reason: 'backup-ambiguous' });
+  // Retained staged/quarantine bytes must survive the refusal as well.
+  await A.createSettlementEvidenceFileAdapter(w.dir).documentStore.writeTemp(Buffer.from('synthetic-retained-stage'));
+  fs.mkdirSync(path.join(w.dir, 'quarantine'), { mode: 0o700 });
+  fs.writeFileSync(path.join(w.dir, 'quarantine', 'synthetic-retained'), 'synthetic-quarantine', { mode: 0o600 });
+  const files = (dir = w.dir) => fs.readdirSync(dir).sort().map(name => {
+    const target = path.join(dir, name);
+    return [name, fs.statSync(target).isDirectory() ? files(target) : fs.readFileSync(target).toString('hex')];
+  });
+  const durable = () => ({ files: files(), pin: clone(w.pin), backups: [...w.backups.values()]
+    .map(({ bytes, ...entry }) => ({ ...entry, bytes: bytes.toString('hex') })) });
+  const before = durable(), writes = clone(w.writes);
+  assert.equal(w.load().reason, 'document-ahead-of-pin');
+  w.failBackup = false;
+  release.resolve();
+  const result = await pendingA;
+  assert.deepEqual(w.writes.slice(writes.length), [], 'A must add zero durable mutations after the healthy probe');
+  assert.deepEqual(result, { status: 'rejected', reason: 'recovery-required' });
+  assert.deepEqual(durable(), before, 'B document/journal/staged/pin/backups/quarantine preserved byte-for-byte');
+  assert.equal(w.pin.revision, 0);
+  assert.equal(w.load().reason, 'document-ahead-of-pin');
+  assert.equal((await w.outcome()).status, 'unknown');
+  assert.equal((await w.store.outcome({ actorId: otherActor, operationId: op(2) })).status, 'unknown');
+  assert.deepEqual(await w.confirm(), { status: 'unknown', operationId: op(1) });
+  assert.deepEqual(durable(), before, 'a repeated confirmation still cannot retry or recover B');
+  assert.deepEqual(w.writes, writes);
+  assert.equal(w.count('commitWithoutRecovery'), 1, 'no retry or rebase');
+  assert.equal((await w.store.reconcile()).disposition, 'promoted', 'explicit ordinary recovery remains a separate control');
+  assert.equal(w.pin.revision, 1);
+  assert.equal(w.load().status, 'qualified');
+  assert.equal((await w.store.outcome({ actorId: otherActor, operationId: op(2) })).status, 'committed');
+  assert.equal((await w.outcome()).status, 'unknown', 'A was never appended');
+});
+
+test('B1 capability: ordinary commit alone is refused; the controller cannot fall back', () => {
+  let ordinaryCalls = 0;
+  assert.throws(() => createSettlementEvidenceConfirmation({ householdId,
+    authorize: async () => ({ householdId, actorId }), resolveSelection: async () => resolved(), now: () => T0,
+    store: { prepare: async () => ({}), outcome: async () => ({ status: 'unknown' }),
+      commit: async () => { ordinaryCalls++; return { status: 'committed' }; } },
+  }), /incomplete trusted dependencies/);
+  assert.equal(ordinaryCalls, 0);
 });
 
 test('malformed/throwing authorization, resolver and store paths cannot issue a false receipt', async t => {
@@ -508,7 +577,7 @@ test('malformed/throwing authorization, resolver and store paths cannot issue a 
   const invalidReceipt = await w.confirm();
   assert.equal(invalidReceipt.status, 'unavailable'); privateFree(invalidReceipt);
   assert.deepEqual(w.writes, []);
-  assert.equal(w.count('commit'), 0);
+  assert.equal(w.count('commitWithoutRecovery'), 0);
 });
 
 test('accessors, toJSON and non-data inputs cannot smuggle caller authority across an await', async t => {

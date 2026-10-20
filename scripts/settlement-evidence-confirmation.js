@@ -19,7 +19,8 @@
 //   goal, and asOf is the authoritative financial date. Changed binding,
 //   evidence, goal or asOf requires a new explicitly prepared operation.
 //   Only synthetic deterministic fixture mappings implement this contract yet;
-// - store is the existing store bound above; now is the injected clock.
+// - store is bound above and MUST supply commitWithoutRecovery; ordinary
+//   commit is never a fallback. now is the injected clock.
 // Context and requests are plain JSON data, snapshotted before any await.
 // operationId is a caller correlation token, never authority or a minted ID.
 //
@@ -31,7 +32,8 @@
 // even after preview expiry, later commits or restart. A restarted controller
 // has no uncommitted previews. Household effects are read independently through
 // the existing loader; receipt ownership does not hide those effects.
-// Fresh provider qualification is an observation, not an atomic provider lock.
+// Authorization and selection qualification are observations. The store lock
+// does not atomically lock provider data or session revocation.
 
 const { isDeepStrictEqual } = require('node:util');
 const C = require('./planned-obligation-settlement-contract');
@@ -139,7 +141,7 @@ function createSettlementEvidenceConfirmation(deps) {
   const { householdId, authorize, resolveSelection, store, now } = deps;
   if (!matches(HOUSEHOLD, householdId) || typeof authorize !== 'function'
     || typeof resolveSelection !== 'function' || typeof now !== 'function'
-    || !store || ['prepare', 'commit', 'outcome'].some(k => typeof store[k] !== 'function')) {
+    || !store || ['prepare', 'commitWithoutRecovery', 'outcome'].some(k => typeof store[k] !== 'function')) {
     throw new TypeError('settlement-confirmation: incomplete trusted dependencies');
   }
   const previews = new Map(), preparing = new Set();
@@ -219,10 +221,10 @@ function createSettlementEvidenceConfirmation(deps) {
           selection: retained.request.selection })), authority);
       } catch { return rejected('selection-unavailable'); }
       if (!isDeepStrictEqual(fresh, retained.selection)) return rejected('selection-changed');
-      // Read-only store qualification refuses a resident journal/divergence
-      // before commit can enter the store's existing recovery pre-pass. This
-      // probe uses the SAME operation and command; its fresh preview is
-      // discarded, never substituted for the retained preview or its expiry.
+      // Read-only optimization only: another caller can change the store
+      // after this probe releases the lock (including during authorization).
+      // commitWithoutRecovery owns the atomic no-recovery decision under the
+      // store lock. Discard this fresh preview; never replace the original.
       let current;
       try {
         const result = snapshot(await store.prepare({ actorId: authority.actorId,
@@ -240,13 +242,16 @@ function createSettlementEvidenceConfirmation(deps) {
       if (retained.attempted || writeInFlight || uncertainOperation) return unknown(request.operationId);
       retained.attempted = true; enteredCommit = true; writeInFlight = true;
       uncertainOperation = request.operationId;
-      const result = snapshot(await store.commit({ actorId: authority.actorId,
+      const result = snapshot(await store.commitWithoutRecovery({ actorId: authority.actorId,
         preview: retained.preview, confirmationDigest: retained.confirmationDigest }));
       await sameAuthority(ownedContext, authority);
       const committed = receipt(result, authority, request.operationId);
       if (committed) { uncertainOperation = null; return committed; }
       if (result.status === 'rejected' && result.reason === 'preview-expired') {
         uncertainOperation = null; return rejected('preview-expired');
+      }
+      if (result.status === 'rejected' && result.reason === 'recovery-required') {
+        uncertainOperation = null; return rejected('recovery-required');
       }
       if (result.status === 'conflict') { uncertainOperation = null; return rejected('store-conflict'); }
       return unknown(request.operationId);

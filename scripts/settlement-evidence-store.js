@@ -41,6 +41,18 @@
 //     by transport success alone.
 //   - The API is async throughout: the production adapters this shape
 //     anticipates (fsync, object-store upload) are inherently async.
+//
+// commitWithoutRecovery is a distinct capability for confirmation callers.
+// It snapshots input before ONE acquisition of the same shared lock and uses
+// the same validation/commit pipeline with recovery disabled privately. A
+// matching pinned receipt is returned read-only, even with a residual journal.
+// An uncommitted request encountering a journal or divergent/missing head
+// returns rejected('recovery-required'): a DEFINITE PRE-WRITE refusal by this
+// invocation, preserving all interrupted evidence. After journal write begins,
+// pin movement is UNKNOWN, never this definite refusal; no pre-pass, C8
+// mismatch or CAS-false branch may reconcile, restore, quarantine or clean up.
+// Successful pinning may finalize this invocation's own journal normally.
+// Ordinary commit() and explicit reconcile() retain their recovery semantics.
 
 const C = require('./planned-obligation-settlement-contract');
 
@@ -522,7 +534,7 @@ function createSettlementEvidenceStore(deps) {
   }
 
   // --- Commit pipeline C0-C10 ---------------------------------------------
-  async function executeCandidate(pin, headBytes, head, req) {
+  async function executeCandidate(pin, headBytes, head, req, allowRecovery) {
     // C1: re-verify the qualified head immediately before candidate
     // creation (guards adapter races between the pre-pass and here).
     const P2 = await readPinState();
@@ -530,7 +542,8 @@ function createSettlementEvidenceStore(deps) {
     if (P2.kind !== 'ok' || P2.pin.revision !== pin.revision
       || P2.pin.digest !== pin.digest || H2.kind !== 'ok' || !H2.bytes
       || !H2.bytes.equals(headBytes)) {
-      return unavailable('store-divergent');
+      return allowRecovery ? unavailable('store-divergent')
+        : { status: 'rejected', reason: 'recovery-required' };
     }
     // C2: candidate through the Phase 1 contract.
     let result;
@@ -611,7 +624,7 @@ function createSettlementEvidenceStore(deps) {
     const fresh = await readPinState();
     if (fresh.kind !== 'ok') return unknown('pin-advance-failed');
     if (fresh.pin.revision !== pin.revision || fresh.pin.digest !== pin.digest) {
-      await reconcileLocked();
+      if (allowRecovery) await reconcileLocked();
       return unknown('pin-moved');
     }
     let advanced;
@@ -621,7 +634,7 @@ function createSettlementEvidenceStore(deps) {
         { revision: candidate.revision, digest: candidate.digest, timestamp: tick() });
     } catch { return unknown('pin-advance-failed'); }
     if (advanced === false) {
-      await reconcileLocked();
+      if (allowRecovery) await reconcileLocked();
       return unknown('pin-moved');
     }
     if (advanced !== true) {
@@ -642,7 +655,7 @@ function createSettlementEvidenceStore(deps) {
     };
   }
 
-  async function commitLocked(input) {
+  async function commitLocked(input, allowRecovery) {
     if (!isRecord(input)) return unavailable('invalid-request');
     const { actorId, preview, confirmationDigest } = input;
     if (typeof actorId !== 'string' || !ACTOR_RE.test(actorId)
@@ -663,30 +676,35 @@ function createSettlementEvidenceStore(deps) {
         const M = await readManifestState();
         const empty = H.kind === 'ok' && !H.bytes && J.kind === 'ok' && !J.raw
           && M.kind === 'ok' && M.entries.length === 0;
+        if (!allowRecovery && !empty) return { status: 'rejected', reason: 'recovery-required' };
         return unavailable(empty ? 'unbootstrapped' : 'recovery-blocked');
       }
       const pin = P.pin;
       const H = await readDocState();
       if (H.kind === 'error') return unavailable('document-unavailable');
-      const J = await readJournalState();
-      if (J.kind === 'error') return unavailable('journal-unavailable');
       const head = H.bytes ? docState(H.bytes) : null;
       const qualified = !!head && head.revision === pin.revision
         && head.digest === pin.digest;
-      const parsed = J.raw ? parseJournal(J.raw) : null;
       // C0(a): the C1 fast path — pin + validated document prove
       // commitment; the journal is irrelevant. F-E: altered input on a
       // committed operation is a conflict, taking precedence.
+      let recordedResult = null;
       if (qualified) {
         const recorded = head.operations.find(o => o.operationId === operationId);
         if (recorded) {
           if (recorded.actorId === actorId && recorded.requestDigest === previewDigest
             && previewDigest === confirmationDigest) {
-            return receiptForOperation(head, operationId);
-          }
-          return { status: 'conflict' };
+            recordedResult = receiptForOperation(head, operationId);
+          } else recordedResult = { status: 'conflict' };
         }
       }
+      // The new capability needs no journal read/cleanup to prove a pinned
+      // receipt. Ordinary commit preserves its incumbent journal-read order.
+      if (!allowRecovery && recordedResult) return recordedResult;
+      const J = await readJournalState();
+      if (J.kind === 'error') return unavailable('journal-unavailable');
+      const parsed = J.raw ? parseJournal(J.raw) : null;
+      if (recordedResult) return recordedResult;
       // C0(b): a digest mismatch on a known operation id is a conflict
       // (altered input carrying an old digest).
       if (previewDigest !== confirmationDigest) {
@@ -713,8 +731,9 @@ function createSettlementEvidenceStore(deps) {
       if (!J.raw && qualified) {
         return executeCandidate(pin, H.bytes, head, {
           actorId, preview, confirmationDigest, previewDigest,
-        });
+        }, allowRecovery);
       }
+      if (!allowRecovery) return { status: 'rejected', reason: 'recovery-required' };
       if (pass === 1) return unavailable('store-divergent');
       const report = await reconcileLocked();
       if (report.disposition === 'recovery-blocked') return unavailable('recovery-blocked');
@@ -811,7 +830,7 @@ function createSettlementEvidenceStore(deps) {
     });
   }
 
-  async function commit(input) {
+  async function commitWithPolicy(input, allowRecovery) {
     // B2: take a validated, owned snapshot of the complete request at
     // public entry, BEFORE waiting on the lock. The caller retains (and
     // may mutate) the original object across our awaits; the snapshot's
@@ -824,12 +843,17 @@ function createSettlementEvidenceStore(deps) {
     }
     return lock.withLock(async () => {
       try {
-        return await commitLocked(snapshot);
+        return await commitLocked(snapshot, allowRecovery);
       } catch {
         return unavailable('internal-error');
       }
     });
   }
+
+  // Recovery policy is selected only by these capabilities, never by caller
+  // input. Neither capability calls the other or nests the injected lock.
+  async function commit(input) { return commitWithPolicy(input, true); }
+  async function commitWithoutRecovery(input) { return commitWithPolicy(input, false); }
 
   async function outcome(input) {
     // Read-only (F4): no writes, no repair, and the journal never
@@ -866,7 +890,7 @@ function createSettlementEvidenceStore(deps) {
     });
   }
 
-  return { bootstrap, prepare, commit, outcome, reconcile };
+  return { bootstrap, prepare, commit, commitWithoutRecovery, outcome, reconcile };
 }
 
 module.exports = { createSettlementEvidenceStore };
