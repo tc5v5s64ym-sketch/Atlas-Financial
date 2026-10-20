@@ -51,6 +51,12 @@
 //     repeated cursors THROW. An empty or partial manifest is never
 //     returned as success: in the store, a manifest can license genesis
 //     or destruction, so an unverifiable one must license nothing.
+//     Each page's entries are snapshotted (key plus the binding
+//     scalars) into adapter-owned objects as the page arrives, and
+//     classification and verification reason only over those
+//     snapshots: the transport may retain and mutate its own entry
+//     objects across awaits, and a mutation can never rewrite what
+//     was already observed.
 //   backupStore.get() -> deliberately THROWS recovery-unavailable in
 //     this slice. No owner-held private key exists on the server (the
 //     design's key split keeps it offline with the owner), so this
@@ -348,7 +354,21 @@ function createSettlementEvidenceObjectAdapter(deps) {
           }
           if (seenKeys.has(entry.key)) throw fail('backup listing repeated an entry');
           seenKeys.add(entry.key);
-          found.push(entry);
+          // Snapshot the validated key and the metadata scalars this
+          // adapter relies on into an adapter-owned object NOW, as the
+          // page arrives. The transport retains its entry objects and
+          // may mutate them across the awaits that follow (later page
+          // fetches, artifact reads); classification, pagination and
+          // read verification below reason ONLY over these snapshots,
+          // so an entry observed as one key/binding can never be
+          // rewritten into another — e.g. into the pin key, which
+          // classification skips — after the fact.
+          found.push(Object.freeze({
+            key: entry.key,
+            revision: entry.metadata.revision,
+            digest: entry.metadata.digest,
+            integrity: entry.metadata.integrity,
+          }));
         }
         if (raw.nextCursor === null) break;
         if (seenCursors.has(raw.nextCursor)) {
@@ -357,11 +377,11 @@ function createSettlementEvidenceObjectAdapter(deps) {
         seenCursors.add(raw.nextCursor);
         cursor = raw.nextCursor;
       }
-      // Every owned entry is classified and verified. The pin object is
-      // not a backup; revision artifacts must bind their own name; any
-      // other key inside the owned namespace is an unknown artifact and
-      // is surfaced as a failure — it never silently disappears from
-      // the manifest the store reasons over.
+      // Every owned snapshot is classified and verified. The pin object
+      // is not a backup; revision artifacts must bind their own name;
+      // any other key inside the owned namespace is an unknown artifact
+      // and is surfaced as a failure — it never silently disappears
+      // from the manifest the store reasons over.
       const entries = [];
       for (const entry of found) {
         if (entry.key === pinKey) continue;
@@ -372,19 +392,18 @@ function createSettlementEvidenceObjectAdapter(deps) {
         if (String(revision) !== match[1]) {
           throw fail('backup artifact name is not canonical');
         }
-        const metadata = entry.metadata;
-        if (metadata.revision !== revision || metadata.digest !== digest
-          || !isHash(metadata.integrity)) {
+        if (entry.revision !== revision || entry.digest !== digest
+          || !isHash(entry.integrity)) {
           throw fail('backup manifest entry binding is malformed');
         }
         const raw = await transport.read(entry.key);
         if (raw === null) throw fail('backup manifest artifact vanished');
         const bytes = readResultBytes(raw, 'backup artifact');
         if (raw.metadata.revision !== revision || raw.metadata.digest !== digest
-          || raw.metadata.integrity !== metadata.integrity) {
+          || raw.metadata.integrity !== entry.integrity) {
           throw fail('backup manifest entry disagrees with the stored artifact');
         }
-        if (sha256(bytes) !== metadata.integrity) {
+        if (sha256(bytes) !== entry.integrity) {
           throw fail('backup artifact fails its stored integrity binding');
         }
         entries.push(Object.freeze({ revision, digest, artifactId: entry.key }));

@@ -702,6 +702,145 @@ test('backup list: malformed entries, unknown owned artifacts, partial pages and
   }
 });
 
+// --- Backup list: transport-owned entry mutation across awaits --------------
+// The transport contract does not promise that the entry objects it
+// returns stay stable: a transport may retain them and mutate them
+// while later pages load or while an artifact read is in flight.
+// list() must reason over adapter-owned snapshots taken as each page
+// arrives — never over the retained objects — or an observed trace can
+// be rewritten into the pin key and silently skipped by classification,
+// and the store could be licensed to genesis over state it actually
+// observed.
+
+function wrapMutatingTransport(base, over = {}) {
+  const retained = [];
+  const hooks = { onPage: null, onRead: null };
+  let pages = 0;
+  const transport = {
+    ...base,
+    async list(prefix, cursor) {
+      pages++;
+      if (hooks.onPage) await hooks.onPage(pages, retained);
+      const page = await base.list(prefix, cursor);
+      const entries = over.shareMetadata
+        ? page.entries.map(e => ({ key: e.key, metadata: base.objects.get(e.key).metadata }))
+        : page.entries;
+      retained.push(...entries);
+      return { entries, nextCursor: page.nextCursor };
+    },
+    async read(key) {
+      if (hooks.onRead) await hooks.onRead(key, retained);
+      if (over.shareMetadata) {
+        const o = base.objects.get(key);
+        if (!o) return null;
+        return { bytes: Buffer.from(o.bytes), version: o.version, metadata: o.metadata };
+      }
+      return base.read(key);
+    },
+  };
+  return { transport, retained, hooks };
+}
+function makeMutatingStores(over = {}) {
+  const base = makeTransport({ pageSize: 1 });
+  const wrapped = wrapMutatingTransport(base, over);
+  const encrypt = makeEncrypt();
+  const adapter = makeAdapter(wrapped.transport, encrypt);
+  return {
+    base, ...wrapped, encrypt, adapter,
+    pinStore: adapter.pinStore, backupStore: adapter.backupStore,
+  };
+}
+const FULL_MANIFEST = () => [
+  { revision: 0, digest: genesisDigest, artifactId: artifactKey(0, genesisDigest) },
+  { revision: 1, digest: rev1Digest, artifactId: artifactKey(1, rev1Digest) },
+];
+
+test('backup list: an observed unknown key mutated into the pin key during pagination is still surfaced', async () => {
+  const { base, hooks, backupStore } = makeMutatingStores();
+  await backupStore.put(0, genesisDigest, genesisBytes);
+  plantRaw(base, NS + '/mystery-object', Buffer.from('?'), {});
+  // While page 2 is being fetched, the transport rewrites the entry it
+  // already returned for page 1: the unknown artifact becomes the pin.
+  hooks.onPage = async (page, retained) => {
+    if (page === 2) retained[0].key = PIN_KEY;
+  };
+  await assert.rejects(backupStore.list(), /settlement-object-adapter/,
+    'an entry observed as an unknown artifact cannot become the pin after the fact');
+});
+
+test('backup list: backup entries mutated during pagination keep their observed binding', async () => {
+  // Key mutation: an observed backup artifact becomes the pin key
+  // while page 2 loads. The snapshot governs: the complete manifest is
+  // still returned — never a partial manifest missing the artifact.
+  {
+    const { hooks, backupStore } = makeMutatingStores();
+    await backupStore.put(0, genesisDigest, genesisBytes);
+    await backupStore.put(1, rev1Digest, rev1Bytes);
+    hooks.onPage = async (page, retained) => {
+      if (page === 2) retained[0].key = PIN_KEY;
+    };
+    assert.deepEqual(await backupStore.list(), FULL_MANIFEST());
+  }
+  // Metadata mutation: the observed entry's digest and integrity
+  // scalars are rewritten while page 2 loads. The snapshot governs.
+  {
+    const { hooks, backupStore } = makeMutatingStores();
+    await backupStore.put(0, genesisDigest, genesisBytes);
+    await backupStore.put(1, rev1Digest, rev1Bytes);
+    hooks.onPage = async (page, retained) => {
+      if (page === 2) {
+        retained[0].metadata.digest = rev1Digest;
+        retained[0].metadata.integrity = 'f'.repeat(64);
+      }
+    };
+    assert.deepEqual(await backupStore.list(), FULL_MANIFEST());
+  }
+  // Control: an unmutated multi-page listing validates and returns
+  // the full manifest.
+  {
+    const { backupStore } = makeMutatingStores();
+    await backupStore.put(0, genesisDigest, genesisBytes);
+    await backupStore.put(1, rev1Digest, rev1Bytes);
+    assert.deepEqual(await backupStore.list(), FULL_MANIFEST());
+  }
+});
+
+test('backup list: entry metadata mutated during the artifact read cannot change the established binding', async () => {
+  // Sabotage direction: a correctly stored artifact whose retained
+  // listing metadata is rewritten while its bytes are being read must
+  // still verify against the snapshot taken when its page arrived.
+  {
+    const { hooks, backupStore } = makeMutatingStores();
+    await backupStore.put(1, rev1Digest, rev1Bytes);
+    hooks.onRead = async (key, retained) => {
+      if (key === artifactKey(1, rev1Digest)) {
+        retained[0].metadata.integrity = 'f'.repeat(64);
+      }
+    };
+    assert.deepEqual(await backupStore.list(), [
+      { revision: 1, digest: rev1Digest, artifactId: artifactKey(1, rev1Digest) },
+    ]);
+  }
+  // Laundering direction: a corrupt artifact (its stored bytes do not
+  // match their own integrity metadata) whose shared metadata object
+  // is rewritten during the read so the integrity suddenly matches the
+  // bytes must still fail — the snapshot holds the integrity that was
+  // actually observed when the page arrived.
+  {
+    const { base, hooks, backupStore } = makeMutatingStores({ shareMetadata: true });
+    const corruptBytes = Buffer.from('corrupt ciphertext bytes');
+    plantRaw(base, artifactKey(1, rev1Digest), corruptBytes, {
+      revision: 1, digest: rev1Digest, integrity: sha256(Buffer.from('other bytes')),
+    });
+    hooks.onRead = async key => {
+      if (key === artifactKey(1, rev1Digest)) {
+        base.objects.get(key).metadata.integrity = sha256(corruptBytes);
+      }
+    };
+    await assert.rejects(backupStore.list(), /settlement-object-adapter/);
+  }
+});
+
 test('backup get deliberately throws recovery-unavailable in this slice', async () => {
   const { backupStore } = makeObjectStores();
   await backupStore.put(0, genesisDigest, genesisBytes);
@@ -972,4 +1111,59 @@ test('composed: no genesis over local traces — a lone local document refuses b
   assert.equal(boot.reason, 'already-bootstrapped');
   assert.equal(await objectAdapter.pinStore.read(), null);
   assert.equal(world.transport.objects.size, 0, 'no remote write happened either');
+});
+
+// A transport whose later list pages rewrite every previously returned
+// entry's key into the pin key (with one trailing empty page, so the
+// final entry is also followed by a page fetch during which it can be
+// rewritten). On a retention-vulnerable list() every observed backup
+// trace vanishes from the manifest, and the store would genesis over
+// traces it actually observed.
+function makeVanishingWorld() {
+  const dir = makeDir();
+  const base = makeTransport({ pageSize: 1 });
+  const retained = [];
+  let pages = 0;
+  const transport = {
+    ...base,
+    async list(prefix, cursor) {
+      pages++;
+      if (pages >= 2) for (const e of retained) e.key = PIN_KEY;
+      const page = await base.list(prefix, cursor);
+      retained.push(...page.entries);
+      if (pages === 2) return { entries: page.entries, nextCursor: 'c2' };
+      return page;
+    },
+  };
+  const encrypt = makeEncrypt();
+  const now = tickClock();
+  const build = () => {
+    const fileAdapter = FA.createSettlementEvidenceFileAdapter(dir);
+    const objectAdapter = makeAdapter(transport, encrypt);
+    const store = S.createSettlementEvidenceStore({
+      householdId,
+      documentStore: fileAdapter.documentStore,
+      journalStore: fileAdapter.journalStore,
+      pinStore: objectAdapter.pinStore,
+      backupStore: objectAdapter.backupStore,
+      quarantine: fileAdapter.quarantine,
+      lock: fileAdapter.lock,
+      now,
+    });
+    return { fileAdapter, objectAdapter, store };
+  };
+  return { dir, base, transport, encrypt, build };
+}
+
+test('composed: bootstrap is refused over transport traces even when listing entries mutate into the pin mid-list', async () => {
+  const world = makeVanishingWorld();
+  const setup = world.build();
+  await setup.objectAdapter.backupStore.put(0, genesisDigest, genesisBytes);
+  await setup.objectAdapter.backupStore.put(1, rev1Digest, rev1Bytes);
+  const { store, objectAdapter } = world.build();
+  const boot = await store.bootstrap();
+  assert.equal(boot.status, 'rejected');
+  assert.equal(boot.reason, 'already-bootstrapped');
+  assert.equal(await objectAdapter.pinStore.read(), null, 'no pin was created');
+  assert.deepEqual(fs.readdirSync(world.dir), [], 'no local state was created');
 });
