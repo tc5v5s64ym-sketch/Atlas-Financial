@@ -453,6 +453,101 @@ console.log('\n=== 7. ATLAS-043: Coffee Shops is an Eating Out label alias, coun
     'the Coffee Shops tx is not represented on the Other spending row');
 }
 
+console.log('\n=== 8. ATLAS-043: the alias also moves hold/waterfall figures when the named budget has capacity ===');
+{
+  // Round-2 pins (Atlas card/test completeness finding on PR #659): the
+  // bucket move is not the whole story. Eating Out is a named budget whose
+  // hold is max(planned, spent); while it has spare capacity the coffee $30
+  // is absorbed inside the existing $200 hold, so the residual no longer
+  // retains an extra $30 hold and the downstream waterfall rises by $30.
+  // Every expected value below was produced by executing Forecast.
+  const COFFEE = 30;
+  const coffeeTx = {
+    id: 'tx-coffee', date: '2026-08-30', amount: COFFEE, pending: false,
+    categoryLabel: 'Coffee Shops', accountRole: 'household-cash',
+    displayedPayee: 'Starbucks', originalMerchant: 'Starbucks',
+  };
+  const spentSumOf = p => (p.householdBudget || []).reduce(
+    (s, row) => roundCent(s + (Number(row.spent) || 0)), 0);
+
+  console.log('  -- 8a. base fixture: coffee absorbed by Eating Out capacity --');
+  const withCoffee = period(recommend(fixtureTxs.concat([coffeeTx])).defaultView, 'this-pay-period');
+  const noCoffee = period(recommend(fixtureTxs).defaultView, 'this-pay-period');
+  ok(near(withCoffee.budgetHold, 1962.50),
+    'with coffee, budgetHold is $1,962.50 — the $30 residual hold is released, not added',
+    String(withCoffee.budgetHold));
+  ok(near(withCoffee.afterHouseholdBudget, 6565.50),
+    'with coffee, Balance after Household Budget is $6,565.50',
+    String(withCoffee.afterHouseholdBudget));
+  ok(near(withCoffee.projectedEnding, 5475.50),
+    'with coffee, projected ending is $5,475.50',
+    String(withCoffee.projectedEnding));
+  ok(near(spentSumOf(withCoffee), RELEVANT_TOTAL + COFFEE),
+    'total purchase spent is conserved at $275 + $30 = $305 across all rows',
+    String(spentSumOf(withCoffee)));
+  ok(near(noCoffee.budgetHold, withCoffee.budgetHold)
+      && near(noCoffee.afterHouseholdBudget, withCoffee.afterHouseholdBudget)
+      && near(noCoffee.projectedEnding, withCoffee.projectedEnding),
+    'the no-coffee waterfall is identical: existing Eating Out capacity absorbs the coffee $30 with no extra hold');
+
+  console.log('  -- 8b. over-budget Eating Out: coffee moves rows, not waterfall totals --');
+  const BIG_EAT = 250;
+  const overTxs = fixtureTxs.map(tx => tx.id === 'tx-eat'
+    ? Object.assign({}, tx, { amount: BIG_EAT }) : tx);
+  const over = period(recommend(overTxs.concat([coffeeTx])).defaultView, 'this-pay-period');
+  const overEating = budgetRow(over, 'restaurants');
+  const overOther = (over.householdBudget || []).find(r => r.otherSpending);
+  ok(overEating && near(overEating.spent, BIG_EAT + COFFEE),
+    'over-budget Eating Out spent is the constructed $250 Restaurants + $30 Coffee Shops = $280',
+    overEating && String(overEating.spent));
+  ok(overEating && near(overEating.hold, BIG_EAT + COFFEE),
+    'an over-budget named category holds its full spent: Eating Out hold is $280',
+    overEating && String(overEating.hold));
+  ok(overEating && near(overEating.overspend, BIG_EAT + COFFEE - 200)
+      && near(overEating.remaining, 200 - (BIG_EAT + COFFEE)),
+    'Eating Out overspend is $80 and remaining is -$80 against the $200 plan',
+    overEating && String(overEating.overspend));
+  ok(overOther && near(overOther.spent, OTHER_TOTAL) && near(overOther.hold, OTHER_TOTAL),
+    'Other spending stays the $100 residual even when Eating Out is over budget',
+    overOther && String(overOther.spent));
+  ok(near(over.budgetHold, 2042.50) && near(over.afterHouseholdBudget, 6485.50)
+      && near(over.projectedEnding, 5395.50),
+    'over-budget waterfall totals are $2,042.50 / $6,485.50 / $5,395.50: with no spare capacity the coffee $30 raises a hold on either side, so totals do not move — only the carrying row changes',
+    String(over.budgetHold));
+  ok(near(spentSumOf(over), 530),
+    'over-budget total purchase spent is conserved at $530 across all rows',
+    String(spentSumOf(over)));
+
+  console.log('  -- 8c. dated Other target: coffee no longer consumes the target --');
+  const OTHER_TARGET = 120;
+  const targetPlan = syntheticPlan();
+  targetPlan.budget.categories.push({
+    id: 'other-spend', label: 'Other spend',
+    plannedPayday: OTHER_TARGET, targetEffectiveFrom: '2026-08-28',
+  });
+  const targeted = period(F.recommend(targetPlan, AS_OF, {
+    targetBuffer: 500,
+    debts,
+    currentPeriodActuals: actualsPacket(fixtureTxs.concat([coffeeTx]), AS_OF),
+  }).defaultView, 'this-pay-period');
+  const targetOther = (targeted.householdBudget || []).find(r => r.otherSpending);
+  ok(targetOther && near(targetOther.planned, OTHER_TARGET),
+    'the dated Other target still selects its $120 planned amount',
+    targetOther && String(targetOther.planned));
+  ok(targetOther && near(targetOther.spent, OTHER_TOTAL),
+    'dated-target Other spent is the $100 genuine residual only — coffee is not residual evidence',
+    targetOther && String(targetOther.spent));
+  ok(targetOther && near(targetOther.hold, OTHER_TARGET)
+      && near(targetOther.remaining, OTHER_TARGET - OTHER_TOTAL)
+      && near(targetOther.overspend, 0),
+    'coffee does not consume the dated Other target: hold stays at the $120 target, $20 remains, no overspend',
+    targetOther && String(targetOther.hold));
+  ok(near(targeted.budgetHold, 1982.50) && near(targeted.afterHouseholdBudget, 6545.50)
+      && near(targeted.projectedEnding, 5455.50),
+    'dated-target waterfall totals are $1,982.50 / $6,545.50 / $5,455.50 with coffee in Eating Out',
+    String(targeted.budgetHold));
+}
+
 if (failures) {
   console.log('\nFAILED ' + failures);
   process.exit(1);
