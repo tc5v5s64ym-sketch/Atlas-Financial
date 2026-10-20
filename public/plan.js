@@ -7902,7 +7902,18 @@ function renderBalanceHistory(history) {
  * that previously showed them (no stale fallback). The only figures
  * still published are the reported debt stocks on the snapshot
  * tiles, which are Forecast stock readings of the debt records
- * themselves and do not depend on settlement evidence. */
+ * themselves and do not depend on settlement evidence.
+ *
+ * B4 containment invariant: index.html places the structural mounts
+ * (#status-band, #plan-window, #c-forecast, #snapshot-tiles and the
+ * section containers) INSIDE #road-ahead, so #road-ahead itself must
+ * never be emptied — clearing it would delete the mounts this render
+ * publishes into and the mounts the next normal render writes
+ * unconditionally, making same-instance recovery impossible. Only
+ * dependent LEAF publications are cleared, each by its own id —
+ * including the chart mount, whose SVG aria-label carries dependent
+ * figures. Static controls inside the section (scenario presets,
+ * calendar legend, budget inputs) are not publications and stay. */
 function renderPlanSettlementUnavailable(d, reason) {
   const notice = `<div class="note-box crit" data-settlement-evidence="unavailable" data-settlement-reason="${reason}">Settlement evidence is unavailable (${reason}). Savings, funding, cap and transfer figures that depend on settlement evidence are withheld rather than shown as if no settlement existed.</div>`;
   const setHtml = (id, html) => { const node = $(id); if (node) node.innerHTML = html; };
@@ -7941,8 +7952,8 @@ function renderPlanSettlementUnavailable(d, reason) {
     'major-plans-list', 'agenda-14', 'score-table', 'score-cards', 'phases',
     'priorities-ledger', 'risk-list', 'assumption-list', 'nextmove-card',
     'plan-mission', 'wk-table', 'wk-cards', 'budget-out', 'budget-cats',
-    'actions-list', 'road-ahead', 'cal-agenda', 'cal-months', 'balance-history',
-    'forecast-caption']) {
+    'actions-list', 'cal-agenda', 'cal-months', 'balance-history',
+    'c-forecast', 'forecast-caption']) {
     setHtml(id, '');
   }
   for (const id of ['hero-note', 'major-plans-note', 'agenda-14-note', 'score-note',

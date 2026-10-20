@@ -230,8 +230,82 @@ test('packet: malformed status and qualified-without-evidence fail closed', () =
 
 /* ------------------------------------------------------- fake DOM */
 
+// Id containment of the real Plan page, parsed from public/index.html:
+// for each id-bearing element, the set of id-bearing descendants. The
+// B4 proof needs this because the defect is structural — a renderer
+// that assigns innerHTML on a container deletes the mounts inside it
+// in a real DOM, and lookups for those mounts then return null. The
+// original harness kept every id in a flat registry forever, so that
+// class of failure was invisible to it.
+function idDescendantsById() {
+  const html = fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<script\b[\s\S]*?<\/script>/g, '')
+    .replace(/<style\b[\s\S]*?<\/style>/g, '');
+  const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img',
+    'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+  const parentOf = new Map();
+  const stack = [];
+  const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+  let m;
+  while ((m = tagRe.exec(html))) {
+    const raw = m[0], tag = m[1].toLowerCase();
+    if (raw.startsWith('</')) {
+      for (let i = stack.length - 1; i >= 0; i--) {
+        if (stack[i].tag === tag) { stack.length = i; break; }
+      }
+      continue;
+    }
+    const idm = /\bid="([^"]+)"/.exec(m[2]);
+    const id = idm ? idm[1] : null;
+    if (id && !parentOf.has(id)) {
+      let parent = null;
+      for (let i = stack.length - 1; i >= 0; i--) {
+        if (stack[i].id) { parent = stack[i].id; break; }
+      }
+      parentOf.set(id, parent);
+    }
+    if (!VOID.has(tag) && !raw.endsWith('/>')) stack.push({ tag, id });
+  }
+  const childrenOf = new Map();
+  for (const [id, parent] of parentOf) {
+    if (parent) {
+      if (!childrenOf.has(parent)) childrenOf.set(parent, []);
+      childrenOf.get(parent).push(id);
+    }
+  }
+  const descendantsOf = new Map();
+  const collect = (id, into) => {
+    for (const c of childrenOf.get(id) || []) { into.add(c); collect(c, into); }
+  };
+  for (const id of parentOf.keys()) {
+    const set = new Set();
+    collect(id, set);
+    descendantsOf.set(id, set);
+  }
+  return descendantsOf;
+}
+
 function makeFakeDom() {
   const elements = new Map();
+  // Descendant-removal and lookup semantics (B4): assigning innerHTML
+  // or textContent on an element replaces its children in a real DOM,
+  // so every id-bearing descendant (per the real index.html
+  // containment above) is removed from the document and
+  // document.getElementById returns null for it from then on.
+  // Re-attachment is deliberately NOT modelled: no render path
+  // re-creates a structural mount from markup — recovery after an
+  // unavailable render works precisely because the mounts are never
+  // destroyed, which is the invariant the B4 tests pin. Ids that are
+  // not part of the static page (other pages' mounts, harness-created
+  // nodes) have no containment entry and keep the original
+  // always-present behaviour.
+  const descendantsOf = idDescendantsById();
+  const detached = new Set();
+  const detachDescendants = id => {
+    const set = descendantsOf.get(id);
+    if (set) for (const d of set) detached.add(d);
+  };
   const drawStub = new Proxy({}, {
     get(target, prop) {
       if (prop === 'measureText') return () => ({ width: 0 });
@@ -242,8 +316,8 @@ function makeFakeDom() {
   });
   function element(id) {
     if (!elements.has(id)) {
-      elements.set(id, {
-        id, innerHTML: '', textContent: '', className: '', hidden: false,
+      const el = {
+        id, _html: '', _text: '', className: '', hidden: false,
         dataset: {}, style: {}, attrs: {}, children: [], value: '',
         checked: false, disabled: false, offsetWidth: 120, offsetHeight: 40,
         offsetLeft: 0, offsetTop: 0, scrollWidth: 240, clientWidth: 240, scrollLeft: 0,
@@ -252,9 +326,25 @@ function makeFakeDom() {
         // its remount teardown); the fake document is the registry
         // below, resolved lazily so element creation order is free.
         get ownerDocument() { return document; },
-        setAttribute(k, v) { this.attrs[k] = String(v); },
+        // data-* attributes and dataset are reflections of the same
+        // attribute in a real DOM; renderPlan relies on that ("set on
+        // every paint so a stale value cannot survive a re-render")
+        // when it writes data-plan-status via setAttribute only.
+        setAttribute(k, v) {
+          this.attrs[k] = String(v);
+          if (k.startsWith('data-')) {
+            const prop = k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+            this.dataset[prop] = String(v);
+          }
+        },
         getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
-        removeAttribute(k) { delete this.attrs[k]; },
+        removeAttribute(k) {
+          delete this.attrs[k];
+          if (k.startsWith('data-')) {
+            const prop = k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+            delete this.dataset[prop];
+          }
+        },
         addEventListener() {}, removeEventListener() {},
         dispatchEvent(evt) { (this.events ||= []).push(evt && evt.type); return true; },
         appendChild(c) { this.children.push(c); return c; },
@@ -297,13 +387,26 @@ function makeFakeDom() {
         closest() { return null; },
         getContext() { return drawStub; },
         getBoundingClientRect() { return { left: 0, top: 0, width: 120, height: 40 }; },
-        scrollTo() {}, focus() {}, click() {}, remove() {},
+        scrollTo() {}, focus() {}, click() {},
+        remove() { detached.add(id); detachDescendants(id); },
+      };
+      // innerHTML / textContent assignment replaces an element's
+      // children in a real DOM: id-bearing descendants are removed
+      // from the document (see the containment note above makeFakeDom).
+      Object.defineProperty(el, 'innerHTML', {
+        get() { return this._html; },
+        set(v) { this._html = String(v); this.children = []; detachDescendants(id); },
       });
+      Object.defineProperty(el, 'textContent', {
+        get() { return this._text; },
+        set(v) { this._text = String(v); this.children = []; detachDescendants(id); },
+      });
+      elements.set(id, el);
     }
     return elements.get(id);
   }
   const document = {
-    getElementById: id => element(id),
+    getElementById: id => (detached.has(id) ? null : element(id)),
     querySelector: () => null,
     querySelectorAll: () => [],
     createElement: tag => element('created:' + tag),
@@ -747,4 +850,93 @@ test('plan: unavailable transition tears down the moved attention card (B2)', ()
     'the external attention mount is empty after the unavailable transition');
   assert.ok(!bottomAfter || !bottomAfter.innerHTML.includes('Worth a look'),
     'no stale attention card survives the unavailable transition');
+});
+
+/* ------------------------- Systems Review repair round (B4) */
+/* Added for the Systems Review BLOCK of head d7054184 (PR #661,
+ * comment 6297530699). public/index.html places the structural
+ * mounts #status-band, #plan-window, #c-forecast and #snapshot-tiles
+ * INSIDE #road-ahead; the unavailable renderer cleared #road-ahead
+ * itself, deleting every mount inside it — the status band it had
+ * just filled, the snapshot mount it was about to republish, and the
+ * mounts the next normal render writes unconditionally
+ * ($('plan-window').textContent throws on the deleted node). The
+ * harness now models descendant removal and lookup semantics from
+ * the real index.html containment (see makeFakeDom), so these tests
+ * exercise the actual failure. Each was first run against d7054184
+ * production files and failed for the stated reason. */
+
+test('plan: unavailable render preserves structural mounts and independent publications (B4)', () => {
+  const loaded = loadPlan();
+  const { dom } = loaded;
+  renderPlanPage(loaded, fixtureInput(), null);
+  assert.ok(dom.element('c-forecast').children.length > 0,
+    'prime render published the forecast chart');
+  const un = renderPlanPage(loaded, fixtureInput(), UNAVAILABLE('pin-unavailable'));
+  // The structural mounts inside #road-ahead survive the unavailable
+  // render — in a real DOM they are the renderer's own scaffolding.
+  for (const id of ['road-ahead', 'status-band', 'plan-window', 'c-forecast', 'snapshot-tiles']) {
+    assert.ok(dom.document.getElementById(id),
+      `${id} is still in the document after the unavailable render`);
+  }
+  // The unavailable indication is retained on the status band, and
+  // the plan window carries the withheld line.
+  assert.equal(un['status-band'].planStatus, 'unavailable');
+  assert.ok(un['status-band'].innerHTML.includes('Plan unavailable'),
+    'status band carries the unavailable notice');
+  assert.ok(un['plan-window'].textContent.includes('Settlement evidence unavailable'),
+    'plan window carries the withheld line');
+  // The independent reported debt stocks are still published.
+  assert.ok(un['snapshot-tiles'].innerHTML.includes('Consumer debt'),
+    'independent snapshot tiles stay published under unavailable');
+  // Dependent leaf publications are cleared, including the chart.
+  assert.equal(dom.element('c-forecast').children.length, 0,
+    'chart content is removed under unavailable');
+  assert.equal(un['c-forecast'].innerHTML, '', 'chart mount is emptied under unavailable');
+  assert.ok(!un['major-plans-list'].innerHTML.includes('Invented first club cost'),
+    'no stale dependent figures survive in the major plans list');
+});
+
+test('plan: same-instance recovery from unavailable to qualified restores publication (B4)', () => {
+  const loaded = loadPlan();
+  renderPlanPage(loaded, fixtureInput(), null);
+  renderPlanPage(loaded, fixtureInput(), UNAVAILABLE('digest-mismatch'));
+  let recovered;
+  assert.doesNotThrow(() => {
+    recovered = renderPlanPage(loaded, fixtureInput(), QUALIFIED());
+  }, 'qualified render after an unavailable render must not throw');
+  assert.ok(recovered['major-plans-list'].innerHTML.includes('$35.00'),
+    'relieved remaining is republished after recovery');
+  assert.notEqual(recovered['status-band'].planStatus, 'unavailable',
+    'status band returns to a real verdict after recovery');
+  assert.ok(recovered['plan-window'].textContent.includes('week view'),
+    'plan window is republished after recovery');
+  assert.ok(loaded.dom.element('c-forecast').children.length > 0,
+    'chart is redrawn after recovery');
+  assert.ok(recovered['snapshot-tiles'].innerHTML.includes('Consumer debt'),
+    'snapshot tiles are still published after recovery');
+  const fresh = renderPlanPage(loadPlan(), fixtureInput(), QUALIFIED());
+  assert.equal(recovered['major-plans-list'].innerHTML, fresh['major-plans-list'].innerHTML,
+    'recovered render matches a fresh qualified render');
+  assert.equal(recovered['plan-window'].textContent, fresh['plan-window'].textContent);
+});
+
+test('plan: same-instance recovery from unavailable to unconfigured restores publication (B4)', () => {
+  const loaded = loadPlan();
+  renderPlanPage(loaded, fixtureInput(), QUALIFIED());
+  renderPlanPage(loaded, fixtureInput(), UNAVAILABLE('document-missing'));
+  let recovered;
+  assert.doesNotThrow(() => {
+    recovered = renderPlanPage(loaded, fixtureInput(), null);
+  }, 'unconfigured render after an unavailable render must not throw');
+  assert.ok(recovered['major-plans-list'].innerHTML.includes('$60.00'),
+    'unrelieved cost is republished after recovery');
+  assert.ok(recovered['plan-window'].textContent.includes('week view'),
+    'plan window is republished after recovery');
+  assert.ok(loaded.dom.element('c-forecast').children.length > 0,
+    'chart is redrawn after recovery');
+  const fresh = renderPlanPage(loadPlan(), fixtureInput(), null);
+  assert.equal(recovered['major-plans-list'].innerHTML, fresh['major-plans-list'].innerHTML,
+    'recovered render matches a fresh unconfigured render');
+  assert.equal(recovered['plan-window'].textContent, fresh['plan-window'].textContent);
 });
