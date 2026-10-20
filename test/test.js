@@ -80,6 +80,7 @@ const suites = [
   ['settlement evidence loader: pin-verified reads, unconfigured/qualified/unavailable outcomes', 'test-settlement-evidence-loader.js'],
   ['settlement evidence store: commit/recovery state machine, journal, pin CAS and restore drills', 'test-settlement-evidence-store.js'],
   ['settlement evidence file adapter: private POSIX persistence, cross-process lock and restart proof', 'test-settlement-evidence-file-adapter.js'],
+  ['settlement evidence object adapter: conditional pin CAS, encrypted backups and manifest integrity', 'test-settlement-evidence-object-adapter.js'],
   ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
