@@ -86,8 +86,130 @@ function saveKnobs() {
   try { localStorage.setItem(KNOB_KEY, JSON.stringify(out)); } catch { /* ignore */ }
 }
 
+/* ATLAS-080 publication gating: the settlement evidence loader's
+ * tri-state outcome reaches this page as a status carried ALONGSIDE
+ * the evidence on the served data (d.settlementEvidenceStatus /
+ * d.settlementEvidence) — never inside the evidence. The reason
+ * vocabulary is the loader's stable set; anything outside it is
+ * malformed. A malformed status, a qualified status without valid
+ * effective evidence, or evidence under any non-qualified status
+ * fails closed as unavailable('invalid-configuration') — never as
+ * unconfigured, so a configured-but-broken store cannot masquerade
+ * as "never configured" and publish settlement-dependent figures. */
+const PLAN_SETTLEMENT_REASONS = new Set([
+  'invalid-configuration', 'pin-unavailable', 'pin-invalid',
+  'document-unavailable', 'document-missing', 'document-malformed',
+  'household-mismatch', 'revision-mismatch', 'document-ahead-of-pin',
+  'digest-mismatch', 'document-invalid', 'document-changed',
+]);
+
+// The effective projection's structural contract, mirrored from
+// planned-obligation-settlement-contract.js (goalId, operation and
+// txRef formats, positive safe-integer cents, real calendar dates,
+// sha256 evidence digests, reversal records). Forecast's settlement
+// index silently SKIPS entries and links that fail these shapes
+// while still applying the rest — under a qualified label that
+// would publish legacy figures as if the evidence were whole. The
+// projection is keyed one entry per goal with unique operation
+// identities, so duplicates are malformed too. A shared txRef
+// across goals is NOT malformed: the contract budgets one payment
+// across split assignments.
+function planSettlementDateValid(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(value + 'T00:00:00Z');
+  return Number.isFinite(parsed.getTime())
+    && parsed.toISOString().slice(0, 10) === value;
+}
+
+function planSettlementEvidenceValid(evidence) {
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return false;
+  if (!Array.isArray(evidence.commitments)) return false;
+  const goals = new Set();
+  const operations = new Set();
+  for (const entry of evidence.commitments) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    if (typeof entry.goalId !== 'string'
+      || !entry.goalId.startsWith('commitment:')
+      || !/^[a-z0-9][a-z0-9-]{0,127}$/.test(entry.goalId.slice('commitment:'.length))) return false;
+    if (goals.has(entry.goalId)) return false;
+    goals.add(entry.goalId);
+    if (!Array.isArray(entry.links) || entry.links.length === 0) return false;
+    for (const link of entry.links) {
+      if (!link || typeof link !== 'object' || Array.isArray(link)) return false;
+      if (typeof link.operationId !== 'string'
+        || !/^operation-[a-f0-9]{32}$/.test(link.operationId)) return false;
+      if (operations.has(link.operationId)) return false;
+      operations.add(link.operationId);
+      if (typeof link.txRef !== 'string' || !/^tx-[a-f0-9]{32}$/.test(link.txRef)) return false;
+      if (!Number.isSafeInteger(link.assignedCents) || link.assignedCents <= 0) return false;
+      if (!planSettlementDateValid(link.effectiveDate)
+        || !planSettlementDateValid(link.asOf)) return false;
+      if (typeof link.evidenceDigest !== 'string'
+        || !/^[a-f0-9]{64}$/.test(link.evidenceDigest)) return false;
+      if (!Array.isArray(link.reversals)) return false;
+      for (const reversal of link.reversals) {
+        if (!reversal || typeof reversal !== 'object' || Array.isArray(reversal)) return false;
+        if (typeof reversal.operationId !== 'string'
+          || !/^operation-[a-f0-9]{32}$/.test(reversal.operationId)) return false;
+        if (operations.has(reversal.operationId)) return false;
+        operations.add(reversal.operationId);
+        if (typeof reversal.counterTxRef !== 'string'
+          || !/^tx-[a-f0-9]{32}$/.test(reversal.counterTxRef)) return false;
+        if (!Number.isSafeInteger(reversal.cents) || reversal.cents <= 0) return false;
+        if (!planSettlementDateValid(reversal.date)) return false;
+      }
+    }
+  }
+  return true;
+}
+
+function planSettlementOutcome(d) {
+  const status = d ? d.settlementEvidenceStatus : undefined;
+  const evidence = d ? d.settlementEvidence : undefined;
+  const invalid = { kind: 'unavailable', reason: 'invalid-configuration' };
+  // A published null status is a malformed outcome, not an omitted
+  // one: omitted (undefined) is the unconfigured seam, while null is
+  // a configured outcome that failed to serialize — fail closed
+  // rather than equate it with inactivity.
+  if (status === null) return invalid;
+  const hasStatus = status !== undefined;
+  const hasEvidence = evidence !== undefined && evidence !== null;
+  if (!hasStatus && !hasEvidence) return { kind: 'unconfigured' };
+  if (!hasStatus || typeof status !== 'object' || Array.isArray(status)) return invalid;
+  if (status.status === 'unconfigured') {
+    return hasEvidence ? invalid : { kind: 'unconfigured' };
+  }
+  if (status.status === 'qualified') {
+    return hasEvidence && planSettlementEvidenceValid(evidence)
+      ? { kind: 'qualified', evidence }
+      : invalid;
+  }
+  if (status.status === 'unavailable') {
+    if (hasEvidence) return invalid;
+    return PLAN_SETTLEMENT_REASONS.has(status.reason)
+      ? { kind: 'unavailable', reason: status.reason }
+      : invalid;
+  }
+  return invalid;
+}
+
+// The verified effective evidence for the render in progress, set by
+// renderPlan from the served outcome. Threaded through simOpts so
+// every Forecast call this page makes sees the same evidence; null
+// (unconfigured) leaves every call byte-identical to before.
+let planSettlementEvidence = null;
+
+// The page's single debt-walk entry. Every render path that needs
+// Forecast's debt projection goes through here, so plan.js keeps
+// exactly one Forecast.projectDebts call site — the debt walk on
+// screen has one authority, never a second walk (a source invariant
+// the counterfactuals suite pins).
+function planDebtProjection(plan, debts, asOf, opts) {
+  return Forecast.projectDebts(plan, debts, asOf, opts);
+}
+
 function simOpts(extra = {}) {
-  return Object.assign({
+  const base = {
     scenario: state.scenario,
     targetBuffer: state.targetBuffer,
     extraDebtMonthly: state.extraDebtMonthly,
@@ -96,7 +218,9 @@ function simOpts(extra = {}) {
     debts: state.debts,
     extraDebtTarget: state.extraDebtTarget,
     extraFacilities: state.extraFacilities,
-  }, extra);
+  };
+  if (planSettlementEvidence) base.settlementEvidence = planSettlementEvidence;
+  return Object.assign(base, extra);
 }
 
 const addDays = (iso, n) => Forecast.addDays(iso, n);
@@ -2575,6 +2699,13 @@ function budgetTrajectoryCacheKeyFor(asOf, plan, opts) {
     knob('disabled'),
     knob('extraDebtTarget'),
     knob('currentPeriodActuals'),
+    // ATLAS-080 repair (B1): simOpts now also supplies the verified
+    // settlement evidence, and Forecast's trajectory/schedule move
+    // with it. The cache identity must bind to that input or a
+    // same-instance outcome change (unconfigured <-> qualified, or
+    // qualified A -> qualified B) silently reuses the prior result.
+    // Both Month caches share this key, so both follow the outcome.
+    knob('settlementEvidence'),
   ].join('|');
 }
 
@@ -7764,7 +7895,120 @@ function renderBalanceHistory(history) {
   mount.innerHTML = BalanceHistory.render(history);
 }
 
+/* ATLAS-080: the configured-unavailable render. Every mount the
+ * full render would fill with a settlement-dependent figure is
+ * overwritten with one fixed withheld notice (or emptied), so no
+ * dependent figure survives — including on a re-render over a page
+ * that previously showed them (no stale fallback). The only figures
+ * still published are the reported debt stocks on the snapshot
+ * tiles, which are Forecast stock readings of the debt records
+ * themselves and do not depend on settlement evidence.
+ *
+ * B4 containment invariant: index.html places the structural mounts
+ * (#status-band, #plan-window, #c-forecast, #snapshot-tiles and the
+ * section containers) INSIDE #road-ahead, so #road-ahead itself must
+ * never be emptied — clearing it would delete the mounts this render
+ * publishes into and the mounts the next normal render writes
+ * unconditionally, making same-instance recovery impossible. Only
+ * dependent LEAF publications are cleared, each by its own id —
+ * including the chart mount, whose SVG aria-label carries dependent
+ * figures. Static controls inside the section (scenario presets,
+ * calendar legend, budget inputs) are not publications and stay. */
+function renderPlanSettlementUnavailable(d, reason) {
+  const notice = `<div class="note-box crit" data-settlement-evidence="unavailable" data-settlement-reason="${reason}">Settlement evidence is unavailable (${reason}). Savings, funding, cap and transfer figures that depend on settlement evidence are withheld rather than shown as if no settlement existed.</div>`;
+  const setHtml = (id, html) => { const node = $(id); if (node) node.innerHTML = html; };
+  const setText = (id, text) => { const node = $(id); if (node) node.textContent = text; };
+
+  // ATLAS-080 repair (B2): externally moved dependent content. The
+  // normal render's wiring moves the attention card OUT of the
+  // operating mount into #budget-attention-bottom, so replacing the
+  // mount's HTML cannot reach it — the card would survive with its
+  // Forecast figures and bill actions under an unavailable page.
+  // Mirror budgetRemount's teardown: clear the external mount and
+  // notify presentation controllers that retained nodes must drop.
+  const attentionBottom = document.getElementById('budget-attention-bottom');
+  if (attentionBottom && typeof attentionBottom.replaceChildren === 'function') {
+    attentionBottom.replaceChildren();
+  }
+  const operatingMountEl = $('operating-surface-body');
+  if (operatingMountEl && typeof operatingMountEl.dispatchEvent === 'function') {
+    operatingMountEl.dispatchEvent(new Event('budget-before-remount'));
+  }
+
+  setText('plan-window', 'Settlement evidence unavailable — the plan is withheld.');
+
+  const band = $('status-band');
+  if (band) {
+    band.setAttribute('data-plan-status', 'unavailable');
+    if (band.dataset) band.dataset.planStatus = 'unavailable';
+    band.className = 'statusband warn';
+    band.innerHTML = `<b>Plan unavailable.</b> ${notice}`;
+  }
+
+  const fund = $('funding');
+  if (fund) fund.hidden = true;
+  for (const id of ['funding-head', 'funding-lede', 'funding-options', 'funding-note',
+    'hero-tiles', 'hero-ledger', 'cap-headline', 'cap-split', 'cap-basis',
+    'major-plans-list', 'agenda-14', 'score-table', 'score-cards', 'phases',
+    'priorities-ledger', 'risk-list', 'assumption-list', 'nextmove-card',
+    'plan-mission', 'wk-table', 'wk-cards', 'budget-out', 'budget-cats',
+    'actions-list', 'cal-agenda', 'cal-months', 'balance-history',
+    'c-forecast', 'forecast-caption']) {
+    setHtml(id, '');
+  }
+  for (const id of ['hero-note', 'major-plans-note', 'agenda-14-note', 'score-note',
+    'priorities-note', 'cal-note', 'budget-basis', 'budget-cats-note', 'actions-note']) {
+    setText(id, '');
+  }
+  setHtml('savings-inventory', notice);
+  setHtml('operating-surface-body', notice);
+  setHtml('payday-answer-body', notice);
+  const transferNote = $('transfer-note');
+  if (transferNote) { transferNote.innerHTML = ''; transferNote.hidden = true; }
+
+  // Reported debt stocks — independent of settlement evidence, still
+  // published with their existing labels. Every figure here is a
+  // Forecast stock reading (compactSnapshot / utilisation / the
+  // debt walk's opening mark); the page computes none of them.
+  const plan = d.plan;
+  const asOf = d.meta.asOf;
+  const snap = Forecast.compactSnapshot(d.debts, d.helocHistory);
+  const revolving = Forecast.utilisation(d.debts, d.revolvingExtra, plan).totalAvailable;
+  let consumer = null;
+  try {
+    const opening = planDebtProjection(plan, d.debts, asOf, {
+      extraFacilities: d.revolvingExtra,
+    });
+    if (opening && Array.isArray(opening.marks) && opening.marks[0]) {
+      consumer = opening.marks[0].consumer;
+    }
+  } catch { consumer = null; }
+  const helocTrend = snap.heloc ? HELOC_TREND[snap.heloc.id] : null;
+  setHtml('snapshot-tiles', [
+    { lab: 'Consumer debt', val: consumer == null ? 'unavailable' : money(consumer), note: 'cards and revolving, excluding the house' },
+    { lab: 'Mortgage + HELOC', val: money(snap.secured), note: 'secured on the home' },
+    { lab: 'Interest cost / month', val: money(snap.monthlyInterest), note: 'across every debt, at current rates' },
+    { lab: 'Credit left, everywhere', val: money(revolving), note: 'across all revolving facilities combined' },
+    ...(helocTrend ? [{ lab: 'HELOC vs last month',
+      val: helocTrend.sign + money(Math.abs(snap.heloc.delta)).slice(1),
+      note: helocTrend.note }] : []),
+  ].map(t => `
+    <div class="tile small">
+      <div class="lab">${t.lab}</div><div class="val">${t.val}</div><div class="note">${t.note}</div>
+    </div>`).join(''));
+}
+
 function renderPlan(d, periods, history) {
+  // ATLAS-080: normalize the served settlement outcome before any
+  // figure is produced. Qualified threads the verified evidence
+  // through simOpts for the whole render; unavailable short-circuits
+  // to the withheld render above.
+  const settlement = planSettlementOutcome(d);
+  planSettlementEvidence = settlement.kind === 'qualified' ? settlement.evidence : null;
+  if (settlement.kind === 'unavailable') {
+    renderPlanSettlementUnavailable(d, settlement.reason);
+    return;
+  }
   const plan = d.plan;
   const asOf = d.meta.asOf;
 
@@ -7910,7 +8154,7 @@ function renderPlan(d, periods, history) {
   /* ---- cash and debt, walked together ---- */
   // The same event stream that moves the cash moves the balances. A minimum
   // that leaves the chequing account has to arrive on a card.
-  const debtProj = Forecast.projectDebts(plan, d.debts, asOf,
+  const debtProj = planDebtProjection(plan, d.debts, asOf,
     Object.assign({}, advice.simOptions, { weeklyVariable: weekly,
       extraFacilities: d.revolvingExtra }));
 

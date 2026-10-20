@@ -2221,13 +2221,125 @@ function planningTrajectoryHtml(traj) {
   };
 }
 
+// ATLAS-080 publication gating: the settlement evidence loader's
+// tri-state outcome reaches this page as a status carried ALONGSIDE
+// the evidence on the served data (d.settlementEvidenceStatus /
+// d.settlementEvidence) — never inside the evidence. The reason
+// vocabulary is the loader's stable set; anything outside it is
+// malformed. A malformed status, a qualified status without valid
+// effective evidence, or evidence under any non-qualified status
+// fails closed as unavailable('invalid-configuration') — never as
+// unconfigured, so a configured-but-broken store cannot masquerade
+// as "never configured" and publish settlement-dependent figures.
+const PLANNING_SETTLEMENT_REASONS = new Set([
+  'invalid-configuration', 'pin-unavailable', 'pin-invalid',
+  'document-unavailable', 'document-missing', 'document-malformed',
+  'household-mismatch', 'revision-mismatch', 'document-ahead-of-pin',
+  'digest-mismatch', 'document-invalid', 'document-changed',
+]);
+
+// The effective projection's structural contract, mirrored from
+// planned-obligation-settlement-contract.js (goalId, operation and
+// txRef formats, positive safe-integer cents, real calendar dates,
+// sha256 evidence digests, reversal records). Forecast's settlement
+// index silently SKIPS entries and links that fail these shapes
+// while still applying the rest — under a qualified label that
+// would publish legacy figures as if the evidence were whole. The
+// projection is keyed one entry per goal with unique operation
+// identities, so duplicates are malformed too. A shared txRef
+// across goals is NOT malformed: the contract budgets one payment
+// across split assignments.
+function planningSettlementDateValid(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(value + 'T00:00:00Z');
+  return Number.isFinite(parsed.getTime())
+    && parsed.toISOString().slice(0, 10) === value;
+}
+
+function planningSettlementEvidenceValid(evidence) {
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return false;
+  if (!Array.isArray(evidence.commitments)) return false;
+  const goals = new Set();
+  const operations = new Set();
+  for (const entry of evidence.commitments) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    if (typeof entry.goalId !== 'string'
+      || !entry.goalId.startsWith('commitment:')
+      || !/^[a-z0-9][a-z0-9-]{0,127}$/.test(entry.goalId.slice('commitment:'.length))) return false;
+    if (goals.has(entry.goalId)) return false;
+    goals.add(entry.goalId);
+    if (!Array.isArray(entry.links) || entry.links.length === 0) return false;
+    for (const link of entry.links) {
+      if (!link || typeof link !== 'object' || Array.isArray(link)) return false;
+      if (typeof link.operationId !== 'string'
+        || !/^operation-[a-f0-9]{32}$/.test(link.operationId)) return false;
+      if (operations.has(link.operationId)) return false;
+      operations.add(link.operationId);
+      if (typeof link.txRef !== 'string' || !/^tx-[a-f0-9]{32}$/.test(link.txRef)) return false;
+      if (!Number.isSafeInteger(link.assignedCents) || link.assignedCents <= 0) return false;
+      if (!planningSettlementDateValid(link.effectiveDate)
+        || !planningSettlementDateValid(link.asOf)) return false;
+      if (typeof link.evidenceDigest !== 'string'
+        || !/^[a-f0-9]{64}$/.test(link.evidenceDigest)) return false;
+      if (!Array.isArray(link.reversals)) return false;
+      for (const reversal of link.reversals) {
+        if (!reversal || typeof reversal !== 'object' || Array.isArray(reversal)) return false;
+        if (typeof reversal.operationId !== 'string'
+          || !/^operation-[a-f0-9]{32}$/.test(reversal.operationId)) return false;
+        if (operations.has(reversal.operationId)) return false;
+        operations.add(reversal.operationId);
+        if (typeof reversal.counterTxRef !== 'string'
+          || !/^tx-[a-f0-9]{32}$/.test(reversal.counterTxRef)) return false;
+        if (!Number.isSafeInteger(reversal.cents) || reversal.cents <= 0) return false;
+        if (!planningSettlementDateValid(reversal.date)) return false;
+      }
+    }
+  }
+  return true;
+}
+
+function planningSettlementOutcome(d) {
+  const status = d ? d.settlementEvidenceStatus : undefined;
+  const evidence = d ? d.settlementEvidence : undefined;
+  const invalid = { kind: 'unavailable', reason: 'invalid-configuration' };
+  // A published null status is a malformed outcome, not an omitted
+  // one: omitted (undefined) is the unconfigured seam, while null is
+  // a configured outcome that failed to serialize — fail closed
+  // rather than equate it with inactivity.
+  if (status === null) return invalid;
+  const hasStatus = status !== undefined;
+  const hasEvidence = evidence !== undefined && evidence !== null;
+  if (!hasStatus && !hasEvidence) return { kind: 'unconfigured' };
+  if (!hasStatus || typeof status !== 'object' || Array.isArray(status)) return invalid;
+  if (status.status === 'unconfigured') {
+    return hasEvidence ? invalid : { kind: 'unconfigured' };
+  }
+  if (status.status === 'qualified') {
+    return hasEvidence && planningSettlementEvidenceValid(evidence)
+      ? { kind: 'qualified', evidence }
+      : invalid;
+  }
+  if (status.status === 'unavailable') {
+    if (hasEvidence) return invalid;
+    return PLANNING_SETTLEMENT_REASONS.has(status.reason)
+      ? { kind: 'unavailable', reason: status.reason }
+      : invalid;
+  }
+  return invalid;
+}
+
 function planningTrajectory(d, periods) {
+  const settlement = planningSettlementOutcome(d);
+  if (settlement.kind === 'unavailable') {
+    return { status: 'unavailable', source: 'settlement-evidence', reason: settlement.reason };
+  }
   const overlay = d.liveOverlay;
   const actuals = overlay && overlay.applied === true ? overlay.currentPeriodActuals : null;
   return Forecast.baselineTrajectory(d.plan, d.debts, d.meta.asOf, {
     periods: periods || null,
     extraFacilities: d.revolvingExtra,
     currentPeriodActuals: actuals,
+    ...(settlement.kind === 'qualified' ? { settlementEvidence: settlement.evidence } : {}),
   });
 }
 
@@ -2551,6 +2663,19 @@ function planningPageHtml(advice, liveOverlay) {
 }
 
 function planningAdvice(d, periods) {
+  const settlement = planningSettlementOutcome(d);
+  if (settlement.kind === 'unavailable') {
+    // The withheld verdict reuses the page's existing operating-plan
+    // unavailable gate (planningPageHtml) with the settlement reason
+    // as the note; no Forecast call is made and no figure is derived.
+    return {
+      status: 'unavailable',
+      source: 'settlement-evidence',
+      reason: settlement.reason,
+      operatingPlanUnavailable: true,
+      operatingPlanNote: `Settlement evidence is unavailable (${settlement.reason}); settlement-dependent verdicts are withheld.`,
+    };
+  }
   const overlay = d.liveOverlay;
   const actuals = overlay && overlay.applied === true ? overlay.currentPeriodActuals : null;
   return Forecast.recommend(d.plan, d.meta.asOf, {
@@ -2561,6 +2686,7 @@ function planningAdvice(d, periods) {
     currentPeriodActuals: actuals,
     operatingPlan: overlay && overlay.operatingPlan,
     operatingPlanNote: overlay && overlay.operatingPlanNote,
+    ...(settlement.kind === 'qualified' ? { settlementEvidence: settlement.evidence } : {}),
   });
 }
 
@@ -2697,6 +2823,30 @@ function planningRoadAheadWireSelection(root, d, periods) {
 }
 
 function renderPlanning(d, periods) {
+  // ATLAS-080: configured-but-unavailable settlement evidence
+  // withholds the Road Ahead wholesale — a fixed notice naming the
+  // loader's reason replaces the shell, so no settlement-dependent
+  // figure, timeline, waterfall or scenario output can leak through
+  // this mount, and the withheld output cannot vary with the figures
+  // it withholds.
+  const settlement = planningSettlementOutcome(d);
+  if (settlement.kind === 'unavailable') {
+    const roadRoot = $('planning-road-ahead');
+    if (roadRoot) {
+      roadRoot.innerHTML = `<div class="planning-road-shell" data-planning-road-shell="unavailable" data-settlement-evidence="unavailable" data-settlement-reason="${settlement.reason}">
+      <header class="planning-road-app-head" aria-label="Road Ahead">
+        <div class="planning-road-app-head-row">
+          <div class="planning-road-app-identity">
+            <p class="planning-road-app-eyebrow">FORECAST</p>
+            <h2 class="planning-road-app-title">Road Ahead</h2>
+          </div>
+        </div>
+      </header>
+      <div class="note-box crit" data-road-ahead="unavailable">Road Ahead is withheld: settlement evidence is unavailable (${settlement.reason}). Savings, funding and transfer figures that depend on settlement evidence are not shown, rather than shown as if no settlement existed.</div>
+    </div>`;
+    }
+    return;
+  }
   const traj = planningTrajectory(d, periods);
   const asOf = d && d.meta && d.meta.asOf ? d.meta.asOf : null;
   if (traj && traj.status === 'ready' && Array.isArray(traj.months) && traj.months.length) {
