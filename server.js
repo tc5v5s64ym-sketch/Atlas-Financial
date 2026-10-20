@@ -29,6 +29,12 @@ const path = require('path');
 const SnapshotBalances = require('./scripts/snapshot-balances.js');
 const LivePlan = require('./scripts/live-plan.js');
 const ServerLiveRefresh = require('./scripts/server-live-refresh.js');
+const SettlementEvidenceServing = require('./scripts/settlement-evidence-serving.js');
+// Default-inactive: constructed with NO dependency, so attach() returns
+// the served object unchanged and no settlement fields are served. A
+// future storage slice injects the loader dependency here; nothing in
+// this construction reads configuration, storage or credentials.
+const settlementEvidenceServing = SettlementEvidenceServing.createSettlementEvidenceServing();
 const Assistant = require('./scripts/assistant-packet.js');
 const RunningBuild = require('./scripts/running-build.js');
 const AssistantMcp = require('./scripts/assistant-mcp.js');
@@ -332,7 +338,8 @@ async function servedAtlasData(req, res, options = {}) {
   res?.once('close', cancel);
   if (req?.aborted || res?.destroyed) controller.abort();
   try {
-    return await ServerLiveRefresh.serve(loadCanonicalData(), process.env, { ...options, signal: controller.signal });
+    const served = await ServerLiveRefresh.serve(loadCanonicalData(), process.env, { ...options, signal: controller.signal });
+    return settlementEvidenceServing.attach(served);
   } finally {
     req?.removeListener('aborted', cancel);
     res?.removeListener('close', cancel);
