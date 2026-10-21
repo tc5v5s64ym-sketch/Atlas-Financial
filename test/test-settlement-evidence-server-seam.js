@@ -1052,6 +1052,219 @@ test('attach snapshot: the projection is computed from the served object as it s
     'the evidence is the loader’s, not the planted field');
 });
 
+/* ------------- 9. controller-originated composition (confirmation) */
+// Every pin above seeds durable evidence through store.prepare /
+// store.commit directly, bypassing the confirmation controller. These
+// pins start from the REAL controller (scripts/settlement-evidence-
+// confirmation.js) over the SAME store, merged adapters and async
+// adapter readers, and follow its committed evidence through the
+// bridge into the assistant packet. Only authority and the selection
+// resolver are synthetic trusted fixtures; the resolver invokes the
+// controller-owned classify closure exactly once, so the verdict comes
+// from the real Forecast classifier. Expected published values are
+// literal constants pinned independently (over the daily-allocation
+// fixture with the 'near' goalRef on the linked commitment), never a
+// cross-path agreement: baseline weekly 10 / need 60 / margin 255.71,
+// partial (2500 of 6000) weekly 15 / need 35 / margin 268.57, full
+// (6000 of 6000) weekly 25 / need 0 / margin 279.29. Coverage only:
+// these pins describe current behaviour; no runtime change.
+const confirmationModule = () => require(path.join(ROOT, 'scripts/settlement-evidence-confirmation.js'));
+const ctlContext = { ticket: 'synthetic-seam-session' };
+const ctlSelection = { transaction: 'selection-' + '1'.repeat(32), commitment: 'choice-' + '2'.repeat(32) };
+const EXPECT = Object.freeze({
+  baseline: { weekly: 10, need: 60, margin: 255.71 },
+  partial: { weekly: 15, need: 35, margin: 268.57 },
+  full: { weekly: 25, need: 0, margin: 279.29 },
+});
+
+async function makeControllerFixture() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-seam-ctl-'));
+  const transport = makeFileTransport(path.join(dir, 'vault'));
+  const clock = { t: T0 };
+  const now = () => (clock.t += 1);
+  const openAdapters = () => {
+    const fileAdapter = FA.createSettlementEvidenceFileAdapter(dir);
+    const objectAdapter = OA.createSettlementEvidenceObjectAdapter({
+      householdId, namespace: NS, transport, encrypt: syntheticEncrypt,
+    });
+    return { fileAdapter, objectAdapter };
+  };
+  const openStore = ({ fileAdapter, objectAdapter }) => S.createSettlementEvidenceStore({
+    householdId,
+    documentStore: fileAdapter.documentStore, journalStore: fileAdapter.journalStore,
+    pinStore: objectAdapter.pinStore, backupStore: objectAdapter.backupStore,
+    quarantine: fileAdapter.quarantine, lock: fileAdapter.lock, now,
+  });
+  const adapters = openAdapters();
+  const store = openStore(adapters);
+  assert.equal((await store.bootstrap()).status, 'bootstrapped');
+  const resolverCalls = [];
+  const authorize = async ctx => (ctx.ticket === ctlContext.ticket ? { householdId, actorId } : null);
+  // Synthetic trusted resolver: one stable provider identity -> tx(1),
+  // the 6000-cent posted CAD debit on 2026-10-03, goal commitment:near.
+  const resolveSelection = async input => {
+    resolverCalls.push(input.selection);
+    const transactionId = 'synthetic-provider-transaction';
+    input.classify(
+      { id: transactionId, date: '2026-10-03', amount: 60, categoryLabel: 'Groceries', merchantKnown: true },
+      { budget: { categories: [{ id: 'groceries', label: 'Groceries' }], excluded: [] } },
+      { currentPeriodActuals: { representedActuals: [], transactions: [] } });
+    return {
+      matchCount: 1,
+      identity: { householdId, source: 'lunchmoney', providerAccountId: 'synthetic-provider-account', transactionId },
+      txRef: tx(1), selectionBinding: 'synthetic-private-selection-v1',
+      goalId: 'commitment:near', goalBinding: 'synthetic-plan-goal-v1', asOf: '2026-10-04',
+      evidence: ev(),
+    };
+  };
+  const controllerFor = st => confirmationModule().createSettlementEvidenceConfirmation({
+    householdId, authorize, resolveSelection, store: st, now,
+  });
+  const servingFor = (a, over = {}) => servingModule().createSettlementEvidenceServing({
+    householdId,
+    readDocument: over.readDocument || (() => a.fileAdapter.documentStore.read()),
+    readPin: over.readPin || (() => a.objectAdapter.pinStore.read()),
+  });
+  return { dir, adapters, store, openAdapters, openStore, controllerFor, servingFor, resolverCalls,
+    documentFile: adapters.fileAdapter.paths.documentFile };
+}
+function linkedServed() {
+  const x = fx.fixture();
+  x.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'commitment', id: 'near' }];
+  return servedOf(x);
+}
+const nearOf = packet => (packet.forecast.majorPlanFunding.items || []).find(item => item.id === 'near');
+function assertPublished(packet, expected, label) {
+  assert.equal(packet.forecast.recommendation.weekly, expected.weekly, label + ': weekly');
+  const near = nearOf(packet);
+  assert.ok(near, label + ': linked commitment published');
+  assert.equal(near.need, expected.need, label + ': remaining requirement');
+  assert.equal(near.margin, expected.margin, label + ': margin');
+}
+async function confirmThroughController(ctl, n, cents) {
+  const prepared = await ctl.prepare(ctlContext, { operationId: op(n), selection: ctlSelection, assignedCents: cents });
+  assert.equal(prepared.status, 'prepared', 'controller prepares');
+  const receipt = await ctl.confirm(ctlContext, { operationId: op(n), confirmed: true, previewToken: prepared.previewToken });
+  assert.equal(receipt.status, 'committed', 'controller commits');
+  return { prepared, receipt };
+}
+
+test('controller C1: prepare without confirm leaves the served baseline unchanged', async () => {
+  const f = await makeControllerFixture();
+  const ctl = f.controllerFor(f.store);
+  // Literal baseline, independent of any store: no settlement fields.
+  assertPublished(packetFor(linkedServed()), EXPECT.baseline, 'no-evidence baseline');
+  const genesisBytes = fs.readFileSync(f.documentFile);
+  const genesisTree = treeHash(f.dir);
+  const before = await f.servingFor(f.adapters).attach(linkedServed());
+  assert.deepEqual(before.settlementEvidenceStatus, { status: 'qualified' });
+  assert.deepEqual(before.settlementEvidence, { commitments: [] });
+  const prepared = await ctl.prepare(ctlContext, { operationId: op(1), selection: ctlSelection, assignedCents: 2500 });
+  assert.equal(prepared.status, 'prepared');
+  assert.equal(f.resolverCalls.length, 1, 'the real controller resolved once');
+  assert.ok(fs.readFileSync(f.documentFile).equals(genesisBytes), 'prepare wrote no document');
+  assert.equal(treeHash(f.dir), genesisTree, 'prepare left every durable byte untouched');
+  const after = await f.servingFor(f.adapters).attach(linkedServed());
+  assert.deepEqual(after.settlementEvidenceStatus, { status: 'qualified' });
+  assert.deepEqual(after.settlementEvidence, { commitments: [] }, 'no evidence before confirmation');
+  assertPublished(packetFor(after), EXPECT.baseline, 'prepared-not-confirmed');
+  assert.deepEqual(await ctl.outcome(ctlContext, { operationId: op(1) }), { status: 'unknown', operationId: op(1) });
+});
+
+test('controller C2: partial confirmation publishes the literal remaining requirement through the packet', async () => {
+  const f = await makeControllerFixture();
+  const { receipt } = await confirmThroughController(f.controllerFor(f.store), 1, 2500);
+  assert.equal(receipt.revision, 1);
+  const out = await f.servingFor(f.adapters).attach(linkedServed());
+  assert.deepEqual(out.settlementEvidenceStatus, { status: 'qualified' });
+  assert.equal(out.settlementEvidence.commitments.length, 1);
+  assert.equal(out.settlementEvidence.commitments[0].goalId, 'commitment:near');
+  assert.equal(out.settlementEvidence.commitments[0].links.length, 1);
+  assert.equal(out.settlementEvidence.commitments[0].links[0].operationId, op(1));
+  assert.equal(out.settlementEvidence.commitments[0].links[0].assignedCents, 2500);
+  const packet = packetFor(out);
+  assert.deepEqual(packet.metadata.settlementEvidence, { status: 'qualified', reason: null });
+  assertPublished(packet, EXPECT.partial, 'partial');
+  assert.deepEqual(packetFor(JSON.parse(JSON.stringify(out))), packet, 'browser JSON path publishes the same packet');
+});
+
+test('controller C3: full confirmation publishes zero remaining with no second cash deduction', async () => {
+  const f = await makeControllerFixture();
+  const { receipt } = await confirmThroughController(f.controllerFor(f.store), 1, 6000);
+  assert.equal(receipt.revision, 1);
+  const out = await f.servingFor(f.adapters).attach(linkedServed());
+  assert.deepEqual(out.settlementEvidenceStatus, { status: 'qualified' });
+  const links = out.settlementEvidence.commitments.flatMap(c => c.links);
+  assert.equal(links.length, 1, 'one link, deducted once');
+  assert.equal(links[0].assignedCents, 6000);
+  // Weekly and margin are the literal full-relief values; a second
+  // deduction of the same 6000-cent debit would move both.
+  assertPublished(packetFor(out), EXPECT.full, 'full');
+});
+
+test('controller C4: confirm/outcome retry keeps the same receipt, revision and published result', async () => {
+  const f = await makeControllerFixture();
+  const ctl = f.controllerFor(f.store);
+  const { prepared, receipt } = await confirmThroughController(ctl, 1, 2500);
+  const bytes = fs.readFileSync(f.documentFile);
+  const tree = treeHash(f.dir);
+  const first = packetFor(await f.servingFor(f.adapters).attach(linkedServed()));
+  assertPublished(first, EXPECT.partial, 'first');
+  const retry = await ctl.confirm(ctlContext, { operationId: op(1), confirmed: true, previewToken: prepared.previewToken });
+  assert.deepEqual(retry, receipt, 'confirm retry returns the original receipt');
+  const viaOutcome = await ctl.outcome(ctlContext, { operationId: op(1) });
+  assert.deepEqual(viaOutcome, receipt, 'outcome returns the original receipt');
+  assert.equal(retry.revision, 1);
+  assert.ok(fs.readFileSync(f.documentFile).equals(bytes), 'no second commit moved the document');
+  assert.equal(treeHash(f.dir), tree, 'retries left every durable byte untouched');
+  const second = packetFor(await f.servingFor(f.adapters).attach(linkedServed()));
+  assert.deepEqual(second, first, 'the published packet is identical after retries');
+  assertPublished(second, EXPECT.partial, 'after retry');
+});
+
+test('controller C5: a recreated controller and read composition see identical committed evidence', async () => {
+  const f = await makeControllerFixture();
+  const { receipt } = await confirmThroughController(f.controllerFor(f.store), 1, 2500);
+  const original = await f.servingFor(f.adapters).attach(linkedServed());
+  const tree = treeHash(f.dir);
+  // Fresh adapters, store, controller and serving over the same durable state.
+  const adapters2 = f.openAdapters();
+  const ctl2 = f.controllerFor(f.openStore(adapters2));
+  assert.deepEqual(await ctl2.outcome(ctlContext, { operationId: op(1) }), receipt,
+    'the recreated controller reads the original durable receipt');
+  const recreated = await f.servingFor(adapters2).attach(linkedServed());
+  assert.deepEqual(recreated.settlementEvidenceStatus, { status: 'qualified' });
+  assert.deepEqual(recreated.settlementEvidence, original.settlementEvidence);
+  assert.equal(recreated.settlementEvidence.commitments[0].links[0].assignedCents, 2500);
+  assertPublished(packetFor(recreated), EXPECT.partial, 'recreated');
+  assert.equal(treeHash(f.dir), tree, 'recreation performed no writes');
+});
+
+test('controller C6: reader failure withholds publication; recovery restores the same result without another commit', async () => {
+  const f = await makeControllerFixture();
+  const ctl = f.controllerFor(f.store);
+  const { receipt } = await confirmThroughController(ctl, 1, 2500);
+  const tree = treeHash(f.dir);
+  let pinDown = true;
+  const serving = f.servingFor(f.adapters, {
+    readPin: () => (pinDown ? Promise.reject(new Error('synthetic pin transport down'))
+      : f.adapters.objectAdapter.pinStore.read()),
+  });
+  const failed = await serving.attach(linkedServed());
+  assert.deepEqual(failed.settlementEvidenceStatus, { status: 'unavailable', reason: 'pin-unavailable' });
+  assert.ok(!('settlementEvidence' in failed));
+  const withheld = packetFor(failed);
+  assert.equal(withheld.forecast.status, 'unavailable');
+  assert.equal(withheld.forecast.reason, 'pin-unavailable');
+  assert.equal(nearOf(withheld), undefined, 'no relieved requirement is published while withheld');
+  pinDown = false;
+  const recovered = await serving.attach(linkedServed());
+  assert.deepEqual(recovered.settlementEvidenceStatus, { status: 'qualified' });
+  assertPublished(packetFor(recovered), EXPECT.partial, 'recovered');
+  assert.equal(treeHash(f.dir), tree, 'failure and recovery performed no commit or write');
+  assert.deepEqual(await ctl.outcome(ctlContext, { operationId: op(1) }), receipt, 'same receipt after recovery');
+});
+
 /* --------------------------- 1 (HTTP). booted server, default-off */
 
 function freePort() {
