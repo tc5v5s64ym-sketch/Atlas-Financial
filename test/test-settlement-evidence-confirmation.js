@@ -1446,3 +1446,144 @@ test('Rule E repair (PR #665 B1): synchronous-resolver mutation across the resol
   assert.equal(w.document().operations[0].command.evidence.cents, 6000, 'the committed command carries the acquired evidence, not the mutation');
   assert.equal(commits, 1);
 });
+
+// Rule E classify-lifetime regression coverage (follow-up to the accepted
+// PR #665 finding). These pin CURRENT behavior; none is a runtime fix. The
+// capability closes in the controller's resolution continuation/finally,
+// after it acquires its owned selection, not at the exact instant the
+// resolver's value or Promise fulfils. Ordering is proven with explicit
+// order logs and deferred barriers only: no promise-state inspection, no
+// timers or sleeps. classifyWith calls a captured closure on the fixture.
+function classifyWith(w, classify) {
+  return w.classifyOnce({ classify });
+}
+
+test('Rule E lifetime: sync resolver return — a microtask queued before return still runs inside the open window', async t => {
+  const w = await world(t);
+  const order = [];
+  let stashed = null;
+  const syncResolve = input => {
+    stashed = input.classify;
+    // Not classified synchronously: the only invocation is queued ahead of
+    // the controller's await continuation, which is where closure happens.
+    queueMicrotask(() => { order.push('queued-classify'); classifyWith(w, stashed); });
+    order.push('resolver-returned');
+    return resolved();
+  };
+  const controller = createSettlementEvidenceConfirmation({ householdId,
+    authorize: w.authorize, resolveSelection: syncResolve, now: () => w.time,
+    store: { ...w.store, prepare: input => { order.push('store-prepare'); return w.store.prepare(input); } } });
+  const prepared = await controller.prepare(context, request());
+  assert.equal(prepared.status, 'prepared', 'current behavior: the queued call is the single counted invocation');
+  assert.deepEqual(order, ['resolver-returned', 'queued-classify', 'store-prepare']);
+  assert.equal(w.classifyCalls.length, 1);
+  assert.throws(() => classifyWith(w, stashed), /settlement-confirmation-unavailable/, 'closed once prepare has settled');
+  assert.equal(w.classifyCalls.length, 1, 'the refused call recorded no verdict');
+});
+
+test('Rule E lifetime: already-fulfilled async resolver — a queued second call is still inside the window and latches the attempt', async t => {
+  const w = await world(t);
+  const order = [];
+  w.resolveHook = async input => {
+    classifyWith(w, input.classify); order.push('first-classify');
+    queueMicrotask(() => {
+      order.push('queued-second');
+      try { classifyWith(w, input.classify); } catch { order.push('second-refused'); }
+    });
+    order.push('resolver-returned');
+    return resolved();
+  };
+  w.prepareHook = (input, store) => { order.push('store-prepare'); return store.prepare(input); };
+  assert.deepEqual(await w.prepare(), { status: 'unavailable', reason: 'prepare-unavailable' });
+  assert.deepEqual(order, ['first-classify', 'resolver-returned', 'queued-second', 'second-refused'],
+    'the queued call ran before closure, was counted as a second invocation and no store call followed');
+  assert.equal(w.count('prepare'), 0);
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E lifetime: genuinely pending resolver — the window stays open until the barrier releases, then closes', async t => {
+  const w = await world(t);
+  const order = [];
+  const entered = deferred(), release = deferred();
+  let stashed = null;
+  w.resolveHook = async input => {
+    stashed = input.classify; entered.resolve();
+    await release.promise;
+    order.push('resolver-resumed');
+    return resolved();
+  };
+  const pending = w.prepare();
+  await entered.promise;
+  // Control: the resolve call is genuinely pending, so this external call
+  // is the attempt's single invocation, not a post-closure call.
+  classifyWith(w, stashed); order.push('classified-while-pending');
+  release.resolve();
+  const prepared = await pending;
+  order.push('prepare-settled');
+  assert.equal(prepared.status, 'prepared');
+  assert.deepEqual(order, ['classified-while-pending', 'resolver-resumed', 'prepare-settled']);
+  assert.throws(() => classifyWith(w, stashed), /settlement-confirmation-unavailable/);
+  assert.equal(w.classifyCalls.length, 1);
+});
+
+test('Rule E lifetime: post-closure calls throw, record nothing and preserve prepared and committed state', async t => {
+  const w = await world(t);
+  const stashed = [];
+  w.resolveHook = async input => { stashed.push(input.classify); classifyWith(w, input.classify); return w.source; };
+  assert.equal((await w.prepare()).status, 'prepared');
+  const verdicts = w.classifyCalls.length;
+  for (let i = 0; i < 3; i++) {
+    assert.throws(() => classifyWith(w, stashed[0]), /settlement-confirmation-unavailable/, 'every repeated post-closure call refuses');
+  }
+  assert.equal(w.classifyCalls.length, verdicts, 'refused calls recorded no verdict');
+  assert.deepEqual(w.writes, [], 'post-closure calls never reach the store');
+  const receipt = await w.confirm();
+  assert.equal(receipt.status, 'committed', 'the retained preview and token are unaffected');
+  assert.equal(stashed.length, 2, 'confirm re-resolved through its own fresh closure');
+  const before = w.document();
+  for (const dead of stashed) assert.throws(() => classifyWith(w, dead), /settlement-confirmation-unavailable/);
+  assert.deepEqual(w.document(), before, 'a post-closure call does not retroactively undo a completed attempt');
+  assert.deepEqual(await w.outcome(), receipt, 'the original receipt is still read back unchanged');
+});
+
+test('Rule E lifetime: multiple in-window calls fail the attempt regardless of count; a later clean attempt is unaffected', async t => {
+  const w = await world(t);
+  for (const extra of [1, 2]) {
+    w.resolveHook = async input => {
+      classifyWith(w, input.classify);
+      for (let i = 0; i < extra; i++) assert.throws(() => classifyWith(w, input.classify), /settlement-confirmation-unavailable/);
+      return resolved();
+    };
+    assert.deepEqual(await w.prepare(extra), { status: 'unavailable', reason: 'prepare-unavailable' });
+  }
+  assert.equal(w.count('prepare'), 0);
+  w.resolveHook = null;
+  assert.equal((await w.prepare(3)).status, 'prepared');
+  assert.equal((await w.confirm(3)).status, 'committed');
+});
+
+test('Rule E lifetime: swallowed-error controls — a dead closure refused inside a new window cannot taint that attempt', async t => {
+  const w = await world(t);
+  const order = [];
+  let dead = null;
+  w.resolveHook = async input => { dead = input.classify; classifyWith(w, input.classify); return resolved(); };
+  assert.equal((await w.prepare()).status, 'prepared');
+  w.resolveHook = async input => {
+    // The resolver swallows the dead closure's refusal. That refusal belongs
+    // to the closed session only; this attempt's own closure is untouched.
+    try { classifyWith(w, dead); } catch { order.push('dead-refused-and-swallowed'); }
+    classifyWith(w, input.classify); order.push('own-classify');
+    return resolved();
+  };
+  const second = await w.prepare(2);
+  assert.equal(second.status, 'prepared', 'control: swallowing a foreign refusal is not a protocol failure for this attempt');
+  assert.deepEqual(order, ['dead-refused-and-swallowed', 'own-classify']);
+  // Contrast: swallowing a refusal of this attempt's OWN second call still fails.
+  w.resolveHook = async input => {
+    classifyWith(w, input.classify);
+    try { classifyWith(w, input.classify); } catch { order.push('own-second-swallowed'); }
+    return resolved();
+  };
+  assert.deepEqual(await w.prepare(3), { status: 'unavailable', reason: 'prepare-unavailable' });
+  assert.equal(order.at(-1), 'own-second-swallowed');
+});
