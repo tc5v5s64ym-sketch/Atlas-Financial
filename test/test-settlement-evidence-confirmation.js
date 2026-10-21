@@ -1484,7 +1484,10 @@ test('Rule E lifetime: sync resolver return — a microtask queued before return
 test('Rule E lifetime: already-fulfilled async resolver — a queued second call is still inside the window and latches the attempt', async t => {
   const w = await world(t);
   const order = [];
-  w.resolveHook = async input => {
+  // Directly injected async resolver (no world wrapper or hook adoption
+  // ticks): the controller awaits this function's own already-fulfilled
+  // promise, so only that single await separates return from closure.
+  const asyncResolve = async input => {
     classifyWith(w, input.classify); order.push('first-classify');
     queueMicrotask(() => {
       order.push('queued-second');
@@ -1493,11 +1496,15 @@ test('Rule E lifetime: already-fulfilled async resolver — a queued second call
     order.push('resolver-returned');
     return resolved();
   };
-  w.prepareHook = (input, store) => { order.push('store-prepare'); return store.prepare(input); };
-  assert.deepEqual(await w.prepare(), { status: 'unavailable', reason: 'prepare-unavailable' });
+  let storeCalls = 0;
+  const controller = createSettlementEvidenceConfirmation({ householdId,
+    authorize: w.authorize, resolveSelection: asyncResolve, now: () => w.time,
+    store: { ...w.store, prepare: input => { storeCalls++; order.push('store-prepare'); return w.store.prepare(input); },
+      commitWithoutRecovery: input => { storeCalls++; return w.store.commitWithoutRecovery(input); } } });
+  assert.deepEqual(await controller.prepare(context, request()), { status: 'unavailable', reason: 'prepare-unavailable' });
   assert.deepEqual(order, ['first-classify', 'resolver-returned', 'queued-second', 'second-refused'],
     'the queued call ran before closure, was counted as a second invocation and no store call followed');
-  assert.equal(w.count('prepare'), 0);
+  assert.equal(storeCalls, 0);
   assert.deepEqual(w.writes, []);
 });
 
