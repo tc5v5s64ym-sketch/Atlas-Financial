@@ -687,7 +687,7 @@ test('ownership: caller mutation after the call cannot move a synchronous acquis
 
 test('ownership: caller mutation after the call cannot move a synchronous pin record or the static pin', async () => {
   // Live pin source: the record object the reader returns is
-  // shallow-snapshotted at acquisition; mutating the caller's object
+  // snapshotted to its scalar pair at acquisition; mutating the caller's object
   // afterwards cannot change the pin this load verifies against.
   const livePin = pinOf(doc1);
   const pendingLive = L.loadSettlementEvidence(
@@ -719,6 +719,130 @@ test('ownership: bytes mutated during the pin suspension are judged as acquired,
     .replace('"assignedCents":2500', '"assignedCents":2000'), 0, 'utf8');
   resolvePin(pinOf(doc1));
   expectUnavailable(await pending, 'document-invalid');
+});
+
+// --- Pin snapshot integrity: foreign records never cross the boundary --------
+// The pin snapshot is the load-bearing scalar pair, extracted at
+// acquisition from the SELECTED source only. Three properties: a
+// foreign record's `then` is never invoked (Promise resolution must
+// not assimilate the snapshot — running foreign code, substituting a
+// pin, or hanging the load); only revision/digest are read, by direct
+// access (non-enumerable fields are honoured, unrelated getters never
+// fire); and an unselected static fallback is never observed at all.
+
+test('pin snapshot: a thenable pin record is judged by its scalar pair — its then is never invoked', async () => {
+  let thenCalls = 0;
+  const counting = {
+    ...pinOf(doc1),
+    then(resolve) { thenCalls += 1; resolve(pinOf(doc1)); },
+  };
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => counting, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(thenCalls, 0, 'the record then was never invoked');
+});
+
+test('pin snapshot: a then that would substitute a different pin changes nothing', async () => {
+  let thenCalls = 0;
+  const substituting = {
+    ...pinOf(doc1),
+    then(resolve) { thenCalls += 1; resolve(pinOf(doc2)); },
+  };
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => substituting, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)),
+    'the load is governed by the record scalar pair, not by its then');
+  assert.equal(thenCalls, 0, 'the record then was never invoked');
+});
+
+test('pin snapshot: a then that never settles cannot hang the load', { timeout: 5000 }, async () => {
+  const hanging = { ...pinOf(doc1), then() { /* never calls back */ } };
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => hanging, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
+test('pin snapshot: a thenable STATIC pin is likewise judged by its scalar pair', async () => {
+  let thenCalls = 0;
+  const counting = {
+    ...pinOf(doc1),
+    then(resolve) { thenCalls += 1; resolve(pinOf(doc2)); },
+  };
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId, pin: counting }, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(thenCalls, 0, 'the static record then was never invoked');
+});
+
+test('pin snapshot: non-enumerable revision/digest qualify exactly as their enumerable twin', async () => {
+  const pair = pinOf(doc1);
+  const hidden = {};
+  Object.defineProperties(hidden, {
+    revision: { value: pair.revision },
+    digest: { value: pair.digest },
+  });
+  const fromLive = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => hidden, readDocument: reader(doc1) }));
+  assert.deepEqual(fromLive, C.effectiveEvidence(stateOf(doc1)));
+  const fromStatic = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId, pin: hidden }, readDocument: reader(doc1) }));
+  assert.deepEqual(fromStatic, C.effectiveEvidence(stateOf(doc1)));
+});
+
+test('pin snapshot: unrelated properties are never read — a counting getter stays at zero', async () => {
+  let unrelatedReads = 0;
+  const pin = { ...pinOf(doc1) };
+  Object.defineProperty(pin, 'unrelated', {
+    enumerable: true,
+    get() { unrelatedReads += 1; return 'must not be read'; },
+  });
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => pin, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(unrelatedReads, 0, 'the snapshot reads revision and digest only');
+});
+
+test('pin snapshot: a throwing unrelated getter on the static pin cannot break the load', async () => {
+  const pin = { ...pinOf(doc1) };
+  Object.defineProperty(pin, 'unrelated', {
+    enumerable: true,
+    get() { throw new Error('unrelated getter must not fire'); },
+  });
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId, pin }, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
+test('pin snapshot: a hostile UNUSED static fallback is never observed when readPin is supplied', async () => {
+  let observed = 0;
+  const hostile = {};
+  for (const key of ['revision', 'digest', 'unrelated']) {
+    Object.defineProperty(hostile, key, {
+      enumerable: true,
+      get() { observed += 1; throw new Error('unused fallback must not be observed'); },
+    });
+  }
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId, pin: hostile }, readPin: () => pinOf(doc1),
+      readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)),
+    'the live pin source governs; the static value is never a fallback read');
+  assert.equal(observed, 0, 'the unselected static pin was never read');
+});
+
+test('pin snapshot: the static source obeys the same scalar rules when it is the selected source', async () => {
+  const pair = pinOf(doc1);
+  let unrelatedReads = 0;
+  const pin = {};
+  Object.defineProperties(pin, {
+    revision: { value: pair.revision },
+    digest: { value: pair.digest },
+    unrelated: { enumerable: true, get() { unrelatedReads += 1; return 'x'; } },
+  });
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId, pin }, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(unrelatedReads, 0, 'the snapshot reads revision and digest only');
 });
 
 // --- Reason coverage ------------------------------------------------------------

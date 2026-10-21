@@ -20,10 +20,11 @@
 // stability protocols, same reason vocabulary, same projection. What
 // async adds is suspension points, and the loader defends them the way
 // it already defends its byte snapshot: every value it will later rely
-// on is snapshotted into loader-owned form AT ACQUISITION — the static
-// pin and the input's load-bearing fields in the synchronous prologue,
-// each observed pin/document value in the turn its read resolves —
-// before any suspension can let a caller move it.
+// on is snapshotted into loader-owned form AT ACQUISITION — the
+// config and callbacks bound to locals in the synchronous prologue,
+// the selected pin source's load-bearing scalar pair at pin
+// selection, each observed pin/document value in the turn its read
+// resolves — before any suspension can let a caller move it.
 //
 // Persisted envelope (defined by the Phase 1 contract, not invented here):
 // the document is the contract's own encoded bytes — the canonical record
@@ -90,17 +91,24 @@ const isPromiseLike = value => value !== null
 // gave them, even if a record happens to carry a `then` key.
 const isPlainValue = value => Buffer.isBuffer(value) || value instanceof Uint8Array
   || typeof value === 'string' || isRecord(value);
-// Snapshot a pin value into loader-owned form at acquisition: byte
-// carriers are copied (normalizeBytes); a record is shallow-copied, so
-// the load-bearing revision/digest the loader verifies against cannot
-// be moved by a caller mutating its own object after handing it over —
-// in particular not across one of this load's own suspensions. Anything
-// else passes through for parsePin to judge.
+// Snapshot a pin value into loader-owned form at acquisition. Byte
+// carriers are copied (normalizeBytes); their parsed contents are
+// loader-owned by construction. A record is reduced to its
+// load-bearing scalar pair — revision and digest, the only fields
+// parsePin consumes — read by DIRECT property access: direct reads
+// honour non-enumerable fields and never touch unrelated properties,
+// so unrelated getters cannot fire. The loader-owned pair that
+// results carries no foreign properties at all — in particular no
+// `then`: a foreign record can never escape into Promise resolution
+// and be assimilated (its `then` invoked to run foreign code,
+// substitute a different pin, or hang the load) at one of this
+// module's async boundaries. Anything else passes through for
+// parsePin to judge.
 function snapshotPinValue(value) {
   if (Buffer.isBuffer(value) || value instanceof Uint8Array || typeof value === 'string') {
     return normalizeBytes(value);
   }
-  if (isRecord(value)) return { ...value };
+  if (isRecord(value)) return { revision: value.revision, digest: value.digest };
   return value;
 }
 // Snapshot one document acquisition: the raw value — the missing-value
@@ -161,12 +169,11 @@ async function loadSettlementEvidence(input) {
   const readPin = typeof input.readPin === 'function' ? input.readPin : null;
   const householdId = config && typeof config.householdId === 'string'
     ? config.householdId : null;
-  // Snapshot the static pin here, in the synchronous prologue: this
-  // load suspends at its reader acquisitions below, and nothing a
-  // caller does to its config object after invoking the load may move
-  // the pin this load verifies against. (The callbacks and household
-  // are likewise already bound to locals above.)
-  const staticPin = config ? snapshotPinValue(config.pin) : undefined;
+  // The callbacks and household are bound to locals here, in the
+  // synchronous prologue. The static pin is deliberately NOT read
+  // here: it is snapshotted at pin selection below, only if it is
+  // the selected source — when a live pin reader is supplied, the
+  // static value is never observed at all.
   const hasConfig = !!config && (householdId !== null || config.pin !== undefined
     || Object.keys(config).length > 0);
 
@@ -178,16 +185,24 @@ async function loadSettlementEvidence(input) {
   if (!householdIdValid(householdId)) return unavailable('invalid-configuration');
   if (!readDocument) return unavailable('invalid-configuration');
 
-  // Resolve the independently supplied pin: a live pin reader when one is
-  // injected, otherwise the static pin carried in config (snapshotted in
-  // the prologue). A rejected pin read lands in the same classification
-  // a throwing pin read receives.
+  // Resolve the independently supplied pin, by the base precedence:
+  // a live pin reader when one is injected, otherwise the static pin
+  // carried in config. When a live reader is supplied the static pin
+  // is never observed (a hostile unused fallback can neither break
+  // nor reject the load). The static snapshot is taken at selection —
+  // on this path still before the load's first suspension, so nothing
+  // a caller does after invoking the load can move the pin it
+  // verifies against. A rejected pin read lands in the same
+  // classification a throwing pin read receives; a selected source
+  // whose load-bearing getters throw lands there too, never in an
+  // escaping rejection.
   let pinRecord;
   if (readPin) {
     try { pinRecord = await acquire(readPin, snapshotPinValue); }
     catch { return unavailable('pin-unavailable'); }
-  } else if (staticPin !== undefined) {
-    pinRecord = staticPin;
+  } else if (config && config.pin !== undefined) {
+    try { pinRecord = snapshotPinValue(config.pin); }
+    catch { return unavailable('pin-unavailable'); }
   } else {
     return unavailable('invalid-configuration');
   }

@@ -923,17 +923,74 @@ test('abandonment: an attach the caller stops awaiting leaves no residue for the
 test('concurrency: parallel attaches over ONE shared adapter pair stay coherent under an interleaved commit', async () => {
   const { createSettlementEvidenceServing } = servingModule();
   const fixture = await makeStoreFixture([linkCmd({})]);
-  // A small delay on the document read widens the acquisition window
-  // so the attaches genuinely span the commit below.
-  const serving = createSettlementEvidenceServing({
+  const adapterDependency = {
     householdId,
+    readDocument: () => fixture.fileAdapter.documentStore.read(),
+    readPin: () => fixture.objectAdapter.pinStore.read(),
+  };
+  const plain = createSettlementEvidenceServing(adapterDependency);
+  // Independent oracles: the direct loader over synchronous readers of
+  // the same durable state, taken at each revision. The flights below
+  // must match these EXACTLY — full outcome and evidence, never a
+  // commitment count.
+  const oracle = async () => {
+    const dep = fixtureDependency(fixture);
+    const direct = await L.loadSettlementEvidence({
+      config: { householdId }, readDocument: dep.readDocument, readPin: dep.readPin,
+    });
+    assert.equal(direct.status, 'qualified');
+    return direct.evidence;
+  };
+  const expectedPre = await oracle();
+  const docBytesPre = fs.readFileSync(fixture.documentFile);
+  assert.equal(JSON.parse(docBytesPre.toString('utf8')).revision, 1);
+  // Pre-commit flight: completes entirely at revision 1, exactly.
+  const pre = await plain.attach({ plan: {} });
+  assert.deepEqual(pre.settlementEvidenceStatus, { status: 'qualified' });
+  assert.deepEqual(pre.settlementEvidence, expectedPre);
+
+  // Deterministic acquisition barriers: each gated flight parks at an
+  // exact point inside its acquisition, announces the park to the
+  // test, and proceeds only when the test opens its gate. No clock,
+  // no timing window: the interleaving is chosen, not hoped for.
+  const gate = () => {
+    let open;
+    const promise = new Promise(resolve => { open = resolve; });
+    return { promise, open };
+  };
+  // Flight B parks BEFORE its first document read. Its pin has
+  // already been acquired (the loader resolves the pin first) and
+  // names revision 1.
+  const gateB = gate();
+  let announceB; const parkedB = new Promise(resolve => { announceB = resolve; });
+  let bDocCalls = 0;
+  const flightB = createSettlementEvidenceServing({
+    householdId,
+    readPin: adapterDependency.readPin,
     readDocument: async () => {
-      await new Promise(resolve => setTimeout(resolve, 5));
+      bDocCalls += 1;
+      if (bDocCalls === 1) { announceB(); await gateB.promise; }
       return fixture.fileAdapter.documentStore.read();
     },
-    readPin: () => fixture.objectAdapter.pinStore.read(),
-  });
-  const flights = Array.from({ length: 8 }, () => serving.attach({ plan: {} }));
+  }).attach({ plan: {} });
+  // Flight C parks BEFORE its second document read. Its first read
+  // has already returned the revision-1 bytes and been verified
+  // against the revision-1 pin.
+  const gateC = gate();
+  let announceC; const parkedC = new Promise(resolve => { announceC = resolve; });
+  let cDocCalls = 0;
+  const flightC = createSettlementEvidenceServing({
+    householdId,
+    readPin: adapterDependency.readPin,
+    readDocument: async () => {
+      cDocCalls += 1;
+      if (cDocCalls === 2) { announceC(); await gateC.promise; }
+      return fixture.fileAdapter.documentStore.read();
+    },
+  }).attach({ plan: {} });
+  await Promise.all([parkedB, parkedC]);
+
+  // The commit lands while both flights are parked mid-acquisition.
   const prepared = await fixture.store.prepare({
     actorId, operationId: op(2),
     command: linkCmd({ goalId: 'commitment:far', txRef: tx(2), assignedCents: 1000 }),
@@ -942,27 +999,32 @@ test('concurrency: parallel attaches over ONE shared adapter pair stay coherent 
     actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
   });
   assert.equal(receipt.status, 'committed');
-  const outs = await Promise.all(flights);
-  for (const out of outs) {
-    if (out.settlementEvidenceStatus.status === 'qualified') {
-      // A qualified outcome is one coherent revision's evidence —
-      // entirely the pre-commit revision or entirely the post-commit
-      // one, never a mixture.
-      assert.ok([1, 2].includes(out.settlementEvidence.commitments.length),
-        'qualified evidence is a single coherent revision');
-    } else {
-      // Or it fails closed in the mismatch family: a pin/document
-      // pair observed across the commit is never torn evidence.
-      assert.equal(out.settlementEvidenceStatus.status, 'unavailable');
-      assert.ok(['revision-mismatch', 'digest-mismatch', 'document-ahead-of-pin',
-        'document-changed'].includes(out.settlementEvidenceStatus.reason),
-      'cross-commit observation fails closed: ' + out.settlementEvidenceStatus.reason);
-      assert.ok(!('settlementEvidence' in out));
-    }
-  }
-  const after = await serving.attach({ plan: {} });
-  assert.equal(after.settlementEvidence.commitments.length, 2,
-    'once the commit settles, attaches qualify at the new revision');
+  const expectedPost = await oracle();
+  const docBytesPost = fs.readFileSync(fixture.documentFile);
+  assert.equal(JSON.parse(docBytesPost.toString('utf8')).revision, 2);
+  assert.ok(!docBytesPost.equals(docBytesPre), 'the commit moved the durable document');
+  assert.notDeepEqual(expectedPost, expectedPre, 'the two revisions project different evidence');
+
+  gateB.open();
+  gateC.open();
+  const [outB, outC] = await Promise.all([flightB, flightC]);
+  // B holds the revision-1 pin and now reads the revision-2 document:
+  // a pair observed across the commit fails closed, exactly.
+  assert.deepEqual(outB.settlementEvidenceStatus,
+    { status: 'unavailable', reason: 'document-ahead-of-pin' });
+  assert.ok(!('settlementEvidence' in outB));
+  assert.equal(bDocCalls, 1, 'B read the document once and was refused at staging');
+  // C verified the revision-1 bytes; its re-read returns revision-2
+  // bytes and the stability comparison refuses, exactly.
+  assert.deepEqual(outC.settlementEvidenceStatus,
+    { status: 'unavailable', reason: 'document-changed' });
+  assert.ok(!('settlementEvidence' in outC));
+  assert.equal(cDocCalls, 2, 'C performed both reads of the stability protocol');
+  // A post-commit flight over the same shared adapter pair qualifies
+  // with EXACTLY the post-commit evidence.
+  const post = await plain.attach({ plan: {} });
+  assert.deepEqual(post.settlementEvidenceStatus, { status: 'qualified' });
+  assert.deepEqual(post.settlementEvidence, expectedPost);
 });
 
 test('attach snapshot: the projection is computed from the served object as it stood at attach time', async () => {
