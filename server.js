@@ -339,7 +339,7 @@ async function servedAtlasData(req, res, options = {}) {
   if (req?.aborted || res?.destroyed) controller.abort();
   try {
     const served = await ServerLiveRefresh.serve(loadCanonicalData(), process.env, { ...options, signal: controller.signal });
-    return settlementEvidenceServing.attach(served);
+    return await settlementEvidenceServing.attach(served);
   } finally {
     req?.removeListener('aborted', cancel);
     res?.removeListener('close', cancel);

@@ -921,13 +921,19 @@ function makeWorld() {
   };
   return { dir, transport, encrypt, now, build };
 }
+// The loader composed over the adapters' REAL read methods: the
+// loader itself acquires the pin once (through pinStore.read) and
+// the document twice (through documentStore.read) — no preloaded
+// bytes are handed to it, so its stability protocol performs two
+// genuine adapter acquisitions. The readPin wrapper keeps this
+// suite's interop convention: an absent pin is a throw, which the
+// loader classifies as pin-unavailable.
 async function loadComposed(world, built) {
-  const pin = await built.objectAdapter.pinStore.read();
-  const docBytes = await built.fileAdapter.documentStore.read();
-  return L.loadSettlementEvidence({
+  return await L.loadSettlementEvidence({
     config: { householdId },
-    readDocument: () => docBytes,
-    readPin: () => {
+    readDocument: () => built.fileAdapter.documentStore.read(),
+    readPin: async () => {
+      const pin = await built.objectAdapter.pinStore.read();
       if (!pin) throw new Error('pin unavailable');
       return { revision: pin.revision, digest: pin.digest };
     },

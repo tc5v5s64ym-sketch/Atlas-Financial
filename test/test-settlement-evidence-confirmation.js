@@ -143,7 +143,7 @@ async function world(t) {
   };
   w.outcome = (n = 1, ctx = context) => w.controller.outcome(ctx, { operationId: op(n) });
   w.document = () => JSON.parse(fs.readFileSync(path.join(dir, 'document.json'), 'utf8'));
-  w.load = () => L.loadSettlementEvidence({ config: { householdId },
+  w.load = async () => L.loadSettlementEvidence({ config: { householdId },
     readPin: () => clone(w.pin), readDocument: () => fs.readFileSync(path.join(dir, 'document.json')) });
   w.count = name => w.calls.filter(x => x === name).length;
   return w;
@@ -442,7 +442,7 @@ test('prepare is read-only and returns only the exact sanitized selection/amount
   assert(Object.isFrozen(result) && Object.isFrozen(result.selection));
   assert.deepEqual(w.writes, []);
   assert.deepEqual(fs.readFileSync(path.join(w.dir, 'document.json')), before);
-  assert.equal(w.load().evidence.commitments.length, 0);
+  assert.equal((await w.load()).evidence.commitments.length, 0);
   assert.deepEqual(await w.outcome(), { status: 'unknown', operationId: op(1) });
   assert.notEqual((await w.confirm(1, false)).status, 'committed');
   assert.notEqual((await w.controller.confirm(context, { operationId: op(1) })).status, 'committed');
@@ -459,7 +459,7 @@ test('explicit confirmation lands one original receipt and the independent loade
   privateFree(receipt);
   assert.equal(doc.operations.length, 1);
   assert.equal(doc.operations[0].actorId, actorId);
-  assert.deepEqual(w.load().evidence.commitments[0], { goalId: 'commitment:synthetic-trip', links: [{
+  assert.deepEqual((await w.load()).evidence.commitments[0], { goalId: 'commitment:synthetic-trip', links: [{
     operationId: op(1), txRef: tx(1), assignedCents: 2500, effectiveDate: '2026-10-19', asOf: '2026-10-20',
     evidenceDigest: C.digest(resolved().evidence), reversals: [],
   }] });
@@ -596,7 +596,7 @@ test('new sessions cannot confirm previews or retrieve former receipts; househol
   assert.deepEqual(await w.outcome(1, otherContext), { status: 'unknown', operationId: op(1) });
   assert.notEqual((await w.confirm(1, true, otherContext)).status, 'committed');
   assert.deepEqual(await w.outcome(), receipt);
-  assert.equal(w.load().evidence.commitments[0].links.length, 1);
+  assert.equal((await w.load()).evidence.commitments[0].links.length, 1);
   assert.deepEqual(w.writes, writes);
 });
 
@@ -633,7 +633,7 @@ test('unresolved write uncertainty never auto-retries, recovers or replaces its 
   const w = await world(t);
   await w.prepare(); await w.prepare(2); w.failBackup = true;
   assert.equal((await w.confirm()).status, 'unknown');
-  assert.equal(w.load().status, 'unavailable');
+  assert.equal((await w.load()).status, 'unavailable');
   const writes = clone(w.writes), calls = w.count('commitWithoutRecovery');
   w.failBackup = false;
   assert.deepEqual(await w.confirm(), { status: 'unknown', operationId: op(1) });
@@ -815,7 +815,7 @@ test('B1 race: a journal arriving after the probe cannot be recovered by confirm
   const durable = () => ({ files: files(), pin: clone(w.pin), backups: [...w.backups.values()]
     .map(({ bytes, ...entry }) => ({ ...entry, bytes: bytes.toString('hex') })) });
   const before = durable(), writes = clone(w.writes);
-  assert.equal(w.load().reason, 'document-ahead-of-pin');
+  assert.equal((await w.load()).reason, 'document-ahead-of-pin');
   w.failBackup = false;
   release.resolve();
   const result = await pendingA;
@@ -823,7 +823,7 @@ test('B1 race: a journal arriving after the probe cannot be recovered by confirm
   assert.deepEqual(result, { status: 'rejected', reason: 'recovery-required' });
   assert.deepEqual(durable(), before, 'B document/journal/staged/pin/backups/quarantine preserved byte-for-byte');
   assert.equal(w.pin.revision, 0);
-  assert.equal(w.load().reason, 'document-ahead-of-pin');
+  assert.equal((await w.load()).reason, 'document-ahead-of-pin');
   assert.equal((await w.outcome()).status, 'unknown');
   assert.equal((await w.store.outcome({ actorId: otherActor, operationId: op(2) })).status, 'unknown');
   assert.deepEqual(await w.confirm(), { status: 'unknown', operationId: op(1) });
@@ -832,7 +832,7 @@ test('B1 race: a journal arriving after the probe cannot be recovered by confirm
   assert.equal(w.count('commitWithoutRecovery'), 1, 'no retry or rebase');
   assert.equal((await w.store.reconcile()).disposition, 'promoted', 'explicit ordinary recovery remains a separate control');
   assert.equal(w.pin.revision, 1);
-  assert.equal(w.load().status, 'qualified');
+  assert.equal((await w.load()).status, 'qualified');
   assert.equal((await w.store.outcome({ actorId: otherActor, operationId: op(2) })).status, 'committed');
   assert.equal((await w.outcome()).status, 'unknown', 'A was never appended');
 });

@@ -91,9 +91,9 @@ const docFork = docWith([linkCmd({ assignedCents: 2000 })]);
 const happyArgs = () => ({ config: { householdId, pin: pinOf(doc1) }, readDocument: reader(doc1) });
 
 // --- Unconfigured: deliberate absence of any configuration ----------------
-test('unconfigured: wholly absent configuration is its own outcome', () => {
+test('unconfigured: wholly absent configuration is its own outcome', async () => {
   for (const args of [undefined, null, {}, { config: null }, { config: undefined }, { config: {} }]) {
-    const outcome = L.loadSettlementEvidence(args);
+    const outcome = await L.loadSettlementEvidence(args);
     assert.equal(outcome.status, 'unconfigured');
     assert.deepEqual(Object.keys(outcome), ['status'],
       'an unconfigured outcome carries nothing else');
@@ -102,18 +102,18 @@ test('unconfigured: wholly absent configuration is its own outcome', () => {
 });
 
 // --- Partial or invalid configuration is unavailable, never unconfigured --
-test('invalid-configuration: partial configuration never reads as unconfigured', () => {
-  expectUnavailable(L.loadSettlementEvidence({ config: { householdId } }),
+test('invalid-configuration: partial configuration never reads as unconfigured', async () => {
+  expectUnavailable(await L.loadSettlementEvidence({ config: { householdId } }),
     'invalid-configuration'); // no pin source, no document reader
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) } }),
     'invalid-configuration'); // pin but no document reader
-  expectUnavailable(L.loadSettlementEvidence({ readDocument: reader(doc1) }),
+  expectUnavailable(await L.loadSettlementEvidence({ readDocument: reader(doc1) }),
     'invalid-configuration'); // reader but no household, no pin
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { pin: pinOf(doc1) }, readDocument: reader(doc1) }),
     'invalid-configuration'); // pin but no household
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId: 'household-not-a-real-id', pin: pinOf(doc1) },
       readDocument: reader(doc1) }),
     'invalid-configuration'); // malformed expected household
@@ -124,74 +124,74 @@ test('invalid-configuration: partial configuration never reads as unconfigured',
 // present but malformed is a configuration defect. It must not be
 // normalized away before the absent path is chosen, and a malformed
 // readPin must not silently fall back to the static config pin.
-test('invalid-configuration: malformed supplied fields are refused outright', () => {
-  expectUnavailable(L.loadSettlementEvidence({ config: 'bad' }),
+test('invalid-configuration: malformed supplied fields are refused outright', async () => {
+  expectUnavailable(await L.loadSettlementEvidence({ config: 'bad' }),
     'invalid-configuration'); // a non-record config is supplied, not absent
-  expectUnavailable(L.loadSettlementEvidence({ config: [] }),
+  expectUnavailable(await L.loadSettlementEvidence({ config: [] }),
     'invalid-configuration'); // an array config is supplied, not absent
-  expectUnavailable(L.loadSettlementEvidence({ readDocument: 'bad' }),
+  expectUnavailable(await L.loadSettlementEvidence({ readDocument: 'bad' }),
     'invalid-configuration'); // a non-function document reader is supplied
-  expectUnavailable(L.loadSettlementEvidence({ readPin: 'bad' }),
+  expectUnavailable(await L.loadSettlementEvidence({ readPin: 'bad' }),
     'invalid-configuration'); // a non-function pin reader is supplied
 });
 
-test('invalid-configuration: a malformed readPin never falls back to config.pin', () => {
+test('invalid-configuration: a malformed readPin never falls back to config.pin', async () => {
   // Everything else here is usable — valid household, valid static pin,
   // working document reader — yet the explicitly malformed readPin must
   // refuse the load instead of silently using the static pin.
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) }, readPin: 'bad',
       readDocument: reader(doc1) }), 'invalid-configuration');
 });
 
 // --- Pin sourcing ----------------------------------------------------------
-test('pin-invalid: a malformed pin from any source yields no evidence', () => {
-  expectUnavailable(L.loadSettlementEvidence(
+test('pin-invalid: a malformed pin from any source yields no evidence', async () => {
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: { revision: 1, digest: 'not-a-digest' } },
       readDocument: reader(doc1) }), 'pin-invalid');
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: { revision: -1, digest: pinOf(doc1).digest } },
       readDocument: reader(doc1) }), 'pin-invalid');
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId }, readPin: () => null, readDocument: reader(doc1) }),
     'pin-invalid');
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId }, readPin: () => Buffer.from('not json'),
       readDocument: reader(doc1) }), 'pin-invalid');
 });
 
-test('pin-unavailable: a pin read that throws is unavailable, not unconfigured', () => {
-  expectUnavailable(L.loadSettlementEvidence(
+test('pin-unavailable: a pin read that throws is unavailable, not unconfigured', async () => {
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId },
       readPin: () => { throw new Error('pin store unreachable'); },
       readDocument: reader(doc1) }), 'pin-unavailable');
 });
 
-test('pin sources: readPin is the live source when both are supplied', () => {
-  const evidence = expectQualified(L.loadSettlementEvidence(
+test('pin sources: readPin is the live source when both are supplied', async () => {
+  const evidence = expectQualified(await L.loadSettlementEvidence(
     { config: { householdId, pin: { revision: 9, digest: 'f'.repeat(64) } },
       readPin: () => pinOf(doc1), readDocument: reader(doc1) }));
   assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
 });
 
-test('pin sources: pin.json-shaped bytes (extra timestamp key) qualify', () => {
+test('pin sources: pin.json-shaped bytes (extra timestamp key) qualify', async () => {
   const pinBytes = Buffer.from(JSON.stringify(
     { ...pinOf(doc1), pinnedAt: '2026-10-04T12:00:00.000Z' }));
-  const evidence = expectQualified(L.loadSettlementEvidence(
+  const evidence = expectQualified(await L.loadSettlementEvidence(
     { config: { householdId }, readPin: () => pinBytes, readDocument: reader(doc1) }));
   assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
 });
 
 // --- Qualified paths --------------------------------------------------------
-test('qualified: genesis bytes under a genesis pin give empty evidence', () => {
-  const evidence = expectQualified(L.loadSettlementEvidence(
+test('qualified: genesis bytes under a genesis pin give empty evidence', async () => {
+  const evidence = expectQualified(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(genesis) }, readDocument: reader(genesis) }));
   assert.deepEqual(evidence, { commitments: [] },
     'a pinned empty store is qualified empty evidence, not absence');
 });
 
-test('qualified: the projection is exactly the contract effectiveEvidence', () => {
-  const outcome = L.loadSettlementEvidence(happyArgs());
+test('qualified: the projection is exactly the contract effectiveEvidence', async () => {
+  const outcome = await L.loadSettlementEvidence(happyArgs());
   const evidence = expectQualified(outcome);
   assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)),
     'loader evidence deep-equals effectiveEvidence(state) for the same state');
@@ -217,8 +217,8 @@ function surfaces(x, opts) {
   return { goal, events, seq };
 }
 
-test('relief: loader-qualified evidence partially relieves through Forecast', () => {
-  const evidence = expectQualified(L.loadSettlementEvidence(happyArgs()));
+test('relief: loader-qualified evidence partially relieves through Forecast', async () => {
+  const evidence = expectQualified(await L.loadSettlementEvidence(happyArgs()));
   const { goal, events, seq } = surfaces(input(), { settlementEvidence: evidence });
   assert.equal(goal.target, 60, 'original cost preserved');
   assert.equal(goal.linkedPaid, 25, 'the confirmed 25 link is the linked paid figure');
@@ -228,9 +228,9 @@ test('relief: loader-qualified evidence partially relieves through Forecast', ()
   assert.equal(seq.need, 35, 'recommend funds only the remaining');
 });
 
-test('relief: loader-qualified full link suppresses the requirement, unsettled', () => {
+test('relief: loader-qualified full link suppresses the requirement, unsettled', async () => {
   const full = docWith([linkCmd({ assignedCents: 6000 })]);
-  const evidence = expectQualified(L.loadSettlementEvidence(
+  const evidence = expectQualified(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(full) }, readDocument: reader(full) }));
   const { goal, events, seq } = surfaces(input(), { settlementEvidence: evidence });
   assert.equal(goal.linkedPaid, 60);
@@ -268,15 +268,15 @@ function savingsPublications(x, evidence) {
 }
 const closingStarts = ['2026-10-16', '2026-10-30', '2026-11-13'];
 const fullLink = () => docWith([linkCmd({ assignedCents: 6000 })]);
-function qualifiedDocument(bytes) {
+async function qualifiedDocument(bytes) {
   const pin = freezeJson(pinOf(bytes)); // independent of each read callback
-  return freezeJson(expectQualified(L.loadSettlementEvidence(
+  return freezeJson(expectQualified(await L.loadSettlementEvidence(
     { config: { householdId, pin }, readDocument: reader(bytes) })));
 }
 
-for (const paid of [25, 60]) test('Savings publications: loader-qualified ' + paid + '/60 relief conserves current and future stock', () => {
+for (const paid of [25, 60]) test('Savings publications: loader-qualified ' + paid + '/60 relief conserves current and future stock', async () => {
   const x = freezeJson(chronological.ledger());
-  const evidence = qualifiedDocument(docWith([linkCmd({ assignedCents: paid * 100 })]));
+  const evidence = await qualifiedDocument(docWith([linkCmd({ assignedCents: paid * 100 })]));
   const before = JSON.stringify({ x, evidence });
   const result = savingsPublications(x, evidence);
   const goal = F.savingsInventory(x.plan, x.asOf, { settlementEvidence: evidence })
@@ -315,7 +315,7 @@ for (const paid of [25, 60]) test('Savings publications: loader-qualified ' + pa
 });
 
 const expenseHold = 'A Savings requirement has no unique matching native expense.';
-test('Savings publications: an ordinary zero retains its ready legacy behavior without settlement evidence', () => {
+test('Savings publications: an ordinary zero retains its ready legacy behavior without settlement evidence', async () => {
   const x = chronological.ledger();
   x.plan.commitments[0].amount = 0;
   freezeJson(x);
@@ -330,7 +330,7 @@ test('Savings publications: an ordinary zero retains its ready legacy behavior w
 });
 
 for (const mode of ['overassigned-zero', 'duplicate-commitment', 'ambiguous-expense', 'reversal', 'missing-stock', 'pending-stock', 'incomplete-movement'])
-  test('Savings full-relief closing keeps the existing hold: ' + mode, () => {
+  test('Savings full-relief closing keeps the existing hold: ' + mode, async () => {
     const x = chronological.ledger();
     let bytes = fullLink();
     if (mode === 'overassigned-zero') x.plan.commitments[0].amount = 0;
@@ -349,7 +349,7 @@ for (const mode of ['overassigned-zero', 'duplicate-commitment', 'ambiguous-expe
     if (mode === 'missing-stock') x.plan.savingsPoolObservation.accounts.pop();
     if (mode === 'pending-stock') x.plan.savingsPoolObservation.accounts[0].pendingState = 'unresolved';
     if (mode === 'incomplete-movement') x.opts.currentPeriodActuals.transactionCoverage.complete = false;
-    const evidence = qualifiedDocument(bytes);
+    const evidence = await qualifiedDocument(bytes);
     const before = JSON.stringify({ x, evidence });
     freezeJson(x);
     const result = savingsPublications(x, evidence);
@@ -366,8 +366,8 @@ for (const mode of ['overassigned-zero', 'duplicate-commitment', 'ambiguous-expe
     assert.equal(JSON.stringify({ x, evidence }), before);
   });
 
-test('control: unconfigured outcome means no evidence reaches Forecast', () => {
-  const outcome = L.loadSettlementEvidence();
+test('control: unconfigured outcome means no evidence reaches Forecast', async () => {
+  const outcome = await L.loadSettlementEvidence();
   assert.equal(outcome.status, 'unconfigured');
   const { goal, events, seq } = surfaces(input(), {});
   assert.equal(goal.target, 60);
@@ -377,57 +377,57 @@ test('control: unconfigured outcome means no evidence reaches Forecast', () => {
 });
 
 // --- Document read failures --------------------------------------------------
-test('document-unavailable: a document read that throws yields no evidence', () => {
-  expectUnavailable(L.loadSettlementEvidence(
+test('document-unavailable: a document read that throws yields no evidence', async () => {
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) },
       readDocument: () => { throw new Error('store unreachable'); } }),
     'document-unavailable');
 });
 
-test('document-missing: a configured but absent store is unavailable', () => {
-  expectUnavailable(L.loadSettlementEvidence(
+test('document-missing: a configured but absent store is unavailable', async () => {
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) }, readDocument: () => null }),
     'document-missing');
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) }, readDocument: () => Buffer.alloc(0) }),
     'document-missing');
 });
 
-test('document-malformed: unparseable or shapeless bytes yield no evidence', () => {
-  expectUnavailable(L.loadSettlementEvidence(
+test('document-malformed: unparseable or shapeless bytes yield no evidence', async () => {
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) },
       readDocument: reader(Buffer.from('this is not a settlement document')) }),
     'document-malformed');
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) },
       readDocument: reader(Buffer.from('[1,2,3]')) }), 'document-malformed');
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) },
       readDocument: reader(Buffer.from('{"schema":"atlas-planned-obligation-settlements/v1"}')) }),
     'document-malformed');
 });
 
 // --- Pin/document disagreement: never evidence, never silent resumption ----
-test('household-mismatch: a document for another household never qualifies', () => {
+test('household-mismatch: a document for another household never qualifies', async () => {
   const foreign = docWith([linkCmd({})], otherHousehold);
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(foreign) }, readDocument: reader(foreign) }),
     'household-mismatch');
 });
 
-test('revision-mismatch: a document behind the pin is not the pinned revision', () => {
-  expectUnavailable(L.loadSettlementEvidence(
+test('revision-mismatch: a document behind the pin is not the pinned revision', async () => {
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc2) }, readDocument: reader(doc1) }),
     'revision-mismatch');
 });
 
-test('document-ahead-of-pin: a newer document is never served or promoted', () => {
-  expectUnavailable(L.loadSettlementEvidence(
+test('document-ahead-of-pin: a newer document is never served or promoted', async () => {
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) }, readDocument: reader(doc2) }),
     'document-ahead-of-pin');
 });
 
-test('document-ahead-of-pin: an unpinned candidate operation stays unresolved', () => {
+test('document-ahead-of-pin: an unpinned candidate operation stays unresolved', async () => {
   // A candidate document from confirmCandidate is a confirmed-but-unpinned
   // write: the loader must not serve it against the genesis pin, and must
   // not promote it. In loader terms it is ahead-of-pin state.
@@ -438,39 +438,39 @@ test('document-ahead-of-pin: an unpinned candidate operation stays unresolved', 
     { householdId, actorId, preview: prepared.preview,
       confirmationDigest: prepared.confirmationDigest, now: T0 + 1 });
   assert.equal(candidate.status, 'candidate');
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(genesis) },
       readDocument: reader(candidate.document) }), 'document-ahead-of-pin');
 });
 
-test('digest-mismatch: same revision, different digest — altered or forked', () => {
-  expectUnavailable(L.loadSettlementEvidence(
+test('digest-mismatch: same revision, different digest — altered or forked', async () => {
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) }, readDocument: reader(docFork) }),
     'digest-mismatch');
 });
 
-test('fork: of two documents at the pin revision, only the pinned one qualifies', () => {
-  const evidence = expectQualified(L.loadSettlementEvidence(
+test('fork: of two documents at the pin revision, only the pinned one qualifies', async () => {
+  const evidence = expectQualified(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(docFork) }, readDocument: reader(docFork) }));
   assert.deepEqual(evidence, C.effectiveEvidence(stateOf(docFork)));
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(docFork) }, readDocument: reader(doc1) }),
     'digest-mismatch');
 });
 
-test('document-invalid: tampered content under a stale embedded digest fails verification', () => {
+test('document-invalid: tampered content under a stale embedded digest fails verification', async () => {
   // The embedded digest field still matches the pin, so staging passes;
   // the contract's own digest/replay verification must refuse the bytes.
   const tampered = Buffer.from(
     doc1.toString('utf8').replace('"assignedCents":2500', '"assignedCents":2000'));
   assert.notEqual(tampered.toString('utf8'), doc1.toString('utf8'),
     'the tamper changed the bytes');
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) }, readDocument: reader(tampered) }),
     'document-invalid');
 });
 
-test('document-invalid: replayed-invalid history fails contract verification', () => {
+test('document-invalid: replayed-invalid history fails contract verification', async () => {
   // Bytes whose embedded digest honestly covers an operation history the
   // contract refuses (an over-budget second link): the digest staging
   // cannot see it; contract replay must.
@@ -482,24 +482,24 @@ test('document-invalid: replayed-invalid history fails contract verification', (
   }];
   const data = { schema: C.SCHEMA, householdId, revision: 2, operations: badOps };
   const body = Buffer.from(JSON.stringify({ ...data, digest: C.digest(data) }));
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: { revision: 2, digest: JSON.parse(body.toString('utf8')).digest } },
       readDocument: reader(body) }), 'document-invalid');
 });
 
 // --- Read consistency ---------------------------------------------------------
-test('document-changed: bytes that move between verification and projection', () => {
+test('document-changed: bytes that move between verification and projection', async () => {
   let calls = 0;
   const unstable = () => (++calls === 1 ? doc1 : docFork);
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) }, readDocument: unstable }),
     'document-changed');
 });
 
-test('document-changed: a stability re-read that throws is not qualified', () => {
+test('document-changed: a stability re-read that throws is not qualified', async () => {
   let calls = 0;
   const flaky = () => { if (++calls === 1) return doc1; throw new Error('store moved'); };
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) }, readDocument: flaky }),
     'document-changed');
 });
@@ -510,7 +510,7 @@ test('document-changed: a stability re-read that throws is not qualified', () =>
 // Buffer mutated in place between the two reads — same length, embedded
 // digest left stale — must not compare equal to itself and qualify on a
 // changed, now-invalid document.
-test('document-changed: in-place mutation of a shared Buffer between reads', () => {
+test('document-changed: in-place mutation of a shared Buffer between reads', async () => {
   const shared = Buffer.from(doc1);
   let calls = 0;
   const mutating = () => {
@@ -523,24 +523,920 @@ test('document-changed: in-place mutation of a shared Buffer between reads', () 
     }
     return shared;
   };
-  expectUnavailable(L.loadSettlementEvidence(
+  expectUnavailable(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) }, readDocument: mutating }),
     'document-changed');
 });
 
-test('snapshot controls: stable Buffer and Uint8Array readers still qualify', () => {
-  const fromBuffer = expectQualified(L.loadSettlementEvidence(
+test('snapshot controls: stable Buffer and Uint8Array readers still qualify', async () => {
+  const fromBuffer = expectQualified(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) },
       readDocument: reader(Buffer.from(doc1)) }));
   assert.deepEqual(fromBuffer, C.effectiveEvidence(stateOf(doc1)));
-  const fromArray = expectQualified(L.loadSettlementEvidence(
+  const fromArray = expectQualified(await L.loadSettlementEvidence(
     { config: { householdId, pin: pinOf(doc1) },
       readDocument: reader(new Uint8Array(doc1)) }));
   assert.deepEqual(fromArray, C.effectiveEvidence(stateOf(doc1)));
 });
 
+// --- Async readers: Promise-returning read callbacks --------------------------
+// The production storage adapters' read methods are async, so a reader
+// may return a Promise of its value. These pins cover the timing axis
+// only: same outcomes, same protocols — plus the ownership defence the
+// new suspension points require (a value is snapshotted at acquisition,
+// before any suspension can let its owner move it).
+
+test('async readers: Promise-returning readers qualify with exact invocation counts', async () => {
+  let pinCalls = 0; let docCalls = 0;
+  const evidence = expectQualified(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: async () => { pinCalls += 1; return pinOf(doc1); },
+    readDocument: async () => { docCalls += 1; return doc1; },
+  }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(pinCalls, 1, 'the pin is acquired exactly once');
+  assert.equal(docCalls, 2, 'the document is acquired exactly twice (verify + stability)');
+});
+
+test('async readers: mixed timing qualifies — async document with static pin, sync document with async pin', async () => {
+  const fromAsyncDoc = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: async () => doc1 }));
+  assert.deepEqual(fromAsyncDoc, C.effectiveEvidence(stateOf(doc1)));
+  const fromAsyncPin = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: async () => pinOf(doc1),
+      readDocument: reader(doc1) }));
+  assert.deepEqual(fromAsyncPin, C.effectiveEvidence(stateOf(doc1)));
+});
+
+test('async rejection taxonomy: a rejected read classifies exactly like a throwing read, by position', async () => {
+  const boom = () => Promise.reject(new Error('backing store unreachable'));
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: boom, readDocument: reader(doc1) }),
+    'pin-unavailable');
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: boom }),
+    'document-unavailable');
+  let calls = 0;
+  const rejectSecond = async () => {
+    calls += 1;
+    if (calls === 2) throw new Error('store moved');
+    return doc1;
+  };
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: rejectSecond }),
+    'document-changed');
+});
+
+test('async absence: a document read resolving null is document-missing, a pin read resolving null is pin-invalid', async () => {
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: async () => null }),
+    'document-missing');
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: async () => null, readDocument: reader(doc1) }),
+    'pin-invalid');
+});
+
+test('async rejections: no rejection escapes the loader as an unhandled rejection', async () => {
+  const escaped = [];
+  const guard = reason => { escaped.push(String(reason && reason.message || reason)); };
+  process.on('unhandledRejection', guard);
+  try {
+    const boom = () => Promise.reject(new Error('backing store unreachable'));
+    expectUnavailable(await L.loadSettlementEvidence(
+      { config: { householdId }, readPin: boom, readDocument: reader(doc1) }),
+      'pin-unavailable');
+    expectUnavailable(await L.loadSettlementEvidence(
+      { config: { householdId, pin: pinOf(doc1) }, readDocument: boom }),
+      'document-unavailable');
+    // Let any dropped Promise settle: none may surface here.
+    await new Promise(resolve => setTimeout(resolve, 25));
+    assert.deepEqual(escaped, [], 'every rejection was classified, none dropped');
+  } finally {
+    process.removeListener('unhandledRejection', guard);
+  }
+});
+
+test('pin coherence: an async pin against a moved document lands in the mismatch family', async () => {
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: async () => pinOf(doc2),
+      readDocument: reader(doc1) }), 'revision-mismatch');
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: async () => pinOf(doc1),
+      readDocument: reader(doc2) }), 'document-ahead-of-pin');
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: async () => pinOf(docFork),
+      readDocument: reader(doc1) }), 'digest-mismatch');
+});
+
+test('document-changed: in-place mutation of a reused Buffer across the await gap', async () => {
+  // Async twin of the synchronous snapshot pin: the reader hands back
+  // the same caller-owned Buffer on both reads and mutates it in place
+  // before the second return. The first acquisition is the loader's own
+  // copy, so the move is seen.
+  const shared = Buffer.from(doc1);
+  let calls = 0;
+  const mutating = async () => {
+    calls += 1;
+    if (calls === 2) {
+      shared.write(shared.toString('utf8')
+        .replace('"assignedCents":2500', '"assignedCents":2000'), 0, 'utf8');
+    }
+    return shared;
+  };
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: mutating }),
+    'document-changed');
+});
+
+test('document-changed: mutation landing while the first async read settles still meets an owned snapshot', async () => {
+  // The mutation is scheduled on a later turn than the first read's
+  // return; the loader's snapshot is bound to the acquisition, so the
+  // second read observes the move and the pair disagrees.
+  const shared = Buffer.from(doc1);
+  let calls = 0;
+  const readerFn = async () => {
+    calls += 1;
+    if (calls === 1) {
+      setImmediate(() => {
+        shared.write(shared.toString('utf8')
+          .replace('"assignedCents":2500', '"assignedCents":2000'), 0, 'utf8');
+      });
+      return shared;
+    }
+    await new Promise(resolve => setImmediate(resolve));
+    return shared;
+  };
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: readerFn }),
+    'document-changed');
+});
+
+test('ownership: caller mutation after the call cannot move a synchronous acquisition', async () => {
+  // The load is invoked but not yet awaited: the caller mutates the
+  // shared document Buffer in place. The first read was already
+  // snapshotted in the invocation turn, so the stability re-read sees
+  // the move — the outcome is document-changed, never a qualification
+  // over bytes that were never the pinned ones.
+  const shared = Buffer.from(doc1);
+  const pending = L.loadSettlementEvidence(
+    { config: { householdId, pin: pinOf(doc1) }, readDocument: () => shared });
+  shared.write(shared.toString('utf8')
+    .replace('"assignedCents":2500', '"assignedCents":2000'), 0, 'utf8');
+  expectUnavailable(await pending, 'document-changed');
+});
+
+test('ownership: caller mutation after the call cannot move a synchronous pin record or the static pin', async () => {
+  // Live pin source: the record object the reader returns is
+  // snapshotted to its scalar pair at acquisition; mutating the caller's object
+  // afterwards cannot change the pin this load verifies against.
+  const livePin = pinOf(doc1);
+  const pendingLive = L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => livePin, readDocument: reader(doc1) });
+  livePin.digest = pinOf(docFork).digest;
+  assert.deepEqual(expectQualified(await pendingLive),
+    C.effectiveEvidence(stateOf(doc1)));
+  // Static pin: snapshotted in the synchronous prologue, before the
+  // first suspension (the document acquisition) can interleave.
+  const staticPin = pinOf(doc1);
+  const pendingStatic = L.loadSettlementEvidence(
+    { config: { householdId, pin: staticPin }, readDocument: reader(doc1) });
+  staticPin.digest = pinOf(docFork).digest;
+  assert.deepEqual(expectQualified(await pendingStatic),
+    C.effectiveEvidence(stateOf(doc1)));
+});
+
+test('ownership: bytes mutated during the pin suspension are judged as acquired, never pre-snapshotted', async () => {
+  // While the pin read is suspended, the caller's document bytes are
+  // tampered with (embedded digest left stale). The document read has
+  // not happened yet, so the loader must acquire and judge the bytes as
+  // they now stand: contract verification refuses them.
+  const shared = Buffer.from(doc1);
+  let resolvePin;
+  const pinPromise = new Promise(resolve => { resolvePin = resolve; });
+  const pending = L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => pinPromise, readDocument: () => shared });
+  shared.write(shared.toString('utf8')
+    .replace('"assignedCents":2500', '"assignedCents":2000'), 0, 'utf8');
+  resolvePin(pinOf(doc1));
+  expectUnavailable(await pending, 'document-invalid');
+});
+
+// --- Pin snapshot integrity: foreign records never cross the boundary --------
+// The pin snapshot is the load-bearing scalar pair, extracted at
+// acquisition from the SELECTED source only. Three properties: a
+// foreign record's `then` is never invoked (Promise resolution must
+// not assimilate the snapshot — running foreign code, substituting a
+// pin, or hanging the load); only revision/digest are read, by direct
+// access (non-enumerable fields are honoured, unrelated getters never
+// fire); and an unselected static fallback is never observed at all.
+
+test('pin snapshot: a thenable pin record is judged by its scalar pair — its then is never invoked', async () => {
+  let thenCalls = 0;
+  const counting = {
+    ...pinOf(doc1),
+    then(resolve) { thenCalls += 1; resolve(pinOf(doc1)); },
+  };
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => counting, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(thenCalls, 0, 'the record then was never invoked');
+});
+
+test('pin snapshot: a then that would substitute a different pin changes nothing', async () => {
+  let thenCalls = 0;
+  const substituting = {
+    ...pinOf(doc1),
+    then(resolve) { thenCalls += 1; resolve(pinOf(doc2)); },
+  };
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => substituting, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)),
+    'the load is governed by the record scalar pair, not by its then');
+  assert.equal(thenCalls, 0, 'the record then was never invoked');
+});
+
+test('pin snapshot: a then that never settles cannot hang the load', { timeout: 5000 }, async () => {
+  const hanging = { ...pinOf(doc1), then() { /* never calls back */ } };
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => hanging, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
+test('pin snapshot: a thenable STATIC pin is likewise judged by its scalar pair', async () => {
+  let thenCalls = 0;
+  const counting = {
+    ...pinOf(doc1),
+    then(resolve) { thenCalls += 1; resolve(pinOf(doc2)); },
+  };
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId, pin: counting }, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(thenCalls, 0, 'the static record then was never invoked');
+});
+
+test('pin snapshot: non-enumerable revision/digest qualify exactly as their enumerable twin', async () => {
+  const pair = pinOf(doc1);
+  const hidden = {};
+  Object.defineProperties(hidden, {
+    revision: { value: pair.revision },
+    digest: { value: pair.digest },
+  });
+  const fromLive = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => hidden, readDocument: reader(doc1) }));
+  assert.deepEqual(fromLive, C.effectiveEvidence(stateOf(doc1)));
+  const fromStatic = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId, pin: hidden }, readDocument: reader(doc1) }));
+  assert.deepEqual(fromStatic, C.effectiveEvidence(stateOf(doc1)));
+});
+
+test('pin snapshot: unrelated properties are never read — a counting getter stays at zero', async () => {
+  let unrelatedReads = 0;
+  const pin = { ...pinOf(doc1) };
+  Object.defineProperty(pin, 'unrelated', {
+    enumerable: true,
+    get() { unrelatedReads += 1; return 'must not be read'; },
+  });
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => pin, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(unrelatedReads, 0, 'the snapshot reads revision and digest only');
+});
+
+test('pin snapshot: a throwing unrelated getter on the static pin cannot break the load', async () => {
+  const pin = { ...pinOf(doc1) };
+  Object.defineProperty(pin, 'unrelated', {
+    enumerable: true,
+    get() { throw new Error('unrelated getter must not fire'); },
+  });
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId, pin }, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
+test('pin snapshot: a hostile UNUSED static fallback is never observed when readPin is supplied', async () => {
+  let observed = 0;
+  const hostile = {};
+  for (const key of ['revision', 'digest', 'unrelated']) {
+    Object.defineProperty(hostile, key, {
+      enumerable: true,
+      get() { observed += 1; throw new Error('unused fallback must not be observed'); },
+    });
+  }
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId, pin: hostile }, readPin: () => pinOf(doc1),
+      readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)),
+    'the live pin source governs; the static value is never a fallback read');
+  assert.equal(observed, 0, 'the unselected static pin was never read');
+});
+
+test('pin snapshot: the static source obeys the same scalar rules when it is the selected source', async () => {
+  const pair = pinOf(doc1);
+  let unrelatedReads = 0;
+  const pin = {};
+  Object.defineProperties(pin, {
+    revision: { value: pair.revision },
+    digest: { value: pair.digest },
+    unrelated: { enumerable: true, get() { unrelatedReads += 1; return 'x'; } },
+  });
+  const evidence = expectQualified(await L.loadSettlementEvidence(
+    { config: { householdId, pin }, readDocument: reader(doc1) }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(unrelatedReads, 0, 'the snapshot reads revision and digest only');
+});
+
+// --- Pin snapshot integrity: unsupported shapes never cross by reference -----
+// B3 (Systems Review HOLD 6306734952): the snapshot's fallback used to
+// return values that were neither byte carriers nor plain records BY
+// REFERENCE — null-prototype and custom-prototype objects included.
+// The reference crossed the acquire suspension, and parsePin judges
+// shape only after the resume: re-prototyping the object to
+// Object.prototype in that window turned a pin that was invalid at
+// acquisition into a qualifying one. The snapshot now reduces every
+// unsupported object to an owned immutable invalid sentinel; the pins
+// below prove the classification is frozen at acquisition, for a
+// synchronous reader and for a Promise-returning reader alike, and
+// that unsupported shapes are never normalized into valid records.
+
+test('pin snapshot: a null-prototype pin re-prototyped after invocation stays pin-invalid (sync reader)', async () => {
+  const pair = pinOf(doc1);
+  const foreign = Object.create(null);
+  foreign.revision = pair.revision;
+  foreign.digest = pair.digest;
+  let docReads = 0;
+  const pending = L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => foreign,
+    readDocument: () => { docReads += 1; return doc1; },
+  });
+  // The reader returned synchronously, so the acquisition snapshot is
+  // already taken and the loader is suspended before parsePin judges
+  // the shape. Mutating the prototype now must not move the
+  // classification: the value was unsupported at acquisition.
+  Object.setPrototypeOf(foreign, Object.prototype);
+  expectUnavailable(await pending, 'pin-invalid');
+  assert.equal(docReads, 0,
+    'a pin invalid at acquisition never reaches the document read');
+});
+
+test('pin snapshot: a custom-prototype pin re-prototyped after the snapshot stays pin-invalid (Promise reader)', async () => {
+  const pair = pinOf(doc1);
+  const foreign = Object.create({ unrelated: true });
+  foreign.revision = pair.revision;
+  foreign.digest = pair.digest;
+  let resolvePin;
+  const pinPromise = new Promise(resolve => { resolvePin = resolve; });
+  let docReads = 0;
+  const pending = L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => pinPromise,
+    readDocument: () => { docReads += 1; return doc1; },
+  });
+  // Attach the mutation AFTER the loader has awaited the pin promise:
+  // promise reactions run in attach order, so this lands after the
+  // acquisition snapshot is taken from the resolved value and before
+  // parsePin judges the shape — the exact B3 window, deterministically.
+  pinPromise.then(() => { Object.setPrototypeOf(foreign, Object.prototype); });
+  resolvePin(foreign);
+  expectUnavailable(await pending, 'pin-invalid');
+  assert.equal(docReads, 0,
+    'a pin invalid at acquisition never reaches the document read');
+});
+
+test('pin snapshot: unsupported shapes are judged as acquired and never normalized into records', async () => {
+  const pair = pinOf(doc1);
+  // A null-prototype pin with a malformed pair, never mutated.
+  const malformed = Object.create(null);
+  malformed.revision = 'not-a-revision';
+  malformed.digest = 'not-a-digest';
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => malformed, readDocument: reader(doc1) }),
+    'pin-invalid');
+  // A custom-prototype object that INHERITS a matching pair from its
+  // prototype: unsupported at acquisition. A snapshot that read
+  // revision/digest off any object would wrongly qualify it — the
+  // classification is invalid, and it is never normalized.
+  const inheriting = Object.create({ revision: pair.revision, digest: pair.digest });
+  let docReads = 0;
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: async () => inheriting,
+      readDocument: () => { docReads += 1; return doc1; } }),
+    'pin-invalid');
+  assert.equal(docReads, 0,
+    'an inherited pair on an unsupported shape never reaches the document read');
+  // The static source judges the same shape the same way: a
+  // null-prototype static pin carrying a valid own pair is unsupported.
+  const staticForeign = Object.create(null);
+  staticForeign.revision = pair.revision;
+  staticForeign.digest = pair.digest;
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId, pin: staticForeign }, readDocument: reader(doc1) }),
+    'pin-invalid');
+});
+
+// --- Acquisition order: classification is fixed before the then probe -------
+// B4 (Systems Review HOLD 6307392516): acquire() used to probe
+// isPromiseLike — reading the foreign `then` property — BEFORE
+// snapshotting a non-plain synchronous reader result. A noncallable
+// `then` GETTER could therefore mutate the value's classification
+// mid-acquisition (restoring a stripped prototype) and have the
+// snapshot classify the MUTATED object: an unsupported pin qualified,
+// a stripped byte carrier was accepted. The classification must be
+// fixed by the snapshot BEFORE any foreign `then` access; a
+// noncallable `then` never reclassifies the original value. Only a
+// callable `then` makes the value a genuine thenable, and then the
+// RESOLVED value is classified from scratch.
+
+// Give `value` an own `then` accessor whose getter restores the
+// value's prototype to `proto` and returns undefined — reading `.then`
+// mutates the classification-relevant prototype as a side effect.
+function restoringThenGetter(value, proto) {
+  Object.defineProperty(value, 'then', {
+    configurable: true,
+    get() { Object.setPrototypeOf(value, proto); return undefined; },
+  });
+  return value;
+}
+
+test('acquisition: a prototype-restoring then getter cannot reclassify a null-prototype pin', async () => {
+  const pair = pinOf(doc1);
+  const foreign = Object.create(null);
+  foreign.revision = pair.revision;
+  foreign.digest = pair.digest;
+  restoringThenGetter(foreign, Object.prototype);
+  let docReads = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => foreign,
+    readDocument: () => { docReads += 1; return doc1; },
+  }), 'pin-invalid');
+  assert.equal(docReads, 0,
+    'a pin unsupported at acquisition never reaches the document read');
+});
+
+test('acquisition: a prototype-restoring then getter cannot reclassify a custom-prototype pin', async () => {
+  const pair = pinOf(doc1);
+  const foreign = Object.create({ inherited: true });
+  foreign.revision = pair.revision;
+  foreign.digest = pair.digest;
+  restoringThenGetter(foreign, Object.prototype);
+  let docReads = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => foreign,
+    readDocument: () => { docReads += 1; return doc1; },
+  }), 'pin-invalid');
+  assert.equal(docReads, 0,
+    'a pin unsupported at acquisition never reaches the document read');
+});
+
+test('acquisition: a prototype-restoring then getter cannot reclassify a stripped Buffer document', async () => {
+  const stripped = Buffer.from(doc1);
+  Object.setPrototypeOf(stripped, null);
+  restoringThenGetter(stripped, Buffer.prototype);
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => stripped,
+  }), 'document-malformed');
+});
+
+test('acquisition: a prototype-restoring then getter cannot reclassify a stripped Uint8Array document', async () => {
+  const stripped = new Uint8Array(doc1);
+  Object.setPrototypeOf(stripped, null);
+  restoringThenGetter(stripped, Uint8Array.prototype);
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => stripped,
+  }), 'document-malformed');
+});
+
+test('acquisition: a stripped Buffer at the stability read classifies document-changed, getter notwithstanding', async () => {
+  const stripped = Buffer.from(doc1);
+  Object.setPrototypeOf(stripped, null);
+  restoringThenGetter(stripped, Buffer.prototype);
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : stripped; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+});
+
+test('acquisition: a stripped Uint8Array at the stability read classifies document-changed, getter notwithstanding', async () => {
+  const stripped = new Uint8Array(doc1);
+  Object.setPrototypeOf(stripped, null);
+  restoringThenGetter(stripped, Uint8Array.prototype);
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : stripped; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+});
+
+test('acquisition: genuine non-record thenables are still awaited and their resolved values snapshotted', async () => {
+  const pinThenable = Object.create(null);
+  pinThenable.then = resolve => { resolve(pinOf(doc1)); };
+  const docThenable = Object.create(null);
+  docThenable.then = resolve => { resolve(doc1); };
+  const evidence = expectQualified(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => pinThenable,
+    readDocument: () => docThenable,
+  }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)),
+    'a callable then is a genuine thenable: the resolved values govern');
+});
+
+test('acquisition: genuine Promise readers still qualify with resolved-value snapshots', async () => {
+  const evidence = expectQualified(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: async () => pinOf(doc1),
+    readDocument: async () => doc1,
+  }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
+// --- Acquisition order: the then value is captured exactly once -------------
+// B4-incomplete (Systems Review HOLD 6308002838): the snapshot-before-
+// probe reorder still read the foreign `then` TWICE — once for the
+// probe, then again implicitly when `await` performed its own lookup
+// on the original object. A two-access getter answers the probe with
+// a function, then answers the await by restoring the supported
+// prototype and returning undefined: the await fulfills with the
+// ORIGINAL mutated object, and the fresh snapshot accepts it. The
+// acquisition must capture `then` with a single property access and
+// drive the async branch from the captured method only — the original
+// object is never awaited, so there is no second lookup. The pins
+// below assert the full repaired signature: exactly one getter read,
+// the captured method invoked exactly once (genuine resolution — the
+// defective signature is two reads and zero invocations with a
+// qualified outcome), the original object's prototype never restored,
+// and the outcome governed by the resolved value's fresh
+// classification (each fixture resolves with a getter-free
+// unsupported twin of the same shape).
+
+// Give `value` an own `then` accessor with a two-access script:
+// access 1 returns a working then-method that resolves with `twin`
+// (counting its own invocations); access 2 restores the value's
+// prototype to `proto` and returns undefined.
+function twoAccessThenGetter(value, proto, twin) {
+  const counts = { reads: 0, invocations: 0 };
+  Object.defineProperty(value, 'then', {
+    configurable: true,
+    get() {
+      counts.reads += 1;
+      if (counts.reads === 1) {
+        return resolve => { counts.invocations += 1; resolve(twin); };
+      }
+      Object.setPrototypeOf(value, proto);
+      return undefined;
+    },
+  });
+  return counts;
+}
+
+// Wrap a genuine Promise with an own `then` accessor that counts
+// reads and returns one stable counting wrapper around the real
+// method: a single-capture acquisition reads and invokes it once.
+function instrumentedPromise(promise) {
+  const counts = { reads: 0, invocations: 0 };
+  const realThen = promise.then.bind(promise);
+  const wrapper = (resolve, reject) => {
+    counts.invocations += 1;
+    return realThen(resolve, reject);
+  };
+  Object.defineProperty(promise, 'then', {
+    configurable: true,
+    get() { counts.reads += 1; return wrapper; },
+  });
+  return counts;
+}
+
+test('acquisition: a two-access then getter cannot reclassify a null-prototype pin', async () => {
+  const pair = pinOf(doc1);
+  const twin = Object.create(null);
+  twin.revision = pair.revision;
+  twin.digest = pair.digest;
+  const foreign = Object.create(null);
+  foreign.revision = pair.revision;
+  foreign.digest = pair.digest;
+  const counts = twoAccessThenGetter(foreign, Object.prototype, twin);
+  let docReads = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => foreign,
+    readDocument: () => { docReads += 1; return doc1; },
+  }), 'pin-invalid');
+  assert.equal(docReads, 0,
+    'a pin unsupported at acquisition never reaches the document read');
+  assert.equal(counts.reads, 1, 'the foreign then was read exactly once');
+  assert.equal(counts.invocations, 1,
+    'the captured method settled the acquisition — genuine resolution, not a second lookup');
+  assert.equal(Object.getPrototypeOf(foreign), null,
+    'the original object was never re-prototyped');
+});
+
+test('acquisition: a two-access then getter cannot reclassify a custom-prototype pin', async () => {
+  const pair = pinOf(doc1);
+  const customProto = { inherited: true };
+  const twin = Object.create(customProto);
+  twin.revision = pair.revision;
+  twin.digest = pair.digest;
+  const foreign = Object.create(customProto);
+  foreign.revision = pair.revision;
+  foreign.digest = pair.digest;
+  const counts = twoAccessThenGetter(foreign, Object.prototype, twin);
+  let docReads = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => foreign,
+    readDocument: () => { docReads += 1; return doc1; },
+  }), 'pin-invalid');
+  assert.equal(docReads, 0,
+    'a pin unsupported at acquisition never reaches the document read');
+  assert.equal(counts.reads, 1, 'the foreign then was read exactly once');
+  assert.equal(counts.invocations, 1,
+    'the captured method settled the acquisition — genuine resolution, not a second lookup');
+  assert.equal(Object.getPrototypeOf(foreign), customProto,
+    'the original object was never re-prototyped');
+});
+
+test('acquisition: a two-access then getter cannot reclassify a stripped Buffer document', async () => {
+  const twin = Buffer.from(doc1);
+  Object.setPrototypeOf(twin, null);
+  const stripped = Buffer.from(doc1);
+  Object.setPrototypeOf(stripped, null);
+  const counts = twoAccessThenGetter(stripped, Buffer.prototype, twin);
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => stripped,
+  }), 'document-malformed');
+  assert.equal(counts.reads, 1, 'the foreign then was read exactly once');
+  assert.equal(counts.invocations, 1,
+    'the captured method settled the acquisition — genuine resolution, not a second lookup');
+  assert.equal(Object.getPrototypeOf(stripped), null,
+    'the original carrier was never re-prototyped');
+});
+
+test('acquisition: a two-access then getter cannot reclassify a stripped Uint8Array document', async () => {
+  const twin = new Uint8Array(doc1);
+  Object.setPrototypeOf(twin, null);
+  const stripped = new Uint8Array(doc1);
+  Object.setPrototypeOf(stripped, null);
+  const counts = twoAccessThenGetter(stripped, Uint8Array.prototype, twin);
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => stripped,
+  }), 'document-malformed');
+  assert.equal(counts.reads, 1, 'the foreign then was read exactly once');
+  assert.equal(counts.invocations, 1,
+    'the captured method settled the acquisition — genuine resolution, not a second lookup');
+  assert.equal(Object.getPrototypeOf(stripped), null,
+    'the original carrier was never re-prototyped');
+});
+
+test('acquisition: a two-access stripped Buffer at the stability read classifies document-changed', async () => {
+  const twin = Buffer.from(doc1);
+  Object.setPrototypeOf(twin, null);
+  const stripped = Buffer.from(doc1);
+  Object.setPrototypeOf(stripped, null);
+  const counts = twoAccessThenGetter(stripped, Buffer.prototype, twin);
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : stripped; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+  assert.equal(counts.reads, 1, 'the foreign then was read exactly once');
+  assert.equal(counts.invocations, 1,
+    'the captured method settled the acquisition — genuine resolution, not a second lookup');
+  assert.equal(Object.getPrototypeOf(stripped), null,
+    'the original carrier was never re-prototyped');
+});
+
+test('acquisition: a two-access stripped Uint8Array at the stability read classifies document-changed', async () => {
+  const twin = new Uint8Array(doc1);
+  Object.setPrototypeOf(twin, null);
+  const stripped = new Uint8Array(doc1);
+  Object.setPrototypeOf(stripped, null);
+  const counts = twoAccessThenGetter(stripped, Uint8Array.prototype, twin);
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : stripped; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+  assert.equal(counts.reads, 1, 'the foreign then was read exactly once');
+  assert.equal(counts.invocations, 1,
+    'the captured method settled the acquisition — genuine resolution, not a second lookup');
+  assert.equal(Object.getPrototypeOf(stripped), null,
+    'the original carrier was never re-prototyped');
+});
+
+test('acquisition: a genuine Promise pin reader is captured once — one read, one invocation', async () => {
+  const promise = Promise.resolve(pinOf(doc1));
+  const counts = instrumentedPromise(promise);
+  const evidence = expectQualified(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => promise,
+    readDocument: reader(doc1),
+  }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(counts.reads, 1, 'the Promise then was read exactly once');
+  assert.equal(counts.invocations, 1, 'the captured method was invoked exactly once');
+});
+
+test('acquisition: a genuine Promise document reader is captured once per acquisition', async () => {
+  const perCall = [];
+  const evidence = expectQualified(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => {
+      const promise = Promise.resolve(doc1);
+      perCall.push(instrumentedPromise(promise));
+      return promise;
+    },
+  }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(perCall.length, 2, 'both document acquisitions happened');
+  for (const counts of perCall) {
+    assert.equal(counts.reads, 1, 'each acquisition read the Promise then exactly once');
+    assert.equal(counts.invocations, 1, 'each captured method was invoked exactly once');
+  }
+});
+
+test('acquisition: captured-method settlement preserves the rejection taxonomy', async () => {
+  // The captured method rejects: the same classification an awaited
+  // rejection receives.
+  const rejecting = Object.create(null);
+  rejecting.then = (resolve, reject) => { reject(new Error('pin read failed')); };
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => rejecting, readDocument: reader(doc1) }),
+    'pin-unavailable');
+  // The captured method throws synchronously when invoked: a
+  // synchronous throw from a thenable's method rejects the await,
+  // identically.
+  const throwing = Object.create(null);
+  throwing.then = () => { throw new Error('pin then threw'); };
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => throwing, readDocument: reader(doc1) }),
+    'pin-unavailable');
+  // The `then` getter itself throws on the single capture access:
+  // the acquisition rejects into the same guard.
+  const hostileGetter = Object.create(null);
+  Object.defineProperty(hostileGetter, 'then', {
+    configurable: true,
+    get() { throw new Error('then getter threw'); },
+  });
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => hostileGetter, readDocument: reader(doc1) }),
+    'pin-unavailable');
+});
+
+// --- Invocation: the captured method is invoked intrinsically ---------------
+// B6 (Systems Review HOLD 6308491902): the captured `then` was invoked
+// via `then.call(...)` — a property READ on the foreign function. A
+// captured then carrying an own `call` override substitutes foreign
+// code for the invocation: the override can resolve valid evidence
+// while the captured body — which would reject — never runs. The
+// invocation must go through a trusted intrinsic (Reflect.apply) with
+// the original receiver, so no property of the foreign function
+// participates. The pins below rig the captured body to always
+// reject and assert the full repaired signature at every acquisition
+// position: the body runs exactly once, the override is never
+// invoked, an accessor `call` getter never fires, the receiver is
+// the original value, and the body's rejection classifies by
+// position.
+
+// Rig a captured-then function whose body always rejects, with a
+// foreign-controlled own `call` property. Modes: 'resolves' (the
+// override resolves with a valid value), 'throws' (the override
+// throws), 'accessor' (`call` is a getter returning the resolving
+// override). The rigged then rides on a non-record thenable value.
+function riggedThenable(validValue, mode) {
+  const counts = { body: 0, override: 0, getter: 0, receiver: undefined };
+  const thenFn = function (resolve, reject) {
+    counts.body += 1;
+    counts.receiver = this;
+    reject(new Error('captured then body rejects'));
+  };
+  const override = function (receiver, resolve, reject) {
+    counts.override += 1;
+    if (mode === 'throws') throw new Error('call override threw');
+    resolve(validValue);
+  };
+  if (mode === 'accessor') {
+    Object.defineProperty(thenFn, 'call', {
+      configurable: true,
+      get() { counts.getter += 1; return override; },
+    });
+  } else {
+    thenFn.call = override;
+  }
+  const value = Object.create(null);
+  value.then = thenFn;
+  return { value, counts };
+}
+
+function assertIntrinsicInvocation(counts, value) {
+  assert.equal(counts.body, 1, 'the captured then body ran exactly once');
+  assert.equal(counts.override, 0, 'the foreign call override was never invoked');
+  assert.equal(counts.getter, 0, 'the foreign call getter never fired');
+  assert.equal(counts.receiver, value, 'the receiver is the original raw value');
+}
+
+test('invocation: an own call override cannot substitute for the captured then body (pin)', async () => {
+  const { value, counts } = riggedThenable(pinOf(doc1), 'resolves');
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => value,
+    readDocument: reader(doc1),
+  }), 'pin-unavailable');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: an own call override cannot substitute for the captured then body (first document read)', async () => {
+  const { value, counts } = riggedThenable(doc1, 'resolves');
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => value,
+  }), 'document-unavailable');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: an own call override cannot substitute for the captured then body (stability read)', async () => {
+  const { value, counts } = riggedThenable(doc1, 'resolves');
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : value; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: a throwing call override is never invoked — the body rejection classifies (pin)', async () => {
+  const { value, counts } = riggedThenable(pinOf(doc1), 'throws');
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => value,
+    readDocument: reader(doc1),
+  }), 'pin-unavailable');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: a throwing call override is never invoked — the body rejection classifies (first document read)', async () => {
+  const { value, counts } = riggedThenable(doc1, 'throws');
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => value,
+  }), 'document-unavailable');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: a throwing call override is never invoked — the body rejection classifies (stability read)', async () => {
+  const { value, counts } = riggedThenable(doc1, 'throws');
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : value; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: an accessor call getter never fires — the body rejection classifies (pin)', async () => {
+  const { value, counts } = riggedThenable(pinOf(doc1), 'accessor');
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => value,
+    readDocument: reader(doc1),
+  }), 'pin-unavailable');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: an accessor call getter never fires — the body rejection classifies (first document read)', async () => {
+  const { value, counts } = riggedThenable(doc1, 'accessor');
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => value,
+  }), 'document-unavailable');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: an accessor call getter never fires — the body rejection classifies (stability read)', async () => {
+  const { value, counts } = riggedThenable(doc1, 'accessor');
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : value; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+  assertIntrinsicInvocation(counts, value);
+});
+
 // --- Reason coverage ------------------------------------------------------------
-test('coverage: every enumerated unavailable reason was exercised above', () => {
+test('coverage: every enumerated unavailable reason was exercised above', async () => {
   assert.deepEqual([...seenReasons].sort(), [...L.REASONS].sort(),
     'the suite pins each reason code the module enumerates');
 });

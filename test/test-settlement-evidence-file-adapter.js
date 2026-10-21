@@ -149,11 +149,14 @@ async function commitLink(store, auth, n, over = {}) {
   return receipt;
 }
 // The REAL merged loader over the persisted files + the injected pin.
-// The document reader is a plain synchronous file read, exactly the
-// composition a production caller would wire; the adapter's own reads
-// are exercised through the store on every operation.
-function loadFromDir(dir, auth) {
-  return L.loadSettlementEvidence({
+// The document reader here is a plain synchronous file read — the
+// control composition, which the loader accepts unchanged alongside
+// Promise-returning readers; the production-shaped composition (the
+// adapter's own async documentStore.read) is pinned in the server-seam
+// suite. The adapter's reads are exercised through the store on every
+// operation.
+async function loadFromDir(dir, auth) {
+  return await L.loadSettlementEvidence({
     config: { householdId },
     readDocument: () => {
       try { return fs.readFileSync(path.join(dir, 'document.json')); }
@@ -238,15 +241,17 @@ const mode = process.argv[2];
 const dir = process.argv[3];
 if (mode === 'load') {
   const pin = JSON.parse(process.argv[4]);
-  const out = L.loadSettlementEvidence({
-    config: { householdId },
-    readDocument: () => {
-      try { return fs.readFileSync(path.join(dir, 'document.json')); }
-      catch (e) { if (e.code === 'ENOENT') return null; throw e; }
-    },
-    readPin: () => ({ revision: pin.revision, digest: pin.digest }),
-  });
-  process.stdout.write(JSON.stringify(out));
+  (async () => {
+    const out = await L.loadSettlementEvidence({
+      config: { householdId },
+      readDocument: () => {
+        try { return fs.readFileSync(path.join(dir, 'document.json')); }
+        catch (e) { if (e.code === 'ENOENT') return null; throw e; }
+      },
+      readPin: () => ({ revision: pin.revision, digest: pin.digest }),
+    });
+    process.stdout.write(JSON.stringify(out));
+  })().catch(e => { fs.writeSync(2, String(e && e.stack || e)); process.exit(8); });
 } else if (mode === 'hold-lock') {
   const adapter = A.createSettlementEvidenceFileAdapter(dir);
   adapter.lock.withLock(async () => {
@@ -354,7 +359,7 @@ if (mode === 'load') {
     const receipt = await store.commit({
       actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
     });
-    const view = L.loadSettlementEvidence({
+    const view = await L.loadSettlementEvidence({
       config: { householdId },
       readDocument: () => {
         try { return fs.readFileSync(path.join(dir, 'document.json')); }
@@ -408,7 +413,7 @@ test('round trip: bootstrap + commits persist to disk; new instance, restart and
   const report = await restarted.reconcile();
   assert.equal(report.row, 'R2');
   assert.equal(report.disposition, 'healthy');
-  const view = loadFromDir(dir, auth);
+  const view = await loadFromDir(dir, auth);
   assert.equal(view.status, 'qualified');
   const expectedEvidence = C.effectiveEvidence({
     householdId: docState.householdId, revision: docState.revision,
@@ -421,7 +426,7 @@ test('round trip: bootstrap + commits persist to disk; new instance, restart and
   assert.equal(view.evidence.commitments[0].links[0].assignedCents, 2500);
 
   // A separate spawned child process over the same directory reads the
-  // identical qualified outcome through the unchanged loader.
+  // identical qualified outcome through the loader.
   const pinJson = JSON.stringify(auth.durable.pin);
   const child = runChild(['load', dir, pinJson]);
   assert.equal(child.status, 0, 'child stderr: ' + child.stderr);
@@ -546,7 +551,7 @@ test('held lock in-process: second instances fail closed, release restores work'
   // After release, work proceeds.
   const again = await store.reconcile();
   assert.equal(again.disposition, 'healthy');
-  assert.equal(loadFromDir(dir, auth).status, 'qualified');
+  assert.equal((await loadFromDir(dir, auth)).status, 'qualified');
 });
 
 test('cross-process lock: child-held lock blocks; SIGKILL leaves residue that still blocks; only out-of-band removal restores work', async () => {
@@ -593,7 +598,7 @@ test('cross-process lock: child-held lock blocks; SIGKILL leaves residue that st
   fs.unlinkSync(lockPath);
   const report = await other.store.reconcile();
   assert.equal(report.disposition, 'healthy');
-  assert.equal(loadFromDir(dir, auth).status, 'qualified');
+  assert.equal((await loadFromDir(dir, auth)).status, 'qualified');
 });
 
 test('a pre-existing lock file blocks bootstrap and operations with zero writes', async () => {
@@ -608,7 +613,7 @@ test('a pre-existing lock file blocks bootstrap and operations with zero writes'
   await assert.rejects(store.bootstrap(), /settlement-file-adapter/);
   assert.deepEqual(listing(dir), [...namesBefore, 'store.lock'].sort(),
     'no writes happened behind the leftover lock');
-  assert.equal(loadFromDir(dir, auth).status, 'qualified',
+  assert.equal((await loadFromDir(dir, auth)).status, 'qualified',
     'readers (loader) are unaffected by the lock');
 });
 
@@ -652,7 +657,7 @@ test('crash between journal write and temp write (child exit): journal survives 
   assert.equal(out.revision, undefined);
   assert.ok(readIfExists(dir, 'journal.json').equals(journalBytes),
     'journal byte-identical after restart reads');
-  const preView = loadFromDir(dir, auth);
+  const preView = await loadFromDir(dir, auth);
   assert.equal(preView.status, 'qualified');
   assert.deepEqual(preView.evidence, { commitments: [] });
 
@@ -665,7 +670,7 @@ test('crash between journal write and temp write (child exit): journal survives 
   assert.equal(readIfExists(dir, 'journal.json'), null);
   assert.equal(auth.durable.pin.revision, 0);
   assert.ok(readIfExists(dir, 'document.json').equals(genesisBytes));
-  assert.equal(loadFromDir(dir, auth).status, 'qualified');
+  assert.equal((await loadFromDir(dir, auth)).status, 'qualified');
 });
 
 test('crash between journal write and rename (child exit): staged temp + journal on disk; reconcile R4 discards both', async () => {
@@ -682,7 +687,7 @@ test('crash between journal write and rename (child exit): staged temp + journal
   assert.equal(stagedState.revision, 1, 'staged bytes are the unlanded candidate');
   assert.ok(readIfExists(dir, 'document.json').equals(genesisBytes),
     'the rename never happened: document is still the pinned genesis');
-  assert.equal(loadFromDir(dir, auth).status, 'qualified',
+  assert.equal((await loadFromDir(dir, auth)).status, 'qualified',
     'loader serves the pinned base; staged residue is never served');
 
   const { store: restarted } = newStore(dir, auth);
@@ -692,7 +697,7 @@ test('crash between journal write and rename (child exit): staged temp + journal
   assert.equal(readIfExists(dir, 'journal.json'), null);
   assert.ok(!listing(dir).some(n => n.startsWith('.document-')), 'staged temp discarded');
   assert.equal(auth.durable.pin.revision, 0);
-  assert.equal(loadFromDir(dir, auth).status, 'qualified');
+  assert.equal((await loadFromDir(dir, auth)).status, 'qualified');
 });
 
 test('crash after rename before pin advance (child exit): loader withholds document-ahead-of-pin; reconcile R5 promotes exactly once', async () => {
@@ -706,7 +711,7 @@ test('crash after rename before pin advance (child exit): loader withholds docum
     'candidate landed on disk');
   assert.ok(readIfExists(dir, 'journal.json'), 'journal resident');
   assert.equal(auth.durable.pin.revision, 0, 'pin still at the base');
-  const preView = loadFromDir(dir, auth);
+  const preView = await loadFromDir(dir, auth);
   assert.equal(preView.status, 'unavailable');
   assert.equal(preView.reason, 'document-ahead-of-pin');
 
@@ -717,7 +722,7 @@ test('crash after rename before pin advance (child exit): loader withholds docum
   assert.equal(report.operationId, op(1));
   assert.equal(auth.durable.pin.revision, 1);
   assert.equal(readIfExists(dir, 'journal.json'), null);
-  const view = loadFromDir(dir, auth);
+  const view = await loadFromDir(dir, auth);
   assert.equal(view.status, 'qualified');
   assert.equal(view.evidence.commitments.length, 1);
   assert.equal(view.evidence.commitments[0].links[0].assignedCents, 2500);
@@ -741,7 +746,7 @@ test('corrupt document bytes: loader unavailable with precise reasons; reconcile
     );
     assert.ok(!tampered.equals(committed));
     plant(dir, 'document.json', tampered);
-    const view = loadFromDir(dir, auth);
+    const view = await loadFromDir(dir, auth);
     assert.equal(view.status, 'unavailable');
     assert.equal(view.reason, 'document-invalid');
     const { store: restarted } = newStore(dir, auth);
@@ -755,7 +760,7 @@ test('corrupt document bytes: loader unavailable with precise reasons; reconcile
     assert.ok(q[0].startsWith('divergent-head-r1-'));
     assert.ok(fs.readFileSync(path.join(dir, 'quarantine', q[0])).equals(tampered),
       'divergent bytes preserved in quarantine');
-    assert.equal(loadFromDir(dir, auth).status, 'qualified');
+    assert.equal((await loadFromDir(dir, auth)).status, 'qualified');
   }
   // (b) Non-document garbage bytes.
   {
@@ -764,7 +769,7 @@ test('corrupt document bytes: loader unavailable with precise reasons; reconcile
     await bootDir(dir, auth);
     const genesis = readIfExists(dir, 'document.json');
     plant(dir, 'document.json', Buffer.from('garbage-not-a-document{{{'));
-    const view = loadFromDir(dir, auth);
+    const view = await loadFromDir(dir, auth);
     assert.equal(view.status, 'unavailable');
     assert.equal(view.reason, 'document-malformed');
     const { store: restarted } = newStore(dir, auth);
@@ -772,7 +777,7 @@ test('corrupt document bytes: loader unavailable with precise reasons; reconcile
     assert.equal(report.row, 'R7');
     assert.equal(report.disposition, 'restored-pinned');
     assert.ok(readIfExists(dir, 'document.json').equals(genesis));
-    assert.equal(loadFromDir(dir, auth).status, 'qualified');
+    assert.equal((await loadFromDir(dir, auth)).status, 'qualified');
   }
 });
 
@@ -784,7 +789,7 @@ test('torn journal: reconcile quarantines the exact torn bytes as invalid and re
   await commitLink(store, auth, 1);
   const torn = Buffer.from('this is not a journal record{{{');
   plant(dir, 'journal.json', torn);
-  assert.equal(loadFromDir(dir, auth).status, 'qualified', 'the loader never reads the journal');
+  assert.equal((await loadFromDir(dir, auth)).status, 'qualified', 'the loader never reads the journal');
   const { store: restarted } = newStore(dir, auth);
   const report = await restarted.reconcile();
   assert.equal(report.row, 'R4');
@@ -795,7 +800,7 @@ test('torn journal: reconcile quarantines the exact torn bytes as invalid and re
   assert.ok(q[0].startsWith('invalid-journal-'));
   assert.ok(fs.readFileSync(path.join(dir, 'quarantine', q[0])).equals(torn),
     'torn bytes preserved byte-identical');
-  assert.equal(loadFromDir(dir, auth).status, 'qualified');
+  assert.equal((await loadFromDir(dir, auth)).status, 'qualified');
 });
 
 test('unknown extra files and directories in the store directory are ignored and never touched', async () => {
@@ -810,7 +815,7 @@ test('unknown extra files and directories in the store directory are ignored and
   const report = await store.reconcile();
   assert.equal(report.row, 'R2');
   assert.equal(report.disposition, 'healthy');
-  assert.equal(loadFromDir(dir, auth).status, 'qualified');
+  assert.equal((await loadFromDir(dir, auth)).status, 'qualified');
   auth.clock.advance(10);
   await commitLink(store, auth, 2, { txRef: tx(2) });
   assert.equal(fs.readFileSync(path.join(dir, 'operator-notes.txt'), 'utf8'), 'leave me alone');
@@ -836,7 +841,7 @@ test('corrupt document with the pinned backup missing: recovery-blocked, diverge
     'divergent head left in place, withheld');
   assert.ok(!fs.existsSync(path.join(dir, 'quarantine')),
     'nothing quarantined without a verified restore');
-  const view = loadFromDir(dir, auth);
+  const view = await loadFromDir(dir, auth);
   assert.equal(view.status, 'unavailable');
   assert.equal(view.reason, 'document-invalid');
 });
