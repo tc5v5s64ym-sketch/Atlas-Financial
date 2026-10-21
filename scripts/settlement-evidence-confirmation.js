@@ -258,13 +258,18 @@ function createSettlementEvidenceConfirmation(deps) {
     retire(operationId, entry);
     return rejected(reason);
   }
-  // One resolve call under the Rule E binding. The classify closure is
-  // open only until the resolver's promise settles (the finally closes it),
-  // and it latches its own invocation count, classifier error and
+  // One resolve call under the Rule E binding. The classify closure stays
+  // open until this helper's own continuation of the resolver await runs
+  // (the finally closes it, after the owned selection snapshot is taken),
+  // not at the exact instant the resolver's value or Promise fulfils, so a
+  // microtask the resolver queued ahead of that continuation still counts.
+  // The closure latches its own invocation count, classifier error and
   // projection, so a resolver that swallows a classifier error, classifies
-  // twice, or never classifies still fails the attempt after settlement.
-  // A stashed closure invoked late refuses, and can touch nothing but its
-  // own dead session — never the accepted snapshot or another attempt.
+  // twice, or never classifies still fails the attempt once it closes.
+  // A stashed closure invoked after closure throws, records nothing and
+  // can touch nothing but its own dead session — never the accepted
+  // snapshot, another attempt or a durable receipt — and it does not
+  // retroactively undo an attempt that already completed.
   // The resolved selection is snapshotted and qualified HERE, in the same
   // continuation as the resolver await: acquisition and snapshot are one
   // step, exactly as the base acquired its selection, so no foreign
