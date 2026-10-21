@@ -310,8 +310,8 @@ function newStore(world, lock) {
 // End-to-end interop: the REAL merged loader over the doubles' durable
 // state. Pin absence/unreadability is presented as a throwing readPin
 // (the spec's interop convention -> pin-unavailable).
-function loadFromWorld(world) {
-  return L.loadSettlementEvidence({
+async function loadFromWorld(world) {
+  return await L.loadSettlementEvidence({
     config: { householdId },
     readDocument: () => (world.durable.doc ? Buffer.from(world.durable.doc) : null),
     readPin: () => {
@@ -386,7 +386,7 @@ test('T1 R0: empty doubles -> unbootstrapped, zero writes; loader unavailable', 
   assert.equal(report.row, 'R0');
   assert.equal(report.disposition, 'unbootstrapped');
   world.noWritesSince(snap);
-  const view = loadFromWorld(world);
+  const view = await loadFromWorld(world);
   assert.equal(view.status, 'unavailable');
   assert.equal(view.reason, 'pin-unavailable');
   const out = await store.outcome({ actorId, operationId: op(1) });
@@ -441,7 +441,7 @@ test('T3 R2: bootstrapped + one commit -> healthy, no writes', async () => {
   assert.equal(report.row, 'R2');
   assert.equal(report.disposition, 'healthy');
   world.noWritesSince(snap);
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
 });
 
 test('T4 R3: crash after pin advance, before journal clear -> committed receipt, J deleted', async () => {
@@ -455,7 +455,7 @@ test('T4 R3: crash after pin advance, before journal clear -> committed receipt,
   assert.equal(receipt.status, 'committed', 'C9 clear failure is non-fatal');
   assert.equal(receipt.revision, 1);
   assert.ok(world.durable.journal, 'leftover journal = shape W5');
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
   // Restart: fresh instance over the same durable maps.
   const store2 = newStore(world);
   const report = noteRow(await store2.reconcile());
@@ -466,7 +466,7 @@ test('T4 R3: crash after pin advance, before journal clear -> committed receipt,
   assert.equal(report.receipt.digest, world.durable.pin.digest);
   assert.equal(world.durable.journal, null, 'journal cleared by R3');
   assert.equal(stateOf(world.durable.doc).revision, 1, 'document revision unchanged');
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
 });
 
 test('T5 R4: crash after journal write / temp write / not-landed rename -> not-committed', async () => {
@@ -481,7 +481,7 @@ test('T5 R4: crash after journal write / temp write / not-landed rename -> not-c
     assert.equal(res.status, 'unknown', faultAt);
     assert.ok(world.durable.journal, 'journal resident (W2)');
     assert.equal(stateOf(world.durable.doc).revision, 0, 'candidate never landed');
-    assert.equal(loadFromWorld(world).status, 'qualified', 'loader serves the pinned base');
+    assert.equal((await loadFromWorld(world)).status, 'qualified', 'loader serves the pinned base');
     const store2 = newStore(world);
     const report = noteRow(await store2.reconcile());
     assert.equal(report.row, 'R4', faultAt);
@@ -490,7 +490,7 @@ test('T5 R4: crash after journal write / temp write / not-landed rename -> not-c
     assert.equal(world.durable.journal, null, 'journal deleted');
     assert.equal(world.durable.temp, null, 'temp discarded');
     assert.equal(world.durable.pin.revision, 0, 'pin untouched');
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
 });
 
@@ -503,7 +503,7 @@ test('T6 R4-torn: garbage journal bytes, H == P -> journal quarantined as invali
   assert.equal(world.durable.journal, null, 'journal removed after quarantine');
   assert.equal(world.durable.quarantine.length, 1, 'torn bytes preserved in quarantine');
   assert.equal(world.durable.quarantine[0].label, 'invalid-journal');
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
 });
 
 test('T7 R5: crash after rename / after backup -> promote exactly once', async () => {
@@ -518,7 +518,7 @@ test('T7 R5: crash after rename / after backup -> promote exactly once', async (
     assert.equal(res.status, 'unknown', faultAt);
     assert.equal(stateOf(world.durable.doc).revision, 1, 'candidate landed');
     assert.equal(world.durable.pin.revision, 0, 'pin still at base (W3/W4)');
-    assert.equal(loadFromWorld(world).reason, 'document-ahead-of-pin');
+    assert.equal((await loadFromWorld(world)).reason, 'document-ahead-of-pin');
     const store2 = newStore(world);
     const report = noteRow(await store2.reconcile());
     assert.equal(report.row, 'R5', faultAt);
@@ -527,7 +527,7 @@ test('T7 R5: crash after rename / after backup -> promote exactly once', async (
     assert.equal(report.revision, 1);
     assert.equal(world.durable.pin.revision, 1, 'pin CAS-advanced');
     assert.equal(world.durable.journal, null, 'journal deleted');
-    const view = loadFromWorld(world);
+    const view = await loadFromWorld(world);
     assert.equal(view.status, 'qualified', 'loader flips to qualified at P+1');
     assert.equal(view.evidence.commitments.length, 1);
     const again = noteRow(await store2.reconcile());
@@ -554,7 +554,7 @@ test('T8 R5-blocked: backup keeps failing -> promotion-pending, pin and J untouc
   assert.equal(report.reason, 'backup-ambiguous');
   assert.equal(world.durable.pin.revision, 0, 'pin untouched');
   assert.ok(world.durable.journal, 'journal untouched');
-  assert.equal(loadFromWorld(world).reason, 'document-ahead-of-pin');
+  assert.equal((await loadFromWorld(world)).reason, 'document-ahead-of-pin');
 });
 
 test('T9 R6: ahead-of-pin forks restore the pinned revision and quarantine', async () => {
@@ -581,13 +581,13 @@ test('T9 R6: ahead-of-pin forks restore the pinned revision and quarantine', asy
       confirmationDigest: p3.confirmationDigest, now: world.clock.now() + 4,
     }).document;
     world.durable.doc = Buffer.from(forged);
-    assert.equal(loadFromWorld(world).reason, 'document-ahead-of-pin');
+    assert.equal((await loadFromWorld(world)).reason, 'document-ahead-of-pin');
     const report = noteRow(await store.reconcile());
     assert.equal(report.row, 'R6');
     assert.equal(report.disposition, 'restored-pinned');
     assert.equal(stateOf(world.durable.doc).revision, 1, 'pinned revision restored');
     assert.ok(world.durable.quarantine.some(q => q.bytes.equals(forged)), 'divergent head quarantined');
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
   // (ii) one ahead with no journal.
   {
@@ -603,12 +603,12 @@ test('T9 R6: ahead-of-pin forks restore the pinned revision and quarantine', asy
       confirmationDigest: p2.confirmationDigest, now: world.clock.now() + 2,
     }).document;
     world.durable.doc = Buffer.from(candidate);
-    assert.equal(loadFromWorld(world).reason, 'document-ahead-of-pin');
+    assert.equal((await loadFromWorld(world)).reason, 'document-ahead-of-pin');
     const report = noteRow(await store.reconcile());
     assert.equal(report.row, 'R6');
     assert.equal(report.disposition, 'restored-pinned');
     assert.equal(stateOf(world.durable.doc).revision, 1);
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
   // (iii) one ahead with J.baseDigest != pin digest.
   {
@@ -628,7 +628,7 @@ test('T9 R6: ahead-of-pin forks restore the pinned revision and quarantine', asy
     assert.equal(report.disposition, 'restored-pinned');
     assert.equal(stateOf(world.durable.doc).revision, 0, 'restored to the pinned genesis');
     assert.equal(world.durable.journal, null);
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
   // (iv) one ahead with the journal's operation not the recorded one.
   {
@@ -653,7 +653,7 @@ test('T9 R6: ahead-of-pin forks restore the pinned revision and quarantine', asy
     assert.equal(report.row, 'R6');
     assert.equal(report.disposition, 'restored-pinned');
     assert.equal(stateOf(world.durable.doc).revision, 0);
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
 });
 
@@ -687,7 +687,7 @@ test('T10 R6-tail: pinned backup corrupted -> recovery-blocked, divergent head l
   assert.equal(report.disposition, 'recovery-blocked');
   assert.ok(world.durable.doc.equals(before), 'divergent head left in place, withheld');
   assert.equal(world.durable.quarantine.length, 0, 'nothing quarantined without a verified restore');
-  assert.equal(loadFromWorld(world).status, 'unavailable');
+  assert.equal((await loadFromWorld(world)).status, 'unavailable');
 });
 
 test('T11 R7: behind-pin, same-revision fork, contract-invalid bytes -> restore', async () => {
@@ -697,12 +697,12 @@ test('T11 R7: behind-pin, same-revision fork, contract-invalid bytes -> restore'
     world.clock.advance(10);
     await commitLink(store, 1);
     world.durable.doc = C.adopt({ householdId });
-    assert.equal(loadFromWorld(world).reason, 'revision-mismatch');
+    assert.equal((await loadFromWorld(world)).reason, 'revision-mismatch');
     const report = noteRow(await store.reconcile());
     assert.equal(report.row, 'R7');
     assert.equal(report.disposition, 'restored-pinned');
     assert.equal(stateOf(world.durable.doc).revision, 1);
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
   // (ii) same revision, different digest (a different valid rev-1 document).
   {
@@ -719,11 +719,11 @@ test('T11 R7: behind-pin, same-revision fork, contract-invalid bytes -> restore'
       confirmationDigest: p9.confirmationDigest, now: world.clock.now() + 2,
     }).document;
     world.durable.doc = Buffer.from(fork);
-    assert.equal(loadFromWorld(world).reason, 'digest-mismatch');
+    assert.equal((await loadFromWorld(world)).reason, 'digest-mismatch');
     const report = noteRow(await store.reconcile());
     assert.equal(report.row, 'R7');
     assert.equal(report.disposition, 'restored-pinned');
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
   // (iii) contract-invalid bytes at the pinned header (tampered amount).
   {
@@ -735,11 +735,11 @@ test('T11 R7: behind-pin, same-revision fork, contract-invalid bytes -> restore'
     );
     assert.ok(!tampered.equals(world.durable.doc), 'tamper changed bytes');
     world.durable.doc = tampered;
-    assert.equal(loadFromWorld(world).reason, 'document-invalid');
+    assert.equal((await loadFromWorld(world)).reason, 'document-invalid');
     const report = noteRow(await store.reconcile());
     assert.equal(report.row, 'R7');
     assert.equal(report.disposition, 'restored-pinned');
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
 });
 
@@ -749,12 +749,12 @@ test('T12 R8: document missing with pin present -> restore; backup also missing 
     world.clock.advance(10);
     await commitLink(store, 1);
     world.durable.doc = null;
-    assert.equal(loadFromWorld(world).reason, 'document-missing');
+    assert.equal((await loadFromWorld(world)).reason, 'document-missing');
     const report = noteRow(await store.reconcile());
     assert.equal(report.row, 'R8');
     assert.equal(report.disposition, 'restored-pinned');
     assert.equal(stateOf(world.durable.doc).revision, 1);
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
   {
     const { world, store } = await bootWorld();
@@ -764,7 +764,7 @@ test('T12 R8: document missing with pin present -> restore; backup also missing 
     assert.equal(report.row, 'R8');
     assert.equal(report.disposition, 'recovery-blocked');
     assert.equal(world.durable.doc, null, 'nothing fabricated');
-    assert.equal(loadFromWorld(world).reason, 'document-missing');
+    assert.equal((await loadFromWorld(world)).reason, 'document-missing');
   }
 });
 
@@ -807,7 +807,7 @@ test('T13: fault injection at each commit pipeline step', async () => {
     const report = noteRow(await newStore(world).reconcile());
     assert.equal(report.row, 'R5');
     assert.equal(report.disposition, 'promoted');
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
   // C6 readback: rename installs garbage -> readback fails -> unknown;
   // reconciler classifies the garbage head as divergent and restores.
@@ -826,7 +826,7 @@ test('T13: fault injection at each commit pipeline step', async () => {
     assert.equal(report.row, 'R7');
     assert.equal(report.disposition, 'restored-pinned');
     assert.equal(stateOf(world.durable.doc).revision, 0);
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
   // C8 pin advance throws: unknown; shape W4 promotable by reconcile.
   {
@@ -842,7 +842,7 @@ test('T13: fault injection at each commit pipeline step', async () => {
     const report = noteRow(await newStore(world).reconcile());
     assert.equal(report.row, 'R5');
     assert.equal(report.disposition, 'promoted');
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
   // C8 pin advance returns false (spurious): abort, table re-run promotes,
   // commit answers unknown/pin-moved; an identical retry returns the receipt.
@@ -893,7 +893,7 @@ test('correction 1: C8 CAS is against the frozen base — an external winner is 
   const report = noteRow(await newStore(world).reconcile());
   assert.equal(report.disposition, 'recovery-blocked');
   assert.deepEqual(world.durable.pin, foreign);
-  assert.equal(loadFromWorld(world).status, 'unavailable');
+  assert.equal((await loadFromWorld(world)).status, 'unavailable');
 });
 
 test('T14: identical retry of a committed operation -> already-recorded receipt, reads only', async () => {
@@ -1015,7 +1015,7 @@ test('T16: two confirms prepared against one base -> exactly one commits; loser 
   });
   assert.equal(b2.status, 'committed');
   assert.equal(b2.revision, 2);
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
 });
 
 test('T17: backup down at C7 -> unknown, commits pause; healed -> promote exactly once', async () => {
@@ -1028,7 +1028,7 @@ test('T17: backup down at C7 -> unknown, commits pause; healed -> promote exactl
   });
   assert.equal(res.status, 'unknown');
   assert.equal(res.reason, 'backup-ambiguous');
-  assert.equal(loadFromWorld(world).reason, 'document-ahead-of-pin');
+  assert.equal((await loadFromWorld(world)).reason, 'document-ahead-of-pin');
   // A different operation cannot commit behind the resident journal.
   const prep2 = C.prepare(C.adopt({ householdId }), {
     householdId, actorId, operationId: op(2), command: linkCmd({ txRef: tx(2) }),
@@ -1048,7 +1048,7 @@ test('T17: backup down at C7 -> unknown, commits pause; healed -> promote exactl
   assert.equal(stateOf(world.durable.doc).revision, 1, 'exactly one revision ever results');
   assert.equal(world.durable.pin.revision, 1);
   assert.equal(world.durable.journal, null);
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
 });
 
 test('T18: preview expired before commit -> rejected/preview-expired, zero durable writes', async () => {
@@ -1079,7 +1079,7 @@ test('T19: bootstrap on empty doubles -> consistent genesis; second bootstrap re
     revision: 0, digest: pinOf(genesis).digest, timestamp: T0,
   });
   assert.equal(world.durable.backups.size, 1, 'genesis backup stored');
-  const view = loadFromWorld(world);
+  const view = await loadFromWorld(world);
   assert.equal(view.status, 'qualified');
   assert.deepEqual(view.evidence, { commitments: [] }, 'genuinely empty evidence');
   const snap = snapshotWorld(world);
@@ -1102,7 +1102,7 @@ test('T20: interrupted bootstrap -> reconcile R1 recovery-blocked; bootstrap sti
   assert.equal(report.disposition, 'recovery-blocked');
   const again = await newStore(world).bootstrap();
   assert.equal(again.status, 'rejected', 'no silent re-genesis over traces');
-  assert.equal(loadFromWorld(world).status, 'unavailable');
+  assert.equal((await loadFromWorld(world)).status, 'unavailable');
 });
 
 // === Loader-interop matrix ================================================
@@ -1190,7 +1190,7 @@ test('T21: interop sweep — every writer shape through the real loader, before/
     world.clock.advance(10);
     await commitLink(store, 1);
     let reads = 0;
-    const view = L.loadSettlementEvidence({
+    const view = await L.loadSettlementEvidence({
       config: { householdId },
       readDocument: () => {
         reads++;
@@ -1205,7 +1205,7 @@ test('T21: interop sweep — every writer shape through the real loader, before/
     cases.push(['W13-checked-inline', world, store, ['qualified', null], ['qualified', null]]);
   }
   for (const [name, world, store, before, after] of cases) {
-    const b = loadFromWorld(world);
+    const b = await loadFromWorld(world);
     assert.equal(b.status, before[0], name + ' before');
     if (before[1]) assert.equal(b.reason, before[1], name + ' before reason');
     if (b.status === 'qualified') {
@@ -1215,7 +1215,7 @@ test('T21: interop sweep — every writer shape through the real loader, before/
         name + ': qualified evidence comes from the pinned document');
     }
     noteRow(await store.reconcile());
-    const a = loadFromWorld(world);
+    const a = await loadFromWorld(world);
     assert.equal(a.status, after[0], name + ' after');
     if (after[1]) assert.equal(a.reason, after[1], name + ' after reason');
   }
@@ -1288,7 +1288,7 @@ test('T23: concurrent stale reconciler — CAS defeats the stale advance; exactl
   const after = noteRow(await storeA.reconcile());
   assert.equal(after.row, 'R2');
   assert.equal(after.disposition, 'healthy');
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
 });
 
 test('T24: pin unreachable -> commit refuses with zero writes; reconcile R1; outcome unknown', async () => {
@@ -1379,14 +1379,14 @@ test('T26: fork-prefix — a rewritten earlier operation defeats promotion; R6 r
   };
   world.durable.doc = Buffer.from(forged);
   world.durable.journal = Buffer.from(JSON.stringify(j));
-  assert.equal(loadFromWorld(world).reason, 'document-ahead-of-pin');
+  assert.equal((await loadFromWorld(world)).reason, 'document-ahead-of-pin');
   const report = noteRow(await store.reconcile());
   assert.equal(report.row, 'R6', 'prefix rewrite fails the R5 proof at step 5');
   assert.equal(report.disposition, 'restored-pinned');
   assert.equal(world.durable.pin.revision, 1, 'promotion never occurred');
   assert.ok(world.durable.doc.equals(pinned), 'pinned revision restored');
   assert.ok(world.durable.quarantine.some(q => q.bytes.equals(forged)), 'fork quarantined');
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
 });
 
 test('T27 (condition 7): two factory instances sharing adapters and lock serialize commits', async () => {
@@ -1417,7 +1417,7 @@ test('T27 (condition 7): two factory instances sharing adapters and lock seriali
   assert.equal(stateOf(world.durable.doc).revision, 2, 'no lost update, no fork');
   assert.equal(world.durable.pin.revision, 2);
   assert.equal(world.durable.journal, null);
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
   // Alternating instances continue coherently on the shared state.
   world.clock.advance(10);
   const loser = ra.status === 'conflict' ? { store: storeA, n: 2 } : { store: storeB, n: 3 };
@@ -1429,7 +1429,7 @@ test('T27 (condition 7): two factory instances sharing adapters and lock seriali
   });
   assert.equal(done.status, 'committed');
   assert.equal(done.revision, 3);
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
 });
 
 test('correction 2: phantom R3 receipt — journal matching the head cannot invent a receipt', async () => {
@@ -1463,7 +1463,7 @@ test('correction 2: phantom R3 receipt — journal matching the head cannot inve
   const out = await store.outcome({ actorId, operationId: op(77) });
   assert.equal(out.status, 'unknown');
   assert.equal(stateOf(world.durable.doc).revision, 1, 'ledger untouched');
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
 });
 
 test('correction 3: receipts name the ORIGINAL revision/digest after later commits', async () => {
@@ -1532,7 +1532,7 @@ test('correction 5: journal write durable-but-ack-lost -> unknown, resolved from
   assert.equal(world.counts.journalWrite, writesBefore + 1,
     'exactly one fresh journal write, after the reconciler cleared the old one');
   assert.equal(world.durable.journal, null);
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
 });
 
 test('F-B/F3: backup ack validation at C7 and manifest-hit binding at promotion', async () => {
@@ -1555,7 +1555,7 @@ test('F-B/F3: backup ack validation at C7 and manifest-hit binding at promotion'
     assert.equal(report.row, 'R5', mode);
     assert.equal(report.disposition, 'promoted', mode);
     assert.equal(world.counts.backupPut, putsBefore, mode + ': manifest hit, no re-put');
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
   // A malformed manifest entry is NOT a hit: promotion must put.
   {
@@ -1629,7 +1629,7 @@ test('condition 10: restore verifies readback — a swapped install is recovery-
   assert.equal(report.row, 'R7');
   assert.equal(report.disposition, 'recovery-blocked');
   assert.equal(report.reason, 'restore-readback-failed');
-  assert.equal(loadFromWorld(world).status, 'unavailable', 'no false restored claim');
+  assert.equal((await loadFromWorld(world)).status, 'unavailable', 'no false restored claim');
 });
 
 test('condition 10 / F-D: quarantine failure blocks the overwrite; divergent bytes preserved', async () => {
@@ -1646,7 +1646,7 @@ test('condition 10 / F-D: quarantine failure blocks the overwrite; divergent byt
   // With quarantine healthy again the restore proceeds.
   const healed = noteRow(await store.reconcile());
   assert.equal(healed.disposition, 'restored-pinned');
-  assert.equal(loadFromWorld(world).status, 'qualified');
+  assert.equal((await loadFromWorld(world)).status, 'qualified');
 });
 
 test('coverage: every reconciler row R0-R8 was exercised', () => {
@@ -1988,7 +1988,7 @@ test('B1 promotion controls: literal false re-runs the table; a landed advance w
     assert.equal(report.disposition, 'promoted');
     assert.equal(world.durable.pin.revision, 1);
     assert.equal(world.durable.journal, null);
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
 });
 
@@ -2026,7 +2026,7 @@ test('B1 bootstrap controls: literal false -> pin-moved; landed advance with a l
     const report = noteRow(await newStore(world).reconcile());
     assert.equal(report.row, 'R2');
     assert.equal(report.disposition, 'healthy');
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
 });
 
@@ -2182,7 +2182,7 @@ test('B3: an unavailable or malformed manifest never selects a destructive row (
     const healed = noteRow(await store.reconcile());
     assert.equal(healed.row, 'R7');
     assert.equal(healed.disposition, 'restored-pinned');
-    assert.equal(loadFromWorld(world).status, 'qualified');
+    assert.equal((await loadFromWorld(world)).status, 'qualified');
   }
   // R6 — head ahead of the pin, manifest read throws.
   {

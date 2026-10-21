@@ -15,14 +15,25 @@
 // outcome onto a copy of the served object.
 //
 // Default-inactive: constructed with no dependency, the serving is
-// inactive — `attach` returns the served object itself, untouched (no
-// fields added, no reads performed), so production output stays
+// inactive — `attach` resolves to the served object itself, untouched
+// (no fields added, no reads performed), so production output stays
 // byte-identical to the pre-seam behaviour until a separately approved
 // wiring supplies a real reader dependency. The dependency is fixed at
 // construction time (server composition); nothing about a request —
 // URL, headers, browser input, or canonical data fields — can select
 // readers or supply evidence, and `attach` takes only the served
 // object.
+//
+// `attach` is async because the loader's acquisitions are: a reader
+// may return a Promise (the production adapters' read methods do), and
+// the loader awaits it. Before any acquisition, the active attach
+// snapshots the top-level served object and strips the seam-owned
+// settlement fields, so the projection is computed from the input as
+// it stood at attach time — a caller's later edit cannot move it, and
+// no inherited settlement field can survive acquisition. The snapshot
+// is top-level only: nested canonical structures stay shared by
+// reference, as they do in the served composition itself, and the seam
+// never writes into them.
 //
 // Fail-closed: a supplied-but-partial or malformed dependency is a
 // configured state, never absence. Every classification is delegated
@@ -53,13 +64,19 @@ function isRecord(value) {
 
 const invalidConfiguration = () => ({ status: 'unavailable', reason: 'invalid-configuration' });
 
-// Project one loader outcome onto a copy of the served object. Both
-// settlement fields are stripped from the source first: the seam owns
-// them, so nothing a previous stage (or a hostile canonical field)
-// placed there can survive into the output under a new status.
-function project(served, outcome) {
+// Snapshot the top-level served object with both settlement fields
+// stripped: the seam owns them, so nothing a previous stage (or a
+// hostile canonical field) placed there can survive into the output
+// under a new status. Top-level only — nested canonical structures
+// stay shared by reference.
+function stripServed(served) {
   const source = served && typeof served === 'object' ? served : {};
   const { settlementEvidenceStatus: _priorStatus, settlementEvidence: _priorEvidence, ...rest } = source;
+  return rest;
+}
+
+// Project one loader outcome onto a stripped served snapshot.
+function projectOnto(rest, outcome) {
   if (outcome && outcome.status === 'qualified' && outcome.evidence !== undefined) {
     return {
       ...rest,
@@ -81,19 +98,23 @@ function project(served, outcome) {
   return { ...rest, settlementEvidenceStatus: invalidConfiguration() };
 }
 
+function project(served, outcome) {
+  return projectOnto(stripServed(served), outcome);
+}
+
 function createSettlementEvidenceServing(dependency) {
-  // No dependency: the production default. Inactive — attach is the
-  // identity, so served output is byte-identical and no reader exists
-  // to invoke.
+  // No dependency: the production default. Inactive — attach resolves
+  // to the served object itself, so served output is byte-identical
+  // and no reader exists to invoke.
   if (dependency === undefined || dependency === null) {
-    return Object.freeze({ active: false, attach: served => served });
+    return Object.freeze({ active: false, attach: async served => served });
   }
   // A supplied dependency that is not a plain record is malformed
   // configuration: fail closed on every serve, never as unconfigured.
   if (!isRecord(dependency)) {
     return Object.freeze({
       active: true,
-      attach: served => project(served, invalidConfiguration()),
+      attach: async served => project(served, invalidConfiguration()),
     });
   }
   let householdId; let readDocument; let readPin; let pin;
@@ -102,7 +123,7 @@ function createSettlementEvidenceServing(dependency) {
   } catch {
     return Object.freeze({
       active: true,
-      attach: served => project(served, invalidConfiguration()),
+      attach: async served => project(served, invalidConfiguration()),
     });
   }
   // A record carrying none of the load-bearing pieces is partial
@@ -113,11 +134,15 @@ function createSettlementEvidenceServing(dependency) {
     && readPin === undefined && pin === undefined;
   return Object.freeze({
     active: true,
-    attach(served) {
-      if (empty) return project(served, invalidConfiguration());
+    async attach(served) {
+      // Snapshot and strip BEFORE acquisition: the loader's reads
+      // suspend, and the projection must be computed from the served
+      // object as it stood at attach time.
+      const rest = stripServed(served);
+      if (empty) return projectOnto(rest, invalidConfiguration());
       let outcome;
       try {
-        outcome = loadSettlementEvidence({
+        outcome = await loadSettlementEvidence({
           config: pin !== undefined ? { householdId, pin } : { householdId },
           readDocument,
           readPin,
@@ -128,7 +153,7 @@ function createSettlementEvidenceServing(dependency) {
         // itself — the seam withholds instead.
         outcome = invalidConfiguration();
       }
-      return project(served, outcome);
+      return projectOnto(rest, outcome);
     },
   });
 }

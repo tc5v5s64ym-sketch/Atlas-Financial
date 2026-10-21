@@ -58,6 +58,12 @@
 // while the unconfigured controls (inactive identity is meaningless
 // without the module, but the booted-server no-fields control) pass —
 // the same failing-before shape the loader suite used.
+//
+// Follow-on (async acquisition): `attach` and the loader are async —
+// readers may return Promises — so the suites' call sites await, the
+// production wiring returns await on the attach inside its
+// try/finally, and section 8 pins the composition the seam exists
+// for: the merged adapters' real async read methods.
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -196,7 +202,10 @@ async function makeStoreFixture(commands) {
     });
     assert.equal(receipt.status, 'committed', 'synthetic link commits through the store');
   }
-  return { dir, store, transport, documentFile: fileAdapter.paths.documentFile };
+  return {
+    dir, store, transport, documentFile: fileAdapter.paths.documentFile,
+    fileAdapter, objectAdapter,
+  };
 }
 
 // The read-side dependency the bridge consumes, over a fixture's
@@ -272,13 +281,13 @@ const treeHash = root => {
 
 /* ------------------------------------------- 1. default-inactive */
 
-test('inactive: no dependency returns the served object itself, untouched', () => {
+test('inactive: no dependency returns the served object itself, untouched', async () => {
   const { createSettlementEvidenceServing } = servingModule();
   for (const dep of [undefined, null]) {
     const serving = createSettlementEvidenceServing(dep);
     assert.equal(serving.active, false);
     const served = Object.freeze({ plan: { a: 1 }, meta: {} });
-    assert.equal(serving.attach(served), served, 'attach is the identity');
+    assert.equal(await serving.attach(served), served, 'attach is the identity');
     assert.deepEqual(Object.keys(served), ['plan', 'meta'], 'no fields added');
   }
   const serving = createSettlementEvidenceServing();
@@ -300,6 +309,27 @@ test('server wiring: the shared return point passes through the bridge, construc
   const attachAt = body.indexOf('.attach(');
   assert.ok(serveAt >= 0 && attachAt > serveAt,
     'the attach happens inside servedAtlasData, after ServerLiveRefresh.serve');
+  // Listener lifetime under the async attach: the return must AWAIT
+  // the attach inside the try, so the finally's listener removal runs
+  // only after the attach has settled — exactly the ordering the
+  // synchronous attach had. A bare `return attach(...)` would strip
+  // the abort listeners while an acquisition was still in flight.
+  assert.match(body, /return await [^;]*\.attach\(/,
+    'servedAtlasData returns await on the attach, inside the try');
+  assert.ok(body.includes("req?.removeListener('aborted', cancel)"),
+    'the finally removes the request abort listener');
+  assert.ok(body.includes("res?.removeListener('close', cancel)"),
+    'the finally removes the response close listener');
+  // Every consumer of the shared helper awaits it (the packet builder,
+  // the /data.json route, the Talk path): no call site consumes the
+  // served object synchronously.
+  const callLines = source.split('\n')
+    .filter(line => line.includes('servedAtlasData(') && !line.includes('function servedAtlasData'));
+  assert.equal(callLines.length, 3, 'three servedAtlasData consumers');
+  for (const line of callLines) {
+    assert.ok(line.includes('await servedAtlasData('),
+      'consumer awaits servedAtlasData: ' + line.trim());
+  }
 });
 
 /* ------------------------------------------------- 2. qualified */
@@ -310,12 +340,12 @@ test('qualified: store-committed evidence reaches the served object through the 
   const dep = fixtureDependency(fixture);
   const serving = createSettlementEvidenceServing(dep);
   const served = { plan: { marker: true } };
-  const out = serving.attach(served);
+  const out = await serving.attach(served);
   assert.notEqual(out, served, 'an active serving returns a new object');
   assert.deepEqual(out.settlementEvidenceStatus, { status: 'qualified' });
   // The evidence is exactly the unchanged loader's projection over the
   // same readers — the bridge adds and removes nothing.
-  const direct = L.loadSettlementEvidence({
+  const direct = await L.loadSettlementEvidence({
     config: { householdId }, readDocument: dep.readDocument, readPin: dep.readPin,
   });
   assert.equal(direct.status, 'qualified');
@@ -345,7 +375,10 @@ test('fresh process: a separate node process reads the durable fixture as qualif
         return { revision: pin.revision, digest: pin.digest };
       },
     });
-    process.stdout.write(JSON.stringify(serving.attach({ probe: true })));
+    (async () => {
+      const out = await serving.attach({ probe: true });
+      process.stdout.write(JSON.stringify(out));
+    })();
   `);
   const pinFile = fixture.transport.fileFor(NS + '/pin.json');
   const stdout = execFileSync(process.execPath, [probe, fixture.documentFile, pinFile, householdId], {
@@ -367,9 +400,9 @@ test('packet: bridge-qualified output drives Forecast relief exactly like the lo
   const serving = createSettlementEvidenceServing(dep);
   const x = fx.fixture();
   x.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'commitment', id: 'near' }];
-  const bridged = serving.attach(servedOf(x));
+  const bridged = await serving.attach(servedOf(x));
   const packet = packetFor(bridged);
-  const direct = L.loadSettlementEvidence({
+  const direct = await L.loadSettlementEvidence({
     config: { householdId }, readDocument: dep.readDocument, readPin: dep.readPin,
   });
   const expected = directRecommend(x, direct.evidence);
@@ -396,8 +429,8 @@ test('packet: full relief through the bridge matches the direct oracle', async (
   const serving = createSettlementEvidenceServing(dep);
   const x = fx.fixture();
   x.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'commitment', id: 'near' }];
-  const packet = packetFor(serving.attach(servedOf(x)));
-  const direct = L.loadSettlementEvidence({
+  const packet = packetFor(await serving.attach(servedOf(x)));
+  const direct = await L.loadSettlementEvidence({
     config: { householdId }, readDocument: dep.readDocument, readPin: dep.readPin,
   });
   assert.equal(direct.status, 'qualified');
@@ -415,8 +448,8 @@ test('retries: repeated attaches keep receipt identity with no duplicate deducti
   const serving = createSettlementEvidenceServing(fixtureDependency(fixture));
   const x = fx.fixture();
   x.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'commitment', id: 'near' }];
-  const first = packetFor(serving.attach(servedOf(x)));
-  const second = packetFor(serving.attach(servedOf(x)));
+  const first = packetFor(await serving.attach(servedOf(x)));
+  const second = packetFor(await serving.attach(servedOf(x)));
   assert.deepEqual(second, first, 'a retried read publishes the identical packet');
   const majorOf = p => (p.forecast.majorPlanFunding.items || [])
     .find(item => item.id === 'near' || /first club/.test(item.label || ''));
@@ -432,7 +465,7 @@ test('pin-unavailable: a throwing pin reader withholds with the loader reason, d
   const serving = createSettlementEvidenceServing(dep);
   const x = fx.fixture();
   x.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'commitment', id: 'near' }];
-  const out = serving.attach(servedOf(x));
+  const out = await serving.attach(servedOf(x));
   assert.deepEqual(out.settlementEvidenceStatus, { status: 'unavailable', reason: 'pin-unavailable' });
   assert.ok(!('settlementEvidence' in out), 'an unavailable outcome carries no evidence');
   const packet = packetFor(out);
@@ -445,15 +478,15 @@ test('document-missing: removing the committed document withholds distinctly and
   const { createSettlementEvidenceServing } = servingModule();
   const fixture = await makeStoreFixture([linkCmd({})]);
   const serving = createSettlementEvidenceServing(fixtureDependency(fixture));
-  const before = serving.attach({ plan: {} });
+  const before = await serving.attach({ plan: {} });
   assert.equal(before.settlementEvidenceStatus.status, 'qualified');
   const bytes = fs.readFileSync(fixture.documentFile);
   fs.rmSync(fixture.documentFile);
-  const missing = serving.attach({ plan: {} });
+  const missing = await serving.attach({ plan: {} });
   assert.deepEqual(missing.settlementEvidenceStatus, { status: 'unavailable', reason: 'document-missing' });
   assert.ok(!('settlementEvidence' in missing), 'prior evidence is removed, never carried stale');
   fs.writeFileSync(fixture.documentFile, bytes);
-  const recovered = serving.attach({ plan: {} });
+  const recovered = await serving.attach({ plan: {} });
   assert.equal(recovered.settlementEvidenceStatus.status, 'qualified', 'a later qualified read recovers');
   assert.deepEqual(recovered.settlementEvidence, before.settlementEvidence);
 });
@@ -465,11 +498,11 @@ test('digest-mismatch: a fork document at the pinned revision withholds distinct
   const serving = createSettlementEvidenceServing(fixtureDependency(fixture));
   const genuine = fs.readFileSync(fixture.documentFile);
   fs.writeFileSync(fixture.documentFile, fs.readFileSync(fork.documentFile));
-  const out = serving.attach({ plan: {} });
+  const out = await serving.attach({ plan: {} });
   assert.deepEqual(out.settlementEvidenceStatus, { status: 'unavailable', reason: 'digest-mismatch' });
   assert.ok(!('settlementEvidence' in out));
   fs.writeFileSync(fixture.documentFile, genuine);
-  assert.equal(serving.attach({ plan: {} }).settlementEvidenceStatus.status, 'qualified');
+  assert.equal((await serving.attach({ plan: {} })).settlementEvidenceStatus.status, 'qualified');
 });
 
 test('partial or malformed dependency configuration fails closed, never unconfigured', async () => {
@@ -487,7 +520,7 @@ test('partial or malformed dependency configuration fails closed, never unconfig
   ];
   for (const [label, dep] of cases) {
     const serving = createSettlementEvidenceServing(dep);
-    const out = serving.attach({ plan: {} });
+    const out = await serving.attach({ plan: {} });
     assert.deepEqual(out.settlementEvidenceStatus,
       { status: 'unavailable', reason: 'invalid-configuration' }, label);
     assert.ok(!('settlementEvidence' in out), label + ': no evidence');
@@ -504,9 +537,9 @@ test('stability: the loader’s double read performs two real reads per acquisit
     readDocument: () => { reads += 1; return fs.readFileSync(fixture.documentFile); },
   });
   const serving = createSettlementEvidenceServing(dep);
-  assert.equal(serving.attach({ plan: {} }).settlementEvidenceStatus.status, 'qualified');
+  assert.equal((await serving.attach({ plan: {} })).settlementEvidenceStatus.status, 'qualified');
   assert.equal(reads, 2, 'verification read + stability re-read, both real');
-  assert.equal(serving.attach({ plan: {} }).settlementEvidenceStatus.status, 'qualified');
+  assert.equal((await serving.attach({ plan: {} })).settlementEvidenceStatus.status, 'qualified');
   assert.equal(reads, 4, 'no acquisition is cached across requests');
 });
 
@@ -524,7 +557,7 @@ test('stability: bytes that move between the two reads are document-changed', as
     },
   });
   const serving = createSettlementEvidenceServing(dep);
-  const out = serving.attach({ plan: {} });
+  const out = await serving.attach({ plan: {} });
   assert.deepEqual(out.settlementEvidenceStatus, { status: 'unavailable', reason: 'document-changed' });
   assert.ok(!('settlementEvidence' in out));
 });
@@ -551,7 +584,7 @@ test('concurrency: parallel attaches are independent, and a later commit is seen
     actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
   });
   assert.equal(receipt.status, 'committed');
-  const next = serving.attach({ plan: {} });
+  const next = await serving.attach({ plan: {} });
   assert.equal(next.settlementEvidence.commitments.length, 2, 'the new revision is acquired fresh');
 });
 
@@ -577,7 +610,7 @@ test('concurrency: two attaches over ONE shared served object stay isolated in e
   outQ.settlementEvidence.commitments.push({ goalId: 'commitment:fake', links: [] });
   outQ.settlementEvidence.commitments[0].links[0].assignedCents = 1;
   assert.deepEqual(outU.settlementEvidenceStatus, { status: 'unavailable', reason: 'pin-unavailable' });
-  const later = qualified.attach(shared);
+  const later = await qualified.attach(shared);
   assert.equal(later.settlementEvidenceStatus.status, 'qualified');
   assert.equal(later.settlementEvidence.commitments.length, 1);
   assert.equal(later.settlementEvidence.commitments[0].links[0].assignedCents, 2500);
@@ -606,7 +639,7 @@ test('stability: the bridge supplies no snapshot of its own — the injected rea
   });
   const s1 = createSettlementEvidenceServing(fresh);
   assert.equal(freshCalls, 0, 'construction performs no acquisition');
-  assert.equal(s1.attach({ plan: {} }).settlementEvidenceStatus.status, 'qualified');
+  assert.equal((await s1.attach({ plan: {} })).settlementEvidenceStatus.status, 'qualified');
   assert.equal(freshCalls, 2, 'exactly two reader invocations per attach — verification + stability');
   // A reader that hands back ONE cached buffer and mutates it in
   // place between the loader's reads: the loader's first-read
@@ -626,7 +659,7 @@ test('stability: the bridge supplies no snapshot of its own — the injected rea
       return cached;
     },
   });
-  const out = createSettlementEvidenceServing(caching).attach({ plan: {} });
+  const out = await createSettlementEvidenceServing(caching).attach({ plan: {} });
   assert.equal(cachedCalls, 2);
   assert.deepEqual(out.settlementEvidenceStatus, { status: 'unavailable', reason: 'document-changed' });
   assert.ok(!('settlementEvidence' in out));
@@ -656,12 +689,12 @@ test('hostile served fields cannot smuggle evidence or select readers', async ()
   // Under an unavailable dependency the smuggled fields vanish.
   const down = createSettlementEvidenceServing(
     fixtureDependency(fixture, { readPin: () => { throw new Error('down'); } }));
-  const outDown = down.attach(hostile);
+  const outDown = await down.attach(hostile);
   assert.deepEqual(outDown.settlementEvidenceStatus, { status: 'unavailable', reason: 'pin-unavailable' });
   assert.ok(!('settlementEvidence' in outDown), 'smuggled evidence does not survive projection');
   // Under a qualified dependency the evidence is the loader's, not the input's.
   const up = createSettlementEvidenceServing(fixtureDependency(fixture));
-  const outUp = up.attach(hostile);
+  const outUp = await up.attach(hostile);
   assert.equal(outUp.settlementEvidenceStatus.status, 'qualified');
   assert.notDeepEqual(outUp.settlementEvidence, smuggled);
   assert.equal(outUp.settlementEvidence.commitments[0].links[0].operationId, op(1),
@@ -672,7 +705,7 @@ test('served output carries no raw document, history, identity or configuration'
   const { createSettlementEvidenceServing } = servingModule();
   const fixture = await makeStoreFixture([linkCmd({})]);
   const serving = createSettlementEvidenceServing(fixtureDependency(fixture));
-  const out = serving.attach({ plan: {} });
+  const out = await serving.attach({ plan: {} });
   const text = JSON.stringify(out);
   assert.ok(!text.includes(householdId), 'no household identity in served output');
   assert.ok(!text.includes('"operations"'), 'no raw document operation history');
@@ -687,11 +720,11 @@ test('serving performs no store writes of any kind', async () => {
   const fixture = await makeStoreFixture([linkCmd({})]);
   const serving = createSettlementEvidenceServing(fixtureDependency(fixture));
   const beforeHash = treeHash(fixture.dir);
-  serving.attach({ plan: {} });
-  serving.attach({ plan: {} });
+  await serving.attach({ plan: {} });
+  await serving.attach({ plan: {} });
   const down = createSettlementEvidenceServing(
     fixtureDependency(fixture, { readPin: () => { throw new Error('down'); } }));
-  down.attach({ plan: {} });
+  await down.attach({ plan: {} });
   assert.equal(treeHash(fixture.dir), beforeHash,
     'acquisition (qualified or failed) leaves every durable byte untouched');
 });
@@ -701,9 +734,260 @@ test('attach never mutates the served input, even when frozen', async () => {
   const fixture = await makeStoreFixture([linkCmd({})]);
   const serving = createSettlementEvidenceServing(fixtureDependency(fixture));
   const served = Object.freeze({ plan: Object.freeze({ a: 1 }), meta: Object.freeze({}) });
-  const out = serving.attach(served);
+  const out = await serving.attach(served);
   assert.equal(out.settlementEvidenceStatus.status, 'qualified');
   assert.deepEqual(Object.keys(served), ['plan', 'meta'], 'the frozen input gained no fields');
+});
+
+/* --------------------- 8. async acquisition through the real adapters */
+// The pins above drive the bridge with hand-rolled synchronous
+// readers (the sync composition). The production readers this seam
+// exists for are the merged adapters' ASYNC read methods — the study
+// (atlas-080/async-study) reproduced the unchanged synchronous loader
+// misclassifying a healthy store through them (GAP-1..7). These pins
+// close that gap at the composition level: the loader's timing changed
+// (readers may return Promises), nothing else did.
+
+test('adapter composition: the real async adapter reads qualify through the bridge', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const fixture = await makeStoreFixture([linkCmd({})]);
+  let docReads = 0; let pinReads = 0;
+  const serving = createSettlementEvidenceServing({
+    householdId,
+    readDocument: () => { docReads += 1; return fixture.fileAdapter.documentStore.read(); },
+    readPin: () => { pinReads += 1; return fixture.objectAdapter.pinStore.read(); },
+  });
+  const out = await serving.attach({ plan: {} });
+  assert.deepEqual(out.settlementEvidenceStatus, { status: 'qualified' });
+  assert.equal(pinReads, 1, 'one pin acquisition through pinStore.read');
+  assert.equal(docReads, 2, 'two genuine document acquisitions through documentStore.read');
+  assert.equal(out.settlementEvidence.commitments.length, 1);
+  assert.equal(out.settlementEvidence.commitments[0].goalId, 'commitment:near');
+  // The projection is identical to the synchronous control composition
+  // over the same durable state — timing changed, evidence did not.
+  const control = createSettlementEvidenceServing(fixtureDependency(fixture));
+  const controlOut = await control.attach({ plan: {} });
+  assert.deepEqual(out.settlementEvidence, controlOut.settlementEvidence,
+    'adapter-backed evidence deep-equals the sync control projection');
+});
+
+test('adapter composition: a fresh process reads the durable fixture through the adapters as qualified', async () => {
+  const fixture = await makeStoreFixture([linkCmd({})]);
+  const probe = path.join(fixture.dir, 'adapter-probe.js');
+  fs.writeFileSync(probe, `
+    const fs = require('node:fs'), path = require('node:path');
+    const ROOT = process.env.ATLAS_TEST_APP_ROOT;
+    const FA = require(path.join(ROOT, 'scripts/settlement-evidence-file-adapter.js'));
+    const OA = require(path.join(ROOT, 'scripts/settlement-evidence-object-adapter.js'));
+    const S = require(path.join(ROOT, 'scripts/settlement-evidence-serving.js'));
+    const [storeDir, vaultDir, householdId, namespace] = process.argv.slice(2);
+    // Read-only mirror of the suite transport's durable layout
+    // (objects as JSON records under <vault>/objects/<base64url>.json);
+    // pinStore.read performs transport.read and nothing else.
+    const transport = {
+      async read(key) {
+        const file = path.join(vaultDir, 'objects',
+          Buffer.from(key, 'utf8').toString('base64url') + '.json');
+        try {
+          const rec = JSON.parse(fs.readFileSync(file, 'utf8'));
+          return { bytes: Buffer.from(rec.bytesB64, 'base64'), version: rec.version, metadata: { ...rec.metadata } };
+        } catch { return null; }
+      },
+      async create() { throw new Error('read-only probe transport'); },
+      async replace() { throw new Error('read-only probe transport'); },
+      async list() { throw new Error('read-only probe transport'); },
+    };
+    const fileAdapter = FA.createSettlementEvidenceFileAdapter(storeDir);
+    const objectAdapter = OA.createSettlementEvidenceObjectAdapter({
+      householdId, namespace, transport,
+      encrypt: async bytes => Buffer.concat([Buffer.from('synthetic-enc:'), Buffer.from(bytes).reverse()]),
+    });
+    const serving = S.createSettlementEvidenceServing({
+      householdId,
+      readDocument: () => fileAdapter.documentStore.read(),
+      readPin: () => objectAdapter.pinStore.read(),
+    });
+    (async () => {
+      const out = await serving.attach({ probe: true });
+      process.stdout.write(JSON.stringify(out));
+    })();
+  `);
+  const stdout = execFileSync(process.execPath,
+    [probe, fixture.dir, path.join(fixture.dir, 'vault'), householdId, NS], {
+      env: { ...process.env, ATLAS_TEST_APP_ROOT: ROOT }, encoding: 'utf8',
+    });
+  const out = JSON.parse(stdout);
+  assert.deepEqual(out.settlementEvidenceStatus, { status: 'qualified' });
+  assert.equal(out.settlementEvidence.commitments.length, 1);
+  assert.equal(out.probe, true);
+});
+
+test('adapter composition: pin advancement is followed; a superseded static pin withholds', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const fixture = await makeStoreFixture([linkCmd({})]);
+  const serving = createSettlementEvidenceServing({
+    householdId,
+    readDocument: () => fixture.fileAdapter.documentStore.read(),
+    readPin: () => fixture.objectAdapter.pinStore.read(),
+  });
+  const first = await serving.attach({ plan: {} });
+  assert.equal(first.settlementEvidence.commitments.length, 1);
+  const pinV1 = await fixture.objectAdapter.pinStore.read();
+  const prepared = await fixture.store.prepare({
+    actorId, operationId: op(2),
+    command: linkCmd({ goalId: 'commitment:far', txRef: tx(2), assignedCents: 1000 }),
+  });
+  const receipt = await fixture.store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(receipt.status, 'committed');
+  const advanced = await serving.attach({ plan: {} });
+  assert.equal(advanced.settlementEvidenceStatus.status, 'qualified');
+  assert.equal(advanced.settlementEvidence.commitments.length, 2,
+    'the adapter-backed attach follows the pin to the new revision');
+  // A dependency still carrying the superseded pin pair against the
+  // advanced document withholds in the mismatch family — never a
+  // mixed-state qualification.
+  const stale = createSettlementEvidenceServing({
+    householdId,
+    pin: { revision: pinV1.revision, digest: pinV1.digest },
+    readDocument: () => fixture.fileAdapter.documentStore.read(),
+  });
+  const staleOut = await stale.attach({ plan: {} });
+  assert.deepEqual(staleOut.settlementEvidenceStatus,
+    { status: 'unavailable', reason: 'document-ahead-of-pin' });
+  assert.ok(!('settlementEvidence' in staleOut));
+});
+
+test('adapter rejection: rejected adapter reads project as withheld statuses, no evidence, no escapes', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const fixture = await makeStoreFixture([linkCmd({})]);
+  const escaped = [];
+  const guard = reason => { escaped.push(String(reason && reason.message || reason)); };
+  process.on('unhandledRejection', guard);
+  try {
+    const pinDown = createSettlementEvidenceServing({
+      householdId,
+      readDocument: () => fixture.fileAdapter.documentStore.read(),
+      readPin: () => Promise.reject(new Error('pin transport unreachable')),
+    });
+    const outPin = await pinDown.attach({ plan: {} });
+    assert.deepEqual(outPin.settlementEvidenceStatus,
+      { status: 'unavailable', reason: 'pin-unavailable' });
+    assert.ok(!('settlementEvidence' in outPin));
+    const docDown = createSettlementEvidenceServing({
+      householdId,
+      readDocument: () => Promise.reject(new Error('backing store unreachable')),
+      readPin: () => fixture.objectAdapter.pinStore.read(),
+    });
+    const outDoc = await docDown.attach({ plan: {} });
+    assert.deepEqual(outDoc.settlementEvidenceStatus,
+      { status: 'unavailable', reason: 'document-unavailable' });
+    assert.ok(!('settlementEvidence' in outDoc));
+    await new Promise(resolve => setTimeout(resolve, 25));
+    assert.deepEqual(escaped, [], 'no adapter rejection escapes the seam unhandled');
+  } finally {
+    process.removeListener('unhandledRejection', guard);
+  }
+});
+
+test('abandonment: an attach the caller stops awaiting leaves no residue for the next attach', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const fixture = await makeStoreFixture([linkCmd({})]);
+  // A slow reader keeps the first attach in flight while an
+  // independent attach completes against the same durable state.
+  // Cancellation here is abandonment only: nothing aborts the
+  // in-flight acquisition, and its completion changes nothing —
+  // the seam caches no outcome across requests.
+  const slow = fixtureDependency(fixture, {
+    readDocument: async () => {
+      await new Promise(resolve => setTimeout(resolve, 30));
+      return fs.readFileSync(fixture.documentFile);
+    },
+  });
+  const slowServing = createSettlementEvidenceServing(slow);
+  const abandoned = slowServing.attach({ plan: {} });
+  const fast = await createSettlementEvidenceServing(fixtureDependency(fixture))
+    .attach({ plan: {} });
+  assert.equal(fast.settlementEvidenceStatus.status, 'qualified');
+  const settled = await abandoned;
+  assert.equal(settled.settlementEvidenceStatus.status, 'qualified',
+    'the abandoned attach settles on its own terms');
+  assert.deepEqual(settled.settlementEvidence, fast.settlementEvidence);
+  const next = await slowServing.attach({ plan: {} });
+  assert.equal(next.settlementEvidenceStatus.status, 'qualified');
+  assert.deepEqual(next.settlementEvidence, fast.settlementEvidence,
+    'no state from the abandoned flight is carried into the next attach');
+});
+
+test('concurrency: parallel attaches over ONE shared adapter pair stay coherent under an interleaved commit', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const fixture = await makeStoreFixture([linkCmd({})]);
+  // A small delay on the document read widens the acquisition window
+  // so the attaches genuinely span the commit below.
+  const serving = createSettlementEvidenceServing({
+    householdId,
+    readDocument: async () => {
+      await new Promise(resolve => setTimeout(resolve, 5));
+      return fixture.fileAdapter.documentStore.read();
+    },
+    readPin: () => fixture.objectAdapter.pinStore.read(),
+  });
+  const flights = Array.from({ length: 8 }, () => serving.attach({ plan: {} }));
+  const prepared = await fixture.store.prepare({
+    actorId, operationId: op(2),
+    command: linkCmd({ goalId: 'commitment:far', txRef: tx(2), assignedCents: 1000 }),
+  });
+  const receipt = await fixture.store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(receipt.status, 'committed');
+  const outs = await Promise.all(flights);
+  for (const out of outs) {
+    if (out.settlementEvidenceStatus.status === 'qualified') {
+      // A qualified outcome is one coherent revision's evidence —
+      // entirely the pre-commit revision or entirely the post-commit
+      // one, never a mixture.
+      assert.ok([1, 2].includes(out.settlementEvidence.commitments.length),
+        'qualified evidence is a single coherent revision');
+    } else {
+      // Or it fails closed in the mismatch family: a pin/document
+      // pair observed across the commit is never torn evidence.
+      assert.equal(out.settlementEvidenceStatus.status, 'unavailable');
+      assert.ok(['revision-mismatch', 'digest-mismatch', 'document-ahead-of-pin',
+        'document-changed'].includes(out.settlementEvidenceStatus.reason),
+      'cross-commit observation fails closed: ' + out.settlementEvidenceStatus.reason);
+      assert.ok(!('settlementEvidence' in out));
+    }
+  }
+  const after = await serving.attach({ plan: {} });
+  assert.equal(after.settlementEvidence.commitments.length, 2,
+    'once the commit settles, attaches qualify at the new revision');
+});
+
+test('attach snapshot: the projection is computed from the served object as it stood at attach time', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const fixture = await makeStoreFixture([linkCmd({})]);
+  const served = { plan: { marker: 'at-attach' }, meta: {} };
+  // During the acquisition window the caller replaces a top-level
+  // field and plants settlement fields on the input. The attach
+  // snapshotted the top level (and stripped the seam-owned fields)
+  // before acquiring, so neither edit reaches the projection.
+  const dep = fixtureDependency(fixture, {
+    readDocument: async () => {
+      await new Promise(resolve => setTimeout(resolve, 10));
+      served.plan = { marker: 'moved' };
+      served.settlementEvidenceStatus = { status: 'qualified' };
+      served.settlementEvidence = { commitments: [] };
+      return fs.readFileSync(fixture.documentFile);
+    },
+  });
+  const out = await createSettlementEvidenceServing(dep).attach(served);
+  assert.equal(out.plan.marker, 'at-attach',
+    'top-level fields are the attach-time snapshot, not the post-acquisition edit');
+  assert.equal(out.settlementEvidenceStatus.status, 'qualified');
+  assert.equal(out.settlementEvidence.commitments.length, 1,
+    'the evidence is the loader’s, not the planted field');
 });
 
 /* --------------------------- 1 (HTTP). booted server, default-off */

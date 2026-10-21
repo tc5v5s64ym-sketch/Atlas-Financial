@@ -9,6 +9,22 @@
 // and it never bootstraps, adopts, repairs, promotes, or falls back to
 // empty evidence.
 //
+// Readers are timing-agnostic: a read callback may return its value
+// directly or return a Promise of the value (the production storage
+// adapters' read methods are async). The loader awaits each of its three
+// acquisitions — the pin read, then two document reads — inside the same
+// guards that classified a synchronous throw, so a rejected read lands
+// in exactly the classification a throwing read receives and no Promise
+// on this path is ever dropped. Everything else about the contract is
+// unchanged: same input shape, same validation order, same pin and
+// stability protocols, same reason vocabulary, same projection. What
+// async adds is suspension points, and the loader defends them the way
+// it already defends its byte snapshot: every value it will later rely
+// on is snapshotted into loader-owned form AT ACQUISITION — the static
+// pin and the input's load-bearing fields in the synchronous prologue,
+// each observed pin/document value in the turn its read resolves —
+// before any suspension can let a caller move it.
+//
 // Persisted envelope (defined by the Phase 1 contract, not invented here):
 // the document is the contract's own encoded bytes — the canonical record
 // {schema, householdId, revision, operations, digest} produced by
@@ -66,6 +82,47 @@ function normalizeBytes(value) {
   if (typeof value === 'string') return Buffer.from(value, 'utf8');
   return null;
 }
+const isPromiseLike = value => value !== null
+  && (typeof value === 'object' || typeof value === 'function')
+  && typeof value.then === 'function';
+// A plain value is a value, never a Promise to await: byte carriers and
+// plain records keep exactly the classification the synchronous loader
+// gave them, even if a record happens to carry a `then` key.
+const isPlainValue = value => Buffer.isBuffer(value) || value instanceof Uint8Array
+  || typeof value === 'string' || isRecord(value);
+// Snapshot a pin value into loader-owned form at acquisition: byte
+// carriers are copied (normalizeBytes); a record is shallow-copied, so
+// the load-bearing revision/digest the loader verifies against cannot
+// be moved by a caller mutating its own object after handing it over —
+// in particular not across one of this load's own suspensions. Anything
+// else passes through for parsePin to judge.
+function snapshotPinValue(value) {
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array || typeof value === 'string') {
+    return normalizeBytes(value);
+  }
+  if (isRecord(value)) return { ...value };
+  return value;
+}
+// Snapshot one document acquisition: the raw value — the missing-value
+// checks judge it exactly as the synchronous loader judged the reader's
+// return — alongside its loader-owned byte copy (normalizeBytes).
+function snapshotDocumentValue(value) {
+  return { raw: value, bytes: normalizeBytes(value) };
+}
+// Acquire one reader value with ownership bound to the acquisition.
+// The reader is invoked synchronously; a plain result is snapshotted in
+// the same turn, so no suspension intervenes between a synchronous
+// return and its owned copy. Only a genuine Promise suspends, and its
+// resolved value is snapshotted in the first continuation. A rejection
+// (or a synchronous throw, which an async function surfaces the same
+// way) rethrows into the caller's existing guard.
+async function acquire(read, snapshot) {
+  const raw = read();
+  if (isPlainValue(raw)) return snapshot(raw);
+  const value = isPromiseLike(raw) ? await raw : raw;
+  return snapshot(value);
+}
+
 // The pin record may arrive as an object or as stored pin bytes (the
 // design's pin record also carries a timestamp; extra keys are not the
 // loader's concern). Only revision and digest are load-bearing.
@@ -80,7 +137,7 @@ function parsePin(record) {
   return { revision: value.revision, digest: value.digest };
 }
 
-function loadSettlementEvidence(input) {
+async function loadSettlementEvidence(input) {
   if (input === undefined || input === null) return Object.freeze({ status: 'unconfigured' });
   if (!isRecord(input)) return unavailable('invalid-configuration');
   // Validate supplied fields BEFORE any absent path or pin source is
@@ -104,6 +161,12 @@ function loadSettlementEvidence(input) {
   const readPin = typeof input.readPin === 'function' ? input.readPin : null;
   const householdId = config && typeof config.householdId === 'string'
     ? config.householdId : null;
+  // Snapshot the static pin here, in the synchronous prologue: this
+  // load suspends at its reader acquisitions below, and nothing a
+  // caller does to its config object after invoking the load may move
+  // the pin this load verifies against. (The callbacks and household
+  // are likewise already bound to locals above.)
+  const staticPin = config ? snapshotPinValue(config.pin) : undefined;
   const hasConfig = !!config && (householdId !== null || config.pin !== undefined
     || Object.keys(config).length > 0);
 
@@ -116,25 +179,31 @@ function loadSettlementEvidence(input) {
   if (!readDocument) return unavailable('invalid-configuration');
 
   // Resolve the independently supplied pin: a live pin reader when one is
-  // injected, otherwise the static pin carried in config.
+  // injected, otherwise the static pin carried in config (snapshotted in
+  // the prologue). A rejected pin read lands in the same classification
+  // a throwing pin read receives.
   let pinRecord;
   if (readPin) {
-    try { pinRecord = readPin(); } catch { return unavailable('pin-unavailable'); }
-  } else if (config.pin !== undefined) {
-    pinRecord = config.pin;
+    try { pinRecord = await acquire(readPin, snapshotPinValue); }
+    catch { return unavailable('pin-unavailable'); }
+  } else if (staticPin !== undefined) {
+    pinRecord = staticPin;
   } else {
     return unavailable('invalid-configuration');
   }
   const pin = parsePin(pinRecord);
   if (!pin) return unavailable('pin-invalid');
 
-  // First read: copied (normalizeBytes) into the one loader-owned byte
-  // snapshot everything derives from; the stability re-read below is a
-  // separate copy compared against this preserved snapshot.
-  let first;
-  try { first = readDocument(); } catch { return unavailable('document-unavailable'); }
-  if (first === null || first === undefined) return unavailable('document-missing');
-  const bytes = normalizeBytes(first);
+  // First read: acquired into the one loader-owned byte snapshot
+  // everything derives from; the stability re-read below is a separate
+  // owned copy compared against this preserved snapshot.
+  let firstSnap;
+  try { firstSnap = await acquire(readDocument, snapshotDocumentValue); }
+  catch { return unavailable('document-unavailable'); }
+  if (firstSnap.raw === null || firstSnap.raw === undefined) {
+    return unavailable('document-missing');
+  }
+  const bytes = firstSnap.bytes;
   if (bytes && bytes.length === 0) return unavailable('document-missing');
   if (!bytes) return unavailable('document-malformed');
 
@@ -165,10 +234,13 @@ function loadSettlementEvidence(input) {
   if (verifiedPin !== expectedPin) return unavailable('document-invalid');
 
   // Read consistency: the store must still hold the verified bytes before
-  // anything is projected from them. Projection uses the first snapshot.
-  let second;
-  try { second = readDocument(); } catch { return unavailable('document-changed'); }
-  const secondBytes = normalizeBytes(second);
+  // anything is projected from them. A rejected re-read lands in the
+  // same classification a throwing re-read receives. Projection uses
+  // the first snapshot; the comparison is owned copy against owned copy.
+  let secondSnap;
+  try { secondSnap = await acquire(readDocument, snapshotDocumentValue); }
+  catch { return unavailable('document-changed'); }
+  const secondBytes = secondSnap.bytes;
   if (!secondBytes || !secondBytes.equals(bytes)) return unavailable('document-changed');
 
   // Projection: the contract replays the verified snapshot's state and
