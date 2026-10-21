@@ -10,15 +10,50 @@
 // - authorize(ownedContext) returns {householdId, actorId}, with a currently
 //   authorized, contract-valid SESSION actor. An expiry-only cookie is not an
 //   actor. This module never turns a cookie, subject or caller ID into one;
-// - resolveSelection({authority, selection}) uniquely resolves the current
-//   posted CAD debit and current plan commitment. Its immutable identity is
-//   (householdId, 'lunchmoney', providerAccountId, transactionId). Its txRef
-//   MUST remain stable for that tuple across content changes and restarts;
-//   neither tx-N nor pc-* is a contract reference. selectionBinding privately
-//   binds the selected row; goalBinding binds the current authoritative plan
-//   goal, and asOf is the authoritative financial date. Changed binding,
-//   evidence, goal or asOf requires a new explicitly prepared operation.
+// - resolveSelection({authority, selection, classify}) uniquely resolves the
+//   current posted CAD debit and current plan commitment. Its immutable
+//   identity is (householdId, 'lunchmoney', providerAccountId, transactionId).
+//   Its txRef MUST remain stable for that tuple across content changes and
+//   restarts; neither tx-N nor pc-* is a contract reference. selectionBinding
+//   privately binds the selected row: the authoritative transaction AND the
+//   classification context (the current authoritative plan and the
+//   current-period packet as of asOf) under which its classification verdict
+//   was produced; goalBinding binds the current authoritative plan goal and
+//   the relevant current goal/plan context, and asOf is the authoritative
+//   financial date. Changed binding, evidence, goal or asOf requires a new
+//   explicitly prepared operation.
 //   Only synthetic deterministic fixture mappings implement this contract yet;
+// - classify is a controller-owned closure, valid only during that one
+//   awaited resolveSelection call. The resolver MUST invoke it exactly once,
+//   with the canonical transaction it resolved, the current authoritative
+//   plan, and opts including the current-period packet as of selection.asOf,
+//   and MUST NOT return any verdict field of its own: the controller uses
+//   only the verdict its own closure obtains from Forecast, projected
+//   immediately to {kind, categoryId, householdSpending, reason,
+//   needsConfirmation}. Zero invocations, a second invocation, a classifier
+//   error (even one the resolver catches and swallows), a malformed or
+//   impossible verdict, and any invocation after the resolve call has
+//   settled each fail the attempt as a protocol failure; no code path reads
+//   a supplied verdict. The controller does NOT independently verify that
+//   the resolver's transaction is the one its identity names, or that its
+//   plan is genuinely the authoritative plan: that mapping is the
+//   resolver's contract, exactly as it already is for the identity tuple
+//   and the evidence sextuple.
+// - Admission (Rule E foundation qualification — NOT live enforcement: no
+//   production resolver exists yet): a selection is admitted only when
+//   Forecast's verdict is a genuine spend (kind 'spend', householdSpending
+//   true, needsConfirmation false, a non-empty categoryId, reason null).
+//   transfer, card-payment and internal-movement verdicts are refused
+//   rejected('selection-ineligible') before any store call; bill and every
+//   other class without established settlement policy are refused
+//   unavailable('selection-eligibility-unresolved') — unresolved, never
+//   permanent ineligibility. The projection rides inside the retained
+//   selection only: confirm re-derives it through the same closure and the
+//   existing deep compare refuses classification drift as
+//   selection-changed. The verdict is never persisted and never enters the
+//   command or any digest, so admitted commands and receipts are
+//   byte-identical to before Rule E, and a recorded operation's original
+//   receipt is always read before any re-resolution or re-classification.
 // - store is bound above and MUST supply commitWithoutRecovery; ordinary
 //   commit is never a fallback. now is the injected clock.
 // Context and requests are plain JSON data, snapshotted before any await.
@@ -44,6 +79,7 @@
 const { isDeepStrictEqual } = require('node:util');
 const crypto = require('node:crypto');
 const C = require('./planned-obligation-settlement-contract');
+const Forecast = require('../public/forecast.js');
 
 const HOUSEHOLD = /^household-[a-f0-9]{32}$/;
 const ACTOR = /^session-[a-f0-9]{64}$/;
@@ -93,6 +129,47 @@ function snapshot(value, seen = new Set(), depth = 0) {
   }
   seen.delete(value);
   return Object.freeze(result);
+}
+
+// Rule E verdict handling. The raw Forecast verdict is never carried: it
+// is projected immediately, inside the classify closure, to this bounded
+// owned shape (an internal-movement verdict, for example, also carries a
+// float amount the snapshot discipline rejects). needsConfirmation is
+// normalized raw === true: genuine verdicts either carry a boolean or omit
+// the field entirely.
+function projectVerdict(raw) {
+  if (!record(raw)) fail();
+  const projection = { kind: raw.kind, categoryId: raw.categoryId,
+    householdSpending: raw.householdSpending, reason: raw.reason,
+    needsConfirmation: raw.needsConfirmation === true };
+  if (typeof projection.kind !== 'string' || projection.kind.length === 0
+    || typeof projection.householdSpending !== 'boolean'
+    || !(projection.categoryId === null || typeof projection.categoryId === 'string')
+    || !(projection.reason === null || typeof projection.reason === 'string')) fail();
+  // Impossible combinations the genuine classifier never emits. A called
+  // verdict in one of these shapes means a broken resolver or a changed
+  // Forecast shape: a protocol failure, never an eligibility answer.
+  if (projection.kind === 'spend' && (projection.householdSpending !== true
+    || projection.needsConfirmation !== false || projection.reason !== null
+    || typeof projection.categoryId !== 'string' || projection.categoryId.length === 0)) fail();
+  if (projection.kind === 'transfer' && projection.householdSpending === true) fail();
+  if (projection.kind === 'unclassified' && projection.categoryId === 'uncategorised'
+    && projection.needsConfirmation !== true) fail();
+  // The classifier's 'missing' verdict means the resolver classified no
+  // transaction at all: a protocol failure, not a verdict about a selection.
+  if (projection.kind === 'unclassified' && projection.reason === 'missing') fail();
+  return Object.freeze(projection);
+}
+function eligibleVerdict(projection) {
+  return projection.kind === 'spend' && projection.householdSpending === true
+    && projection.needsConfirmation === false && projection.reason === null
+    && typeof projection.categoryId === 'string' && projection.categoryId.length > 0;
+}
+function admissionFor(projection) {
+  if (eligibleVerdict(projection)) return 'admitted';
+  if (projection.kind === 'transfer' || projection.kind === 'card-payment'
+    || projection.kind === 'internal-movement') return 'ineligible';
+  return 'unresolved';
 }
 
 function validSelection(value) {
@@ -175,6 +252,35 @@ function createSettlementEvidenceConfirmation(deps) {
     retire(operationId, entry);
     return rejected(reason);
   }
+  // One resolve call under the Rule E binding. The classify closure is
+  // open only until the resolver's promise settles (the finally closes it),
+  // and it latches its own invocation count, classifier error and
+  // projection, so a resolver that swallows a classifier error, classifies
+  // twice, or never classifies still fails the attempt after settlement.
+  // A stashed closure invoked late refuses, and can touch nothing but its
+  // own dead session — never the accepted snapshot or another attempt.
+  async function resolveClassified(authority, selection) {
+    const session = { open: true, calls: 0, error: null, projection: null };
+    const classify = (tx, plan, opts) => {
+      if (!session.open) fail();
+      session.calls++;
+      if (session.calls > 1) fail();
+      try {
+        const raw = Forecast.classifyCurrentPeriodTransaction(tx, plan, opts);
+        session.projection = projectVerdict(raw);
+        return raw;
+      } catch (error) {
+        if (!session.error) session.error = error;
+        throw error;
+      }
+    };
+    let resolvedSelection;
+    try {
+      resolvedSelection = await resolveSelection({ authority, selection, classify });
+    } finally { session.open = false; }
+    if (session.error || session.calls !== 1) fail();
+    return { selection: resolvedSelection, projection: session.projection };
+  }
   async function authorityFor(context) {
     const value = snapshot(await authorize(context));
     if (!shape(value, ['householdId', 'actorId']) || value.householdId !== householdId
@@ -208,7 +314,14 @@ function createSettlementEvidenceConfirmation(deps) {
         || previews.size + preparing.size >= MAX_PREVIEWS) return unavailable('preview-unavailable');
       reservation = {}; preparing.set(request.operationId, reservation);
       const authority = await authorityFor(ownedContext);
-      const selection = qualified(snapshot(await resolveSelection({ authority, selection: request.selection })), authority);
+      const resolvedCall = await resolveClassified(authority, request.selection);
+      const selection = Object.freeze({ ...qualified(snapshot(resolvedCall.selection), authority),
+        classification: resolvedCall.projection });
+      // Admission is decided before the command exists and before any
+      // store call: an ineligible or unresolved verdict retains no preview.
+      const admission = admissionFor(resolvedCall.projection);
+      if (admission === 'ineligible') return rejected('selection-ineligible');
+      if (admission === 'unresolved') return unavailable('selection-eligibility-unresolved');
       const command = link(selection, request.assignedCents);
       const result = snapshot(await store.prepare({ actorId: authority.actorId,
         operationId: request.operationId, command }));
@@ -255,8 +368,9 @@ function createSettlementEvidenceConfirmation(deps) {
       if (tick() >= retained.preview.expiresAt) return terminal(request.operationId, retained, 'preview-expired');
       let fresh;
       try {
-        fresh = qualified(snapshot(await resolveSelection({ authority,
-          selection: retained.request.selection })), authority);
+        const resolvedCall = await resolveClassified(authority, retained.request.selection);
+        fresh = Object.freeze({ ...qualified(snapshot(resolvedCall.selection), authority),
+          classification: resolvedCall.projection });
       } catch { return retained.attempted ? unknown(request.operationId) : rejected('selection-unavailable'); }
       if (!isDeepStrictEqual(fresh, retained.selection)) return terminal(request.operationId, retained, 'selection-changed');
       // Read-only optimization only: another caller can change the store
