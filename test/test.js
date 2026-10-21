@@ -81,6 +81,7 @@ const suites = [
   ['settlement evidence store: commit/recovery state machine, journal, pin CAS and restore drills', 'test-settlement-evidence-store.js'],
   ['settlement evidence file adapter: private POSIX persistence, cross-process lock and restart proof', 'test-settlement-evidence-file-adapter.js'],
   ['settlement evidence object adapter: conditional pin CAS, encrypted backups and manifest integrity', 'test-settlement-evidence-object-adapter.js'],
+  ['settlement evidence restore qualification: offline owner-assisted drill, restore-then-continue and blast-radius pins (ATLAS-080)', 'test-settlement-evidence-restore-qualification.js'],
   ['settlement evidence publication gating: configured-unavailable withholding at the packet, Planning and Plan surfaces (ATLAS-080)', 'test-settlement-evidence-publication-gating.js'],
   ['settlement evidence server seam: default-inactive bridge from the shared served data to the loader outcome (ATLAS-080)', 'test-settlement-evidence-server-seam.js'],
   ['settlement evidence confirmation: synthetic session-bound prepare/confirm/outcome with atomic no-recovery commits (ATLAS-080)', 'test-settlement-evidence-confirmation.js'],
