@@ -44,6 +44,46 @@ function resolved() {
 }
 const request = (n = 1, cents = 2500) => ({ operationId: op(n), selection: clone(selection), assignedCents: cents });
 
+// Rule E classification fixtures: a synthetic provider transaction, plan and
+// current-period packet whose verdicts come from the REAL Forecast
+// classifier, invoked by the fixture resolver through the controller-owned
+// classify closure (never a copied label set). Amounts are dollars, the
+// classifier's convention. The default is E2: a Groceries spend with
+// merchant identity against a plan whose categories match it.
+function classificationFixture(kind = 'spend-groceries') {
+  const plan = { budget: { categories: [
+    { id: 'groceries', label: 'Groceries' },
+    { id: 'restaurants', label: 'Restaurants' },
+    { id: 'insurance', label: 'Home Insurance' },
+  ], excluded: [] } };
+  const packet = { representedActuals: [], transactions: [] };
+  const base = { id: 'synthetic-provider-transaction', date: '2026-10-19' };
+  const txs = {
+    'spend-groceries': { ...base, amount: 60, categoryLabel: 'Groceries', merchantKnown: true },
+    'spend-restaurants': { ...base, amount: 60, categoryLabel: 'Restaurants', merchantKnown: true },
+    'transfer': { ...base, amount: 500, categoryLabel: 'Credit Card Payment' },
+    'card-payment-td': { ...base, amount: 500, categoryLabel: 'Groceries', merchantKnown: true, tfrReference: 'AB123', tfrDirection: 'TO', tdCardPaymentIdentity: true },
+    'internal-movement': { ...base, amount: -200, atlasAccountId: 'chequing-a', accountRole: 'household-cash', tfrReference: 'AB123', tfrDirection: 'FR' },
+    'unclassified': { ...base, amount: 25, categoryLabel: 'Lottery Winnings' },
+    'cancelled-service': { ...base, amount: 30, payee: 'OLD GYM' },
+    'refund': { ...base, amount: 40, categoryLabel: 'Refund' },
+    'bill-represented': { ...base, amount: 120, categoryLabel: 'Groceries', merchantKnown: true },
+    'bill-label': { ...base, amount: 120, categoryLabel: 'Insurance' },
+    'bill-bills-only': { ...base, amount: 90, categoryLabel: 'Home Insurance' },
+    'income': { ...base, amount: 900, isIncome: true },
+  };
+  const opts = { currentPeriodActuals: packet };
+  if (kind === 'internal-movement') {
+    packet.transactions = [txs[kind], { id: 'synthetic-provider-counterpart', amount: 200,
+      atlasAccountId: 'chequing-b', accountRole: 'household-cash', tfrReference: 'AB123', tfrDirection: 'TO', date: '2026-10-19' }];
+  }
+  if (kind === 'bill-represented') packet.representedActuals = [{ transactionId: base.id }];
+  if (kind === 'cancelled-service') {
+    plan.cancelledServices = [{ id: 'synthetic-cancelled-service', label: 'Old Gym', confirmedCancelledAsOf: '2026-10-01', merchantKeys: ['old gym'] }];
+  }
+  return { tx: txs[kind], plan, opts };
+}
+
 async function world(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-confirmation-'));
   fs.chmodSync(dir, 0o700);
@@ -101,6 +141,20 @@ async function world(t) {
     if (ctx.ticket !== context.ticket) return null;
     return w.authority;
   };
+  w.classification = classificationFixture();
+  w.classifyCalls = [];
+  // The fixture resolver honours the extended contract: exactly one classify
+  // invocation per resolve, on the fixture tx/plan/packet, through the
+  // controller-owned closure. Against a controller that supplies no classify
+  // closure this is a no-op, which is what makes the Rule E pins fail (not
+  // crash) when the suite runs against the base controller.
+  w.classifyOnce = input => {
+    if (typeof input.classify !== 'function') return null;
+    const { tx, plan, opts } = w.classification;
+    const verdict = input.classify(clone(tx), clone(plan), clone(opts));
+    w.classifyCalls.push(verdict);
+    return verdict;
+  };
   w.resolve = async input => {
     w.calls.push('resolve');
     assert.equal(input.authority.householdId, householdId);
@@ -108,6 +162,7 @@ async function world(t) {
     assert.deepEqual(input.selection, selection);
     // Exact fixture mapping only: content never participates in txRef identity.
     if (w.resolveHook) return w.resolveHook(input);
+    w.classifyOnce(input);
     return w.source;
   };
   w.newController = (store = w.store) => createSettlementEvidenceConfirmation({
@@ -273,8 +328,9 @@ test('B2 generation race: a paused old confirmation cannot commit after cleanup/
   const w = await world(t), entered = deferred(), release = deferred();
   const old = await w.prepare();
   let pause = true;
-  w.resolveHook = async () => {
+  w.resolveHook = async input => {
     if (pause) { pause = false; entered.resolve(); await release.promise; }
+    w.classifyOnce(input);
     return resolved();
   };
   const pending = w.controller.confirm(context, { operationId: op(1), previewToken: old.previewToken, confirmed: true });
@@ -297,11 +353,13 @@ test('B2 cleanup race: a terminal result from an old generation cannot delete it
   const w = await world(t), entered = deferred(), release = deferred();
   await w.prepare();
   let pause = true;
-  w.resolveHook = async () => {
+  w.resolveHook = async input => {
     if (pause) {
       pause = false; entered.resolve(); await release.promise;
+      w.classifyOnce(input);
       return { ...resolved(), goalBinding: 'synthetic-old-selection-changed' };
     }
+    w.classifyOnce(input);
     return resolved();
   };
   const pending = w.confirm(); await entered.promise;
@@ -341,11 +399,13 @@ test('B2 unknown race: stale selection refusal cannot retire a generation whose 
   const w = await world(t), entered = deferred(), release = deferred();
   await w.prepare();
   let pause = true;
-  w.resolveHook = async () => {
+  w.resolveHook = async input => {
     if (pause) {
       pause = false; entered.resolve(); await release.promise;
+      w.classifyOnce(input);
       return { ...resolved(), goalBinding: 'synthetic-stale-goal' };
     }
+    w.classifyOnce(input);
     return resolved();
   };
   const old = w.confirm(); await entered.promise;
@@ -470,7 +530,7 @@ test('explicit confirmation lands one original receipt and the independent loade
   assert.equal(w.count('commitWithoutRecovery'), 1);
 });
 
-for (const field of ['actorId', 'householdId', 'command', 'evidence', 'evidenceDigest', 'txRef', 'goalId', 'asOf', 'preview', 'confirmationDigest']) {
+for (const field of ['actorId', 'householdId', 'command', 'evidence', 'evidenceDigest', 'txRef', 'goalId', 'asOf', 'preview', 'confirmationDigest', 'classification', 'verdict']) {
   test('caller cannot submit authority/evidence field ' + field, async t => {
     const w = await world(t);
     assert.equal((await w.controller.prepare(context, { ...request(), [field]: 'forged' })).status, 'unavailable');
@@ -726,7 +786,7 @@ test('foreign store preview/digest mutations during authorization await cannot a
 test('authorization snapshot cannot change inside resolver; prepare reauthorizes the current session', async t => {
   const w = await world(t), entered = deferred(), release = deferred();
   let passedAuthority;
-  w.resolveHook = async input => { passedAuthority = input.authority; entered.resolve(); await release.promise; return resolved(); };
+  w.resolveHook = async input => { passedAuthority = input.authority; entered.resolve(); await release.promise; w.classifyOnce(input); return resolved(); };
   const pending = w.prepare(); await entered.promise;
   w.authority.actorId = otherActor;
   assert.equal(passedAuthority.actorId, actorId);
@@ -883,7 +943,7 @@ test('confirmation snapshots explicit confirmation and rechecks authority/expiry
   const w = await world(t);
   await w.prepare();
   const entered = deferred(), release = deferred();
-  w.resolveHook = async () => { entered.resolve(); await release.promise; return resolved(); };
+  w.resolveHook = async input => { entered.resolve(); await release.promise; w.classifyOnce(input); return resolved(); };
   const input = { operationId: op(1), previewToken: w.tokens.get(op(1)), confirmed: false };
   const denied = w.controller.confirm(context, input); input.confirmed = true;
   assert.notEqual((await denied).status, 'committed');
@@ -891,7 +951,7 @@ test('confirmation snapshots explicit confirmation and rechecks authority/expiry
   w.authority = { householdId, actorId: otherActor }; release.resolve();
   assert.notEqual((await pending).status, 'committed');
   assert.deepEqual(w.writes, []);
-  w.authority = { householdId, actorId }; w.resolveHook = async () => { w.time = T0 + C.TTL_MS; return resolved(); };
+  w.authority = { householdId, actorId }; w.resolveHook = async input => { w.time = T0 + C.TTL_MS; w.classifyOnce(input); return resolved(); };
   assert.deepEqual(await w.confirm(), { status: 'rejected', reason: 'preview-expired' });
   assert.deepEqual(w.writes, []);
 });
@@ -950,4 +1010,372 @@ test('real process restart recovers only committed outcome and cannot fabricate 
   assert.deepEqual(JSON.parse(child.stdout), [receipt,
     { status: 'unknown', operationId: op(2) }, { status: 'unknown', operationId: op(1) }]);
   assert.equal(w.document().operations.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Rule E (ATLAS-080 foundation qualification): admission is judged by
+// Forecast's classifier, called through the controller-owned classify
+// closure during the resolver's own resolve call. The verdict is projected
+// to {kind, categoryId, householdSpending, reason, needsConfirmation},
+// retained with the prepared selection, and re-derived at confirm. It is
+// never persisted, never enters the command, and is never read from data
+// supplied by the caller or the resolver.
+
+test('Rule E E1: transfer verdict is rejected selection-ineligible at prepare before any store call', async t => {
+  const w = await world(t);
+  w.classification = classificationFixture('transfer');
+  assert.deepEqual(await w.prepare(), { status: 'rejected', reason: 'selection-ineligible' });
+  assert.equal(w.classifyCalls[0].kind, 'transfer');
+  assert.equal(w.count('prepare'), 0, 'store.prepare must never be called for an ineligible selection');
+  assert.deepEqual(w.writes, []);
+  assert.deepEqual(await w.outcome(), { status: 'unknown', operationId: op(1) });
+  // No preview is retained: the same operation prepares once eligible.
+  w.classification = classificationFixture('spend-groceries');
+  assert.equal((await w.prepare()).status, 'prepared');
+  assert.equal((await w.confirm()).status, 'committed');
+});
+
+test('Rule E E2: eligible spend is admitted byte-identical, classified exactly once per resolve', async t => {
+  const w = await world(t);
+  assert.equal((await w.prepare()).status, 'prepared');
+  assert.equal(w.classifyCalls.length, 1, 'exactly one classify invocation during prepare resolve');
+  const verdict = w.classifyCalls[0];
+  assert.deepEqual({ kind: verdict.kind, categoryId: verdict.categoryId,
+    householdSpending: verdict.householdSpending, reason: verdict.reason,
+    needsConfirmation: verdict.needsConfirmation },
+    { kind: 'spend', categoryId: 'groceries', householdSpending: true, reason: null, needsConfirmation: false });
+  assert.equal((await w.confirm()).status, 'committed');
+  assert.equal(w.classifyCalls.length, 2, 'confirm re-resolves and classifies exactly once more');
+  assert.deepEqual(w.document().operations[0].command, { version: 1, kind: 'link',
+    goalId: 'commitment:synthetic-trip', txRef: tx(1), evidence: resolved().evidence,
+    evidenceDigest: C.digest(resolved().evidence), assignedCents: 2500, asOf: '2026-10-20' },
+    'the verdict adds no field to the command: digest and bytes are exactly as before Rule E');
+});
+
+test('Rule E E3: TD card-payment identity under a spending label is rejected selection-ineligible', async t => {
+  const w = await world(t);
+  w.classification = classificationFixture('card-payment-td');
+  assert.deepEqual(await w.prepare(), { status: 'rejected', reason: 'selection-ineligible' });
+  assert.equal(w.classifyCalls[0].kind, 'card-payment');
+  assert.equal(w.classifyCalls[0].reason, 'td-card-recipient-identity', 'identity beats the Groceries label');
+  assert.equal(w.count('prepare'), 0);
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E: internal-movement verdict is rejected selection-ineligible', async t => {
+  const w = await world(t);
+  w.classification = classificationFixture('internal-movement');
+  assert.deepEqual(await w.prepare(), { status: 'rejected', reason: 'selection-ineligible' });
+  assert.equal(w.classifyCalls[0].kind, 'internal-movement');
+  assert.equal(w.count('prepare'), 0);
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E E4: unclassified needs-confirmation is selection-eligibility-unresolved, never permanent', async t => {
+  const w = await world(t);
+  w.classification = classificationFixture('unclassified');
+  assert.deepEqual(await w.prepare(), { status: 'unavailable', reason: 'selection-eligibility-unresolved' });
+  assert.equal(w.classifyCalls[0].kind, 'unclassified');
+  assert.equal(w.classifyCalls[0].needsConfirmation, true);
+  assert.equal(w.count('prepare'), 0);
+  assert.deepEqual(w.writes, []);
+  // A cancelled-service charge lands on the same unresolved surface.
+  w.classification = classificationFixture('cancelled-service');
+  assert.deepEqual(await w.prepare(2), { status: 'unavailable', reason: 'selection-eligibility-unresolved' });
+  assert.equal(w.classifyCalls[1].reason, 'cancelled-service-charge');
+  // Unresolved is not permanent ineligibility: once Forecast judges the
+  // transaction an eligible spend, the same operation prepares and commits.
+  w.classification = classificationFixture('spend-groceries');
+  assert.equal((await w.prepare()).status, 'prepared');
+  assert.equal((await w.confirm()).status, 'committed');
+});
+
+test('Rule E E7 corrected: bills are selection-eligibility-unresolved, not ineligible and not admitted', async t => {
+  const w = await world(t);
+  // A represented bill is a plan commitment row's own payment; the GO
+  // corrects the clarification packet here: bill has no established
+  // settlement policy yet, so the surface is unresolved, not ineligible.
+  w.classification = classificationFixture('bill-represented');
+  assert.deepEqual(await w.prepare(1), { status: 'unavailable', reason: 'selection-eligibility-unresolved' });
+  assert.equal(w.classifyCalls[0].reason, 'represented-bill');
+  // Generic bill-label planned-cost control.
+  w.classification = classificationFixture('bill-label');
+  assert.deepEqual(await w.prepare(2), { status: 'unavailable', reason: 'selection-eligibility-unresolved' });
+  assert.equal(w.classifyCalls[1].reason, 'bill-label');
+  // Bills-only matched-category control.
+  w.classification = classificationFixture('bill-bills-only');
+  assert.deepEqual(await w.prepare(3), { status: 'unavailable', reason: 'selection-eligibility-unresolved' });
+  assert.equal(w.classifyCalls[2].reason, 'bills-only');
+  assert.equal(w.count('prepare'), 0);
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E E6: credit evidence is refused by existing validation; a refund verdict is unresolved', async t => {
+  const w = await world(t);
+  // E6a: credit-direction evidence never reaches an eligibility answer —
+  // the existing evidence validation refuses it as prepare-unavailable.
+  const credit = resolved(); credit.evidence.direction = 'credit'; w.source = credit;
+  assert.deepEqual(await w.prepare(1), { status: 'unavailable', reason: 'prepare-unavailable' });
+  assert.equal(w.count('prepare'), 0);
+  // E6b: a debit-shaped row whose verdict is refund is unresolved.
+  w.source = resolved();
+  w.classification = classificationFixture('refund');
+  assert.deepEqual(await w.prepare(2), { status: 'unavailable', reason: 'selection-eligibility-unresolved' });
+  assert.equal(w.classifyCalls.at(-1).kind, 'refund');
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E E5: label drift to transfer with all six evidence fields unchanged is selection-changed', async t => {
+  const w = await world(t);
+  await w.prepare();
+  // Only the provider category label moves (Groceries -> Credit Card
+  // Payment). The evidence sextuple, bindings, goal and asOf are untouched;
+  // categoryLabel is not one of the six evidence fields.
+  w.classification = classificationFixture('transfer');
+  assert.deepEqual(await w.confirm(), { status: 'rejected', reason: 'selection-changed' });
+  assert.equal(w.count('commitWithoutRecovery'), 0);
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E: groceries to restaurants category drift changes the projection and is selection-changed', async t => {
+  const w = await world(t);
+  await w.prepare();
+  // Still an eligible spend class at confirm — but the retained projection
+  // (categoryId groceries) is not the fresh one (restaurants), so the owner
+  // is no longer confirming the selection that was prepared. This corrects
+  // the clarification packet's claim that any differing fresh verdict is
+  // necessarily a class change.
+  w.classification = classificationFixture('spend-restaurants');
+  assert.deepEqual(await w.confirm(), { status: 'rejected', reason: 'selection-changed' });
+  assert.equal(w.count('commitWithoutRecovery'), 0);
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E: classification-context drift with unchanged transaction, evidence and bindings is selection-changed', async t => {
+  const w = await world(t);
+  await w.prepare();
+  // The transaction object, the six evidence fields, selectionBinding and
+  // goalBinding are all identical; only the classification context changes:
+  // the current-period packet now represents this transaction as a bill.
+  const drifted = classificationFixture('spend-groceries');
+  drifted.opts.currentPeriodActuals.representedActuals = [{ transactionId: drifted.tx.id }];
+  w.classification = drifted;
+  assert.deepEqual(await w.confirm(), { status: 'rejected', reason: 'selection-changed' });
+  assert.equal(w.classifyCalls.at(-1).kind, 'bill');
+  assert.equal(w.count('commitWithoutRecovery'), 0);
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E protocol: zero classify invocations fail prepare as prepare-unavailable', async t => {
+  const w = await world(t);
+  w.resolveHook = async () => resolved();
+  assert.deepEqual(await w.prepare(), { status: 'unavailable', reason: 'prepare-unavailable' });
+  assert.equal(w.count('prepare'), 0);
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E protocol: a second classify invocation is latched ambiguous even when the resolver swallows it', async t => {
+  const w = await world(t);
+  w.resolveHook = async input => {
+    if (typeof input.classify === 'function') {
+      w.classifyOnce(input);
+      try { input.classify(clone(w.classification.tx), clone(w.classification.plan), clone(w.classification.opts)); }
+      catch { /* resolver swallows the refusal; the latch must still fail the attempt */ }
+    }
+    return resolved();
+  };
+  assert.deepEqual(await w.prepare(), { status: 'unavailable', reason: 'prepare-unavailable' });
+  assert.equal(w.count('prepare'), 0);
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E protocol: a classifier error swallowed by the resolver still fails prepare', async t => {
+  const w = await world(t);
+  const evilTx = {};
+  Object.defineProperty(evilTx, 'accountRole', { enumerable: true,
+    get() { throw Error('synthetic classifier failure'); } });
+  w.resolveHook = async input => {
+    if (typeof input.classify === 'function') {
+      try { input.classify(evilTx, w.classification.plan, w.classification.opts); }
+      catch { /* resolver swallows the classifier error; the closure recorded it */ }
+    }
+    return resolved();
+  };
+  assert.deepEqual(await w.prepare(), { status: 'unavailable', reason: 'prepare-unavailable' });
+  assert.equal(w.count('prepare'), 0);
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E protocol: classifying a missing transaction is a protocol failure, not an eligibility answer', async t => {
+  const w = await world(t);
+  w.resolveHook = async input => {
+    if (typeof input.classify === 'function') input.classify(null, w.classification.plan, w.classification.opts);
+    return resolved();
+  };
+  assert.deepEqual(await w.prepare(), { status: 'unavailable', reason: 'prepare-unavailable' });
+  assert.equal(w.count('prepare'), 0);
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E protocol: a late classify invocation after settlement refuses and cannot affect another attempt', async t => {
+  const w = await world(t);
+  let stashed = null;
+  w.resolveHook = async input => {
+    if (typeof input.classify === 'function') { stashed = input.classify; w.classifyOnce(input); }
+    return resolved();
+  };
+  assert.equal((await w.prepare()).status, 'prepared');
+  assert.equal(typeof stashed, 'function', 'the resolver received the closure during its resolve window');
+  assert.throws(() => stashed(clone(w.classification.tx), clone(w.classification.plan), clone(w.classification.opts)),
+    /settlement-confirmation-unavailable/);
+  w.resolveHook = null;
+  const calls = w.classifyCalls.length;
+  assert.equal((await w.prepare(2)).status, 'prepared', 'the dead closure cannot mutate a later attempt');
+  assert.equal(w.classifyCalls.length, calls + 1, 'the later attempt classified exactly once, through its own closure');
+  assert.equal((await w.confirm()).status, 'committed');
+});
+
+test('Rule E protocol: concurrent prepares keep their classify closures isolated', async t => {
+  const w = await world(t), entered = deferred(), release = deferred();
+  let resolves = 0;
+  w.resolveHook = async input => {
+    resolves++;
+    if (resolves === 1) {
+      entered.resolve(); await release.promise;
+      w.classification = classificationFixture('spend-groceries');
+    } else {
+      w.classification = classificationFixture('transfer');
+    }
+    w.classifyOnce(input);
+    return resolved();
+  };
+  const first = w.prepare(1);
+  await entered.promise;
+  assert.deepEqual(await w.prepare(2), { status: 'rejected', reason: 'selection-ineligible' },
+    'the second attempt is judged by its own verdict, not the paused first attempt');
+  release.resolve();
+  assert.equal((await first).status, 'prepared');
+  w.resolveHook = null;
+  w.classification = classificationFixture('spend-groceries');
+  assert.equal((await w.confirm()).status, 'committed');
+});
+
+test('Rule E protocol: resolver-returned verdict fields fail qualification', async t => {
+  const w = await world(t);
+  w.resolveHook = async input => {
+    w.classifyOnce(input);
+    return { ...resolved(), classification: { kind: 'spend', categoryId: 'groceries',
+      householdSpending: true, reason: null, needsConfirmation: false } };
+  };
+  assert.deepEqual(await w.prepare(1), { status: 'unavailable', reason: 'prepare-unavailable' });
+  w.resolveHook = async input => {
+    w.classifyOnce(input);
+    return { ...resolved(), verdict: w.classifyCalls.at(-1) };
+  };
+  assert.deepEqual(await w.prepare(2), { status: 'unavailable', reason: 'prepare-unavailable' },
+    'even the genuine verdict, handed back as data, is a shape violation: no code path reads a supplied verdict');
+  assert.equal(w.count('prepare'), 0);
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E protocol: confirm re-resolve without classification is selection-unavailable and keeps the preview', async t => {
+  const w = await world(t);
+  await w.prepare();
+  w.resolveHook = async () => resolved();
+  assert.deepEqual(await w.confirm(), { status: 'rejected', reason: 'selection-unavailable' });
+  w.resolveHook = null;
+  assert.equal((await w.confirm()).status, 'committed', 'a protocol refusal does not retire the preview');
+});
+
+test('Rule E: the original committed receipt takes precedence over later ineligibility', async t => {
+  const w = await world(t);
+  await w.prepare();
+  const receipt = await w.confirm();
+  assert.equal(receipt.status, 'committed');
+  // Classification later drifts to a class that would be refused at prepare.
+  w.classification = classificationFixture('transfer');
+  const calls = w.classifyCalls.length, resolves = w.count('resolve');
+  assert.deepEqual(await w.confirm(), receipt);
+  assert.deepEqual(await w.outcome(), receipt);
+  assert.equal(w.classifyCalls.length, calls, 'the original receipt is read before any re-classification');
+  assert.equal(w.count('resolve'), resolves, 'the original receipt is read before any re-resolution');
+});
+
+// Repair pins for Systems Review BLOCKING B1 on PR #665 head cadfb7cc
+// (comment 6310824501): resolveClassified must snapshot and qualify the
+// resolved selection inside its own continuation, immediately after the
+// resolver await — the base acquired+snapshotted in one continuation, and
+// only owned data (the frozen snapshot and the owned projection) may cross
+// the helper-to-caller await. Both tests inject a SYNCHRONOUS resolver
+// directly into the controller, not through the suite's async wrapper: an
+// async wrapper would absorb the very suspension under test. The existing
+// later-mutation tests cover the store/authorization awaits, not this gap.
+
+test('Rule E repair (PR #665 B1): synchronous-resolver mutation across the resolve boundary cannot defeat confirm drift detection', async t => {
+  const w = await world(t);
+  let commits = 0;
+  const countingStore = {
+    prepare: input => w.store.prepare(input),
+    commitWithoutRecovery: input => { commits++; return w.store.commitWithoutRecovery(input); },
+    outcome: input => w.store.outcome(input),
+  };
+  let mutateOnConfirm = false;
+  const syncResolve = input => {
+    w.classifyOnce(input);
+    const fresh = resolved();
+    if (mutateOnConfirm) {
+      fresh.goalBinding = 'synthetic-changed-goal';
+      // Two chained microtasks. The first runs before the helper's await
+      // continuation, which must observe the changed binding in its own
+      // snapshot; the second runs only after that continuation, restoring
+      // the prepared value before any outer continuation could snapshot.
+      Promise.resolve().then(() => { Promise.resolve().then(() => { fresh.goalBinding = 'synthetic-plan-goal-v1'; }); });
+    }
+    return fresh;
+  };
+  const controller = createSettlementEvidenceConfirmation({ householdId,
+    authorize: w.authorize, resolveSelection: syncResolve, now: () => w.time, store: countingStore });
+  const prepared = await controller.prepare(context, request());
+  assert.equal(prepared.status, 'prepared');
+  mutateOnConfirm = true;
+  const result = await controller.confirm(context, { operationId: op(1), previewToken: prepared.previewToken, confirmed: true });
+  assert.deepEqual(result, { status: 'rejected', reason: 'selection-changed' },
+    'the selection observed at resolver completion is the one compared, not the later-restored foreign object');
+  assert.equal(commits, 0, 'no commit may be attempted against the restored foreign object');
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E repair (PR #665 B1): synchronous-resolver mutation across the resolve boundary cannot rewrite a prepared selection', async t => {
+  const w = await world(t);
+  let commits = 0;
+  const countingStore = {
+    prepare: input => w.store.prepare(input),
+    commitWithoutRecovery: input => { commits++; return w.store.commitWithoutRecovery(input); },
+    outcome: input => w.store.outcome(input),
+  };
+  let mutate = true;
+  const syncResolve = input => {
+    w.classifyOnce(input);
+    const fresh = resolved();
+    if (mutate) {
+      // Same chained-microtask restoration, aimed at prepare: the values
+      // land only after the helper's continuation, so a snapshot taken in
+      // that continuation retains the originally acquired selection.
+      Promise.resolve().then(() => { Promise.resolve().then(() => {
+        fresh.evidence.cents = 9000;
+        fresh.selectionBinding = 'synthetic-mutated-binding';
+      }); });
+    }
+    return fresh;
+  };
+  const controller = createSettlementEvidenceConfirmation({ householdId,
+    authorize: w.authorize, resolveSelection: syncResolve, now: () => w.time, store: countingStore });
+  const prepared = await controller.prepare(context, request());
+  assert.equal(prepared.status, 'prepared');
+  mutate = false;
+  const receipt = await controller.confirm(context, { operationId: op(1), previewToken: prepared.previewToken, confirmed: true });
+  assert.equal(receipt.status, 'committed',
+    'the retained selection is the one acquired at prepare; a post-return mutation must not rewrite it');
+  assert.equal(w.document().operations[0].command.evidence.cents, 6000, 'the committed command carries the acquired evidence, not the mutation');
+  assert.equal(commits, 1);
 });
