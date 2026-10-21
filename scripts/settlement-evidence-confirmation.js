@@ -259,6 +259,14 @@ function createSettlementEvidenceConfirmation(deps) {
   // twice, or never classifies still fails the attempt after settlement.
   // A stashed closure invoked late refuses, and can touch nothing but its
   // own dead session — never the accepted snapshot or another attempt.
+  // The resolved selection is snapshotted and qualified HERE, in the same
+  // continuation as the resolver await: acquisition and snapshot are one
+  // step, exactly as the base acquired its selection, so no foreign
+  // reference crosses this helper's return — only the owned frozen
+  // selection and the owned projection do. A mutation landing in the
+  // helper-to-caller interval can therefore neither rewrite the selection
+  // paired with the projection nor restore a changed binding past the
+  // confirm comparison.
   async function resolveClassified(authority, selection) {
     const session = { open: true, calls: 0, error: null, projection: null };
     const classify = (tx, plan, opts) => {
@@ -274,12 +282,12 @@ function createSettlementEvidenceConfirmation(deps) {
         throw error;
       }
     };
-    let resolvedSelection;
+    let ownedSelection;
     try {
-      resolvedSelection = await resolveSelection({ authority, selection, classify });
+      ownedSelection = snapshot(await resolveSelection({ authority, selection, classify }));
     } finally { session.open = false; }
     if (session.error || session.calls !== 1) fail();
-    return { selection: resolvedSelection, projection: session.projection };
+    return { selection: qualified(ownedSelection, authority), projection: session.projection };
   }
   async function authorityFor(context) {
     const value = snapshot(await authorize(context));
@@ -315,7 +323,7 @@ function createSettlementEvidenceConfirmation(deps) {
       reservation = {}; preparing.set(request.operationId, reservation);
       const authority = await authorityFor(ownedContext);
       const resolvedCall = await resolveClassified(authority, request.selection);
-      const selection = Object.freeze({ ...qualified(snapshot(resolvedCall.selection), authority),
+      const selection = Object.freeze({ ...resolvedCall.selection,
         classification: resolvedCall.projection });
       // Admission is decided before the command exists and before any
       // store call: an ineligible or unresolved verdict retains no preview.
@@ -369,7 +377,7 @@ function createSettlementEvidenceConfirmation(deps) {
       let fresh;
       try {
         const resolvedCall = await resolveClassified(authority, retained.request.selection);
-        fresh = Object.freeze({ ...qualified(snapshot(resolvedCall.selection), authority),
+        fresh = Object.freeze({ ...resolvedCall.selection,
           classification: resolvedCall.projection });
       } catch { return retained.attempted ? unknown(request.operationId) : rejected('selection-unavailable'); }
       if (!isDeepStrictEqual(fresh, retained.selection)) return terminal(request.operationId, retained, 'selection-changed');

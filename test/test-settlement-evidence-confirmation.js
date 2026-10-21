@@ -1300,3 +1300,82 @@ test('Rule E: the original committed receipt takes precedence over later ineligi
   assert.equal(w.classifyCalls.length, calls, 'the original receipt is read before any re-classification');
   assert.equal(w.count('resolve'), resolves, 'the original receipt is read before any re-resolution');
 });
+
+// Repair pins for Systems Review BLOCKING B1 on PR #665 head cadfb7cc
+// (comment 6310824501): resolveClassified must snapshot and qualify the
+// resolved selection inside its own continuation, immediately after the
+// resolver await — the base acquired+snapshotted in one continuation, and
+// only owned data (the frozen snapshot and the owned projection) may cross
+// the helper-to-caller await. Both tests inject a SYNCHRONOUS resolver
+// directly into the controller, not through the suite's async wrapper: an
+// async wrapper would absorb the very suspension under test. The existing
+// later-mutation tests cover the store/authorization awaits, not this gap.
+
+test('Rule E repair (PR #665 B1): synchronous-resolver mutation across the resolve boundary cannot defeat confirm drift detection', async t => {
+  const w = await world(t);
+  let commits = 0;
+  const countingStore = {
+    prepare: input => w.store.prepare(input),
+    commitWithoutRecovery: input => { commits++; return w.store.commitWithoutRecovery(input); },
+    outcome: input => w.store.outcome(input),
+  };
+  let mutateOnConfirm = false;
+  const syncResolve = input => {
+    w.classifyOnce(input);
+    const fresh = resolved();
+    if (mutateOnConfirm) {
+      fresh.goalBinding = 'synthetic-changed-goal';
+      // Two chained microtasks. The first runs before the helper's await
+      // continuation, which must observe the changed binding in its own
+      // snapshot; the second runs only after that continuation, restoring
+      // the prepared value before any outer continuation could snapshot.
+      Promise.resolve().then(() => { Promise.resolve().then(() => { fresh.goalBinding = 'synthetic-plan-goal-v1'; }); });
+    }
+    return fresh;
+  };
+  const controller = createSettlementEvidenceConfirmation({ householdId,
+    authorize: w.authorize, resolveSelection: syncResolve, now: () => w.time, store: countingStore });
+  const prepared = await controller.prepare(context, request());
+  assert.equal(prepared.status, 'prepared');
+  mutateOnConfirm = true;
+  const result = await controller.confirm(context, { operationId: op(1), previewToken: prepared.previewToken, confirmed: true });
+  assert.deepEqual(result, { status: 'rejected', reason: 'selection-changed' },
+    'the selection observed at resolver completion is the one compared, not the later-restored foreign object');
+  assert.equal(commits, 0, 'no commit may be attempted against the restored foreign object');
+  assert.deepEqual(w.writes, []);
+});
+
+test('Rule E repair (PR #665 B1): synchronous-resolver mutation across the resolve boundary cannot rewrite a prepared selection', async t => {
+  const w = await world(t);
+  let commits = 0;
+  const countingStore = {
+    prepare: input => w.store.prepare(input),
+    commitWithoutRecovery: input => { commits++; return w.store.commitWithoutRecovery(input); },
+    outcome: input => w.store.outcome(input),
+  };
+  let mutate = true;
+  const syncResolve = input => {
+    w.classifyOnce(input);
+    const fresh = resolved();
+    if (mutate) {
+      // Same chained-microtask restoration, aimed at prepare: the values
+      // land only after the helper's continuation, so a snapshot taken in
+      // that continuation retains the originally acquired selection.
+      Promise.resolve().then(() => { Promise.resolve().then(() => {
+        fresh.evidence.cents = 9000;
+        fresh.selectionBinding = 'synthetic-mutated-binding';
+      }); });
+    }
+    return fresh;
+  };
+  const controller = createSettlementEvidenceConfirmation({ householdId,
+    authorize: w.authorize, resolveSelection: syncResolve, now: () => w.time, store: countingStore });
+  const prepared = await controller.prepare(context, request());
+  assert.equal(prepared.status, 'prepared');
+  mutate = false;
+  const receipt = await controller.confirm(context, { operationId: op(1), previewToken: prepared.previewToken, confirmed: true });
+  assert.equal(receipt.status, 'committed',
+    'the retained selection is the one acquired at prepare; a post-return mutation must not rewrite it');
+  assert.equal(w.document().operations[0].command.evidence.cents, 6000, 'the committed command carries the acquired evidence, not the mutation');
+  assert.equal(commits, 1);
+});
