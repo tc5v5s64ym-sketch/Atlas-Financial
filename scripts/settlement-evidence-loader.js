@@ -83,9 +83,9 @@ function normalizeBytes(value) {
   if (typeof value === 'string') return Buffer.from(value, 'utf8');
   return null;
 }
-const isPromiseLike = value => value !== null
-  && (typeof value === 'object' || typeof value === 'function')
-  && typeof value.then === 'function';
+// A foreign `then` is captured exactly once, inside acquire (below):
+// probing it through a helper and then awaiting the original object
+// would read it twice, and the two answers need not agree.
 // A plain value is a value, never a Promise to await: byte carriers and
 // plain records keep exactly the classification the synchronous loader
 // gave them, even if a record happens to carry a `then` key.
@@ -138,30 +138,62 @@ function snapshotPinValue(value) {
 function snapshotDocumentValue(value) {
   return { raw: value, bytes: normalizeBytes(value) };
 }
-// Acquire one reader value with ownership bound to the acquisition.
-// The reader is invoked synchronously; a plain result is snapshotted in
-// the same turn, so no suspension intervenes between a synchronous
-// return and its owned copy — and a plain value's `then` is never
-// probed at all. A non-plain result is snapshotted FIRST, fixing its
-// acquisition-time classification in loader-owned form, and only then
-// probed for a `then`: reading a foreign `then` can run accessor code
-// with side effects (a getter that re-prototypes the very object being
-// classified), and a noncallable `then` — absent, a plain value, or a
-// getter returning one — must never reclassify the original value, so
-// the pre-probe snapshot is used exactly as taken, whatever the probe
-// did to the foreign object. Only a callable `then` makes the value a
-// genuine thenable: the pre-probe snapshot is discarded, the value is
-// awaited, and the RESOLVED value is snapshotted from scratch in the
-// first continuation. A rejection (or a synchronous throw, which an
-// async function surfaces the same way) rethrows into the caller's
-// existing guard.
+// Acquire one already-obtained value with ownership bound to the
+// acquisition. A plain value is snapshotted in the same turn, so no
+// suspension intervenes between its return and its owned copy — and a
+// plain value's `then` is never probed at all. A non-plain value is
+// snapshotted FIRST, fixing its acquisition-time classification in
+// loader-owned form. Its `then` is then captured with a SINGLE
+// property access, and the asynchronous branch is driven by the
+// captured method alone: reading a foreign `then` can run accessor
+// code whose answer need not be stable across accesses, so the
+// original object is never awaited — an `await` would perform a
+// second, uncontrolled `then` lookup, and a getter could answer the
+// capture with a function yet answer the await by restoring the
+// object's prototype and returning undefined, fulfilling the await
+// with the original mutated object and having the fresh snapshot
+// accept what the pre-probe snapshot had already classified as
+// unsupported. A noncallable captured `then` — absent, a plain value,
+// or a getter returning one — means the pre-probe snapshot is used
+// exactly as taken, whatever the capture did to the foreign object.
+// A callable captured `then` makes the value a genuine thenable: the
+// pre-probe snapshot is discarded and the captured method is invoked
+// with the original receiver and loader-owned callbacks, attaching
+// the continuation DIRECTLY to the value's own settlement — no
+// intermediate Promise — so the resolved value is snapshotted
+// synchronously inside the first reaction after settlement, before
+// any reaction attached later can mutate it. A synchronous throw
+// from the captured method rejects through the same callback, the
+// classification an awaited rejection receives. If the resolved
+// value is itself a thenable it is acquired recursively under these
+// same rules — its own acquisition, never a second read of the
+// original. A rejection rethrows into the caller's existing guard,
+// as does a capture access whose getter throws.
+function acquireValue(value, snapshot) {
+  if (isPlainValue(value)) return snapshot(value);
+  const acquired = snapshot(value);
+  const then = value !== null && (typeof value === 'object' || typeof value === 'function')
+    ? value.then : undefined;
+  if (typeof then !== 'function') return acquired;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const onResolve = resolved => {
+      if (settled) return;
+      settled = true;
+      try { resolve(acquireValue(resolved, snapshot)); } catch (err) { reject(err); }
+    };
+    const onReject = err => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
+    try { then.call(value, onResolve, onReject); } catch (err) { onReject(err); }
+  });
+}
+// Acquire one reader value: the reader is invoked synchronously and
+// its result acquired in the same turn (see acquireValue).
 async function acquire(read, snapshot) {
-  const raw = read();
-  if (isPlainValue(raw)) return snapshot(raw);
-  const acquired = snapshot(raw);
-  if (!isPromiseLike(raw)) return acquired;
-  const value = await raw;
-  return snapshot(value);
+  return acquireValue(read(), snapshot);
 }
 
 // The pin record may arrive as an object or as stored pin bytes (the

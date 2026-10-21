@@ -1057,6 +1057,242 @@ test('acquisition: genuine Promise readers still qualify with resolved-value sna
   assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
 });
 
+// --- Acquisition order: the then value is captured exactly once -------------
+// B4-incomplete (Systems Review HOLD 6308002838): the snapshot-before-
+// probe reorder still read the foreign `then` TWICE — once for the
+// probe, then again implicitly when `await` performed its own lookup
+// on the original object. A two-access getter answers the probe with
+// a function, then answers the await by restoring the supported
+// prototype and returning undefined: the await fulfills with the
+// ORIGINAL mutated object, and the fresh snapshot accepts it. The
+// acquisition must capture `then` with a single property access and
+// drive the async branch from the captured method only — the original
+// object is never awaited, so there is no second lookup. The pins
+// below assert the full repaired signature: exactly one getter read,
+// the captured method invoked exactly once (genuine resolution — the
+// defective signature is two reads and zero invocations with a
+// qualified outcome), the original object's prototype never restored,
+// and the outcome governed by the resolved value's fresh
+// classification (each fixture resolves with a getter-free
+// unsupported twin of the same shape).
+
+// Give `value` an own `then` accessor with a two-access script:
+// access 1 returns a working then-method that resolves with `twin`
+// (counting its own invocations); access 2 restores the value's
+// prototype to `proto` and returns undefined.
+function twoAccessThenGetter(value, proto, twin) {
+  const counts = { reads: 0, invocations: 0 };
+  Object.defineProperty(value, 'then', {
+    configurable: true,
+    get() {
+      counts.reads += 1;
+      if (counts.reads === 1) {
+        return resolve => { counts.invocations += 1; resolve(twin); };
+      }
+      Object.setPrototypeOf(value, proto);
+      return undefined;
+    },
+  });
+  return counts;
+}
+
+// Wrap a genuine Promise with an own `then` accessor that counts
+// reads and returns one stable counting wrapper around the real
+// method: a single-capture acquisition reads and invokes it once.
+function instrumentedPromise(promise) {
+  const counts = { reads: 0, invocations: 0 };
+  const realThen = promise.then.bind(promise);
+  const wrapper = (resolve, reject) => {
+    counts.invocations += 1;
+    return realThen(resolve, reject);
+  };
+  Object.defineProperty(promise, 'then', {
+    configurable: true,
+    get() { counts.reads += 1; return wrapper; },
+  });
+  return counts;
+}
+
+test('acquisition: a two-access then getter cannot reclassify a null-prototype pin', async () => {
+  const pair = pinOf(doc1);
+  const twin = Object.create(null);
+  twin.revision = pair.revision;
+  twin.digest = pair.digest;
+  const foreign = Object.create(null);
+  foreign.revision = pair.revision;
+  foreign.digest = pair.digest;
+  const counts = twoAccessThenGetter(foreign, Object.prototype, twin);
+  let docReads = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => foreign,
+    readDocument: () => { docReads += 1; return doc1; },
+  }), 'pin-invalid');
+  assert.equal(docReads, 0,
+    'a pin unsupported at acquisition never reaches the document read');
+  assert.equal(counts.reads, 1, 'the foreign then was read exactly once');
+  assert.equal(counts.invocations, 1,
+    'the captured method settled the acquisition — genuine resolution, not a second lookup');
+  assert.equal(Object.getPrototypeOf(foreign), null,
+    'the original object was never re-prototyped');
+});
+
+test('acquisition: a two-access then getter cannot reclassify a custom-prototype pin', async () => {
+  const pair = pinOf(doc1);
+  const customProto = { inherited: true };
+  const twin = Object.create(customProto);
+  twin.revision = pair.revision;
+  twin.digest = pair.digest;
+  const foreign = Object.create(customProto);
+  foreign.revision = pair.revision;
+  foreign.digest = pair.digest;
+  const counts = twoAccessThenGetter(foreign, Object.prototype, twin);
+  let docReads = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => foreign,
+    readDocument: () => { docReads += 1; return doc1; },
+  }), 'pin-invalid');
+  assert.equal(docReads, 0,
+    'a pin unsupported at acquisition never reaches the document read');
+  assert.equal(counts.reads, 1, 'the foreign then was read exactly once');
+  assert.equal(counts.invocations, 1,
+    'the captured method settled the acquisition — genuine resolution, not a second lookup');
+  assert.equal(Object.getPrototypeOf(foreign), customProto,
+    'the original object was never re-prototyped');
+});
+
+test('acquisition: a two-access then getter cannot reclassify a stripped Buffer document', async () => {
+  const twin = Buffer.from(doc1);
+  Object.setPrototypeOf(twin, null);
+  const stripped = Buffer.from(doc1);
+  Object.setPrototypeOf(stripped, null);
+  const counts = twoAccessThenGetter(stripped, Buffer.prototype, twin);
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => stripped,
+  }), 'document-malformed');
+  assert.equal(counts.reads, 1, 'the foreign then was read exactly once');
+  assert.equal(counts.invocations, 1,
+    'the captured method settled the acquisition — genuine resolution, not a second lookup');
+  assert.equal(Object.getPrototypeOf(stripped), null,
+    'the original carrier was never re-prototyped');
+});
+
+test('acquisition: a two-access then getter cannot reclassify a stripped Uint8Array document', async () => {
+  const twin = new Uint8Array(doc1);
+  Object.setPrototypeOf(twin, null);
+  const stripped = new Uint8Array(doc1);
+  Object.setPrototypeOf(stripped, null);
+  const counts = twoAccessThenGetter(stripped, Uint8Array.prototype, twin);
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => stripped,
+  }), 'document-malformed');
+  assert.equal(counts.reads, 1, 'the foreign then was read exactly once');
+  assert.equal(counts.invocations, 1,
+    'the captured method settled the acquisition — genuine resolution, not a second lookup');
+  assert.equal(Object.getPrototypeOf(stripped), null,
+    'the original carrier was never re-prototyped');
+});
+
+test('acquisition: a two-access stripped Buffer at the stability read classifies document-changed', async () => {
+  const twin = Buffer.from(doc1);
+  Object.setPrototypeOf(twin, null);
+  const stripped = Buffer.from(doc1);
+  Object.setPrototypeOf(stripped, null);
+  const counts = twoAccessThenGetter(stripped, Buffer.prototype, twin);
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : stripped; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+  assert.equal(counts.reads, 1, 'the foreign then was read exactly once');
+  assert.equal(counts.invocations, 1,
+    'the captured method settled the acquisition — genuine resolution, not a second lookup');
+  assert.equal(Object.getPrototypeOf(stripped), null,
+    'the original carrier was never re-prototyped');
+});
+
+test('acquisition: a two-access stripped Uint8Array at the stability read classifies document-changed', async () => {
+  const twin = new Uint8Array(doc1);
+  Object.setPrototypeOf(twin, null);
+  const stripped = new Uint8Array(doc1);
+  Object.setPrototypeOf(stripped, null);
+  const counts = twoAccessThenGetter(stripped, Uint8Array.prototype, twin);
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : stripped; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+  assert.equal(counts.reads, 1, 'the foreign then was read exactly once');
+  assert.equal(counts.invocations, 1,
+    'the captured method settled the acquisition — genuine resolution, not a second lookup');
+  assert.equal(Object.getPrototypeOf(stripped), null,
+    'the original carrier was never re-prototyped');
+});
+
+test('acquisition: a genuine Promise pin reader is captured once — one read, one invocation', async () => {
+  const promise = Promise.resolve(pinOf(doc1));
+  const counts = instrumentedPromise(promise);
+  const evidence = expectQualified(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => promise,
+    readDocument: reader(doc1),
+  }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(counts.reads, 1, 'the Promise then was read exactly once');
+  assert.equal(counts.invocations, 1, 'the captured method was invoked exactly once');
+});
+
+test('acquisition: a genuine Promise document reader is captured once per acquisition', async () => {
+  const perCall = [];
+  const evidence = expectQualified(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => {
+      const promise = Promise.resolve(doc1);
+      perCall.push(instrumentedPromise(promise));
+      return promise;
+    },
+  }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(perCall.length, 2, 'both document acquisitions happened');
+  for (const counts of perCall) {
+    assert.equal(counts.reads, 1, 'each acquisition read the Promise then exactly once');
+    assert.equal(counts.invocations, 1, 'each captured method was invoked exactly once');
+  }
+});
+
+test('acquisition: captured-method settlement preserves the rejection taxonomy', async () => {
+  // The captured method rejects: the same classification an awaited
+  // rejection receives.
+  const rejecting = Object.create(null);
+  rejecting.then = (resolve, reject) => { reject(new Error('pin read failed')); };
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => rejecting, readDocument: reader(doc1) }),
+    'pin-unavailable');
+  // The captured method throws synchronously when invoked: a
+  // synchronous throw from a thenable's method rejects the await,
+  // identically.
+  const throwing = Object.create(null);
+  throwing.then = () => { throw new Error('pin then threw'); };
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => throwing, readDocument: reader(doc1) }),
+    'pin-unavailable');
+  // The `then` getter itself throws on the single capture access:
+  // the acquisition rejects into the same guard.
+  const hostileGetter = Object.create(null);
+  Object.defineProperty(hostileGetter, 'then', {
+    configurable: true,
+    get() { throw new Error('then getter threw'); },
+  });
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => hostileGetter, readDocument: reader(doc1) }),
+    'pin-unavailable');
+});
+
 // --- Reason coverage ------------------------------------------------------------
 test('coverage: every enumerated unavailable reason was exercised above', async () => {
   assert.deepEqual([...seenReasons].sort(), [...L.REASONS].sort(),
