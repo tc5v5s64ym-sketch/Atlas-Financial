@@ -845,6 +845,95 @@ test('pin snapshot: the static source obeys the same scalar rules when it is the
   assert.equal(unrelatedReads, 0, 'the snapshot reads revision and digest only');
 });
 
+// --- Pin snapshot integrity: unsupported shapes never cross by reference -----
+// B3 (Systems Review HOLD 6306734952): the snapshot's fallback used to
+// return values that were neither byte carriers nor plain records BY
+// REFERENCE — null-prototype and custom-prototype objects included.
+// The reference crossed the acquire suspension, and parsePin judges
+// shape only after the resume: re-prototyping the object to
+// Object.prototype in that window turned a pin that was invalid at
+// acquisition into a qualifying one. The snapshot now reduces every
+// unsupported object to an owned immutable invalid sentinel; the pins
+// below prove the classification is frozen at acquisition, for a
+// synchronous reader and for a Promise-returning reader alike, and
+// that unsupported shapes are never normalized into valid records.
+
+test('pin snapshot: a null-prototype pin re-prototyped after invocation stays pin-invalid (sync reader)', async () => {
+  const pair = pinOf(doc1);
+  const foreign = Object.create(null);
+  foreign.revision = pair.revision;
+  foreign.digest = pair.digest;
+  let docReads = 0;
+  const pending = L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => foreign,
+    readDocument: () => { docReads += 1; return doc1; },
+  });
+  // The reader returned synchronously, so the acquisition snapshot is
+  // already taken and the loader is suspended before parsePin judges
+  // the shape. Mutating the prototype now must not move the
+  // classification: the value was unsupported at acquisition.
+  Object.setPrototypeOf(foreign, Object.prototype);
+  expectUnavailable(await pending, 'pin-invalid');
+  assert.equal(docReads, 0,
+    'a pin invalid at acquisition never reaches the document read');
+});
+
+test('pin snapshot: a custom-prototype pin re-prototyped after the snapshot stays pin-invalid (Promise reader)', async () => {
+  const pair = pinOf(doc1);
+  const foreign = Object.create({ unrelated: true });
+  foreign.revision = pair.revision;
+  foreign.digest = pair.digest;
+  let resolvePin;
+  const pinPromise = new Promise(resolve => { resolvePin = resolve; });
+  let docReads = 0;
+  const pending = L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => pinPromise,
+    readDocument: () => { docReads += 1; return doc1; },
+  });
+  // Attach the mutation AFTER the loader has awaited the pin promise:
+  // promise reactions run in attach order, so this lands after the
+  // acquisition snapshot is taken from the resolved value and before
+  // parsePin judges the shape — the exact B3 window, deterministically.
+  pinPromise.then(() => { Object.setPrototypeOf(foreign, Object.prototype); });
+  resolvePin(foreign);
+  expectUnavailable(await pending, 'pin-invalid');
+  assert.equal(docReads, 0,
+    'a pin invalid at acquisition never reaches the document read');
+});
+
+test('pin snapshot: unsupported shapes are judged as acquired and never normalized into records', async () => {
+  const pair = pinOf(doc1);
+  // A null-prototype pin with a malformed pair, never mutated.
+  const malformed = Object.create(null);
+  malformed.revision = 'not-a-revision';
+  malformed.digest = 'not-a-digest';
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: () => malformed, readDocument: reader(doc1) }),
+    'pin-invalid');
+  // A custom-prototype object that INHERITS a matching pair from its
+  // prototype: unsupported at acquisition. A snapshot that read
+  // revision/digest off any object would wrongly qualify it — the
+  // classification is invalid, and it is never normalized.
+  const inheriting = Object.create({ revision: pair.revision, digest: pair.digest });
+  let docReads = 0;
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId }, readPin: async () => inheriting,
+      readDocument: () => { docReads += 1; return doc1; } }),
+    'pin-invalid');
+  assert.equal(docReads, 0,
+    'an inherited pair on an unsupported shape never reaches the document read');
+  // The static source judges the same shape the same way: a
+  // null-prototype static pin carrying a valid own pair is unsupported.
+  const staticForeign = Object.create(null);
+  staticForeign.revision = pair.revision;
+  staticForeign.digest = pair.digest;
+  expectUnavailable(await L.loadSettlementEvidence(
+    { config: { householdId, pin: staticForeign }, readDocument: reader(doc1) }),
+    'pin-invalid');
+});
+
 // --- Reason coverage ------------------------------------------------------------
 test('coverage: every enumerated unavailable reason was exercised above', async () => {
   assert.deepEqual([...seenReasons].sort(), [...L.REASONS].sort(),

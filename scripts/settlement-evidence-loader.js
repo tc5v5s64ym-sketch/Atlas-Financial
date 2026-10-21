@@ -102,14 +102,35 @@ const isPlainValue = value => Buffer.isBuffer(value) || value instanceof Uint8Ar
 // `then`: a foreign record can never escape into Promise resolution
 // and be assimilated (its `then` invoked to run foreign code,
 // substitute a different pin, or hang the load) at one of this
-// module's async boundaries. Anything else passes through for
-// parsePin to judge.
+// module's async boundaries. Every other object — null-prototype,
+// custom-prototype, array, function, class instance — reduces to
+// the owned invalid sentinel below; immutable primitives pass
+// through for parsePin to judge.
+//
+// The loader-owned invalid sentinel: the snapshot of any pin value
+// that is neither a byte carrier nor a plain record. Such a value is
+// unsupported, and unsupported must stay exactly as invalid as it was
+// at acquisition. Returning the foreign object itself would carry a
+// live reference across the acquire suspension, and parsePin judges
+// shape only after the resume — a caller re-prototyping a null- or
+// custom-prototype object to Object.prototype in that window could
+// turn a pin that was invalid at acquisition into a qualifying one.
+// The sentinel is frozen and carries no load-bearing values, so
+// parsePin can never accept it: unsupported classifies pin-invalid
+// permanently, and is never normalized into a valid record.
+// Immutable primitives (null, undefined, numbers, booleans, bigints,
+// symbols) are values, not references — nothing can mutate them
+// across a suspension — and pass through unchanged.
+const INVALID_PIN_SNAPSHOT = Object.freeze({ revision: undefined, digest: undefined });
 function snapshotPinValue(value) {
   if (Buffer.isBuffer(value) || value instanceof Uint8Array || typeof value === 'string') {
     return normalizeBytes(value);
   }
   if (isRecord(value)) return { revision: value.revision, digest: value.digest };
-  return value;
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) {
+    return value;
+  }
+  return INVALID_PIN_SNAPSHOT;
 }
 // Snapshot one document acquisition: the raw value — the missing-value
 // checks judge it exactly as the synchronous loader judged the reader's
