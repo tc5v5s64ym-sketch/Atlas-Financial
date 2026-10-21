@@ -44,20 +44,58 @@ function resolved() {
 }
 const request = (n = 1, cents = 2500) => ({ operationId: op(n), selection: clone(selection), assignedCents: cents });
 
+// Fixture-consistency observation (Rule D B1): the controller's resolver
+// contract requires one provider identity to retain a stable txRef, so a
+// fixture cycle only represents a distinct provider transaction when its
+// identity.transactionId, classifier transaction id, txRef and selection
+// binding move together. fixtureTriple observes the live fixture state;
+// assertDistinctTriples fails if the cycles merely re-key one transaction.
+function fixtureTriple(w) {
+  return { transactionId: w.source.identity.transactionId, classifierId: w.classification.tx.id,
+    txRef: w.source.txRef, selectionBinding: w.source.selectionBinding };
+}
+function assertDistinctTriples(triples, count) {
+  assert.equal(new Set(triples.map(x => x.transactionId)).size, count, 'each cycle must be a distinct provider transaction');
+  assert.equal(new Set(triples.map(x => x.txRef)).size, count, 'each cycle must carry a distinct txRef');
+  assert.equal(new Set(triples.map(x => x.selectionBinding)).size, count, 'each cycle must carry its own selection binding');
+  const txRefByIdentity = new Map(), identityByTxRef = new Map();
+  for (const x of triples) {
+    assert.equal(x.classifierId, x.transactionId, 'classifier transaction id must match the provider identity');
+    if (txRefByIdentity.has(x.transactionId)) assert.equal(txRefByIdentity.get(x.transactionId), x.txRef, 'one provider identity must retain a stable txRef');
+    if (identityByTxRef.has(x.txRef)) assert.equal(identityByTxRef.get(x.txRef), x.transactionId, 'one txRef must not name two provider transactions');
+    txRefByIdentity.set(x.transactionId, x.txRef); identityByTxRef.set(x.txRef, x.transactionId);
+  }
+  assert.equal(txRefByIdentity.size, count, 'provider identities and txRefs must be in one-to-one correspondence');
+}
+
+// Consistent distinct-transaction generation (Rule D B1): transaction n
+// is a genuinely different provider transaction end-to-end — a new
+// provider identity.transactionId, the classifier fixture built for that
+// same transaction id, its own selection binding, and tx(n) are minted
+// together, so no provider identity ever carries two txRefs.
+function distinctTransaction(n) {
+  const transactionId = 'synthetic-provider-transaction-' + n;
+  const source = resolved();
+  source.identity = { ...source.identity, transactionId };
+  source.txRef = tx(n);
+  source.selectionBinding = 'synthetic-private-selection-v' + n;
+  return { source, classification: classificationFixture('spend-groceries', transactionId) };
+}
+
 // Rule E classification fixtures: a synthetic provider transaction, plan and
 // current-period packet whose verdicts come from the REAL Forecast
 // classifier, invoked by the fixture resolver through the controller-owned
 // classify closure (never a copied label set). Amounts are dollars, the
 // classifier's convention. The default is E2: a Groceries spend with
 // merchant identity against a plan whose categories match it.
-function classificationFixture(kind = 'spend-groceries') {
+function classificationFixture(kind = 'spend-groceries', transactionId = 'synthetic-provider-transaction') {
   const plan = { budget: { categories: [
     { id: 'groceries', label: 'Groceries' },
     { id: 'restaurants', label: 'Restaurants' },
     { id: 'insurance', label: 'Home Insurance' },
   ], excluded: [] } };
   const packet = { representedActuals: [], transactions: [] };
-  const base = { id: 'synthetic-provider-transaction', date: '2026-10-19' };
+  const base = { id: transactionId, date: '2026-10-19' };
   const txs = {
     'spend-groceries': { ...base, amount: 60, categoryLabel: 'Groceries', merchantKnown: true },
     'spend-restaurants': { ...base, amount: 60, categoryLabel: 'Restaurants', merchantKnown: true },
@@ -222,9 +260,19 @@ test('B2 capacity: 200 live previews block 201, but expiry admits new work', asy
 });
 
 test('B2 capacity: more than 200 real successful operations reclaim committed previews', async t => {
-  const w = await world(t), tokens = new Set();
+  const w = await world(t), tokens = new Set(), triples = [];
   let first;
   for (let n = 1; n <= 205; n++) {
+    // Rule D fixture note: each successful operation allocates a distinct
+    // transaction to the same goal, generated consistently per cycle —
+    // provider identity.transactionId, the classifier transaction id, the
+    // selection binding and the txRef are minted together
+    // (distinctTransaction), so no provider identity ever carries two
+    // txRefs. The capacity under test is the controller's
+    // preview/operation accounting, which is pair-independent.
+    const fixture = distinctTransaction(n);
+    w.source = fixture.source; w.classification = fixture.classification;
+    triples.push(fixtureTriple(w));
     const prepared = await w.prepare(n, 1);
     assert.equal(prepared.status, 'prepared', 'success cycle ' + n);
     assert.match(prepared.previewToken, /^[a-f0-9]{64}$/);
@@ -233,6 +281,7 @@ test('B2 capacity: more than 200 real successful operations reclaim committed pr
     assert.equal(result.status, 'committed', 'success cycle ' + n);
     first ||= result;
   }
+  assertDistinctTriples(triples, 205);
   assert.equal(w.document().operations.length, 205);
   assert.equal(w.count('commitWithoutRecovery'), 205);
   w.time += C.TTL_MS;
@@ -373,6 +422,7 @@ test('B2 cleanup race: a terminal result from an old generation cannot delete it
 
 test('B2 unknown: past TTL never retries or permits reprepare; only a verified receipt releases it', async t => {
   const w = await world(t);
+  const firstTriple = fixtureTriple(w);
   const prepared = await w.prepare();
   w.commitHook = async (input, store) => { await store.commitWithoutRecovery(input); throw Error('synthetic lost controller reply'); };
   assert.equal((await w.confirm()).status, 'unknown');
@@ -388,8 +438,17 @@ test('B2 unknown: past TTL never retries or permits reprepare; only a verified r
   assert.deepEqual(await w.controller.confirm(context, { operationId: op(1) }), receipt);
   assert.deepEqual(await w.controller.confirm(context, { operationId: op(1), previewToken: 'wrong', confirmed: false }), receipt);
   w.commitHook = null;
+  // Rule D fixture note: op2 allocates a distinct transaction, generated
+  // consistently — a new provider identity with its matching classifier
+  // transaction id, its own selection binding, and txRef tx(2). What is
+  // under test is the verified-receipt release of op1's retained
+  // generation, not the pair op2 allocates.
+  const fixture2 = distinctTransaction(2);
+  w.source = fixture2.source; w.classification = fixture2.classification;
+  const secondTriple = fixtureTriple(w);
   assert.equal((await w.prepare(2, 1)).status, 'prepared');
   assert.equal((await w.confirm(2)).status, 'committed');
+  assertDistinctTriples([firstTriple, secondTriple], 2);
   assert.deepEqual(await w.controller.confirm(context, { operationId: op(1) }), receipt);
   assert.equal(w.document().operations.length, 2);
   assert.equal(typeof prepared.previewToken, 'string');
@@ -634,6 +693,10 @@ test('same stable tuple cannot gain fresh capacity from content changes or an al
 test('original receipt survives expiry, changed current evidence, later commit and a new controller', async t => {
   const w = await world(t);
   await w.prepare(); const first = await w.confirm();
+  // Rule D fixture note: the later commit allocates the same transaction
+  // to a second goal (2500 + 3500 still exactly fills its 6000 budget);
+  // the original receipt under test belongs to op1 either way.
+  w.source = { ...resolved(), goalId: 'commitment:synthetic-second' };
   await w.prepare(2, 3500); assert.equal((await w.confirm(2)).revision, 2);
   w.source.matchCount = 0; w.time += C.TTL_MS + 1;
   const writes = clone(w.writes), resolves = w.count('resolve');
@@ -681,6 +744,10 @@ test('a lost controller acknowledgement recovers the same receipt, including aft
   const first = await w.outcome();
   assert.equal(first.status, 'committed');
   w.commitHook = null;
+  // Rule D fixture note: as in the receipt test above, the later commit
+  // allocates the same transaction to a second goal; op1's receipt is
+  // what must be recovered.
+  w.source = { ...resolved(), goalId: 'commitment:synthetic-second' };
   await w.prepare(2, 3500); assert.equal((await w.confirm(2)).revision, 2);
   const writes = clone(w.writes);
   w.time += C.TTL_MS;

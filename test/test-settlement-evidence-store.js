@@ -1881,12 +1881,17 @@ test('B1 no-recovery: expiry/revision/conservation and successful own finalizati
   const writes = world.writeCounts();
   assert.deepEqual(await store.commitWithoutRecovery(confirmedRequest(stale)), { status: 'conflict' });
   world.noWritesSince(writes);
-  const expired = await prepareLink(store, 3);
+  // Rule D fixture note: the scenarios below prepare against a state whose
+  // (commitment:near, tx(1)) pair is already actively allocated, so each
+  // uses a pair that is still free. Expiry is a property of the preview,
+  // and conservation is a per-transaction budget that spans goals, so the
+  // machinery exercised is unchanged.
+  const expired = await prepareLink(store, 3, { txRef: tx(3) });
   world.clock.advance(C.TTL_MS);
   assert.deepEqual(await store.commitWithoutRecovery(confirmedRequest(expired)), { status: 'rejected', reason: 'preview-expired' });
   world.noWritesSince(writes);
   world.clock.advance(1);
-  const oversized = await prepareLink(store, 4);
+  const oversized = await prepareLink(store, 4, { goalId: 'commitment:far' });
   oversized.preview.command.assignedCents = 3501; // 2500 + 3501 > 6000 independently.
   oversized.confirmationDigest = C.digest(oversized.preview);
   assert.equal((await store.commitWithoutRecovery(confirmedRequest(oversized))).status, 'unavailable');

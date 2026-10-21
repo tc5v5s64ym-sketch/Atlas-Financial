@@ -345,4 +345,231 @@ const linksOf = (body, goalId) =>
     'replay is deterministic across parses');
 }
 
+// --- Rule D: one active allocation per (goalId, txRef) pair -----------------
+// Forward-only admission guard. The pair key is goalId + txRef alone:
+// assignedCents and evidenceDigest are never compared, so a different
+// amount is not an amendment. "Active" is replay's definition: set by
+// link, cleared only by retract; a reversal never clears it. Case labels
+// RD-1..RD-17 follow the acceptance table in the Rule D refinement.
+{
+  // RD-1: no active link for the pair — admitted exactly as before, both
+  // on an empty document and beside other pairs.
+  let body = adopt();
+  body = record(body, 1, link('commitment:b', tx(2), evidence(), 100));
+  body = record(body, 2, link('commitment:a', tx(1), evidence(), 4000));
+  eq(linksOf(body, 'commitment:a').length, 1, 'RD-1: a fresh pair is admitted beside other pairs');
+  eq(linksOf(body, 'commitment:a')[0].assignedCents, 4000, 'RD-1: the admitted link stands as recorded');
+}
+{
+  // RD-2: retrying the recorded operation itself returns its original
+  // receipt through the already-recorded branch; the guard never judges it.
+  let body = adopt();
+  const preparedA = prepare(body, 1, link('commitment:a', tx(1), evidence({ cents: 60000 }), 30000));
+  const saved = confirm(body, preparedA, now);
+  eq(saved.status, 'candidate', 'RD-2: the original link records');
+  body = record(saved.document, 2, link('commitment:b', tx(2), evidence(), 100));
+  const again = confirm(body, preparedA, now + 5);
+  eq(again.status, 'already-recorded', 'RD-2: a same-operation retry is already-recorded, never held');
+  eq(again.document, body, 'RD-2: the retry returns the handed document unchanged');
+  eq(again.nextPin, C.pin(body, householdId), 'RD-2: the retry receipt names the current pin');
+  eq(C.outcome(body, { householdId, actorId, operationId: op(1) }),
+    { status: 'recorded', operationId: op(1), revision: 1 }, 'RD-2: outcome still reports the original revision');
+}
+{
+  // RD-3: an identical second tuple under a new operation is held at
+  // prepare, even with budget headroom to spare; nothing records.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence({ cents: 60000 }), 30000));
+  refuses(() => prepare(body, 2, link('commitment:a', tx(1), evidence({ cents: 60000 }), 30000)),
+    'RD-3: an identical second allocation for the active pair is refused');
+  eq(JSON.parse(body.toString('utf8')).revision, 1, 'RD-3: the refused prepare records nothing');
+  eq(C.outcome(body, { householdId, actorId, operationId: op(2) }),
+    { status: 'unknown', operationId: op(2) }, 'RD-3: the refused operation stays unrecorded');
+}
+{
+  // RD-4: different assignedCents is not an amendment path. The budget
+  // would admit 30000 + 20000 against 50000; the pair guard refuses.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence({ cents: 50000 }), 30000));
+  refuses(() => prepare(body, 2, link('commitment:a', tx(1), evidence({ cents: 50000 }), 20000)),
+    'RD-4: a different-cents second allocation for the active pair is refused');
+}
+{
+  // RD-5: the second allocation would also exceed the budget; the refusal
+  // does not depend on which check fires.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence({ cents: 30000 }), 30000));
+  refuses(() => prepare(body, 2, link('commitment:a', tx(1), evidence({ cents: 30000 }), 20000)),
+    'RD-5: an over-budget duplicate pair is refused either way');
+}
+{
+  // RD-6: retract frees the pair; an identical relink is a fresh act.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence({ cents: 30000 }), 30000));
+  body = record(body, 2, retract(op(1)));
+  body = record(body, 3, link('commitment:a', tx(1), evidence({ cents: 30000 }), 30000));
+  eq(linksOf(body, 'commitment:a').length, 1, 'RD-6: retract-then-relink admits the identical tuple');
+  eq(linksOf(body, 'commitment:a')[0].assignedCents, 30000, 'RD-6: the relink stands at full amount');
+}
+{
+  // RD-7: pair-free is not budget-free. After a 10000 partial reversal and
+  // a retract, the pair is admissible but only 20000 of capacity returned.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence({ cents: 30000 }), 30000));
+  body = record(body, 2, reverse(op(1), tx(9), refundEvidence({ cents: 10000 }), 10000));
+  body = record(body, 3, retract(op(1)));
+  refuses(() => prepare(body, 4, link('commitment:a', tx(1), evidence({ cents: 30000 }), 20001)),
+    'RD-7: a relink past the unreversed remainder still fails the budget cap');
+  body = record(body, 4, link('commitment:a', tx(1), evidence({ cents: 30000 }), 20000));
+  eq(linksOf(body, 'commitment:a')[0].assignedCents, 20000,
+    'RD-7: a relink at the unreversed remainder is admitted');
+}
+{
+  // RD-8: a link reversed in full is still active; only retract frees it.
+  // Budget headroom (10000 of 20000 unused) isolates the guard as the
+  // refusing check.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence({ cents: 20000 }), 10000));
+  body = record(body, 2, reverse(op(1), tx(9), refundEvidence({ cents: 10000 }), 10000));
+  eq(linksOf(body, 'commitment:a').length, 1, 'RD-8: the fully reversed link still projects as active');
+  eq(linksOf(body, 'commitment:a')[0].reversals.length, 1, 'RD-8: the full reversal stays on the link');
+  refuses(() => prepare(body, 3, link('commitment:a', tx(1), evidence({ cents: 20000 }), 5000)),
+    'RD-8: a fully reversed link still blocks its pair');
+}
+{
+  // RD-9: a partial reversal likewise leaves the pair blocked.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence({ cents: 20000 }), 10000));
+  body = record(body, 2, reverse(op(1), tx(9), refundEvidence({ cents: 4000 }), 4000));
+  refuses(() => prepare(body, 3, link('commitment:a', tx(1), evidence({ cents: 20000 }), 5000)),
+    'RD-9: a partially reversed link still blocks its pair');
+}
+{
+  // RD-10: a different goal against the same transaction is a different
+  // pair; the shared budget is the only governor.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence(), 6000));
+  body = record(body, 2, link('commitment:b', tx(1), evidence(), 4000));
+  eq(linksOf(body, 'commitment:b')[0].assignedCents, 4000,
+    'RD-10: a different-goal allocation within budget is admitted');
+}
+{
+  // RD-11: a different-goal allocation past the budget is refused by the
+  // pre-existing cap, exactly as before; the guard is not involved.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence(), 6000));
+  refuses(() => prepare(body, 2, link('commitment:b', tx(1), evidence(), 5000)),
+    'RD-11: a different-goal allocation over budget is refused by the cap');
+}
+{
+  // RD-12: a different goal with a different evidence digest for the same
+  // transaction is refused by the pre-existing one-digest rule.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence(), 5000));
+  refuses(() => prepare(body, 2, link('commitment:b', tx(1), evidence({ cents: 9000 }), 100)),
+    'RD-12: changed evidence for the same identity is refused as before');
+}
+{
+  // RD-13: the same goal funded by a second transaction is a different
+  // pair; multi-transaction goal funding is preserved.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence(), 5000));
+  body = record(body, 2, link('commitment:a', tx(2), evidence(), 5000));
+  eq(linksOf(body, 'commitment:a').length, 2, 'RD-13: one goal, two transactions, both admitted');
+}
+{
+  // RD-14: a historical document already containing duplicate active pairs
+  // (same and different amounts, recorded while the gap was open) decodes,
+  // replays, digests, pins and projects byte-identically; only NEW
+  // admissions against it are held. Built by hand because the guarded
+  // prepare can no longer mint such a document.
+  const histEvent = (revision, n, command, at) => ({
+    revision, operationId: op(n), actorId, recordedAt: at,
+    requestDigest: C.digest({ historical: n }), command,
+  });
+  const histState = {
+    householdId, revision: 4,
+    operations: [
+      histEvent(1, 41, link('commitment:roof', tx(1), evidence({ cents: 90000 }), 30000), now),
+      histEvent(2, 42, link('commitment:roof', tx(1), evidence({ cents: 90000 }), 20000), now + 1),
+      histEvent(3, 43, link('commitment:roof', tx(2), evidence({ cents: 60000 }), 30000), now + 2),
+      histEvent(4, 44, link('commitment:roof', tx(2), evidence({ cents: 60000 }), 30000), now + 3),
+    ],
+  };
+  const histBody = Buffer.from(JSON.stringify({
+    schema: C.SCHEMA, ...histState,
+    digest: C.digest({ schema: C.SCHEMA, ...histState }),
+  }));
+  eq(C.restore(histBody, C.pin(histBody, householdId)), histBody,
+    'RD-14: the duplicate-pair document restores under its own pin');
+  eq(linksOf(histBody, 'commitment:roof').length, 4,
+    'RD-14: both historical duplicate pairs still project as active evidence');
+  eq(C.outcome(histBody, { householdId, actorId, operationId: op(41) }),
+    { status: 'recorded', operationId: op(41), revision: 1 },
+    'RD-14: historical receipts keep their identity');
+  eq(C.outcome(histBody, { householdId, actorId, operationId: op(44) }),
+    { status: 'recorded', operationId: op(44), revision: 4 },
+    'RD-14: the last historical operation keeps its revision');
+  refuses(() => prepare(histBody, 45, link('commitment:roof', tx(1), evidence({ cents: 90000 }), 1000), now + 10),
+    'RD-14: a NEW link for a historically duplicated pair is held (forward-only)');
+  const extended = record(histBody, 46, link('commitment:roof', tx(3), evidence(), 1000), now + 10);
+  eq(linksOf(extended, 'commitment:roof').length, 5,
+    'RD-14: a new link for an unduplicated pair against the same document is admitted');
+}
+{
+  // RD-15: the ordinary two-preview race is preserved. Both previews are
+  // prepared against the same base revision; the first confirm commits,
+  // the second is refused by the existing revision/pin check, and exactly
+  // one active allocation exists.
+  let body = adopt();
+  const first = prepare(body, 1, link('commitment:a', tx(1), evidence({ cents: 50000 }), 30000));
+  const second = prepare(body, 2, link('commitment:a', tx(1), evidence({ cents: 50000 }), 20000));
+  const saved = confirm(body, first);
+  eq(saved.status, 'candidate', 'RD-15: the first racer commits');
+  body = saved.document;
+  const raced = confirm(body, second);
+  eq(raced.status, 'rejected', 'RD-15: the second racer cannot commit');
+  eq(raced.reason, 'revision-changed', 'RD-15: the stale preview is refused by the revision/pin check');
+  eq(linksOf(body, 'commitment:a').length, 1, 'RD-15: exactly one active allocation exists');
+}
+{
+  // RD-16: non-link commands are never evaluated by the guard; while the
+  // pair is active they behave exactly per the pre-existing rules.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence(), 5000));
+  body = record(body, 2, reverse(op(1), tx(9), refundEvidence({ cents: 1000 }), 1000));
+  body = record(body, 3, lineage(tx(5), tx(1), C.digest(evidence())));
+  body = record(body, 4, retract(op(1)));
+  eq(linksOf(body, 'commitment:a'), [], 'RD-16: reverse, lineage and retract proceed unaffected');
+}
+{
+  // RD-17: confirmCandidate invoked directly with a candidate that is
+  // CURRENT against the decoded state (valid pin, unexpired) whose link
+  // duplicates the already-active pair in that same state — the guard
+  // itself refuses, isolated from the revision/pin check. The preview is
+  // built by hand because the guarded prepare can no longer mint it. The
+  // budget would admit 30000 + 20000 against 50000, and the same
+  // construction for a fresh pair returns a candidate, proving the pin
+  // was valid and the guard is the refusing check.
+  let body = adopt();
+  body = record(body, 1, link('commitment:a', tx(1), evidence({ cents: 50000 }), 30000));
+  const parsed = JSON.parse(body.toString('utf8'));
+  const handPreview = (operationId, command) => ({
+    schema: C.PREVIEW_SCHEMA, householdId, actorId, operationId,
+    expectedRevision: parsed.revision, expectedDocumentDigest: parsed.digest,
+    issuedAt: now, expiresAt: now + C.TTL_MS, command,
+  });
+  const dupPreview = handPreview(op(9), link('commitment:a', tx(1), evidence({ cents: 50000 }), 20000));
+  refuses(() => C.confirmCandidate(body,
+    { householdId, actorId, preview: dupPreview,
+      confirmationDigest: C.digest(dupPreview), now: now + 1 }),
+    'RD-17: a current candidate duplicating the active pair is refused by the guard');
+  eq(JSON.parse(body.toString('utf8')).revision, 1, 'RD-17: the refused candidate changes no bytes');
+  const freshPreview = handPreview(op(10), link('commitment:a', tx(2), evidence({ cents: 50000 }), 20000));
+  eq(C.confirmCandidate(body,
+    { householdId, actorId, preview: freshPreview,
+      confirmationDigest: C.digest(freshPreview), now: now + 1 }).status, 'candidate',
+    'RD-17: the identical construction for a fresh pair is admitted — the pin was valid');
+}
+
 console.log('PASS planned-obligation-settlement-contract: ' + checks + ' synthetic checks');
