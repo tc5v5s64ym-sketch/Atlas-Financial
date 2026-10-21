@@ -23,8 +23,12 @@
 //   financial date. Changed binding, evidence, goal or asOf requires a new
 //   explicitly prepared operation.
 //   Only synthetic deterministic fixture mappings implement this contract yet;
-// - classify is a controller-owned closure, valid only during that one
-//   awaited resolveSelection call. The resolver MUST invoke it exactly once,
+// - classify is a controller-owned closure, fresh per resolve. It stays open
+//   until the controller's own continuation of the awaited resolveSelection
+//   call runs (its finally, after it acquires the owned selection snapshot),
+//   NOT at the exact instant the resolver's value or Promise fulfils: work
+//   the resolver queues as a microtask ahead of that continuation still
+//   lands inside the window and is counted. The resolver MUST invoke it exactly once,
 //   with the canonical transaction it resolved, the current authoritative
 //   plan, and opts including the current-period packet as of selection.asOf,
 //   and MUST NOT return any verdict field of its own: the controller uses
@@ -32,9 +36,11 @@
 //   immediately to {kind, categoryId, householdSpending, reason,
 //   needsConfirmation}. Zero invocations, a second invocation, a classifier
 //   error (even one the resolver catches and swallows), a malformed or
-//   impossible verdict, and any invocation after the resolve call has
-//   settled each fail the attempt as a protocol failure; no code path reads
-//   a supplied verdict. The controller does NOT independently verify that
+//   impossible verdict each fail the attempt as a protocol failure; no code
+//   path reads a supplied verdict. An invocation after closure throws and
+//   records nothing, so it cannot mutate accepted state (a retained preview,
+//   a later attempt or a durable receipt); it does not retroactively undo an
+//   attempt that already completed. The controller does NOT independently verify that
 //   the resolver's transaction is the one its identity names, or that its
 //   plan is genuinely the authoritative plan: that mapping is the
 //   resolver's contract, exactly as it already is for the identity tuple
@@ -252,13 +258,18 @@ function createSettlementEvidenceConfirmation(deps) {
     retire(operationId, entry);
     return rejected(reason);
   }
-  // One resolve call under the Rule E binding. The classify closure is
-  // open only until the resolver's promise settles (the finally closes it),
-  // and it latches its own invocation count, classifier error and
+  // One resolve call under the Rule E binding. The classify closure stays
+  // open until this helper's own continuation of the resolver await runs
+  // (the finally closes it, after the owned selection snapshot is taken),
+  // not at the exact instant the resolver's value or Promise fulfils, so a
+  // microtask the resolver queued ahead of that continuation still counts.
+  // The closure latches its own invocation count, classifier error and
   // projection, so a resolver that swallows a classifier error, classifies
-  // twice, or never classifies still fails the attempt after settlement.
-  // A stashed closure invoked late refuses, and can touch nothing but its
-  // own dead session — never the accepted snapshot or another attempt.
+  // twice, or never classifies still fails the attempt once it closes.
+  // A stashed closure invoked after closure throws, records nothing and
+  // can touch nothing but its own dead session — never the accepted
+  // snapshot, another attempt or a durable receipt — and it does not
+  // retroactively undo an attempt that already completed.
   // The resolved selection is snapshotted and qualified HERE, in the same
   // continuation as the resolver await: acquisition and snapshot are one
   // step, exactly as the base acquired its selection, so no foreign
