@@ -1293,6 +1293,148 @@ test('acquisition: captured-method settlement preserves the rejection taxonomy',
     'pin-unavailable');
 });
 
+// --- Invocation: the captured method is invoked intrinsically ---------------
+// B6 (Systems Review HOLD 6308491902): the captured `then` was invoked
+// via `then.call(...)` — a property READ on the foreign function. A
+// captured then carrying an own `call` override substitutes foreign
+// code for the invocation: the override can resolve valid evidence
+// while the captured body — which would reject — never runs. The
+// invocation must go through a trusted intrinsic (Reflect.apply) with
+// the original receiver, so no property of the foreign function
+// participates. The pins below rig the captured body to always
+// reject and assert the full repaired signature at every acquisition
+// position: the body runs exactly once, the override is never
+// invoked, an accessor `call` getter never fires, the receiver is
+// the original value, and the body's rejection classifies by
+// position.
+
+// Rig a captured-then function whose body always rejects, with a
+// foreign-controlled own `call` property. Modes: 'resolves' (the
+// override resolves with a valid value), 'throws' (the override
+// throws), 'accessor' (`call` is a getter returning the resolving
+// override). The rigged then rides on a non-record thenable value.
+function riggedThenable(validValue, mode) {
+  const counts = { body: 0, override: 0, getter: 0, receiver: undefined };
+  const thenFn = function (resolve, reject) {
+    counts.body += 1;
+    counts.receiver = this;
+    reject(new Error('captured then body rejects'));
+  };
+  const override = function (receiver, resolve, reject) {
+    counts.override += 1;
+    if (mode === 'throws') throw new Error('call override threw');
+    resolve(validValue);
+  };
+  if (mode === 'accessor') {
+    Object.defineProperty(thenFn, 'call', {
+      configurable: true,
+      get() { counts.getter += 1; return override; },
+    });
+  } else {
+    thenFn.call = override;
+  }
+  const value = Object.create(null);
+  value.then = thenFn;
+  return { value, counts };
+}
+
+function assertIntrinsicInvocation(counts, value) {
+  assert.equal(counts.body, 1, 'the captured then body ran exactly once');
+  assert.equal(counts.override, 0, 'the foreign call override was never invoked');
+  assert.equal(counts.getter, 0, 'the foreign call getter never fired');
+  assert.equal(counts.receiver, value, 'the receiver is the original raw value');
+}
+
+test('invocation: an own call override cannot substitute for the captured then body (pin)', async () => {
+  const { value, counts } = riggedThenable(pinOf(doc1), 'resolves');
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => value,
+    readDocument: reader(doc1),
+  }), 'pin-unavailable');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: an own call override cannot substitute for the captured then body (first document read)', async () => {
+  const { value, counts } = riggedThenable(doc1, 'resolves');
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => value,
+  }), 'document-unavailable');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: an own call override cannot substitute for the captured then body (stability read)', async () => {
+  const { value, counts } = riggedThenable(doc1, 'resolves');
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : value; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: a throwing call override is never invoked — the body rejection classifies (pin)', async () => {
+  const { value, counts } = riggedThenable(pinOf(doc1), 'throws');
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => value,
+    readDocument: reader(doc1),
+  }), 'pin-unavailable');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: a throwing call override is never invoked — the body rejection classifies (first document read)', async () => {
+  const { value, counts } = riggedThenable(doc1, 'throws');
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => value,
+  }), 'document-unavailable');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: a throwing call override is never invoked — the body rejection classifies (stability read)', async () => {
+  const { value, counts } = riggedThenable(doc1, 'throws');
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : value; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: an accessor call getter never fires — the body rejection classifies (pin)', async () => {
+  const { value, counts } = riggedThenable(pinOf(doc1), 'accessor');
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => value,
+    readDocument: reader(doc1),
+  }), 'pin-unavailable');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: an accessor call getter never fires — the body rejection classifies (first document read)', async () => {
+  const { value, counts } = riggedThenable(doc1, 'accessor');
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => value,
+  }), 'document-unavailable');
+  assertIntrinsicInvocation(counts, value);
+});
+
+test('invocation: an accessor call getter never fires — the body rejection classifies (stability read)', async () => {
+  const { value, counts } = riggedThenable(doc1, 'accessor');
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : value; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+  assertIntrinsicInvocation(counts, value);
+});
+
 // --- Reason coverage ------------------------------------------------------------
 test('coverage: every enumerated unavailable reason was exercised above', async () => {
   assert.deepEqual([...seenReasons].sort(), [...L.REASONS].sort(),

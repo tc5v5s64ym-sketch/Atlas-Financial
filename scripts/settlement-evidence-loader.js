@@ -158,8 +158,12 @@ function snapshotDocumentValue(value) {
 // exactly as taken, whatever the capture did to the foreign object.
 // A callable captured `then` makes the value a genuine thenable: the
 // pre-probe snapshot is discarded and the captured method is invoked
-// with the original receiver and loader-owned callbacks, attaching
-// the continuation DIRECTLY to the value's own settlement — no
+// with the original receiver and loader-owned callbacks — through
+// the Reflect.apply intrinsic alone, never through a property of
+// the foreign function (an own `call` or `apply` override, data or
+// accessor, must not be able to substitute itself for the
+// invocation) — attaching the continuation DIRECTLY to the value's
+// own settlement — no
 // intermediate Promise — so the resolved value is snapshotted
 // synchronously inside the first reaction after settlement, before
 // any reaction attached later can mutate it. A synchronous throw
@@ -187,7 +191,7 @@ function acquireValue(value, snapshot) {
       settled = true;
       reject(err);
     };
-    try { then.call(value, onResolve, onReject); } catch (err) { onReject(err); }
+    try { Reflect.apply(then, value, [onResolve, onReject]); } catch (err) { onReject(err); }
   });
 }
 // Acquire one reader value: the reader is invoked synchronously and
