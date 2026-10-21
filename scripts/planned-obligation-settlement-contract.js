@@ -246,6 +246,27 @@ function restore(body, expectedPin) {
   return body;
 }
 
+// Rule D admission guard (forward-only). A new link command is refused
+// when the replayed CURRENT state already holds an active link for the
+// same (goalId, txRef) pair. The pair is keyed on goalId and txRef alone:
+// assignedCents and evidenceDigest are never compared, so a second
+// allocation at a different amount is not an amendment — the amendment
+// path is retract, then relink. "Active" is replay's own definition: a
+// link is active from its link command until a retract clears it; a
+// reversal, even in full, never clears it. The guard judges only new
+// admissions against the committed pre-append state; recorded operations
+// are never re-judged, so a document that already contains duplicate
+// active pairs still decodes, replays and digests exactly as before.
+function activePairConflict(state, command) {
+  if (command.kind !== 'link') return false;
+  const ledger = replay(state);
+  for (const link of ledger.links.values()) {
+    if (link.active === true && link.goalId === command.goalId
+      && link.txRef === command.txRef) return true;
+  }
+  return false;
+}
+
 function previewValid(preview) {
   keys(preview, ['schema', 'householdId', 'actorId', 'operationId', 'expectedRevision',
     'expectedDocumentDigest', 'issuedAt', 'expiresAt', 'command']);
@@ -262,6 +283,7 @@ function prepare(body, input) {
   if (!actor(input.actorId) || !operation(input.operationId) || !tick(input.now)) fail();
   if (state.operations.some(event => event.operationId === input.operationId)) fail();
   commandValid(input.command);
+  if (activePairConflict(state, input.command)) fail();
   const preview = {
     schema: PREVIEW_SCHEMA, householdId: input.householdId, actorId: input.actorId,
     operationId: input.operationId, expectedRevision: state.revision,
@@ -300,6 +322,7 @@ function confirmCandidate(body, input) {
   if (digest(input.preview) !== input.confirmationDigest || input.now >= input.preview.expiresAt) {
     return { status: 'rejected', reason: 'preview-expired' };
   }
+  if (activePairConflict(state, input.preview.command)) fail();
   const next = {
     householdId: state.householdId, revision: state.revision + 1,
     operations: [...state.operations, {

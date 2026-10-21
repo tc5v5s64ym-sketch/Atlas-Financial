@@ -225,6 +225,10 @@ test('B2 capacity: more than 200 real successful operations reclaim committed pr
   const w = await world(t), tokens = new Set();
   let first;
   for (let n = 1; n <= 205; n++) {
+    // Rule D fixture note: each successful operation allocates a distinct
+    // transaction to the same goal. The capacity under test is the
+    // controller's preview/operation accounting, which is pair-independent.
+    w.source = { ...resolved(), txRef: tx(n) };
     const prepared = await w.prepare(n, 1);
     assert.equal(prepared.status, 'prepared', 'success cycle ' + n);
     assert.match(prepared.previewToken, /^[a-f0-9]{64}$/);
@@ -388,6 +392,10 @@ test('B2 unknown: past TTL never retries or permits reprepare; only a verified r
   assert.deepEqual(await w.controller.confirm(context, { operationId: op(1) }), receipt);
   assert.deepEqual(await w.controller.confirm(context, { operationId: op(1), previewToken: 'wrong', confirmed: false }), receipt);
   w.commitHook = null;
+  // Rule D fixture note: op2 allocates a distinct transaction. What is
+  // under test is the verified-receipt release of op1's retained
+  // generation, not the pair op2 allocates.
+  w.source = { ...resolved(), txRef: tx(2) };
   assert.equal((await w.prepare(2, 1)).status, 'prepared');
   assert.equal((await w.confirm(2)).status, 'committed');
   assert.deepEqual(await w.controller.confirm(context, { operationId: op(1) }), receipt);
@@ -634,6 +642,10 @@ test('same stable tuple cannot gain fresh capacity from content changes or an al
 test('original receipt survives expiry, changed current evidence, later commit and a new controller', async t => {
   const w = await world(t);
   await w.prepare(); const first = await w.confirm();
+  // Rule D fixture note: the later commit allocates the same transaction
+  // to a second goal (2500 + 3500 still exactly fills its 6000 budget);
+  // the original receipt under test belongs to op1 either way.
+  w.source = { ...resolved(), goalId: 'commitment:synthetic-second' };
   await w.prepare(2, 3500); assert.equal((await w.confirm(2)).revision, 2);
   w.source.matchCount = 0; w.time += C.TTL_MS + 1;
   const writes = clone(w.writes), resolves = w.count('resolve');
@@ -681,6 +693,10 @@ test('a lost controller acknowledgement recovers the same receipt, including aft
   const first = await w.outcome();
   assert.equal(first.status, 'committed');
   w.commitHook = null;
+  // Rule D fixture note: as in the receipt test above, the later commit
+  // allocates the same transaction to a second goal; op1's receipt is
+  // what must be recovered.
+  w.source = { ...resolved(), goalId: 'commitment:synthetic-second' };
   await w.prepare(2, 3500); assert.equal((await w.confirm(2)).revision, 2);
   const writes = clone(w.writes);
   w.time += C.TTL_MS;
