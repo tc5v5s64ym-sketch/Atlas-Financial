@@ -934,6 +934,129 @@ test('pin snapshot: unsupported shapes are judged as acquired and never normaliz
     'pin-invalid');
 });
 
+// --- Acquisition order: classification is fixed before the then probe -------
+// B4 (Systems Review HOLD 6307392516): acquire() used to probe
+// isPromiseLike — reading the foreign `then` property — BEFORE
+// snapshotting a non-plain synchronous reader result. A noncallable
+// `then` GETTER could therefore mutate the value's classification
+// mid-acquisition (restoring a stripped prototype) and have the
+// snapshot classify the MUTATED object: an unsupported pin qualified,
+// a stripped byte carrier was accepted. The classification must be
+// fixed by the snapshot BEFORE any foreign `then` access; a
+// noncallable `then` never reclassifies the original value. Only a
+// callable `then` makes the value a genuine thenable, and then the
+// RESOLVED value is classified from scratch.
+
+// Give `value` an own `then` accessor whose getter restores the
+// value's prototype to `proto` and returns undefined — reading `.then`
+// mutates the classification-relevant prototype as a side effect.
+function restoringThenGetter(value, proto) {
+  Object.defineProperty(value, 'then', {
+    configurable: true,
+    get() { Object.setPrototypeOf(value, proto); return undefined; },
+  });
+  return value;
+}
+
+test('acquisition: a prototype-restoring then getter cannot reclassify a null-prototype pin', async () => {
+  const pair = pinOf(doc1);
+  const foreign = Object.create(null);
+  foreign.revision = pair.revision;
+  foreign.digest = pair.digest;
+  restoringThenGetter(foreign, Object.prototype);
+  let docReads = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => foreign,
+    readDocument: () => { docReads += 1; return doc1; },
+  }), 'pin-invalid');
+  assert.equal(docReads, 0,
+    'a pin unsupported at acquisition never reaches the document read');
+});
+
+test('acquisition: a prototype-restoring then getter cannot reclassify a custom-prototype pin', async () => {
+  const pair = pinOf(doc1);
+  const foreign = Object.create({ inherited: true });
+  foreign.revision = pair.revision;
+  foreign.digest = pair.digest;
+  restoringThenGetter(foreign, Object.prototype);
+  let docReads = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => foreign,
+    readDocument: () => { docReads += 1; return doc1; },
+  }), 'pin-invalid');
+  assert.equal(docReads, 0,
+    'a pin unsupported at acquisition never reaches the document read');
+});
+
+test('acquisition: a prototype-restoring then getter cannot reclassify a stripped Buffer document', async () => {
+  const stripped = Buffer.from(doc1);
+  Object.setPrototypeOf(stripped, null);
+  restoringThenGetter(stripped, Buffer.prototype);
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => stripped,
+  }), 'document-malformed');
+});
+
+test('acquisition: a prototype-restoring then getter cannot reclassify a stripped Uint8Array document', async () => {
+  const stripped = new Uint8Array(doc1);
+  Object.setPrototypeOf(stripped, null);
+  restoringThenGetter(stripped, Uint8Array.prototype);
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => stripped,
+  }), 'document-malformed');
+});
+
+test('acquisition: a stripped Buffer at the stability read classifies document-changed, getter notwithstanding', async () => {
+  const stripped = Buffer.from(doc1);
+  Object.setPrototypeOf(stripped, null);
+  restoringThenGetter(stripped, Buffer.prototype);
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : stripped; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+});
+
+test('acquisition: a stripped Uint8Array at the stability read classifies document-changed, getter notwithstanding', async () => {
+  const stripped = new Uint8Array(doc1);
+  Object.setPrototypeOf(stripped, null);
+  restoringThenGetter(stripped, Uint8Array.prototype);
+  let calls = 0;
+  expectUnavailable(await L.loadSettlementEvidence({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: () => { calls += 1; return calls === 1 ? doc1 : stripped; },
+  }), 'document-changed');
+  assert.equal(calls, 2, 'both document acquisitions happened');
+});
+
+test('acquisition: genuine non-record thenables are still awaited and their resolved values snapshotted', async () => {
+  const pinThenable = Object.create(null);
+  pinThenable.then = resolve => { resolve(pinOf(doc1)); };
+  const docThenable = Object.create(null);
+  docThenable.then = resolve => { resolve(doc1); };
+  const evidence = expectQualified(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: () => pinThenable,
+    readDocument: () => docThenable,
+  }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)),
+    'a callable then is a genuine thenable: the resolved values govern');
+});
+
+test('acquisition: genuine Promise readers still qualify with resolved-value snapshots', async () => {
+  const evidence = expectQualified(await L.loadSettlementEvidence({
+    config: { householdId },
+    readPin: async () => pinOf(doc1),
+    readDocument: async () => doc1,
+  }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
 // --- Reason coverage ------------------------------------------------------------
 test('coverage: every enumerated unavailable reason was exercised above', async () => {
   assert.deepEqual([...seenReasons].sort(), [...L.REASONS].sort(),

@@ -141,14 +141,26 @@ function snapshotDocumentValue(value) {
 // Acquire one reader value with ownership bound to the acquisition.
 // The reader is invoked synchronously; a plain result is snapshotted in
 // the same turn, so no suspension intervenes between a synchronous
-// return and its owned copy. Only a genuine Promise suspends, and its
-// resolved value is snapshotted in the first continuation. A rejection
-// (or a synchronous throw, which an async function surfaces the same
-// way) rethrows into the caller's existing guard.
+// return and its owned copy — and a plain value's `then` is never
+// probed at all. A non-plain result is snapshotted FIRST, fixing its
+// acquisition-time classification in loader-owned form, and only then
+// probed for a `then`: reading a foreign `then` can run accessor code
+// with side effects (a getter that re-prototypes the very object being
+// classified), and a noncallable `then` — absent, a plain value, or a
+// getter returning one — must never reclassify the original value, so
+// the pre-probe snapshot is used exactly as taken, whatever the probe
+// did to the foreign object. Only a callable `then` makes the value a
+// genuine thenable: the pre-probe snapshot is discarded, the value is
+// awaited, and the RESOLVED value is snapshotted from scratch in the
+// first continuation. A rejection (or a synchronous throw, which an
+// async function surfaces the same way) rethrows into the caller's
+// existing guard.
 async function acquire(read, snapshot) {
   const raw = read();
   if (isPlainValue(raw)) return snapshot(raw);
-  const value = isPromiseLike(raw) ? await raw : raw;
+  const acquired = snapshot(raw);
+  if (!isPromiseLike(raw)) return acquired;
+  const value = await raw;
   return snapshot(value);
 }
 
