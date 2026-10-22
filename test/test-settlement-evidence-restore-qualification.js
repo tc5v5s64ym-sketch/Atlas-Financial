@@ -34,8 +34,13 @@
 //         all fail contract restore() against the surviving pin;
 //         semantic validation precedes any staged install and a refusal
 //         leaves no residue.
-//   RQ-7  a foreign-household or foreign-namespace artifact never
-//         verifies against this household's surviving pin.
+//   RQ-7  a foreign-household artifact never verifies against this
+//         household's surviving pin; and namespace isolation is
+//         proven through the adapter on both guard paths —
+//         prefix-respecting listing (recorded calls, exact owned
+//         manifest, zero foreign reads) and hostile over-return
+//         (the classification guard rejects the valid foreign
+//         plant as an unknown artifact before any foreign read).
 //   RQ-8  pin-loss posture stays refused (preservation pin): an absent
 //         pin WITH surviving traces is distinct from a genuinely empty
 //         unbootstrapped state; a corrupted pin reads as unreadable;
@@ -685,13 +690,24 @@ test('RQ-6: same-revision wrong-digest bytes are refused — nothing installed',
 });
 
 // =====================================================================
-// RQ-7 — foreign-household / foreign-namespace artifacts never verify
-// against this household's surviving pin. Provenance confers nothing:
-// bytes install only if contract restore() verifies them against the
-// trusted pin, which is never derived from the candidate.
+// RQ-7 — foreign evidence confers nothing. A foreign-household
+// document never verifies against this household's surviving pin:
+// bytes install only if contract restore() verifies them against
+// the trusted pin, which is never derived from the candidate. And
+// namespace isolation is proven through the object adapter's own
+// surface on BOTH guard paths: (1) prefix-respecting listing — the
+// adapter requests exactly its namespace + '/' prefix and a
+// conforming transport never returns the foreign plant, proven
+// with recorded list/read calls and the exact owned manifest;
+// (2) hostile over-return — a transport that returns the valid
+// foreign plant anyway is stopped by the adapter's namespace
+// classification guard, which rejects it as an unknown artifact
+// before any foreign read. The planted bytes are this household's
+// own valid pinned bytes (proven by a direct restore() control),
+// so the namespace is the only factor keeping them out.
 // =====================================================================
-test('RQ-7: foreign-household and foreign-namespace artifacts never verify against the surviving pin', async () => {
-  const { world } = await worldAfterTotalLoss();
+test('RQ-7: foreign-household bytes never verify against the surviving pin, and foreign-namespace objects never surface through the adapter', async () => {
+  const { world, r1, r2, docBytes2 } = await worldAfterTotalLoss();
   const second = world.build();
   const { pin, expectedPin } = await survivingPin(second);
 
@@ -710,16 +726,112 @@ test('RQ-7: foreign-household and foreign-namespace artifacts never verify again
   assert.throws(() => C.restore(foreignPlain, expectedPin),
     'a foreign-household document never verifies against this pin');
 
-  // The same ciphertext fetched from a FOREIGN NAMESPACE key inside
-  // this world's transport: where bytes came from changes nothing.
-  const foreignNsKey = 'other-namespace/revisions/rev-1-' + fPin.digest + '.enc';
+  // Namespace isolation, driven THROUGH the object adapter with the
+  // namespace as the ONLY changed factor: this household's OWN pinned
+  // rev-2 ciphertext — bytes that DO verify against the surviving pin
+  // (RQ-1 restores the in-namespace original end-to-end) — planted
+  // under a foreign-namespace key in the same transport, with fully
+  // valid binding metadata. If the adapter's backup listing ever
+  // crossed the namespace boundary, these are exactly the bytes that
+  // would surface: revision, digest and integrity all check out, so
+  // only the namespace keeps them out.
+  const ownKey = artifactKey(pin.revision, pin.digest);
+  const ownArtifact = world.transport.objects.get(ownKey);
+  assert.ok(ownArtifact, 'the pinned artifact exists under its own-namespace key');
+  const foreignNsKey = 'other-namespace/revisions/rev-' + pin.revision + '-' + pin.digest + '.enc';
   world.transport.objects.set(foreignNsKey, {
-    bytes: Buffer.from(fCipher), version: 'planted-1',
-    metadata: { revision: fPin.revision, digest: fPin.digest, integrity: sha256(fCipher) },
+    bytes: Buffer.from(ownArtifact.bytes), version: 'planted-1',
+    metadata: { revision: pin.revision, digest: pin.digest, integrity: sha256(ownArtifact.bytes) },
   });
-  const fetched = world.transport.objects.get(foreignNsKey);
-  assert.throws(() => C.restore(decryptSynthetic(fetched.bytes), expectedPin),
-    'an artifact fetched from a foreign namespace never verifies against this pin');
+  // Direct valid-byte control: the planted bytes THEMSELVES pass
+  // contract restore() against the surviving pin in this fixture.
+  // Byte validity is therefore not what excludes them — namespace
+  // scoping is the only guard, and the probes below pin it directly.
+  const plantedPlain = decryptSynthetic(world.transport.objects.get(foreignNsKey).bytes);
+  assert.ok(plantedPlain.equals(docBytes2),
+    'control: the planted bytes are this household\u2019s exact pinned rev-2 document');
+  assert.ok(Buffer.from(C.restore(plantedPlain, expectedPin)).equals(plantedPlain),
+    'control: the planted own-household bytes pass restore() against the surviving pin');
+
+  // Guard path 1 — prefix-respecting listing. The transport's real
+  // list/read calls are recorded around the adapter's manifest call:
+  // the adapter must request exactly the namespace + '/' prefix,
+  // read only its own in-namespace artifacts, and never read the
+  // foreign plant.
+  const listPrefixes = [];
+  const readKeys = [];
+  const rawList = world.transport.list;
+  const rawRead = world.transport.read;
+  world.transport.list = async (prefix, cursor) => { listPrefixes.push(prefix); return rawList(prefix, cursor); };
+  world.transport.read = async key => { readKeys.push(key); return rawRead(key); };
+  const manifest = await second.objectAdapter.backupStore.list();
+  world.transport.list = rawList;
+  world.transport.read = rawRead;
+  assert.ok(listPrefixes.length >= 1, 'the adapter listed through the transport');
+  assert.ok(listPrefixes.every(p => p === NS + '/'),
+    'every transport list call requested exactly the namespace + \'/\' prefix');
+  assert.ok(!readKeys.includes(foreignNsKey),
+    'zero foreign reads under normal listing');
+  assert.ok(readKeys.every(k => k.startsWith(NS + '/revisions/')),
+    'the adapter read only its own in-namespace artifacts while listing');
+  assert.ok(manifest.every(e => e.artifactId.startsWith(NS + '/revisions/')),
+    'every adapter manifest entry is keyed inside this household\u2019s namespace');
+  assert.ok(!manifest.some(e => e.artifactId === foreignNsKey),
+    'the foreign-namespace plant never surfaces through the adapter');
+  assert.deepEqual(
+    manifest.map(e => ({ revision: e.revision, digest: e.digest })),
+    [...world.transport.objects.keys()]
+      .filter(k => k.startsWith(NS + '/revisions/'))
+      .map(k => {
+        const m = /\/rev-(\d+)-([0-9a-f]{64})\.enc$/.exec(k);
+        return { revision: Number(m[1]), digest: m[2] };
+      })
+      .sort((a, b) => a.revision - b.revision),
+    'the adapter manifest is exactly this household\u2019s own in-namespace artifacts (rev 0 genesis, rev 1, rev 2)');
+  assert.equal(manifest.find(e => e.revision === 1).digest, r1.digest,
+    'the rev-1 manifest entry binds the first commit\u2019s receipt digest');
+  assert.equal(manifest.find(e => e.revision === 2).artifactId, ownKey,
+    'the pinned rev-2 artifact is present under its own-namespace key');
+  // Guard path 2 — hostile over-return. A transport that IGNORES
+  // the requested prefix and returns every object in the store —
+  // the otherwise-valid foreign plant included — must not move the
+  // adapter: its namespace classification guard rejects the foreign
+  // entry as an unknown artifact BEFORE any foreign read or
+  // exposure, the listing produces no (partial) manifest at all,
+  // and local + remote state are byte-identical afterwards.
+  const hostileReadKeys = [];
+  const hostileTransport = {
+    read: async key => { hostileReadKeys.push(key); return rawRead(key); },
+    create: world.transport.create,
+    replace: world.transport.replace,
+    async list() {
+      const keys = [...world.transport.objects.keys()].sort();
+      return {
+        entries: keys.map(k => ({ key: k, metadata: { ...world.transport.objects.get(k).metadata } })),
+        nextCursor: null,
+      };
+    },
+  };
+  const hostileAdapter = OA.createSettlementEvidenceObjectAdapter({
+    householdId, namespace: NS, transport: hostileTransport, encrypt: makeEncrypt(),
+  });
+  const dirBeforeHostile = dirSnapshot(world.dir);
+  const transportBeforeHostile = transportSnapshot(world.transport);
+  await assert.rejects(() => hostileAdapter.backupStore.list(),
+    /unknown artifact inside the owned namespace/,
+    'the adapter rejects an over-returned foreign entry as an unknown artifact — no partial manifest');
+  assert.ok(!hostileReadKeys.includes(foreignNsKey),
+    'the rejection happened before any foreign read');
+  assert.ok(hostileReadKeys.every(k => k.startsWith(NS + '/')),
+    'no read escaped this household\u2019s namespace during the hostile listing');
+  assert.deepEqual(dirSnapshot(world.dir), dirBeforeHostile,
+    'local state unchanged by the hostile probe');
+  assert.deepEqual(transportSnapshot(world.transport), transportBeforeHostile,
+    'remote state unchanged by the hostile probe');
+  const stillRefused = await second.store.reconcile();
+  assert.equal(stillRefused.disposition, 'recovery-blocked');
+  assert.equal(stillRefused.reason, 'backup-missing',
+    'planted foreign-namespace bytes never become a restore source');
   assert.deepEqual(dirSnapshot(world.dir), dirBefore, 'nothing installed, no residue');
   assert.equal(fs.existsSync(path.join(world.dir, 'document.json')), false);
   assert.equal(pin.revision, 2, 'the surviving pin was the only authority consulted');
