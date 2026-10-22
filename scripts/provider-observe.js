@@ -3520,6 +3520,15 @@ function savingsPoolObservations(data, normalized, accountMap) {
 }
 
 function observe(input) {
+  return observeCore(input, null);
+}
+
+// The incumbent observation execution. When `capture` is an object, the
+// sanitizer pass inside this execution additionally records its same-pass
+// crosswalk provenance into it (see acquireSettlementCrosswalk); with a
+// null capture the execution — and every output — is exactly the shipped
+// behaviour.
+function observeCore(input, capture) {
   const provider = input.provider;
   if (provider !== 'lunchmoney') fail(`Unsupported provider: ${provider || '(missing)'}.`);
   const fetchedAt = input.fetchedAt || new Date().toISOString();
@@ -3722,7 +3731,7 @@ function observe(input) {
     accountMap: mapDoc,
     identityRules,
   });
-  assembled.currentPeriodActuals = sanitizedCurrentPeriodActuals(assembled, {
+  const actualsPass = sanitizedCurrentPeriodActualsPass(assembled, {
     accountMap: mapDoc,
     plan: input.data && input.data.plan,
     planForIdentity,
@@ -3730,6 +3739,12 @@ function observe(input) {
     billPaymentPayees,
     asOf: dateOnly(normalized.fetchedAt),
   });
+  assembled.currentPeriodActuals = actualsPass.packet;
+  if (capture) {
+    capture.packet = actualsPass.packet;
+    capture.join = actualsPass.join;
+    capture.qualified = actualsPass.qualified;
+  }
   for (const tx of collapsed.transactions || []) {
     if (tx && Object.prototype.hasOwnProperty.call(tx, 'pendingReplacementHit')) {
       delete tx.pendingReplacementHit;
@@ -4300,6 +4315,20 @@ function cardCoverageReference(tx) {
 }
 
 function sanitizedCurrentPeriodActuals(report, opts) {
+  return sanitizedCurrentPeriodActualsPass(report, opts).packet;
+}
+
+// The sanitizer pass itself. Alongside the packet it returns the pass's
+// own crosswalk provenance (`join`): one entry per packet row actually
+// emitted, captured from the exact surviving transaction at emission, in
+// emission order — { localId, providerAccountId, transactionId }. Rows the
+// pass drops (undated, amount-less, currency-unqualified, collapsed
+// predecessors) earn no entry even when the pass assigned them a local id
+// for a diagnostic, and linkage-only ids (parent references) earn none
+// either. `qualified` reports whether the final packet passed the pass's
+// own sanitation check; when it did not, the packet's transactions are
+// emptied by the incumbent failure path and the join is not usable.
+function sanitizedCurrentPeriodActualsPass(report, opts) {
   opts = opts || {};
   const asOf = dateOnly(opts.asOf || (report && report.fetchedAt));
   const window = (report && report.transactionWindow) || {};
@@ -4332,6 +4361,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     return localByProvider.get(String(providerId)) || null;
   };
   const txs = [];
+  const join = [];
   const currencyUnconfirmed = [];
   const cardCoverageUnconfirmed = [];
   const outgoingETransferUnconfirmed = [];
@@ -4489,7 +4519,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
         ? 'amanda'
         : (explicitOwner || flags.personalOwner));
     const localId = localIdFor(tx.providerTransactionId);
-    txs.push({
+    const emittedRow = {
       id: localId,
       coverageRef: cardCoverageReference(tx),
       date: tx.date,
@@ -4540,7 +4570,19 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       parentId: localIdFor(tx.parentId),
       pendingPostedDuplicate: tx.pendingPostedDuplicate === true,
       pendingPostedAmbiguous: tx.pendingPostedAmbiguous === true,
-    });
+    };
+    txs.push(emittedRow);
+    // Same-pass crosswalk capture: the exact surviving transaction that
+    // produced this emitted row. Strings are copied at emission, so later
+    // row mutation (linkage stamps, metadata stripping, merchant
+    // removal) cannot reach back into the provenance.
+    if (localId != null && tx.providerTransactionId != null && tx.providerTransactionId !== '') {
+      join.push({
+        localId,
+        providerAccountId: tx.providerAccountId != null ? String(tx.providerAccountId) : null,
+        transactionId: String(tx.providerTransactionId),
+      });
+    }
   }
   const representedActuals = [];
   const linkedLocalIds = new Set();
@@ -4663,7 +4705,9 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     representedActuals,
     transactions: txs,
   };
+  let qualified = true;
   if (!currentPeriodActualsLooksSanitized(packet)) {
+    qualified = false;
     for (const tx of txs) {
       markSavingsUnconfirmed({ canonical: { collection: 'cash', id: tx.atlasAccountId } },
         'transaction-evidence-sanitization-failed');
@@ -4679,7 +4723,108 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     packet.transactionCoverage = 'incomplete';
     packet.paydayGapComplete = false;
   }
-  return packet;
+  return { packet, join, qualified };
+}
+
+// Deep copy of plain data for acquisition ownership: arrays and plain
+// objects are rebuilt, primitives (including undefined) pass through, and
+// anything else — functions, class instances, Maps, cycles — is rejected
+// so an acquisition never aliases a caller-owned graph it cannot own.
+function cloneOwnedPlainData(value, seen) {
+  if (value === null || typeof value !== 'object') {
+    if (typeof value === 'function' || typeof value === 'symbol' || typeof value === 'bigint') {
+      throw new Error('settlement crosswalk acquisition requires plain data');
+    }
+    return value;
+  }
+  if (seen.has(value)) throw new Error('settlement crosswalk acquisition requires acyclic data');
+  if (Array.isArray(value)) {
+    seen.add(value);
+    const copy = value.map(item => cloneOwnedPlainData(item, seen));
+    seen.delete(value);
+    return copy;
+  }
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) {
+    throw new Error('settlement crosswalk acquisition requires plain data');
+  }
+  seen.add(value);
+  const copy = {};
+  for (const key of Object.keys(value)) copy[key] = cloneOwnedPlainData(value[key], seen);
+  seen.delete(value);
+  return copy;
+}
+
+// ATLAS-080 — the production same-pass crosswalk exporter (addendum
+// section A.8). Takes already-supplied observe() input ({ provider,
+// payload, data, accountMap, ... }) and runs ONE incumbent observation /
+// sanitization execution, returning the owned coherent acquisition
+// { packet, join, plan, map } of that single pass for the settlement
+// resolver. It has no production caller, performs no fetch, persistence
+// or activation, and observe()'s own outputs are untouched. Returns null
+// — no usable acquisition — when the pass's final sanitation check fails
+// or the captured provenance fails integrity validation (a missing or
+// malformed tuple component, an orphan entry, or an emitted row without
+// provenance). Input conditions observe() itself rejects (unsupported
+// provider, missing map, untrustworthy transaction id) keep observe()'s
+// incumbent failure behaviour.
+function acquireSettlementCrosswalk(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const capture = {};
+  observeCore(input, capture);
+  if (capture.qualified !== true || !Array.isArray(capture.join)) return null;
+  const packet = capture.packet;
+  if (!packet || !Array.isArray(packet.transactions)) return null;
+  const rowIds = new Set();
+  for (const row of packet.transactions) {
+    if (!row || typeof row.id !== 'string' || row.id === '') return null;
+    rowIds.add(row.id);
+  }
+  // Integrity validation with structural tuple identity (nested Maps,
+  // never a delimited string): malformed components and orphan entries
+  // fail closed; exact duplicate tuples from the incumbent string/number
+  // identity merge are recorded once.
+  const join = [];
+  const byLocalId = new Map();
+  for (const entry of capture.join) {
+    if (!entry || typeof entry.localId !== 'string' || entry.localId === ''
+      || typeof entry.providerAccountId !== 'string' || entry.providerAccountId === ''
+      || typeof entry.transactionId !== 'string' || entry.transactionId === '') return null;
+    if (!rowIds.has(entry.localId)) return null;
+    let byAccount = byLocalId.get(entry.localId);
+    if (!byAccount) {
+      byAccount = new Map();
+      byLocalId.set(entry.localId, byAccount);
+    }
+    let seenTransactions = byAccount.get(entry.providerAccountId);
+    if (!seenTransactions) {
+      seenTransactions = new Set();
+      byAccount.set(entry.providerAccountId, seenTransactions);
+    }
+    if (seenTransactions.has(entry.transactionId)) continue;
+    seenTransactions.add(entry.transactionId);
+    join.push({
+      localId: entry.localId,
+      providerAccountId: entry.providerAccountId,
+      transactionId: entry.transactionId,
+    });
+  }
+  const joinedIds = new Set(join.map(entry => entry.localId));
+  for (const id of rowIds) {
+    if (!joinedIds.has(id)) return null;
+  }
+  let packetCopy;
+  let planCopy;
+  let mapCopy;
+  try {
+    packetCopy = cloneOwnedPlainData(packet, new Set());
+    planCopy = input.data && input.data.plan != null
+      ? cloneOwnedPlainData(input.data.plan, new Set()) : null;
+    mapCopy = cloneOwnedPlainData(input.accountMap, new Set());
+  } catch {
+    return null;
+  }
+  return { packet: packetCopy, join, plan: planCopy, map: mapCopy };
 }
 
 function loadIdentity(file) {
@@ -4826,6 +4971,7 @@ const api = {
   observationsFromMappedAccount,
   spendableCashFromObservations,
   sanitizedCurrentPeriodActuals,
+  acquireSettlementCrosswalk,
   paydayGapCompleteFromEvidence,
   currentPeriodActualsLooksSanitized,
   transactionLooksSanitized,

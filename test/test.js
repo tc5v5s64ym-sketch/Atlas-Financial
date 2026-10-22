@@ -86,6 +86,7 @@ const suites = [
   ['settlement evidence server seam: default-inactive bridge from the shared served data to the loader outcome (ATLAS-080)', 'test-settlement-evidence-server-seam.js'],
   ['settlement evidence confirmation: synthetic session-bound prepare/confirm/outcome with atomic no-recovery commits (ATLAS-080)', 'test-settlement-evidence-confirmation.js'],
   ['settlement evidence resolver foundation: pure identity/binding foundation — txRef v1, BIND bindings, canonical-row crosswalk and handles (ATLAS-080)', 'test-settlement-evidence-resolver.js'],
+  ['settlement evidence crosswalk exporter: same-pass tuple provenance from the incumbent sanitizer pass (ATLAS-080)', 'test-settlement-evidence-crosswalk.js'],
   ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
