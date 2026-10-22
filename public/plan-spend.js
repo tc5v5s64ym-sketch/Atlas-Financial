@@ -9,6 +9,106 @@ const PLAN_SPEND_VERDICT = {
   'FUNDING GAP': { cls: 'funding-gap', chip: 'c', label: 'FUNDING SHORTFALL' },
 };
 
+/* ATLAS-080 publication gating, Plan Spend mirror. The settlement
+ * evidence loader's tri-state outcome reaches this page as a status
+ * carried ALONGSIDE the evidence on the served data
+ * (d.settlementEvidenceStatus / d.settlementEvidence). This is the
+ * incumbent Planning/Plan validation verbatim (planningSettlementOutcome,
+ * planSettlementOutcome) — same reason vocabulary, same structural
+ * contract, same fail-closed rules; parity is pinned by
+ * test-settlement-evidence-publication-gating.js. A malformed status,
+ * a qualified status without valid effective evidence, or evidence
+ * under any non-qualified status fails closed as
+ * unavailable('invalid-configuration'), never as unconfigured. */
+const PLAN_SPEND_SETTLEMENT_REASONS = new Set([
+  'invalid-configuration', 'pin-unavailable', 'pin-invalid',
+  'document-unavailable', 'document-missing', 'document-malformed',
+  'household-mismatch', 'revision-mismatch', 'document-ahead-of-pin',
+  'digest-mismatch', 'document-invalid', 'document-changed',
+]);
+
+function planSpendSettlementDateValid(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(value + 'T00:00:00Z');
+  return Number.isFinite(parsed.getTime())
+    && parsed.toISOString().slice(0, 10) === value;
+}
+
+// Structural validation only; amounts are checked for shape, never
+// summed or applied here. Forecast is the sole calculator of relief.
+function planSpendSettlementEvidenceValid(evidence) {
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return false;
+  if (!Array.isArray(evidence.commitments)) return false;
+  const goals = new Set();
+  const operations = new Set();
+  for (const entry of evidence.commitments) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    if (typeof entry.goalId !== 'string'
+      || !entry.goalId.startsWith('commitment:')
+      || !/^[a-z0-9][a-z0-9-]{0,127}$/.test(entry.goalId.slice('commitment:'.length))) return false;
+    if (goals.has(entry.goalId)) return false;
+    goals.add(entry.goalId);
+    if (!Array.isArray(entry.links) || entry.links.length === 0) return false;
+    for (const link of entry.links) {
+      if (!link || typeof link !== 'object' || Array.isArray(link)) return false;
+      if (typeof link.operationId !== 'string'
+        || !/^operation-[a-f0-9]{32}$/.test(link.operationId)) return false;
+      if (operations.has(link.operationId)) return false;
+      operations.add(link.operationId);
+      if (typeof link.txRef !== 'string' || !/^tx-[a-f0-9]{32}$/.test(link.txRef)) return false;
+      if (!Number.isSafeInteger(link.assignedCents) || link.assignedCents <= 0) return false;
+      if (!planSpendSettlementDateValid(link.effectiveDate)
+        || !planSpendSettlementDateValid(link.asOf)) return false;
+      if (typeof link.evidenceDigest !== 'string'
+        || !/^[a-f0-9]{64}$/.test(link.evidenceDigest)) return false;
+      if (!Array.isArray(link.reversals)) return false;
+      for (const reversal of link.reversals) {
+        if (!reversal || typeof reversal !== 'object' || Array.isArray(reversal)) return false;
+        if (typeof reversal.operationId !== 'string'
+          || !/^operation-[a-f0-9]{32}$/.test(reversal.operationId)) return false;
+        if (operations.has(reversal.operationId)) return false;
+        operations.add(reversal.operationId);
+        if (typeof reversal.counterTxRef !== 'string'
+          || !/^tx-[a-f0-9]{32}$/.test(reversal.counterTxRef)) return false;
+        if (!Number.isSafeInteger(reversal.cents) || reversal.cents <= 0) return false;
+        if (!planSpendSettlementDateValid(reversal.date)) return false;
+      }
+    }
+  }
+  return true;
+}
+
+function planSpendSettlementOutcome(d) {
+  const status = d ? d.settlementEvidenceStatus : undefined;
+  const evidence = d ? d.settlementEvidence : undefined;
+  const invalid = { kind: 'unavailable', reason: 'invalid-configuration' };
+  // Explicit null is a configured outcome that failed to serialize.
+  if (status === null) return invalid;
+  const hasStatus = status !== undefined;
+  const hasEvidence = evidence !== undefined && evidence !== null;
+  if (!hasStatus && !hasEvidence) return { kind: 'unconfigured' };
+  if (!hasStatus || typeof status !== 'object' || Array.isArray(status)) return invalid;
+  if (status.status === 'unconfigured') {
+    return hasEvidence ? invalid : { kind: 'unconfigured' };
+  }
+  if (status.status === 'qualified') {
+    return hasEvidence && planSpendSettlementEvidenceValid(evidence)
+      ? { kind: 'qualified', evidence }
+      : invalid;
+  }
+  if (status.status === 'unavailable') {
+    if (hasEvidence) return invalid;
+    return PLAN_SPEND_SETTLEMENT_REASONS.has(status.reason)
+      ? { kind: 'unavailable', reason: status.reason }
+      : invalid;
+  }
+  return invalid;
+}
+
+function planSpendSettlementNotice(reason) {
+  return `<div class="note-box crit" data-settlement-evidence="unavailable" data-settlement-reason="${reason}">Settlement evidence is unavailable (${reason}). Savings and planned-spending funding figures that depend on settlement evidence are withheld rather than shown as if no settlement existed.</div>`;
+}
+
 function planSpendMoney(value) {
   if (value == null || !Number.isFinite(Number(value))) return 'Not established';
   return money2(value);
@@ -197,6 +297,17 @@ function planSpendPageHtml(advice, liveOverlay, context = {}) {
 }
 
 function planSpendAdvice(d, periods) {
+  const settlement = planSpendSettlementOutcome(d);
+  if (settlement.kind === 'unavailable') {
+    // Withheld: no dependent Forecast call and no derived figure.
+    return {
+      status: 'unavailable',
+      source: 'settlement-evidence',
+      reason: settlement.reason,
+      operatingPlanUnavailable: true,
+      operatingPlanNote: `Settlement evidence is unavailable (${settlement.reason}); settlement-dependent verdicts are withheld.`,
+    };
+  }
   const overlay = d.liveOverlay;
   const actuals = overlay && overlay.applied === true ? overlay.currentPeriodActuals : null;
   return Forecast.recommend(d.plan, d.meta.asOf, {
@@ -208,11 +319,25 @@ function planSpendAdvice(d, periods) {
     operatingPlan: overlay && overlay.operatingPlan,
     operatingPlanNote: overlay && overlay.operatingPlanNote,
     observedCash: overlay && overlay.observedCash,
+    ...(settlement.kind === 'qualified' ? { settlementEvidence: settlement.evidence } : {}),
   });
 }
 
 function renderPlanSpend(d, periods) {
   const advice = planSpendAdvice(d, periods);
+  if (advice.source === 'settlement-evidence' && advice.status === 'unavailable') {
+    // Replace every dependent mount so no earlier render's amounts survive.
+    const notice = planSpendSettlementNotice(advice.reason);
+    const inventory = $('savings-inventory');
+    if (inventory) inventory.innerHTML = notice;
+    const ledeMount = $('plan-spend-lede');
+    if (ledeMount) ledeMount.innerHTML = '';
+    const listMount = $('plan-spend-list');
+    if (listMount) listMount.innerHTML = `<div class="note-box crit" data-operating-plan="unavailable" data-settlement-evidence="unavailable" data-settlement-reason="${advice.reason}">${advice.operatingPlanNote} Forecast verdicts for planned spending are withheld.</div>`;
+    const noteMount = $('plan-spend-note');
+    if (noteMount) noteMount.textContent = '';
+    return;
+  }
   const context = { advice, plan: d.plan, asOf: d.meta.asOf };
   const html = planSpendPageHtml(advice, d.liveOverlay, context);
   const inventoryMount = $('savings-inventory');
