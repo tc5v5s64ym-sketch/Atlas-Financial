@@ -1908,3 +1908,223 @@ test('P2 recovery: a store without inspectAttempt cannot prove anything — bloc
     { status: 'unavailable', reason: 'outcome-unresolved' });
   assert.equal(w.document().operations.length, 0);
 });
+
+// === Write admission (fenced resolver/store pair) =========================
+// A controller constructed with BOTH trusted capabilities — a paired
+// resolver (resolvePairedSelection) and the store's admission capability
+// (commitAdmitted) — runs fenced for its whole lifetime: confirm carries
+// the witness paired with its FRESH confirm-time resolution (never
+// prepare's) through the probe and authorization waits into commitAdmitted,
+// and never touches commitWithoutRecovery. A definite admission refusal
+// retires the attempted preview and clears the uncertainty latch through
+// the same postauthorization discipline as every other definitive outcome.
+// Exactly one capability present (or a non-function value) refuses
+// construction: there is no partial or fallback mode.
+function fencedController(w, extra = {}) {
+  const resolvePairedSelection = async input => {
+    if (w.pairedHook) return w.pairedHook(input);
+    const selection = await w.resolve(input);
+    if (!selection || typeof selection !== 'object') return selection;
+    const witness = typeof w.mintWitness === 'function' ? w.mintWitness() : w.currentWitness;
+    return { selection, witness };
+  };
+  return w.newController(w.store, {
+    resolvePairedSelection,
+    commitAdmitted: async (input, witness) => {
+      w.calls.push('commitAdmitted');
+      w.admittedWitness = witness;
+      if (w.admissionHook) return w.admissionHook(input, witness, w.store);
+      return w.store.commitAdmitted(input, witness);
+    },
+    ...extra,
+  });
+}
+const fencedPrepare = async (w, controller, n = 1, cents = 2500) => {
+  const result = await controller.prepare(context, request(n, cents));
+  if (result.status === 'prepared') w.tokens.set(op(n), result.previewToken);
+  return result;
+};
+const fencedConfirm = (w, controller, n = 1) => controller.confirm(context,
+  { operationId: op(n), confirmed: true, previewToken: w.tokens.get(op(n)) });
+
+test('WA-C1 the fenced pair is selected whole at construction; partial setup refuses', async t => {
+  const w = await world(t);
+  const base = { householdId, authorize: w.authorize, resolveSelection: w.resolve, now: () => w.time, store: w.store };
+  assert.throws(() => createSettlementEvidenceConfirmation({ ...base,
+    resolvePairedSelection: async () => null }), /incomplete trusted dependencies/,
+    'paired resolver without the admission capability refuses');
+  assert.throws(() => createSettlementEvidenceConfirmation({ ...base,
+    commitAdmitted: async () => ({}) }), /incomplete trusted dependencies/,
+    'admission capability without the paired resolver refuses');
+  assert.throws(() => createSettlementEvidenceConfirmation({ ...base,
+    resolvePairedSelection: 'paired', commitAdmitted: async () => ({}) }), /incomplete trusted dependencies/);
+  assert.throws(() => createSettlementEvidenceConfirmation({ ...base,
+    resolvePairedSelection: async () => null, commitAdmitted: 42 }), /incomplete trusted dependencies/);
+  const fenced = createSettlementEvidenceConfirmation({ ...base,
+    resolvePairedSelection: async () => null, commitAdmitted: async () => ({}) });
+  assert.deepEqual(Object.keys(fenced).sort(), ['confirm', 'outcome', 'prepare'],
+    'the fenced controller exposes the same public surface');
+});
+
+test('WA-C2 fenced confirm commits through commitAdmitted with the confirm-time witness only', async t => {
+  const w = await world(t);
+  const issued = [];
+  w.mintWitness = () => { const witness = () => true; issued.push(witness); return witness; };
+  const controller = fencedController(w);
+  assert.equal((await fencedPrepare(w, controller)).status, 'prepared');
+  const receipt = await fencedConfirm(w, controller);
+  assert.equal(receipt.status, 'committed');
+  assert.equal(issued.length, 2, 'one paired resolution at prepare, one at confirm');
+  assert.equal(w.admittedWitness, issued[1],
+    'the witness carried into admission is the fresh confirm-time one, not prepare\u2019s');
+  assert.notEqual(w.admittedWitness, issued[0]);
+  assert.equal(w.count('commitAdmitted'), 1);
+  assert.equal(w.count('commitWithoutRecovery'), 0, 'fenced mode never falls back');
+  assert.equal(w.document().operations.length, 1);
+});
+
+test('WA-C3 a definite admission refusal retires the preview and clears the latch', async t => {
+  const w = await world(t);
+  let admit = false;
+  w.currentWitness = () => admit;
+  const controller = fencedController(w);
+  assert.equal((await fencedPrepare(w, controller)).status, 'prepared');
+  const refused = await fencedConfirm(w, controller);
+  assert.deepEqual(refused, { status: 'rejected', reason: 'admission-refused' });
+  assert.equal(w.document().operations.length, 0, 'nothing was written');
+  assert.deepEqual(await fencedConfirm(w, controller), { status: 'unknown', operationId: op(1) },
+    'the attempted preview is retired; no second admission is possible');
+  // Fresh work needs a fresh prepare and an explicit confirm.
+  admit = true;
+  assert.equal((await fencedPrepare(w, controller, 2)).status, 'prepared',
+    'the uncertainty latch was cleared by the definite refusal');
+  assert.equal((await fencedConfirm(w, controller, 2)).status, 'committed');
+  assert.equal(w.document().operations.length, 1);
+});
+
+test('WA-C4 the witness is carried through the confirm probe wait unchanged', async t => {
+  const w = await world(t);
+  const issued = [];
+  w.mintWitness = () => { const witness = () => true; issued.push(witness); return witness; };
+  const controller = fencedController(w);
+  // Gate the confirm-time store.prepare probe (the second prepare call —
+  // the first is prepare()'s own): admission must not happen until the
+  // probe releases, and the witness that finally reaches commitAdmitted
+  // is still the confirm-time one.
+  let releaseProbe, probeEntered;
+  const gate = new Promise(resolve => { releaseProbe = resolve; });
+  const entered = new Promise(resolve => { probeEntered = resolve; });
+  let prepareCalls = 0;
+  w.prepareHook = async (input, store) => {
+    prepareCalls++;
+    if (prepareCalls === 2) { probeEntered(); await gate; }
+    return store.prepare(input);
+  };
+  assert.equal((await fencedPrepare(w, controller)).status, 'prepared');
+  const pending = fencedConfirm(w, controller);
+  await entered;
+  assert.equal(w.count('commitAdmitted'), 0, 'no admission while the probe is held');
+  releaseProbe();
+  const receipt = await pending;
+  assert.equal(receipt.status, 'committed');
+  assert.equal(issued.length, 2, 'one paired resolution at prepare, one at confirm');
+  assert.equal(w.admittedWitness, issued[1]);
+});
+
+test('WA-C5 postauthorization failure after an admission refusal preserves the P2 latch', async t => {
+  const w = await world(t);
+  w.currentWitness = () => false;
+  let recover;
+  const controller = fencedController(w, { registerRecovery: fn => { recover = fn; } });
+  assert.equal((await fencedPrepare(w, controller)).status, 'prepared');
+  // The store refuses admission definitely, but the post-commit
+  // authorization re-check then fails: uncertainty is NOT cleared.
+  w.admissionHook = async (input, witness, store) => {
+    const result = await store.commitAdmitted(input, witness);
+    w.authHook = async () => ({ householdId, actorId: otherActor });
+    return result;
+  };
+  const result = await fencedConfirm(w, controller);
+  assert.deepEqual(result, { status: 'unknown', operationId: op(1) });
+  w.authHook = null;
+  assert.deepEqual(await controller.outcome(context, { operationId: op(1) }),
+    { status: 'unknown', operationId: op(1) }, 'the latch is retained');
+  assert.equal((await controller.prepare(context, request(2))).status, 'unavailable',
+    'new work is blocked while the latch holds');
+  // P2 resolves it on the store's read-only proof: nothing was written and
+  // the pinned head is exactly the preview's base.
+  assert.deepEqual(await recover(), { status: 'resolved' });
+  w.currentWitness = () => true;
+  assert.equal((await fencedPrepare(w, controller, 2)).status, 'prepared');
+});
+
+test('WA-C6 fenced mode never falls back when admission is unavailable or unknown', async t => {
+  const w = await world(t);
+  w.currentWitness = () => true;
+  const controller = fencedController(w);
+  assert.equal((await fencedPrepare(w, controller)).status, 'prepared');
+  w.admissionHook = async () => ({ status: 'unavailable', reason: 'synthetic-store-busy' });
+  const result = await fencedConfirm(w, controller);
+  assert.deepEqual(result, { status: 'unknown', operationId: op(1) });
+  assert.equal(w.count('commitWithoutRecovery'), 0);
+  assert.equal(w.document().operations.length, 0);
+});
+
+test('WA-C7 a caller cannot inject a witness through the confirm request or context', async t => {
+  const w = await world(t);
+  w.currentWitness = () => true;
+  const controller = fencedController(w);
+  const prepared = await fencedPrepare(w, controller);
+  assert.equal(prepared.status, 'prepared');
+  const injected = await controller.confirm(context, { operationId: op(1), confirmed: true,
+    previewToken: prepared.previewToken, witness: () => false });
+  assert.equal(injected.status, 'unavailable', 'request shapes are unchanged; extra keys refuse');
+  const injectedContext = await controller.confirm({ ticket: context.ticket, witness: () => false },
+    { operationId: op(1), confirmed: true, previewToken: prepared.previewToken });
+  assert.equal(injectedContext.status, 'unavailable');
+  assert.equal(w.count('commitAdmitted'), 0, 'no admission was attempted');
+  assert.equal((await fencedConfirm(w, controller)).status, 'committed',
+    'the retained preview is untouched by the refused injections');
+});
+
+test('WA-C8 the original receipt precedes fenced resolution despite a broken paired path', async t => {
+  const w = await world(t);
+  w.currentWitness = () => true;
+  const controller = fencedController(w);
+  assert.equal((await fencedPrepare(w, controller)).status, 'prepared');
+  assert.equal((await fencedConfirm(w, controller)).status, 'committed');
+  const resolveCalls = w.count('resolve'), admittedCalls = w.count('commitAdmitted');
+  w.pairedHook = async () => { throw new Error('synthetic paired resolver failure'); };
+  const again = await fencedConfirm(w, controller);
+  assert.equal(again.status, 'committed', 'the durable receipt is read before any re-resolution');
+  assert.equal(again.operationId, op(1));
+  assert.equal(w.count('resolve'), resolveCalls, 'no fresh resolution was needed');
+  assert.equal(w.count('commitAdmitted'), admittedCalls, 'no second admission was attempted');
+});
+
+test('WA-C9 malformed paired results fail closed before any store call', async t => {
+  const w = await world(t);
+  for (const [name, paired] of [
+    ['missing witness', async input => ({ selection: await w.resolve(input) })],
+    ['non-function witness', async input => ({ selection: await w.resolve(input), witness: 'fresh' })],
+    ['null result', async () => null],
+  ]) {
+    w.pairedHook = paired;
+    const controller = fencedController(w);
+    const result = await controller.prepare(context, request(1));
+    assert.equal(result.status, 'unavailable', name + ': prepare fails closed');
+    assert.equal(w.count('prepare'), 0, name + ': the store was never called');
+    w.pairedHook = null;
+  }
+  // An accessor witness is never invoked: the pairing is read by descriptor.
+  let getterCalls = 0;
+  w.pairedHook = async input => {
+    const pair = { selection: await w.resolve(input) };
+    Object.defineProperty(pair, 'witness', { enumerable: true,
+      get() { getterCalls++; return () => true; } });
+    return pair;
+  };
+  const controller = fencedController(w);
+  assert.equal((await controller.prepare(context, request(1))).status, 'unavailable');
+  assert.equal(getterCalls, 0, 'the witness accessor was not invoked');
+});

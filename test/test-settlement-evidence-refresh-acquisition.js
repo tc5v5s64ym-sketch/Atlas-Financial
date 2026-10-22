@@ -689,4 +689,499 @@ if (!threads.isMainThread) {
       await mock.close();
     }
   });
+  // ---------------------------------------------------------------------
+  // WA: acquisition-bound write admission — the finite acceptance. The
+  // ACTUAL four modules composed end to end: the real Refresh lifecycle
+  // issues a private synchronous freshness witness inside the acquisition
+  // publication continuation, paired with the exact acquired
+  // packet/join/plan/map; the real resolver returns the ordinary selection
+  // plus that witness; the real confirmation controller selects the
+  // fenced pair at construction and carries the witness paired with its
+  // FRESH confirm-time resolution through the probe/authorization waits;
+  // the real store invokes it synchronously immediately before the
+  // journal write under its single lock. Context, authorize and the
+  // current-context reader are labelled synthetic fixtures owned by the
+  // test; NO production authority reader, production composition or
+  // activation is wired by this slice. The claim is only the
+  // process-local admission boundary under the trusted
+  // current-context-reader contract.
+  // ---------------------------------------------------------------------
+  const Store = require('../scripts/settlement-evidence-store');
+  const FileAdapter = require('../scripts/settlement-evidence-file-adapter');
+  const Confirmation = require('../scripts/settlement-evidence-confirmation');
+  const admissionOp = n => 'operation-' + n.toString(16).padStart(32, '0');
+  const ADMISSION_CONTEXT = { ticket: 'synthetic-session-a' };
+  const ADMISSION_T0 = Date.parse('2026-08-20T12:00:00Z');
+
+  async function admissionWorld(t) {
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'atlas-admission-'));
+    fs.chmodSync(dir, 0o700);
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const mock = await helper.provider();
+    const env = helper.environment(mock.base);
+    const canonical = Fixture.canonical();
+    const w = { dir, mock, env, canonical, time: ADMISSION_T0, pin: null, backups: new Map(),
+      calls: { commitAdmitted: 0, commitWithoutRecovery: 0, prepare: 0, outcome: 0, acquire: 0 },
+      hooks: {}, readerCalls: 0 };
+    const seeded = await bounded(Refresh.serve(canonical, env), 'admission seed serve');
+    await drain();
+    assert.equal(seeded.liveOverlay.applied, true, 'seed observation qualifies');
+    w.providerCallsAfterSeed = mock.calls.length;
+    // Labelled synthetic current-context reader: the test owns the current
+    // canonical/environment cell and a monotonic revision counter. The
+    // reader is synchronous; 'broken' modes exercise fail-closed refusal.
+    w.cell = { canonical, env, revision: 1, broken: null };
+    w.contextReader = () => {
+      w.readerCalls++;
+      if (w.cell.broken === 'throw') throw new Error('synthetic reader failure');
+      if (w.cell.broken === 'async') return Promise.resolve(
+        { canonical: w.cell.canonical, env: w.cell.env, contextRevision: w.cell.revision });
+      if (w.cell.broken === 'malformed') return { contextRevision: 'one' };
+      return { canonical: w.cell.canonical, env: w.cell.env, contextRevision: w.cell.revision };
+    };
+    w.pinStore = {
+      async read() { return clone(w.pin); },
+      async advance(expected, next) {
+        const ok = expected === null ? w.pin === null
+          : w.pin && expected.revision === w.pin.revision && expected.digest === w.pin.digest;
+        if (!ok) return false;
+        w.pin = clone(next);
+        return true;
+      },
+    };
+    const backupStore = {
+      async put(revision, digest, bytes) {
+        const entry = { revision, digest, artifactId: 'synthetic-backup-' + revision };
+        w.backups.set(digest, { ...entry, bytes: Buffer.from(bytes) });
+        return clone(entry);
+      },
+      async get(revision, digest) {
+        const value = w.backups.get(digest);
+        return value && value.revision === revision ? Buffer.from(value.bytes) : null;
+      },
+      async list() { return [...w.backups.values()].map(({ bytes, ...entry }) => clone(entry)); },
+    };
+    w.adapters = FileAdapter.createSettlementEvidenceFileAdapter(dir);
+    w.store = Store.createSettlementEvidenceStore(
+      { householdId, ...w.adapters, pinStore: w.pinStore, backupStore, now: () => w.time });
+    assert.equal((await w.store.bootstrap()).status, 'bootstrapped');
+    const controllerStore = {
+      prepare: async input => {
+        w.calls.prepare++;
+        if (w.hooks.probe) await w.hooks.probe(input);
+        return w.store.prepare(input);
+      },
+      commitWithoutRecovery: async input => {
+        w.calls.commitWithoutRecovery++;
+        return w.store.commitWithoutRecovery(input);
+      },
+      outcome: async input => { w.calls.outcome++; return w.store.outcome(input); },
+      inspectAttempt: async input => w.store.inspectAttempt(input),
+    };
+    w.acquire = async () => {
+      w.calls.acquire++;
+      const paired = await bounded(Refresh.acquireSettlementWithWitness(
+        w.cell.canonical, w.cell.env, { contextReader: w.contextReader }), 'admission acquire');
+      return { ...paired.acquisition, witness: paired.witness };
+    };
+    w.resolver = R.createSettlementEvidenceResolver({ householdId, acquire: w.acquire });
+    w.authorize = async ctx => {
+      if (w.hooks.authorize) await w.hooks.authorize();
+      return ctx && ctx.ticket === ADMISSION_CONTEXT.ticket
+        ? { householdId, actorId: AUTHORITY.actorId } : null;
+    };
+    w.controller = Confirmation.createSettlementEvidenceConfirmation({
+      householdId, authorize: w.authorize,
+      resolveSelection: w.resolver.resolveSelection,
+      resolvePairedSelection: w.resolver.resolvePairedSelection,
+      commitAdmitted: async (input, witness) => {
+        w.calls.commitAdmitted++;
+        if (w.hooks.admission) return w.hooks.admission(input, witness);
+        return w.store.commitAdmitted(input, witness);
+      },
+      store: controllerStore, now: () => w.time,
+    });
+    const handlesAcq = await bounded(Refresh.acquireSettlement(canonical, env), 'admission handles acquire');
+    await drain();
+    w.selection = {
+      transaction: R.deriveSelectionHandle(R.computeInstanceDigest(handlesAcq.packet),
+        { householdId, ...TUPLE }),
+      commitment: R.deriveChoiceHandle(R.computePlanDigest(handlesAcq.plan), GOAL_ID),
+    };
+    w.prepare = (n = 1, cents = 1000) => w.controller.prepare(ADMISSION_CONTEXT,
+      { operationId: admissionOp(n), selection: w.selection, assignedCents: cents });
+    w.confirm = (n, previewToken) => w.controller.confirm(ADMISSION_CONTEXT,
+      { operationId: admissionOp(n), confirmed: true, previewToken });
+    w.document = () => JSON.parse(fs.readFileSync(path.join(dir, 'document.json'), 'utf8'));
+    w.close = async () => { mock.release(); mock.mode('ok'); await mock.close(); };
+    return w;
+  }
+  // Arm a one-shot lifecycle invalidation on the kth read of an adapter
+  // method, counted from the moment arm() runs (tests arm inside the
+  // confirm probe hook so the counts name commit-stage reads exactly).
+  function armInvalidationOnRead(target, method, kth) {
+    const original = target[method].bind(target);
+    let count = 0, armed = false;
+    target[method] = async (...args) => {
+      if (armed) {
+        count++;
+        if (count === kth) await Refresh.withProviderWrite(async () => {});
+      }
+      return original(...args);
+    };
+    return () => { armed = true; };
+  }
+
+  test('WA-A1 composed success: admission commits, zero additional provider GETs, no fallback', { timeout: 120000 }, async t => {
+    const w = await admissionWorld(t);
+    try {
+      const prepared = await w.prepare(1);
+      assert.equal(prepared.status, 'prepared');
+      const receipt = await w.confirm(1, prepared.previewToken);
+      assert.equal(receipt.status, 'committed');
+      assert.equal(receipt.operationId, admissionOp(1));
+      assert.equal(w.document().operations.length, 1);
+      assert.equal(w.calls.commitAdmitted, 1, 'admission went through the fenced capability');
+      assert.equal(w.calls.commitWithoutRecovery, 0, 'no unguarded fallback');
+      assert.equal(w.mock.calls.length, w.providerCallsAfterSeed,
+        'zero additional provider GETs on the success path');
+      assert.equal(w.readerCalls, 3,
+        'reader read once per witness mint (prepare + confirm) and once at admission');
+      const outcome = await w.controller.outcome(ADMISSION_CONTEXT, { operationId: admissionOp(1) });
+      assert.equal(outcome.status, 'committed');
+      assert.equal(JSON.stringify([prepared, receipt, outcome]).includes('witness'), false,
+        'no witness material on public results');
+      assert.equal(JSON.stringify(w.document()).includes('witness'), false,
+        'no witness material in persistence');
+      await drain();
+    } finally { await w.close(); }
+  });
+
+  test('WA-A2 the original receipt precedes current selection despite invalidation', { timeout: 120000 }, async t => {
+    const w = await admissionWorld(t);
+    try {
+      const prepared = await w.prepare(1);
+      assert.equal((await w.confirm(1, prepared.previewToken)).status, 'committed');
+      const acquireCalls = w.calls.acquire, admittedCalls = w.calls.commitAdmitted;
+      // Break everything the fresh path depends on: the lifecycle is
+      // invalidated and the context reader throws.
+      await Refresh.withProviderWrite(async () => {});
+      w.cell.broken = 'throw';
+      const again = await w.confirm(1, prepared.previewToken);
+      assert.equal(again.status, 'committed', 'the durable receipt wins over current evidence');
+      assert.equal(w.calls.acquire, acquireCalls, 'no re-acquisition for a recorded operation');
+      assert.equal(w.calls.commitAdmitted, admittedCalls, 'no second admission');
+      await drain();
+    } finally { await w.close(); }
+  });
+
+  for (const [name, breakMode] of [['throwing', 'throw'], ['asynchronous', 'async'], ['malformed', 'malformed']]) {
+    test(`WA-A3 a ${name} current-context reader refuses admission with zero writes`, { timeout: 120000 }, async t => {
+      const w = await admissionWorld(t);
+      try {
+        const prepared = await w.prepare(1);
+        assert.equal(prepared.status, 'prepared');
+        w.cell.broken = breakMode;
+        const result = await w.confirm(1, prepared.previewToken);
+        assert.deepEqual(result, { status: 'rejected', reason: 'admission-refused' });
+        assert.equal(w.document().operations.length, 0, 'zero writes');
+        assert.equal(w.mock.calls.length, w.providerCallsAfterSeed,
+          'zero additional provider GETs on the refusal path');
+        assert.equal(w.calls.commitWithoutRecovery, 0);
+        await drain();
+      } finally { await w.close(); }
+    });
+  }
+
+  test('WA-A4 generation invalidation at the confirm probe refuses admission', { timeout: 120000 }, async t => {
+    const w = await admissionWorld(t);
+    try {
+      const prepared = await w.prepare(1);
+      w.hooks.probe = async () => { await Refresh.withProviderWrite(async () => {}); };
+      const result = await w.confirm(1, prepared.previewToken);
+      assert.deepEqual(result, { status: 'rejected', reason: 'admission-refused' });
+      assert.equal(w.document().operations.length, 0);
+      assert.equal(w.calls.commitWithoutRecovery, 0);
+      await drain();
+    } finally { await w.close(); }
+  });
+
+  test('WA-A5 epoch invalidation at the confirm probe (fresh publish) refuses admission', { timeout: 120000 }, async t => {
+    const w = await admissionWorld(t);
+    try {
+      const prepared = await w.prepare(1);
+      w.hooks.probe = async () => {
+        await bounded(Refresh.serve(w.canonical, w.env, { forceRefresh: true }), 'epoch publish');
+      };
+      const result = await w.confirm(1, prepared.previewToken);
+      assert.deepEqual(result, { status: 'rejected', reason: 'admission-refused' });
+      assert.equal(w.document().operations.length, 0);
+      await drain();
+    } finally { await w.close(); }
+  });
+
+  test('WA-A6 invalidation at the post-probe authorization wait refuses admission', { timeout: 120000 }, async t => {
+    const w = await admissionWorld(t);
+    try {
+      const prepared = await w.prepare(1);
+      let authCalls = 0;
+      // Confirm-time authorize calls: 1 authority, 2 receipt re-check,
+      // 3 post-probe re-check, 4 post-commit re-check. Fire at 3.
+      w.hooks.authorize = async () => {
+        authCalls++;
+        if (authCalls === 3) await Refresh.withProviderWrite(async () => {});
+      };
+      const result = await w.confirm(1, prepared.previewToken);
+      assert.deepEqual(result, { status: 'rejected', reason: 'admission-refused' });
+      assert.equal(w.document().operations.length, 0);
+      await drain();
+    } finally { await w.close(); }
+  });
+
+  test('WA-A7 financial-day rollover between resolution and admission refuses', { timeout: 120000 }, async t => {
+    const w = await admissionWorld(t);
+    try {
+      const prepared = await w.prepare(1);
+      w.hooks.probe = async () => { now = '2026-08-21T18:00:00.000Z'; };
+      const result = await w.confirm(1, prepared.previewToken);
+      assert.deepEqual(result, { status: 'rejected', reason: 'admission-refused' });
+      assert.equal(w.document().operations.length, 0);
+      await drain();
+    } finally { now = CLOCK; await w.close(); }
+  });
+
+  test('WA-A8 context replacement between resolution and admission refuses (reader revision)', { timeout: 120000 }, async t => {
+    const w = await admissionWorld(t);
+    try {
+      const prepared = await w.prepare(1);
+      // Identical content in a new object: the recomputed context key
+      // alone cannot see this replacement — the monotonic revision can.
+      w.hooks.probe = async () => { w.cell.canonical = clone(w.canonical); w.cell.revision++; };
+      const result = await w.confirm(1, prepared.previewToken);
+      assert.deepEqual(result, { status: 'rejected', reason: 'admission-refused' });
+      assert.equal(w.document().operations.length, 0);
+      await drain();
+    } finally { await w.close(); }
+  });
+
+  test('WA-A9 context ABA between resolution and admission refuses', { timeout: 120000 }, async t => {
+    const w = await admissionWorld(t);
+    try {
+      const prepared = await w.prepare(1);
+      // Away to different content and back to the original content: the
+      // context key matches again, but the revision moved twice.
+      w.hooks.probe = async () => {
+        const away = clone(w.canonical);
+        away.meta = { ...away.meta, note: 'synthetic-away' };
+        w.cell.canonical = away; w.cell.revision++;
+        w.cell.canonical = clone(w.canonical); w.cell.revision++;
+      };
+      const result = await w.confirm(1, prepared.previewToken);
+      assert.deepEqual(result, { status: 'rejected', reason: 'admission-refused' });
+      assert.equal(w.document().operations.length, 0);
+      await drain();
+    } finally { await w.close(); }
+  });
+
+  for (const [stage, pick, method, kth] of [
+    ['confirm probe pin read', w => w.pinStore, 'read', 1],
+    ['lock-acquisition pin read', w => w.pinStore, 'read', 2],
+    ['C1 prewrite pin re-read', w => w.pinStore, 'read', 3],
+    ['confirm probe document read', w => w.adapters.documentStore, 'read', 1],
+    ['lock-acquisition document read', w => w.adapters.documentStore, 'read', 2],
+    ['C1 prewrite document re-read', w => w.adapters.documentStore, 'read', 3],
+    ['confirm probe journal read', w => w.adapters.journalStore, 'read', 1],
+    ['lock-acquisition journal read', w => w.adapters.journalStore, 'read', 2],
+  ]) {
+    test(`WA-A10 invalidation at the store's ${stage} refuses admission`, { timeout: 120000 }, async t => {
+      const w = await admissionWorld(t);
+      try {
+        const arm = armInvalidationOnRead(pick(w), method, kth);
+        const prepared = await w.prepare(1);
+        assert.equal(prepared.status, 'prepared');
+        w.hooks.probe = async () => { arm(); };
+        const result = await w.confirm(1, prepared.previewToken);
+        assert.deepEqual(result, { status: 'rejected', reason: 'admission-refused' });
+        assert.equal(w.document().operations.length, 0, 'zero writes');
+        assert.equal(w.calls.commitWithoutRecovery, 0);
+        await drain();
+      } finally { await w.close(); }
+    });
+  }
+
+  test('WA-A11 post-admission invalidation during paused journal I/O does not cancel the write', { timeout: 120000 }, async t => {
+    const w = await admissionWorld(t);
+    try {
+      let enteredWrite, releaseWrite;
+      const writeEntered = new Promise(resolve => { enteredWrite = resolve; });
+      const writeGate = new Promise(resolve => { releaseWrite = resolve; });
+      const originalWrite = w.adapters.journalStore.write.bind(w.adapters.journalStore);
+      w.adapters.journalStore.write = async record => {
+        const result = await originalWrite(record);
+        enteredWrite();
+        await writeGate;
+        return result;
+      };
+      const prepared = await w.prepare(1);
+      const pending = w.confirm(1, prepared.previewToken);
+      await writeEntered;
+      // Admission already succeeded. Invalidate everything the witness
+      // checks; the partly written operation must still complete as
+      // committed, never convert to a definite refusal.
+      await Refresh.withProviderWrite(async () => {});
+      w.cell.revision++;
+      releaseWrite();
+      const receipt = await pending;
+      assert.equal(receipt.status, 'committed');
+      assert.equal(w.document().operations.length, 1);
+      assert.equal(w.readerCalls, 3, 'the witness was consulted exactly once, before the write');
+      await drain();
+    } finally { await w.close(); }
+  });
+
+  test('WA-A12 an uncertain journal write remains unknown and is never retried', { timeout: 120000 }, async t => {
+    const w = await admissionWorld(t);
+    try {
+      let journalWrites = 0;
+      const originalWrite = w.adapters.journalStore.write.bind(w.adapters.journalStore);
+      w.adapters.journalStore.write = async record => {
+        journalWrites++;
+        await originalWrite(record);
+        throw new Error('synthetic lost journal acknowledgement');
+      };
+      const prepared = await w.prepare(1);
+      const result = await w.confirm(1, prepared.previewToken);
+      assert.deepEqual(result, { status: 'unknown', operationId: admissionOp(1) });
+      assert.equal(journalWrites, 1, 'exactly one journal write attempt: no retry');
+      assert.equal(w.calls.commitAdmitted, 1);
+      assert.ok(await w.adapters.journalStore.read(), 'the journal is resident');
+      assert.deepEqual(await w.controller.outcome(ADMISSION_CONTEXT, { operationId: admissionOp(1) }),
+        { status: 'unknown', operationId: admissionOp(1) }, 'uncertainty is preserved, not refused');
+      assert.equal((await w.prepare(2)).status, 'unavailable',
+        'the latch blocks fresh work while the outcome is unresolved');
+      await drain();
+    } finally { await w.close(); }
+  });
+
+  test('WA-L1 witness pairing: shape, per-waiter ownership, no global slot', { timeout: 120000 }, async () => {
+    const mock = await helper.provider();
+    const env = helper.environment(mock.base);
+    const canonical = Fixture.canonical();
+    try {
+      await bounded(Refresh.serve(canonical, env), 'seed serve');
+      await drain();
+      const [a, b] = await Promise.all([
+        bounded(Refresh.acquireSettlementWithWitness(canonical, env), 'witness acquire a'),
+        bounded(Refresh.acquireSettlementWithWitness(canonical, env), 'witness acquire b'),
+      ]);
+      await drain();
+      assert.deepEqual(Object.keys(a).sort(), ['acquisition', 'witness']);
+      assert.deepEqual(Object.keys(a.acquisition).sort(), ['join', 'map', 'packet', 'plan'],
+        'the acquisition itself is unchanged');
+      assert.equal(typeof a.witness, 'function');
+      assert.notEqual(a.witness, b.witness, 'each waiter owns its witness');
+      assert.notEqual(a.acquisition, b.acquisition, 'each waiter owns its data');
+      assert.equal(a.witness(), true, 'a fresh witness admits');
+      assert.equal(b.witness(), true);
+      // No global latest-witness slot: a later witness for the same
+      // context never revives an earlier one — each witness answers only
+      // for the state its own publication validated.
+      const firstPair = await bounded(Refresh.acquireSettlementWithWitness(canonical, env),
+        'witness acquire first');
+      await drain();
+      assert.equal(firstPair.witness(), true);
+      await bounded(Refresh.serve(canonical, env, { forceRefresh: true }), 'republish');
+      await drain();
+      assert.equal(firstPair.witness(), false, 'the earlier witness stays refused after a republish');
+      const secondPair = await bounded(Refresh.acquireSettlementWithWitness(canonical, env),
+        'witness acquire second');
+      await drain();
+      assert.equal(secondPair.witness(), true, 'the fresh witness admits');
+      assert.equal(firstPair.witness(), false, 'and the earlier witness is not revived by it');
+    } finally {
+      mock.release();
+      await mock.close();
+    }
+  });
+
+  test('WA-L2 witness refuses after invalidation, under a superseding live job, and under replay hold', { timeout: 120000 }, async () => {
+    const mock = await helper.provider();
+    const env = helper.environment(mock.base);
+    const canonical = Fixture.canonical();
+    try {
+      await bounded(Refresh.serve(canonical, env), 'seed serve');
+      await drain();
+      const first = await bounded(Refresh.acquireSettlementWithWitness(canonical, env), 'witness acquire');
+      await drain();
+      assert.equal(first.witness(), true);
+      await Refresh.withProviderWrite(async () => {});
+      assert.equal(first.witness(), false, 'generation invalidation refuses');
+      // Invalidation cleared the retained observation; reseed before
+      // reacquiring (the incumbent slot contract, as in RA-13).
+      await bounded(Refresh.serve(canonical, env), 'reseed serve');
+      await drain();
+      // Superseding live job for the same context.
+      const second = await bounded(Refresh.acquireSettlementWithWitness(canonical, env), 'witness reacquire');
+      await drain();
+      assert.equal(second.witness(), true);
+      mock.hold();
+      const live = Refresh.serve(canonical, env);
+      const liveCalls = mock.calls.length;
+      await helper.until(() => mock.calls.length > liveCalls, 'live job started');
+      assert.equal(second.witness(), false, 'a superseding live job refuses');
+      mock.release();
+      await bounded(live, 'live job completion');
+      await drain();
+      // Replay hold after a failed forced refresh.
+      const third = await bounded(Refresh.acquireSettlementWithWitness(canonical, env), 'witness reacquire 2');
+      await drain();
+      mock.mode('failure');
+      await rejection(bounded(Refresh.serve(canonical, env, { forceRefresh: true }), 'forced failure'),
+        'live-refresh-unavailable');
+      await drain();
+      assert.equal(third.witness(), false, 'the replay hold refuses');
+      mock.mode('ok');
+    } finally {
+      mock.release();
+      mock.mode('ok');
+      await mock.close();
+    }
+  });
+
+  test('WA-L3 reader failure modes refuse from minting; day rollover refuses', { timeout: 120000 }, async () => {
+    const mock = await helper.provider();
+    const env = helper.environment(mock.base);
+    const canonical = Fixture.canonical();
+    try {
+      await bounded(Refresh.serve(canonical, env), 'seed serve');
+      await drain();
+      for (const [name, reader] of [
+        ['throwing reader', () => { throw new Error('synthetic reader failure'); }],
+        ['asynchronous reader', async () => ({ canonical, env, contextRevision: 1 })],
+        ['malformed result', () => ({ contextRevision: 'one' })],
+        ['non-function reader', 'reader'],
+        ['context mismatch', () => ({ canonical: { ...canonical, meta: { ...canonical.meta, note: 'elsewhere' } }, env, contextRevision: 1 })],
+      ]) {
+        const paired = await bounded(Refresh.acquireSettlementWithWitness(canonical, env,
+          { contextReader: reader }), 'witness acquire (' + name + ')');
+        await drain();
+        assert.ok(paired.acquisition && paired.acquisition.packet,
+          name + ': the acquisition itself still resolves');
+        assert.equal(paired.witness(), false, name + ': the witness refuses');
+      }
+      // Day rollover: the witness re-derives the financial day at
+      // invocation and refuses once it no longer matches the job's day.
+      const paired = await bounded(Refresh.acquireSettlementWithWitness(canonical, env), 'witness acquire (day)');
+      await drain();
+      assert.equal(paired.witness(), true);
+      now = '2026-08-21T18:00:00.000Z';
+      assert.equal(paired.witness(), false, 'day rollover refuses');
+      now = CLOCK;
+    } finally {
+      now = CLOCK;
+      mock.release();
+      await mock.close();
+    }
+  });
+
 }

@@ -65,6 +65,28 @@
 //   command or any digest, so admitted commands and receipts are
 //   byte-identical to before Rule E, and a recorded operation's original
 //   receipt is always read before any re-resolution or re-classification.
+// - Write admission (optional trusted pair, selected whole at
+//   construction): when the composition supplies BOTH a paired resolver
+//   capability (resolvePairedSelection) and the store's admission
+//   capability (commitAdmitted), the controller runs fenced for its whole
+//   lifetime. Each resolve returns the ordinary selection plus the
+//   freshness witness paired with that exact acquisition; prepare
+//   discards its witness, and confirm carries the witness paired with
+//   its FRESH confirm-time resolution — never prepare's older
+//   acquisition — through the existing probe and authorization waits
+//   into commitAdmitted. Exactly one capability (or a non-function
+//   value) refuses construction; a fenced controller never falls back to
+//   commitWithoutRecovery and an unfenced controller never touches the
+//   admission capability. A definite admission refusal from the store
+//   retires the attempted preview and clears the uncertainty latch
+//   through the same postauthorization discipline as the other
+//   definitive outcomes; if postauthorization itself fails, the P2
+//   behaviour above is preserved. The witness is never snapshotted,
+//   compared, persisted, serialized or exposed on any public shape, and
+//   no caller input can supply one. This fences only the process-local
+//   admission boundary under the trusted current-context-reader
+//   contract: no atomicity with external writers, unobserved provider
+//   changes or session revocation is claimed.
 // - store is bound above and MUST supply commitWithoutRecovery; ordinary
 //   commit is never a fallback. now is the injected clock.
 // Context and requests are plain JSON data, snapshotted before any await.
@@ -236,10 +258,20 @@ function receipt(result, authority, operationId) {
 
 function createSettlementEvidenceConfirmation(deps) {
   if (!record(deps)) throw new TypeError('settlement-confirmation: dependencies required');
-  const { householdId, authorize, resolveSelection, store, now, registerRecovery } = deps;
+  const { householdId, authorize, resolveSelection, resolvePairedSelection, commitAdmitted,
+    store, now, registerRecovery } = deps;
+  // Write admission fencing is selected whole at construction: a paired
+  // resolver capability AND the store's admission capability, or neither.
+  // Exactly one (or a non-function value) is a partial setup and refuses:
+  // a fenced controller never falls back to commitWithoutRecovery, and an
+  // unfenced controller never touches the admission capability.
+  const fenced = typeof resolvePairedSelection === 'function' && typeof commitAdmitted === 'function';
   if (!matches(HOUSEHOLD, householdId) || typeof authorize !== 'function'
     || typeof resolveSelection !== 'function' || typeof now !== 'function'
     || (registerRecovery !== undefined && typeof registerRecovery !== 'function')
+    || (resolvePairedSelection !== undefined && typeof resolvePairedSelection !== 'function')
+    || (commitAdmitted !== undefined && typeof commitAdmitted !== 'function')
+    || ((resolvePairedSelection === undefined) !== (commitAdmitted === undefined))
     || !store || ['prepare', 'commitWithoutRecovery', 'outcome'].some(k => typeof store[k] !== 'function')) {
     throw new TypeError('settlement-confirmation: incomplete trusted dependencies');
   }
@@ -287,6 +319,11 @@ function createSettlementEvidenceConfirmation(deps) {
   // helper-to-caller interval can therefore neither rewrite the selection
   // paired with the projection nor restore a changed binding past the
   // confirm comparison.
+  // In fenced mode the helper additionally returns the freshness witness
+  // paired with THIS resolution, extracted by descriptor in the same
+  // continuation. The witness is a live capability: it is never
+  // snapshotted, compared, persisted or serialized, and prepare discards
+  // its own — only confirm's fresh witness is carried into admission.
   async function resolveClassified(authority, selection) {
     const session = { open: true, calls: 0, error: null, projection: null };
     const classify = (tx, plan, opts) => {
@@ -302,12 +339,29 @@ function createSettlementEvidenceConfirmation(deps) {
         throw error;
       }
     };
-    let ownedSelection;
+    let ownedSelection, witness = null;
     try {
-      ownedSelection = snapshot(await resolveSelection({ authority, selection, classify }));
+      if (fenced) {
+        // The paired result is unpacked by own DATA descriptors in this
+        // same continuation: the selection enters the snapshot path, the
+        // witness — a live function, never data — is carried beside it.
+        // An accessor, a missing field or a non-function witness is a
+        // protocol failure, and the accessor is never invoked.
+        const paired = await resolvePairedSelection({ authority, selection, classify });
+        if (!shape(paired, ['selection', 'witness'])) fail();
+        const selectionDescriptor = Object.getOwnPropertyDescriptor(paired, 'selection');
+        const witnessDescriptor = Object.getOwnPropertyDescriptor(paired, 'witness');
+        if (!selectionDescriptor || !Object.hasOwn(selectionDescriptor, 'value')
+          || !witnessDescriptor || !Object.hasOwn(witnessDescriptor, 'value')
+          || typeof witnessDescriptor.value !== 'function') fail();
+        witness = witnessDescriptor.value;
+        ownedSelection = snapshot(selectionDescriptor.value);
+      } else {
+        ownedSelection = snapshot(await resolveSelection({ authority, selection, classify }));
+      }
     } finally { session.open = false; }
     if (session.error || session.calls !== 1) fail();
-    return { selection: qualified(ownedSelection, authority), projection: session.projection };
+    return { selection: qualified(ownedSelection, authority), projection: session.projection, witness };
   }
   async function authorityFor(context) {
     const value = snapshot(await authorize(context));
@@ -443,11 +497,17 @@ function createSettlementEvidenceConfirmation(deps) {
       if (retained.attempted) return unknown(request.operationId);
       if (request.confirmed !== true) return rejected('confirmation-required');
       if (tick() >= retained.preview.expiresAt) return terminal(request.operationId, retained, 'preview-expired');
-      let fresh;
+      let fresh, admissionWitness = null;
       try {
         const resolvedCall = await resolveClassified(authority, retained.request.selection);
         fresh = Object.freeze({ ...resolvedCall.selection,
           classification: resolvedCall.projection });
+        // Fenced mode: the witness paired with THIS fresh confirm-time
+        // resolution — never prepare's older acquisition — is held in a
+        // local and carried through the probe and authorization waits
+        // below into the admission commit. It is not part of the frozen
+        // selection, the deep compare, or any persisted shape.
+        admissionWitness = resolvedCall.witness;
       } catch { return retained.attempted ? unknown(request.operationId) : rejected('selection-unavailable'); }
       if (!isDeepStrictEqual(fresh, retained.selection)) return terminal(request.operationId, retained, 'selection-changed');
       // Read-only optimization only: another caller can change the store
@@ -474,11 +534,22 @@ function createSettlementEvidenceConfirmation(deps) {
       }
       retained.attempted = true; enteredCommit = true; writeInFlight = true;
       uncertainOperation = request.operationId;
-      const result = snapshot(await store.commitWithoutRecovery({ actorId: authority.actorId,
-        preview: retained.preview, confirmationDigest: retained.confirmationDigest }));
+      const result = snapshot(fenced
+        ? await commitAdmitted({ actorId: authority.actorId,
+          preview: retained.preview, confirmationDigest: retained.confirmationDigest }, admissionWitness)
+        : await store.commitWithoutRecovery({ actorId: authority.actorId,
+          preview: retained.preview, confirmationDigest: retained.confirmationDigest }));
       await sameAuthority(ownedContext, authority);
       const committed = receipt(result, authority, request.operationId);
       if (committed) { uncertainOperation = null; retire(request.operationId, retained); return committed; }
+      if (result.status === 'rejected' && result.reason === 'admission-refused') {
+        // A definite admission refusal: the store wrote nothing. Retire
+        // the attempted preview and clear the latch through the same
+        // postauthorization discipline as the other definitive outcomes
+        // (a sameAuthority failure above still preserves uncertainty for
+        // P2). Fresh work requires a fresh prepare and explicit confirm.
+        uncertainOperation = null; return terminal(request.operationId, retained, 'admission-refused', true);
+      }
       if (result.status === 'rejected' && result.reason === 'preview-expired') {
         uncertainOperation = null; return terminal(request.operationId, retained, 'preview-expired', true);
       }

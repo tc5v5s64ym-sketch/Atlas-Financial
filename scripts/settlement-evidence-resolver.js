@@ -56,6 +56,16 @@
 // Foreign or fabricated handles match no current derivation and resolve
 // to null (AC-31, AC-33 as corrected).
 //
+// Write admission pairing: resolvePairedSelection runs the identical
+// resolution as resolveSelection and additionally returns the freshness
+// witness the acquisition itself carries (an own data property named
+// 'witness' holding a function), paired with that exact acquisition. The
+// witness is a live capability, not data: it is read by descriptor only,
+// never snapshotted, serialized, digested, logged or invoked here, and
+// functions or revision tokens never enter selection JSON, digests,
+// commands or receipts. An acquisition carrying no genuine function
+// witness pairs nothing.
+//
 // Hash strength, stated correctly: txRef and the handles are 128-bit
 // truncations of SHA-256 digests. A 128-bit truncated output has roughly
 // 64-bit generic birthday collision strength, NOT 128-bit collision
@@ -499,7 +509,7 @@ function createSettlementEvidenceResolver(deps) {
     throw new TypeError('settlement-evidence-resolver: an injected acquisition is required — '
       + 'the production crosswalk exporter is unimplemented and no default acquisition exists');
   }
-  async function resolveSelection(input) {
+  async function resolveSelectionCore(input) {
     let classifyError = null;
     try {
       if (!plainRecord(input) || !plainRecord(input.authority) || !plainRecord(input.selection)) return null;
@@ -711,14 +721,40 @@ function createSettlementEvidenceResolver(deps) {
         asOf,
         evidence,
       };
-      return qualifiedSelection;
+      return { selection: qualifiedSelection, acquisition: raw };
     } catch (error) {
       if (classifyError) throw classifyError;
       return null;
     }
   }
 
-  return Object.freeze({ resolveSelection });
+  async function resolveSelection(input) {
+    const resolved = await resolveSelectionCore(input);
+    return resolved ? resolved.selection : null;
+  }
+
+  // The paired capability for acquisition-bound write admission: the same
+  // single resolution and single classify invocation as resolveSelection,
+  // returning the ordinary selection plus the freshness witness paired
+  // with that exact acquisition. The witness is read from the raw
+  // acquisition's own DATA descriptor — an accessor is refused without
+  // being invoked — and it never enters the snapshot/binding path: it is
+  // not read as data, serialized, digested, logged or invoked here. Only
+  // the caller's trusted composition may carry it to the store's
+  // admission fence. An acquisition without a genuine function witness
+  // yields no pair.
+  async function resolvePairedSelection(input) {
+    const resolved = await resolveSelectionCore(input);
+    if (!resolved) return null;
+    const raw = resolved.acquisition;
+    if (!raw || typeof raw !== 'object') return null;
+    const descriptor = Object.getOwnPropertyDescriptor(raw, 'witness');
+    if (!descriptor || !Object.hasOwn(descriptor, 'value')
+      || typeof descriptor.value !== 'function') return null;
+    return { selection: resolved.selection, witness: descriptor.value };
+  }
+
+  return Object.freeze({ resolveSelection, resolvePairedSelection });
 }
 
 module.exports = {
