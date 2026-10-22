@@ -4772,6 +4772,31 @@ function acquireSettlementCrosswalk(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
   const capture = {};
   observeCore(input, capture);
+  return settlementAcquisitionFromCapture(input, capture);
+}
+
+// The paired private entry for the refresh acquisition composition:
+// ONE observeCore execution returns both the incumbent report and the
+// same-pass acquisition validated from that execution's own capture, so
+// a consumer can qualify the report and use the acquisition without a
+// second observation/sanitization. observe()'s outputs are untouched
+// (this entry returns the very object observeCore produced), and the
+// acquisition is exactly what acquireSettlementCrosswalk returns for
+// the same input. Input observe() itself rejects keeps observe()'s
+// incumbent failure behaviour; a non-object input yields nulls.
+function observeWithSettlementCrosswalk(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { report: null, acquisition: null };
+  }
+  const capture = {};
+  const report = observeCore(input, capture);
+  return { report, acquisition: settlementAcquisitionFromCapture(input, capture) };
+}
+
+// Validates one executed pass's capture and builds the owned
+// acquisition from it, or returns null when the pass did not qualify
+// or the captured provenance fails integrity validation.
+function settlementAcquisitionFromCapture(input, capture) {
   if (capture.qualified !== true || !Array.isArray(capture.join)) return null;
   const packet = capture.packet;
   if (!packet || !Array.isArray(packet.transactions)) return null;
@@ -4972,6 +4997,7 @@ const api = {
   spendableCashFromObservations,
   sanitizedCurrentPeriodActuals,
   acquireSettlementCrosswalk,
+  observeWithSettlementCrosswalk,
   paydayGapCompleteFromEvidence,
   currentPeriodActualsLooksSanitized,
   transactionLooksSanitized,
