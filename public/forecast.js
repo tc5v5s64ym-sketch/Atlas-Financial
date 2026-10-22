@@ -893,7 +893,64 @@
         || entry.linkedPaidCents > amountCents) return { uncertain: true };
     return { linkedPaidCents: entry.linkedPaidCents, remainingCents: amountCents - entry.linkedPaidCents };
   }
-  function savingsGoal(plan, ref, asOf, evidence) {
+  // Publication only: original stated cost of the eligible native commitment,
+  // linked-paid evidence at the opening, and the relief authority's unpaid cost.
+  // None is Saved or feasibility shortfall. Ranges have no point amount.
+  function unavailableCommitmentCost(asOf) {
+    const unknown = () => ({ status: 'unavailable', amount: null, range: null });
+    return { asOf, originalCost: unknown(), confirmedLinkedPaid: unknown(), unpaidCost: unknown() };
+  }
+  function commitmentPublicationCost(plan, row, asOf, index, configured) {
+    const result = unavailableCommitmentCost(asOf);
+    if (!savingsDate(asOf) || !row || typeof row.id !== 'string' || !row.id
+        || (plan.commitments || []).filter(c => c && c.id === row.id).length !== 1
+        || (plan.bills || []).some(b => b && b.id === row.id)
+        || (plan.budget?.categories || []).some(c => c && c.id === row.id)
+        || row.group && (plan.groups || []).filter(g => g && g.id === row.group).length > 1
+        || commitmentSettledBy(row, asOf)) return result;
+    const point = savingsCents(row.amount), low = savingsCents(row.amountMin), high = savingsCents(row.amountMax);
+    if (point != null) result.originalCost = { status: 'known', amount: point / 100, range: null };
+    else if (row.amount == null && low != null && high != null && high >= low)
+      result.originalCost = { status: 'known', amount: null, range: { min: low / 100, max: high / 100 } };
+    // No evidence is distinct from confirmed zero. Malformed configured input
+    // and uncertain relief withhold paid/unpaid facts rather than inventing zero.
+    if (!index) {
+      if (!configured) for (const key of ['confirmedLinkedPaid', 'unpaidCost']) result[key].status = 'unconfigured';
+      return result;
+    }
+    const relief = settlementRowRelief(index, row, point);
+    if (relief?.uncertain) return result;
+    result.confirmedLinkedPaid = { status: 'known', amount: relief ? relief.linkedPaidCents / 100 : 0, range: null };
+    result.unpaidCost = relief ? { status: 'known', amount: relief.remainingCents / 100, range: null }
+      : { ...result.originalCost };
+    return result;
+  }
+  // Aggregate only exact native members through the incumbent cents validator.
+  // Missing or ambiguous membership withholds the fact, never a subtotal.
+  // Projected survivors retain their actual opening asOf, never future payment.
+  function aggregateCommitmentCost(members, asOf) {
+    const result = unavailableCommitmentCost(asOf);
+    if (!members.length || new Set(members.map(i => i.key || i.id)).size !== members.length
+        || members.some(i => !i.commitmentCost || i.commitmentCost.asOf !== asOf)) return result;
+    for (const key of ['originalCost', 'confirmedLinkedPaid', 'unpaidCost']) {
+      const facts = members.map(i => i.commitmentCost[key]);
+      if (facts.some(f => !f || f.status === 'unavailable')) continue;
+      if (facts.some(f => f.status === 'unconfigured')) { result[key].status = 'unconfigured'; continue; }
+      let min = 0, max = 0, ranged = false, known = true;
+      for (const fact of facts) {
+        const point = savingsCents(fact.amount), low = savingsCents(fact.range?.min), high = savingsCents(fact.range?.max);
+        if (fact.status !== 'known' || point == null && (low == null || high == null || high < low)) { known = false; break; }
+        min += point ?? low; max += point ?? high; ranged ||= point == null;
+      }
+      if (known && Number.isSafeInteger(min) && Number.isSafeInteger(max)) result[key] = {
+        status: 'known', amount: ranged ? null : min / 100, range: ranged ? { min: min / 100, max: max / 100 } : null };
+    }
+    return result;
+  }
+  function withholdCommitmentCost(row, asOf) {
+    return row.commitmentCost ? { ...row, commitmentCost: unavailableCommitmentCost(asOf) } : row;
+  }
+  function savingsGoal(plan, ref, asOf, evidence, disabled) {
     const key = ref.kind + ':' + ref.id;
     const commitments = (plan && plan.commitments) || [];
     let rows = [];
@@ -957,6 +1014,10 @@
       goal.remainingMax = !reliefUncertain && targetKnown ? (ceilingCents - linkedPaidCents) / 100 : null;
       goal.settlementUncertain = reliefUncertain;
     }
+    if (['commitment', 'group'].includes(ref.kind)) goal.commitmentCost = resolved
+      ? aggregateCommitmentCost(rows.filter(row => !commitmentSettledBy(row, asOf) && !(disabled || []).includes(row.id)).map(row => ({ id: row.id,
+        commitmentCost: commitmentPublicationCost(plan, row, asOf, reliefIndex, evidence != null) })), asOf)
+      : unavailableCommitmentCost(asOf);
     return goal;
   }
   function savingsEarmarksState(plan, asOf) {
@@ -1135,7 +1196,7 @@
         backed: 'All confirmed earmarks are backed by current observed pool cash.' };
       const row = { id: pool.id, accountId: pool.accountId, label: pool.label || pool.id, status, reason: reasons[status],
         purpose: pool.purpose || null,
-        plannedGoals: (pool.goalRefs || []).map(ref => ({ ...savingsGoal(plan, ref, asOf, settlementEvidence), intent: null, backed: null, backedTrust: 'unknown' })),
+        plannedGoals: (pool.goalRefs || []).map(ref => ({ ...savingsGoal(plan, ref, asOf, settlementEvidence, opts?.disabled), intent: null, backed: null, backedTrust: 'unknown' })),
         observedCash: trusted ? valueCents / 100 : null, observedTrust: trusted ? 'verified' : 'unknown',
         observedAsOf: cash && cash.evidenceDate || null, currency: config.currency,
         intentKnown, intent: intentKnown ? total / 100 : null, intentTrust: intentKnown ? 'calculated' : 'unknown',
@@ -1146,7 +1207,7 @@
         confirmedAt: intentKnown ? config.latest.confirmedAt : null,
         confirmationSource: intentKnown ? config.latest.source : null, allocations: [] };
       for (const allocation of allocations) {
-        const goal = savingsGoal(plan, allocation.goalRef, asOf);
+        const goal = savingsGoal(plan, allocation.goalRef, asOf, settlementEvidence, opts?.disabled);
         const funded = status === 'backed' ? allocation.amount : null;
         const entry = { goalKey: goal.key, goalRef: goal.ref, label: goal.label, intent: allocation.amount,
           confirmedAt: row.confirmedAt, source: row.confirmationSource, revision: row.revision,
@@ -1162,6 +1223,7 @@
     }
     packet.goals = Array.from(allGoals.values()).map(goal => ({ key: goal.key, goalRef: goal.ref, label: goal.label,
       target: goal.target, targetMax: goal.targetMax, targetTrust: goal.targetTrust, settled: goal.settled,
+      ...(goal.commitmentCost ? { commitmentCost: goal.commitmentCost } : {}),
       intent: goal.intentCents / 100, backed: goal.backingKnown ? goal.backedCents / 100 : null,
       backedTrust: goal.backingKnown ? 'calculated' : 'unknown', pools: goal.pools,
       release: 'Confirmation required; paying or reducing a goal never releases its earmark automatically.' }));
@@ -3581,6 +3643,7 @@
         groupLabel: groupId ? (groupMeta.labels.get(groupId) || null) : null,
         planSpendSummary: !!(groupId && groupMeta.summary.has(groupId)),
         need,
+        commitmentCost: commitmentPublicationCost(plan, c, asOf, reliefIndex, opts.settlementEvidence != null),
         amountMin: range.amountMin,
         amountMax: range.amountMax,
         bounds,
@@ -3949,6 +4012,7 @@
         groupLabel: item.groupLabel || null,
         planSpendSummary: item.planSpendSummary === true,
         need: item.need,
+        ...(item.commitmentCost ? { commitmentCost: item.commitmentCost } : {}),
         amountMin: item.amountMin,
         amountMax: item.amountMax,
         flexibility: item.flexibility,
@@ -4017,12 +4081,15 @@
       id: first.group,
       label: first.groupLabel || first.label,
       group: first.group,
+      ...(members.some(row => row.commitmentCost) ? { commitmentCost: aggregateCommitmentCost(members,
+        members.find(row => row.commitmentCost).commitmentCost.asOf) } : {}),
       members: members.map(row => ({
         id: row.id,
         label: row.label,
         date: row.date || null,
         when: row.when || null,
         need: row.need,
+        ...(row.commitmentCost ? { commitmentCost: row.commitmentCost } : {}),
         remaining: row.remaining,
         remainingIdentity: row.remainingIdentity || null,
         verdict: row.verdict,
@@ -15457,7 +15524,7 @@
             groups: (savingsSchedule.groups || []).map(hold) };
         }
         savingsFunding.allocationMode = historicalSavings ? 'historical-pools' : 'combined';
-        savingsFunding.manualInventory = historicalSavings ? savingsInventory(plan, asOf) : null;
+        savingsFunding.manualInventory = historicalSavings ? savingsInventory(plan, asOf, paydayOpts) : null;
         savingsFunding.schedule = savingsSchedule;
         const todayReady = savingsFunding.status === 'ready' && savingsFunding.period?.status === 'ready';
         const savingsNext = savingsSchedule.status !== 'unavailable' ? savingsSchedule.paydays?.[0] : null;
@@ -15558,7 +15625,7 @@
               .filter(item => row.members.includes(item.key)).map(item => item.id);
             const contribution = ready ? payday.allocations.filter(part => ids.includes(part.id))
               .reduce((sum,part) => sum + savingsCents(part.amount),0) / 100 : null;
-            return { ...row, saved: null, savedTrust: 'unknown', needed: projected ? row.needed : null,
+            return { ...withholdCommitmentCost(row, asOf), saved: null, savedTrust: 'unknown', needed: projected ? row.needed : null,
               neededTrust: projected ? row.neededTrust : 'unknown', neededRange: projected ? row.neededRange : null,
               thisPeriod: contribution, thisPeriodTrust: ready ? 'estimated' : 'unknown',
               remainingThisPeriod: null, actualContribution: null };
@@ -15567,8 +15634,8 @@
             actionPermission: 'not-granted', moneyMovementPermission: 'not-granted', rows,
             stock: { ...savingsFunding.stock, status: 'unavailable', amount: null },
             backing: { ...savingsFunding.backing, status: 'unavailable',
-              items: savingsFunding.backing.items.map(item => ({ ...item, saved: null })) },
-            unresolved: savingsFunding.unresolved,
+              items: savingsFunding.backing.items.map(item => ({ ...withholdCommitmentCost(item, asOf), saved: null })) },
+            unresolved: savingsFunding.unresolved.map(item => withholdCommitmentCost(item, asOf)),
             allocationDescription: projected ? 'Projected top-ups from this same opening. Actual saved and transfers in this future period are unknown.'
               : 'Historical saving evidence is unavailable. Current observed savings are not substituted into this earlier period.',
             period: { status: ready ? 'ready' : 'unavailable', kind: projected ? 'projected' : 'historical',
@@ -15604,7 +15671,7 @@
         fundingSequence: sequence,
         majorPlans: plans,
         planSpendPaydayFunding: savingsSchedule,
-        savingsInventory: savingsInventory(plan, asOf),
+        savingsInventory: savingsInventory(plan, asOf, paydayOpts),
         plannedDebt: debt,
         infeasible: mode === 'infeasible' ? (infeasible || protectedAtCap.first) : null,
         // Named joint-cash obligations already in `zero.events` on the next
@@ -21235,6 +21302,7 @@
         when:row.when||null,group:row.group||null,groupLabel:row.groupLabel||null,source:row.source||null,
         rank:row.rank || Number.MAX_SAFE_INTEGER,needed:need==null?null:need/100,
         neededRange:need==null&&!row.settlementUncertain&&row.amountMin!=null&&row.amountMax!=null?{min:row.amountMin,max:row.amountMax}:null,
+        ...(row.commitmentCost ? {commitmentCost:row.commitmentCost} : {}),
         saved:null,inactive:false,trust,poolId:'combined-savings',needCents:need,savedCents:0,
         event:matches.length===1?matches[0]:null,dateBasis:'cash-planning-date'};
       if(!row.date || need==null || trust==='unknown') unresolved.push({...item,saved:null,contribution:null,
@@ -21272,6 +21340,7 @@
             c.amount != null ? savingsCents(c.amount) : null);
           append({id:c.id,label:c.label,
             date:commitmentCashDate(c),when:c.when,group:c.group,confidence:c.confidence,
+            commitmentCost:commitmentPublicationCost(plan,c,day,reliefIndex,opts.settlementEvidence!=null),
             need: judged ? (judged.uncertain ? null : judged.remainingCents / 100) : commitmentNeed(c),
             ...(judged && judged.uncertain ? { settlementUncertain: true } : {}),
             ...commitmentRange(c)});
@@ -21305,6 +21374,7 @@
       row.members.push(item.key);
     }
     for(const row of rows){const members=[...items,...unresolved].filter(item=>row.members.includes(item.key));
+      if(members.some(i=>i.commitmentCost)) row.commitmentCost=aggregateCommitmentCost(members,day);
       row.saved=members.every(i=>i.saved!=null)?members.reduce((sum,i)=>sum+savingsCents(i.saved),0)/100:null;
       row.needed=members.every(i=>i.needCents!=null)?members.reduce((sum,i)=>sum+i.needCents,0)/100:null;
       row.trust=members.some(i=>i.trust==='unknown')?'unknown':members.some(i=>i.trust==='estimated')?'estimated':'calculated';
@@ -21411,6 +21481,8 @@
           }
           const matches = matched.filter(e => e.date === date);
           const item = { key, id, label: source?.label || id, date: matches.length === 1 ? cashWalkDate(matches[0], day) : date,
+            ...(commitment ? { commitmentCost: inactive ? unavailableCommitmentCost(day)
+              : commitmentPublicationCost(plan, commitment, day, reliefIndex, opts.settlementEvidence != null) } : {}),
             scheduledDate: date, rank: seq.find(c => c.id === id)?.rank || Number.MAX_SAFE_INTEGER,
             needed: need == null ? null : need / 100, neededRange: need == null && low != null && high != null ? { min: low / 100, max: high / 100 } : null,
             saved: 0, inactive: !!inactive, trust: source?.confidence === 'confirmed' ? 'calculated'
@@ -21497,6 +21569,7 @@
     }
     for (const row of rows) {
       const members = items.filter(item => row.members.includes(item.key));
+      if (members.some(item => item.commitmentCost)) row.commitmentCost = aggregateCommitmentCost(members, day);
       row.saved = members.every(item => item.saved != null) ? members.reduce((sum, item) => sum + savingsCents(item.saved), 0) / 100 : null;
       row.needed = members.every(item => item.needCents != null) ? members.reduce((sum, item) => sum + item.needCents, 0) / 100 : null;
       if (row.needed == null && members.every(item => item.needed != null || item.neededRange)) row.neededRange = {
@@ -21537,6 +21610,7 @@
       const result = { ...row, members, label: selected.length === 1 ? selected[0].label : row.label,
         needed, saved: null, savedTrust: 'unknown', thisPeriod: null, thisPeriodTrust: 'unknown',
         remainingThisPeriod: null, actualContribution: null, forecastSaved: null, forecastContribution: null };
+      if (row.commitmentCost) result.commitmentCost = aggregateCommitmentCost(selected, asOf);
       delete result.neededRange;
       if (needed == null && selected.every(i => savingsCents(i.needed) != null || i.neededRange)) result.neededRange = {
         min: selected.reduce((sum, i) => sum + Math.round((i.needed ?? i.neededRange.min) * 100), 0) / 100,
@@ -21759,7 +21833,7 @@
       const active = items.filter(i => !closing.paid.has(i.key));
       const amounts = new Map(); let left = closing.pot;
       for (const item of active) { const amount = Math.min(left, savingsCents(item.needed)); amounts.set(item.key, amount); left -= amount; }
-      const projectedItems = active.map(i => ({ ...i, saved: null, forecastSaved: amounts.get(i.key) / 100,
+      const projectedItems = active.map(i => ({ ...withholdCommitmentCost(i, asOf), saved: null, forecastSaved: amounts.get(i.key) / 100,
         savedTrust: 'unknown', forecastTrust: 'estimated' }));
       const costs = active.map(i => ({ id: i.key, label: i.label, baseRequirement: savingsCents(i.needed) }));
       const beforeAddition = new Map(costs.map(c => [c.id, 0]));
@@ -21774,7 +21848,7 @@
       const allocations = serialFundingAllocations(costs, beforeAddition, unspent).allocations;
       const rows = funding.rows.filter(r => r.members.some(key => amounts.has(key))).map(r => {
         const members = r.members.filter(key => amounts.has(key));
-        return { ...r, members, label: members.length === 1 ? active.find(i => i.key === members[0]).label : r.label,
+        return { ...withholdCommitmentCost(r, asOf), members, label: members.length === 1 ? active.find(i => i.key === members[0]).label : r.label,
           saved: null, savedTrust: 'unknown', forecastTrust: 'estimated',
           forecastSaved: members.reduce((sum,key) => sum + amounts.get(key), 0) / 100,
           needed: active.filter(i => members.includes(i.key)).reduce((sum,i) => sum + savingsCents(i.needed),0) / 100,
