@@ -1,0 +1,707 @@
+'use strict';
+
+// ATLAS-080 — pure settlement-evidence resolver foundation. NOT completion
+// and NOT production integration: this module is imported by no production
+// path, supplies no authorize, no route, no configuration and no identity
+// assignment, and the composed production stack remains exactly as dark as
+// the shipped controller's header describes. It implements the identity and
+// binding half of the resolver contract from RESOLVER-CONTRACT-v2 and its
+// addendum, against an INJECTED acquisition:
+//
+//   acquire() -> { packet, join, plan, map }
+//
+// - packet: the current-period packet P (schema atlas-current-period-actuals/v1)
+//   exactly as the sanitizer pass emitted it. Packet rows carry local ids
+//   only; native identity is deliberately absent from the packet.
+// - join: the crosswalk provenance of that same pass — one entry per emitted
+//   packet row naming the EXACT native tuple that produced it:
+//   { localId, providerAccountId, transactionId }. Resolution keys on this
+//   explicit tuple-to-emitted-row provenance, never on the pass's id map
+//   plus a side guard: a normalized row the sanitizer dropped before id
+//   assignment (e.g. a null-amount sibling sharing a native id) has no join
+//   entry and therefore resolves to nothing, never to a surviving sibling's
+//   row. Ambiguity (a tuple with no emitted row, a tuple with several, a
+//   local id with several rows, a row with several producers) fails closed.
+// - plan: the canonical authoritative plan (commitments included).
+// - map: the provider account map document, exactly as acquired.
+//
+// The production exporter that would surface (packet, join) from one real
+// sanitizer pass is UNIMPLEMENTED (addendum section A.8); in tests the
+// acquisition is a labelled synthetic fixture standing in for it. This
+// module contains no join reconstruction of any kind: no reimplementation
+// of the pass's id assignment, no card-coverage-reference join, and no
+// identity inference from amount, date, payee or row position (A.7).
+//
+// authorize is NOT implemented here and is not an export: the session
+// identity mechanism it requires is a separately priced, unapproved
+// dependency (contract P1). The controller's fixture authorize in tests is
+// a labelled synthetic mapping, the posture the controller already ships.
+//
+// Identification across drift (the one design decision this foundation had
+// to take explicitly): handles are deterministic derivations over content
+// digests, so any bound-content change re-mints them. The controller's
+// confirm nevertheless requires a FRESH selection for the same identity so
+// its deep compare can refuse drift as selection-changed (cases AC-22,
+// AC-23, AC-24, AD-13), while a handle whose identity is gone from the
+// current acquisition must resolve to null (AC-31, AC-33). This module
+// therefore resolves in two steps: (1) match the presented handles against
+// derivations from the CURRENT acquisition; (2) if that fails, consult a
+// process-local identification memo — handle pair -> (tuple, goalId) —
+// recorded only by this process's own successful resolutions. The memo
+// carries IDENTITIES ONLY, never content: every row, verdict, binding and
+// evidence value is re-derived from the current acquisition on every call,
+// a memo-named tuple or goal absent from the current acquisition resolves
+// to null, and with no current acquisition nothing resolves at all (E3).
+// Foreign or fabricated handles match neither step and resolve to null.
+// The memo dies with the process, exactly like the controller's previews.
+//
+// Hash strength, stated correctly: txRef and the handles are 128-bit
+// truncations of SHA-256 digests. A 128-bit truncated output has roughly
+// 64-bit generic birthday collision strength, NOT 128-bit collision
+// strength. txRef v1 is frozen regardless (contract section 2.4): budgets
+// key solely on txRef and the pair guard on (goalId, txRef), so this
+// module keeps the shipped instance-level collision detection (two
+// distinct tuples deriving one txRef refuse the whole instance) and
+// offers no alternate derivation or fallback ref of any kind.
+
+const crypto = require('node:crypto');
+const C = require('./planned-obligation-settlement-contract');
+
+const HOUSEHOLD_PATTERN = /^household-[a-f0-9]{32}$/;
+const SELECTION_PATTERN = /^selection-[a-f0-9]{32}$/;
+const CHOICE_PATTERN = /^choice-[a-f0-9]{32}$/;
+const IDENTIFIER_PATTERN = /^[a-z0-9][a-z0-9-]{0,127}$/;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const PROVIDER = 'lunchmoney';
+const MEMO_CAPACITY = 1024;
+
+// ---------------------------------------------------------------------------
+// BIND — the binding encoding (addendum section B). A tagged, length/count
+// framed byte grammar over plain data, hashed as SHA-256 of
+// "atlas-bind/v1\n" followed by the encoded bytes. BIND is used ONLY for
+// resolver binding material; it never enters a command, preview, document
+// or journal, and the ledger canonicalization in the contract module is
+// untouched and never reused here (its integer-only domain cannot encode
+// the float- and undefined-bearing values bindings must cover).
+// ---------------------------------------------------------------------------
+
+const BIND_PREFIX = Buffer.from('atlas-bind/v1\n', 'utf8');
+const BIND_LIMITS = Object.freeze({
+  maxDepth: 20,
+  maxNodes: 250000,
+  maxBytes: 33554432,
+  maxStringBytes: 8388608,
+  maxKeyBytes: 65536,
+  maxKeysPerRecord: 20000,
+  maxArrayLength: 100000,
+});
+
+function bindError(message) {
+  const error = new Error('settlement-evidence-resolver bind: ' + message);
+  error.code = 'bind-rejected';
+  return error;
+}
+
+// WTF-8: standard UTF-8 extended so an unpaired surrogate encodes as its
+// own 3-byte sequence instead of being lossily replaced by U+FFFD. The
+// encoding is injective over all JS strings.
+function wtf8ByteLength(value) {
+  let bytes = 0;
+  for (let i = 0; i < value.length; i++) {
+    const unit = value.charCodeAt(i);
+    if (unit < 0x80) { bytes += 1; continue; }
+    if (unit < 0x800) { bytes += 2; continue; }
+    if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < value.length) {
+      const next = value.charCodeAt(i + 1);
+      if (next >= 0xDC00 && next <= 0xDFFF) { bytes += 4; i++; continue; }
+    }
+    bytes += 3;
+  }
+  return bytes;
+}
+
+function wtf8Encode(value) {
+  const out = Buffer.alloc(wtf8ByteLength(value));
+  let offset = 0;
+  for (let i = 0; i < value.length; i++) {
+    let cp = value.charCodeAt(i);
+    if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < value.length) {
+      const next = value.charCodeAt(i + 1);
+      if (next >= 0xDC00 && next <= 0xDFFF) {
+        cp = 0x10000 + ((cp - 0xD800) << 10) + (next - 0xDC00);
+        i++;
+      }
+    }
+    if (cp < 0x80) { out[offset++] = cp; } else if (cp < 0x800) {
+      out[offset++] = 0xC0 | (cp >> 6); out[offset++] = 0x80 | (cp & 0x3F);
+    } else if (cp < 0x10000) {
+      out[offset++] = 0xE0 | (cp >> 12); out[offset++] = 0x80 | ((cp >> 6) & 0x3F);
+      out[offset++] = 0x80 | (cp & 0x3F);
+    } else {
+      out[offset++] = 0xF0 | (cp >> 18); out[offset++] = 0x80 | ((cp >> 12) & 0x3F);
+      out[offset++] = 0x80 | ((cp >> 6) & 0x3F); out[offset++] = 0x80 | (cp & 0x3F);
+    }
+  }
+  return out;
+}
+
+function isArrayIndex(key, length) {
+  if (!/^(0|[1-9]\d*)$/.test(key)) return false;
+  const index = Number(key);
+  return Number.isSafeInteger(index) && index < length;
+}
+
+// Shared grammar discipline for the encoder and the snapshot: reads own
+// property descriptors only, so accessors are rejected WITHOUT ever being
+// invoked, symbol keys and non-enumerable properties reject, non-plain
+// prototypes reject, and a value's toJSON can never affect anything (it is
+// never read; an own function value rejects as a function).
+function ownDataDescriptors(value, isArray) {
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const entries = [];
+  for (const key of Reflect.ownKeys(descriptors)) {
+    if (typeof key !== 'string') throw bindError('symbol property');
+    if (isArray && key === 'length') continue;
+    if (isArray && !isArrayIndex(key, value.length)) throw bindError('array extra property');
+    const descriptor = descriptors[key];
+    if (!descriptor.enumerable) throw bindError('non-enumerable property');
+    if (!Object.hasOwn(descriptor, 'value')) throw bindError('accessor property');
+    entries.push([key, descriptor.value]);
+  }
+  return entries;
+}
+
+function encodeChunk(state, chunk) {
+  if (state.bytes + chunk.length > BIND_LIMITS.maxBytes) throw bindError('output byte bound exceeded');
+  state.chunks.push(chunk);
+  state.bytes += chunk.length;
+}
+
+function encodeNode(state) {
+  state.nodes += 1;
+  if (state.nodes > BIND_LIMITS.maxNodes) throw bindError('node bound exceeded');
+}
+
+function encodeInto(state, value, depth, ancestors) {
+  encodeNode(state);
+  if (value === null) return encodeChunk(state, Buffer.from('z'));
+  if (value === undefined) return encodeChunk(state, Buffer.from('u'));
+  if (value === false) return encodeChunk(state, Buffer.from('f'));
+  if (value === true) return encodeChunk(state, Buffer.from('t'));
+  const type = typeof value;
+  if (type === 'number') {
+    if (!Number.isFinite(value)) throw bindError('non-finite number');
+    const spelling = Object.is(value, -0) ? '-0' : String(value);
+    return encodeChunk(state, Buffer.from('n' + spelling.length + ':' + spelling, 'utf8'));
+  }
+  if (type === 'string') {
+    const byteLength = wtf8ByteLength(value);
+    if (byteLength > BIND_LIMITS.maxStringBytes) throw bindError('string byte bound exceeded');
+    encodeChunk(state, Buffer.from('s' + byteLength + ':'));
+    return encodeChunk(state, wtf8Encode(value));
+  }
+  if (type !== 'object') throw bindError('unsupported value type');
+  if (depth > BIND_LIMITS.maxDepth) throw bindError('depth bound exceeded');
+  if (ancestors.has(value)) throw bindError('cyclic structure');
+  if (Array.isArray(value)) {
+    // The length bound is checked before any slot is visited or expanded.
+    if (value.length > BIND_LIMITS.maxArrayLength) throw bindError('array length bound exceeded');
+    ownDataDescriptors(value, true);
+    ancestors.add(value);
+    encodeChunk(state, Buffer.from('a' + value.length + ':'));
+    for (let i = 0; i < value.length; i++) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
+      if (!descriptor) {
+        encodeNode(state);
+        encodeChunk(state, Buffer.from('h'));
+        continue;
+      }
+      if (!descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+        throw bindError('array slot is not enumerable data');
+      }
+      encodeInto(state, descriptor.value, depth + 1, ancestors);
+    }
+    ancestors.delete(value);
+    return;
+  }
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) throw bindError('non-plain object');
+  const entries = ownDataDescriptors(value, false);
+  if (entries.length > BIND_LIMITS.maxKeysPerRecord) throw bindError('record key bound exceeded');
+  ancestors.add(value);
+  encodeChunk(state, Buffer.from('o' + entries.length + ':'));
+  const encodedKeys = entries.map(([key]) => {
+    encodeNode(state);
+    const byteLength = wtf8ByteLength(key);
+    if (byteLength > BIND_LIMITS.maxKeyBytes) throw bindError('key byte bound exceeded');
+    return { key, bytes: wtf8Encode(key) };
+  });
+  // Keys sort by lexicographic WTF-8 byte order (no locale, no collation).
+  encodedKeys.sort((a, b) => Buffer.compare(a.bytes, b.bytes));
+  const byKey = new Map(entries);
+  for (const { key, bytes } of encodedKeys) {
+    encodeChunk(state, Buffer.from('s' + bytes.length + ':'));
+    encodeChunk(state, bytes);
+    encodeInto(state, byKey.get(key), depth + 1, ancestors);
+  }
+  ancestors.delete(value);
+}
+
+function bindEncode(value) {
+  const state = { nodes: 0, bytes: 0, chunks: [] };
+  encodeInto(state, value, 1, new Set());
+  return Buffer.concat(state.chunks, state.bytes);
+}
+
+function bindDigest(record) {
+  if (record === null || typeof record !== 'object' || Array.isArray(record)) {
+    throw bindError('top level must be a plain record');
+  }
+  const proto = Object.getPrototypeOf(record);
+  if (proto !== Object.prototype && proto !== null) throw bindError('top level must be a plain record');
+  const domain = Object.getOwnPropertyDescriptor(record, 'domain');
+  if (!domain || !Object.hasOwn(domain, 'value') || typeof domain.value !== 'string') {
+    throw bindError('top level requires a string domain');
+  }
+  return crypto.createHash('sha256').update(BIND_PREFIX).update(bindEncode(record)).digest('hex');
+}
+
+// The owned acquisition snapshot (addendum section B.10): a deep copy that
+// accepts exactly BIND's domain with exactly BIND's rejections — same
+// descriptor discipline (getters never invoked), same bounds, checked
+// incrementally before expansion or allocation. It preserves key presence
+// (including present-undefined), array holes, -0 and exact strings; it is
+// never a JSON round-trip and never the controller's integer-only snapshot.
+// Construction is descriptor-safe: an own __proto__ key is copied as an
+// own data property via defineProperty, without prototype mutation, and
+// array holes are left as holes (never materialized through inherited
+// indexed getters). Copies are Object.prototype records and true arrays.
+function snapshotNode(state) {
+  state.nodes += 1;
+  if (state.nodes > BIND_LIMITS.maxNodes) throw bindError('node bound exceeded');
+}
+
+function snapshotStringBytes(state, value) {
+  const byteLength = wtf8ByteLength(value);
+  if (byteLength > BIND_LIMITS.maxStringBytes) throw bindError('string byte bound exceeded');
+  state.stringBytes += byteLength;
+  if (state.stringBytes > BIND_LIMITS.maxBytes) throw bindError('total byte bound exceeded');
+  return byteLength;
+}
+
+function snapshotInto(state, value, depth, ancestors) {
+  snapshotNode(state);
+  if (value === null || typeof value === 'boolean' || value === undefined) return value;
+  const type = typeof value;
+  if (type === 'number') {
+    if (!Number.isFinite(value)) throw bindError('non-finite number');
+    return value;
+  }
+  if (type === 'string') {
+    snapshotStringBytes(state, value);
+    return value;
+  }
+  if (type !== 'object') throw bindError('unsupported value type');
+  if (depth > BIND_LIMITS.maxDepth) throw bindError('depth bound exceeded');
+  if (ancestors.has(value)) throw bindError('cyclic structure');
+  if (Array.isArray(value)) {
+    if (value.length > BIND_LIMITS.maxArrayLength) throw bindError('array length bound exceeded');
+    ownDataDescriptors(value, true);
+    ancestors.add(value);
+    const copy = new Array(value.length);
+    for (let i = 0; i < value.length; i++) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
+      if (!descriptor) {
+        snapshotNode(state);
+        continue;
+      }
+      if (!descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+        throw bindError('array slot is not enumerable data');
+      }
+      copy[i] = snapshotInto(state, descriptor.value, depth + 1, ancestors);
+    }
+    ancestors.delete(value);
+    return copy;
+  }
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) throw bindError('non-plain object');
+  const entries = ownDataDescriptors(value, false);
+  if (entries.length > BIND_LIMITS.maxKeysPerRecord) throw bindError('record key bound exceeded');
+  ancestors.add(value);
+  const copy = {};
+  for (const [key, entryValue] of entries) {
+    snapshotNode(state);
+    const byteLength = wtf8ByteLength(key);
+    if (byteLength > BIND_LIMITS.maxKeyBytes) throw bindError('key byte bound exceeded');
+    state.stringBytes += byteLength;
+    if (state.stringBytes > BIND_LIMITS.maxBytes) throw bindError('total byte bound exceeded');
+    Object.defineProperty(copy, key, {
+      value: snapshotInto(state, entryValue, depth + 1, ancestors),
+      enumerable: true, writable: true, configurable: true,
+    });
+  }
+  ancestors.delete(value);
+  return copy;
+}
+
+function bindSnapshot(value) {
+  return snapshotInto({ nodes: 0, stringBytes: 0 }, value, 1, new Set());
+}
+
+function freezeDeep(value, seen = new Set()) {
+  if (value === null || typeof value !== 'object' || seen.has(value)) return value;
+  seen.add(value);
+  for (const key of Object.keys(value)) freezeDeep(value[key], seen);
+  return Object.freeze(value);
+}
+
+// ---------------------------------------------------------------------------
+// Derivations. txRef keeps the ledger's own canonical digest (its record is
+// all strings, so that digest is total over it); everything that must cover
+// float- or undefined-bearing content uses BIND.
+// ---------------------------------------------------------------------------
+
+function nonEmptyString(value) {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function deriveTxRef(identity) {
+  if (!identity || typeof identity !== 'object'
+    || typeof identity.householdId !== 'string' || !HOUSEHOLD_PATTERN.test(identity.householdId)
+    || !nonEmptyString(identity.providerAccountId) || !nonEmptyString(identity.transactionId)) {
+    throw new Error('settlement-evidence-resolver: txRef requires a complete identity tuple');
+  }
+  return 'tx-' + C.digest({
+    domain: 'atlas-settlement-txref/v1',
+    householdId: identity.householdId,
+    provider: PROVIDER,
+    providerAccountId: identity.providerAccountId,
+    transactionId: identity.transactionId,
+  }).slice(0, 32);
+}
+
+function computePacketRowDigest(row) {
+  return bindDigest({ domain: 'atlas-settlement-packet-row/v1', row });
+}
+
+function computePlanDigest(plan) {
+  return bindDigest({ domain: 'atlas-settlement-plan/v1', plan });
+}
+
+function computePacketDigest(packet) {
+  return bindDigest({ domain: 'atlas-settlement-packet/v1', packet });
+}
+
+function computeAccountMapDigest(map) {
+  return bindDigest({ domain: 'atlas-settlement-account-map/v1', accountMap: map });
+}
+
+function computeInstanceDigest(packet) {
+  const rowDigests = packet.transactions.map(row => computePacketRowDigest(row));
+  rowDigests.sort();
+  return bindDigest({
+    domain: 'atlas-settlement-observation-instance/v1',
+    provider: PROVIDER,
+    transactionWindow: packet.transactionWindow,
+    pendingCoverage: packet.pendingCoverage,
+    rows: rowDigests,
+  });
+}
+
+function deriveSelectionHandle(instanceDigest, tuple) {
+  return 'selection-' + C.digest({
+    domain: 'atlas-settlement-selection-handle/v1',
+    instanceDigest,
+    identity: {
+      householdId: tuple.householdId,
+      provider: PROVIDER,
+      providerAccountId: tuple.providerAccountId,
+      transactionId: tuple.transactionId,
+    },
+  }).slice(0, 32);
+}
+
+function deriveChoiceHandle(planDigest, goalId) {
+  return 'choice-' + C.digest({
+    domain: 'atlas-settlement-choice-handle/v1',
+    planDigest,
+    goalId,
+  }).slice(0, 32);
+}
+
+// The household namespace is a pure function of the assigned id (contract
+// section 5, N2). This derives the namespace for a given id; it assigns
+// nothing — which id is the household's, and when it is set, stays an
+// owner-gated deployment decision (N6), and a resolver cannot even be
+// constructed without one (absent configuration is the shipped darkness).
+function settlementNamespace(householdId) {
+  if (typeof householdId !== 'string' || !HOUSEHOLD_PATTERN.test(householdId)) {
+    throw new Error('settlement-evidence-resolver: namespace requires a contract-valid household id');
+  }
+  return 'settlement-' + householdId.slice('household-'.length);
+}
+
+// ---------------------------------------------------------------------------
+// The resolver factory.
+// ---------------------------------------------------------------------------
+
+function plainRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+}
+
+function validDateString(value) {
+  if (typeof value !== 'string' || !DATE_PATTERN.test(value)) return false;
+  const time = Date.parse(value + 'T00:00:00Z');
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
+}
+
+function createSettlementEvidenceResolver(deps) {
+  if (!plainRecord(deps)) throw new TypeError('settlement-evidence-resolver: dependencies required');
+  const { householdId, acquire } = deps;
+  if (typeof householdId !== 'string' || !HOUSEHOLD_PATTERN.test(householdId)) {
+    throw new TypeError('settlement-evidence-resolver: a contract-valid householdId is required');
+  }
+  if (typeof acquire !== 'function') {
+    throw new TypeError('settlement-evidence-resolver: an injected acquisition is required — '
+      + 'the production crosswalk exporter is unimplemented and no default acquisition exists');
+  }
+  // Identification memo: handle pair -> { providerAccountId, transactionId,
+  // goalId }. Identities only; see the header note. Bounded, oldest-first.
+  const memo = new Map();
+  function remember(pairKey, entry) {
+    if (!memo.has(pairKey) && memo.size >= MEMO_CAPACITY) memo.delete(memo.keys().next().value);
+    memo.set(pairKey, entry);
+  }
+
+  async function resolveSelection(input) {
+    let classifyError = null;
+    try {
+      if (!plainRecord(input) || !plainRecord(input.authority) || !plainRecord(input.selection)) return null;
+      const { authority, selection, classify } = input;
+      if (authority.householdId !== householdId) return null;
+      if (typeof classify !== 'function') return null;
+      const presentedSelection = selection.transaction;
+      const presentedChoice = selection.commitment;
+      if (typeof presentedSelection !== 'string' || !SELECTION_PATTERN.test(presentedSelection)) return null;
+      if (typeof presentedChoice !== 'string' || !CHOICE_PATTERN.test(presentedChoice)) return null;
+
+      const raw = await acquire();
+      if (!plainRecord(raw)) return null;
+      // One coherent acquisition, consumed as owned frozen snapshots: after
+      // this point derivation and the single classify invocation run in one
+      // synchronous continuation, and no source object is read again.
+      const packet = freezeDeep(bindSnapshot(raw.packet));
+      const join = freezeDeep(bindSnapshot(raw.join));
+      const plan = freezeDeep(bindSnapshot(raw.plan));
+      const map = freezeDeep(bindSnapshot(raw.map));
+      if (!plainRecord(packet) || !Array.isArray(packet.transactions)) return null;
+      if (!validDateString(packet.observationAsOf)) return null;
+      if (!Array.isArray(join)) return null;
+      if (!plainRecord(plan) || !Array.isArray(plan.commitments)) return null;
+      if (!plainRecord(map) || !Array.isArray(map.mappings)) return null;
+      const asOf = packet.observationAsOf;
+
+      // Crosswalk: explicit tuple -> emitted-row provenance from the same
+      // pass (see header). Anything ambiguous is unresolvable, never
+      // guessed.
+      const rowsByLocalId = new Map();
+      for (const row of packet.transactions) {
+        if (!plainRecord(row) || typeof row.id !== 'string') return null;
+        if (!rowsByLocalId.has(row.id)) rowsByLocalId.set(row.id, []);
+        rowsByLocalId.get(row.id).push(row);
+      }
+      const tuples = new Map();
+      const producersByLocalId = new Map();
+      for (const entry of join) {
+        if (!plainRecord(entry) || typeof entry.localId !== 'string'
+          || !nonEmptyString(entry.providerAccountId) || !nonEmptyString(entry.transactionId)) return null;
+        const key = entry.providerAccountId + '\u0000' + entry.transactionId;
+        if (!tuples.has(key)) {
+          tuples.set(key, {
+            providerAccountId: entry.providerAccountId,
+            transactionId: entry.transactionId,
+            localIds: new Set(),
+          });
+        }
+        tuples.get(key).localIds.add(entry.localId);
+        if (!producersByLocalId.has(entry.localId)) producersByLocalId.set(entry.localId, new Set());
+        producersByLocalId.get(entry.localId).add(key);
+      }
+      const resolvable = new Map();
+      for (const [key, tuple] of tuples) {
+        if (tuple.localIds.size !== 1) continue;
+        const localId = [...tuple.localIds][0];
+        const rows = rowsByLocalId.get(localId);
+        if (!rows || rows.length !== 1) continue;
+        if (producersByLocalId.get(localId).size !== 1) continue;
+        resolvable.set(key, {
+          providerAccountId: tuple.providerAccountId,
+          transactionId: tuple.transactionId,
+          row: rows[0],
+          txRef: deriveTxRef({ householdId, providerAccountId: tuple.providerAccountId, transactionId: tuple.transactionId }),
+        });
+      }
+      // Instance-level txRef uniqueness (contract section 2.2): two
+      // distinct tuples deriving one ref refuse the whole instance.
+      const refOwners = new Map();
+      for (const [key, entry] of resolvable) {
+        if (refOwners.has(entry.txRef) && refOwners.get(entry.txRef) !== key) return null;
+        refOwners.set(entry.txRef, key);
+      }
+
+      const goals = new Map();
+      const duplicateGoals = new Set();
+      for (const row of plan.commitments) {
+        if (!plainRecord(row) || typeof row.id !== 'string') return null;
+        if (!IDENTIFIER_PATTERN.test(row.id)) continue;
+        const goalId = 'commitment:' + row.id;
+        if (goals.has(goalId)) duplicateGoals.add(goalId);
+        goals.set(goalId, row);
+      }
+
+      const instanceDigest = computeInstanceDigest(packet);
+      const planDigest = computePlanDigest(plan);
+      const packetDigest = computePacketDigest(packet);
+      const accountMapDigest = computeAccountMapDigest(map);
+
+      // Identification, step 1: current-derivation match. An ambiguous
+      // handle in current content (two tuples or two goals deriving it)
+      // refuses outright rather than picking one.
+      let matchedEntry = null;
+      let matchedGoal = null;
+      let tupleMatches = 0;
+      let goalMatches = 0;
+      for (const entry of resolvable.values()) {
+        const handle = deriveSelectionHandle(instanceDigest, {
+          householdId, providerAccountId: entry.providerAccountId, transactionId: entry.transactionId,
+        });
+        if (handle === presentedSelection) { tupleMatches++; matchedEntry = entry; }
+      }
+      for (const [goalId, row] of goals) {
+        if (duplicateGoals.has(goalId)) continue;
+        if (deriveChoiceHandle(planDigest, goalId) === presentedChoice) {
+          goalMatches++;
+          matchedGoal = { goalId, row };
+        }
+      }
+      if (tupleMatches > 1 || goalMatches > 1) return null;
+      let identified = null;
+      if (tupleMatches === 1 && goalMatches === 1) {
+        identified = { entry: matchedEntry, goal: matchedGoal };
+      } else {
+        // Identification, step 2: this process's own memo. Content is
+        // still re-derived fresh below; the memo names only the identity.
+        const entry = memo.get(presentedSelection + '|' + presentedChoice);
+        if (entry) {
+          const candidate = resolvable.get(entry.providerAccountId + '\u0000' + entry.transactionId);
+          const goalRow = goals.get(entry.goalId);
+          if (candidate && goalRow && !duplicateGoals.has(entry.goalId)) {
+            identified = { entry: candidate, goal: { goalId: entry.goalId, row: goalRow } };
+          }
+        }
+      }
+      if (!identified) return null;
+      const { entry, goal } = identified;
+      const row = entry.row;
+
+      // Classification: exactly one invocation, on the joined canonical
+      // packet row (never a normalized provider row), with both packet
+      // aliases the identical owned packet object. The raw verdict is
+      // deliberately unused here — the controller projects its own
+      // closure's verdict and no verdict field is returned or digested.
+      try {
+        classify(row, plan, { currentPeriodActuals: packet, packet });
+      } catch (error) {
+        classifyError = error;
+        throw error;
+      }
+
+      // Evidence: the posted CAD debit the joined row proves, under the
+      // canonical account the map assigns to the tuple's provider account.
+      const mapping = map.mappings.find(candidate => plainRecord(candidate)
+        && candidate.providerAccountId != null
+        && String(candidate.providerAccountId) === entry.providerAccountId);
+      if (!mapping || !plainRecord(mapping.canonical) || typeof mapping.canonical.id !== 'string') return null;
+      const accountId = mapping.canonical.id;
+      if (!IDENTIFIER_PATTERN.test(accountId)) return null;
+      if (row.atlasAccountId != null && String(row.atlasAccountId) !== accountId) return null;
+      if (row.pending !== false) return null;
+      if (row.isIncome === true) return null;
+      if (row.currency !== 'cad') return null;
+      if (typeof row.amount !== 'number' || !Number.isFinite(row.amount) || row.amount <= 0) return null;
+      const centsFloat = row.amount * 100;
+      const cents = Math.round(centsFloat);
+      if (!Number.isSafeInteger(cents) || cents <= 0 || Math.abs(centsFloat - cents) >= 1e-7) return null;
+      if (!validDateString(row.date) || row.date > asOf) return null;
+      const evidence = {
+        accountId, currency: 'cad', direction: 'debit', date: row.date, cents, posted: true,
+      };
+
+      const identity = {
+        householdId, source: PROVIDER,
+        providerAccountId: entry.providerAccountId, transactionId: entry.transactionId,
+      };
+      const selectionBinding = bindDigest({
+        domain: 'atlas-settlement-selection-binding/v1',
+        identity,
+        txRef: entry.txRef,
+        packetRowDigest: computePacketRowDigest(row),
+        planDigest,
+        packetDigest,
+        accountMapDigest,
+        asOf,
+      });
+      const goalBinding = bindDigest({
+        domain: 'atlas-settlement-goal-binding/v1',
+        goalId: goal.goalId,
+        goalRowDigest: bindDigest({ domain: 'atlas-settlement-goal-row/v1', goal: goal.row }),
+        planDigest,
+      });
+      const qualifiedSelection = {
+        matchCount: 1,
+        identity,
+        txRef: entry.txRef,
+        selectionBinding,
+        goalId: goal.goalId,
+        goalBinding,
+        asOf,
+        evidence,
+      };
+      const memoEntry = {
+        providerAccountId: entry.providerAccountId,
+        transactionId: entry.transactionId,
+        goalId: goal.goalId,
+      };
+      remember(presentedSelection + '|' + presentedChoice, memoEntry);
+      const freshSelection = deriveSelectionHandle(instanceDigest, {
+        householdId, providerAccountId: entry.providerAccountId, transactionId: entry.transactionId,
+      });
+      remember(freshSelection + '|' + deriveChoiceHandle(planDigest, goal.goalId), memoEntry);
+      return qualifiedSelection;
+    } catch (error) {
+      if (classifyError) throw classifyError;
+      return null;
+    }
+  }
+
+  return Object.freeze({ resolveSelection });
+}
+
+module.exports = {
+  createSettlementEvidenceResolver,
+  bindEncode,
+  bindDigest,
+  bindSnapshot,
+  freezeDeep,
+  deriveTxRef,
+  deriveSelectionHandle,
+  deriveChoiceHandle,
+  computeInstanceDigest,
+  computePlanDigest,
+  computePacketDigest,
+  computeAccountMapDigest,
+  computePacketRowDigest,
+  settlementNamespace,
+  BIND_LIMITS,
+};
