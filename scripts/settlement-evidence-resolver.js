@@ -534,6 +534,20 @@ function createSettlementEvidenceResolver(deps) {
         if (!descriptor || !Object.hasOwn(descriptor, 'value')) return null;
         envelope[field] = descriptor.value;
       }
+      // The paired witness is captured in the SAME uninterrupted snapshot
+      // continuation (B3): its validated own DATA descriptor is read here,
+      // before classification, and the local reference is carried through
+      // the core's return. Rereading the retained mutable envelope after
+      // the core's asynchronous boundary would let a mutation queued
+      // during classification substitute a different witness for this
+      // owned selection. An accessor or non-function witness is captured
+      // as absent — never invoked.
+      let pairedWitness = null;
+      const witnessDescriptor = Object.getOwnPropertyDescriptor(raw, 'witness');
+      if (witnessDescriptor && Object.hasOwn(witnessDescriptor, 'value')
+        && typeof witnessDescriptor.value === 'function') {
+        pairedWitness = witnessDescriptor.value;
+      }
       // One coherent acquisition, consumed as owned frozen snapshots: after
       // this point derivation and the single classify invocation run in one
       // synchronous continuation, and no source object is read again.
@@ -721,7 +735,7 @@ function createSettlementEvidenceResolver(deps) {
         asOf,
         evidence,
       };
-      return { selection: qualifiedSelection, acquisition: raw };
+      return { selection: qualifiedSelection, acquisition: raw, witness: pairedWitness };
     } catch (error) {
       if (classifyError) throw classifyError;
       return null;
@@ -736,22 +750,20 @@ function createSettlementEvidenceResolver(deps) {
   // The paired capability for acquisition-bound write admission: the same
   // single resolution and single classify invocation as resolveSelection,
   // returning the ordinary selection plus the freshness witness paired
-  // with that exact acquisition. The witness is read from the raw
-  // acquisition's own DATA descriptor — an accessor is refused without
-  // being invoked — and it never enters the snapshot/binding path: it is
-  // not read as data, serialized, digested, logged or invoked here. Only
-  // the caller's trusted composition may carry it to the store's
-  // admission fence. An acquisition without a genuine function witness
-  // yields no pair.
+  // with that exact acquisition. The witness is the reference the core
+  // captured from the raw acquisition's own DATA descriptor in the same
+  // uninterrupted snapshot continuation as the four data fields (B3) —
+  // it is never reread from the retained mutable envelope after the
+  // core's asynchronous boundary, and it never enters the snapshot /
+  // binding path: it is not read as data, serialized, digested, logged
+  // or invoked here. Only the caller's trusted composition may carry it
+  // to the store's admission fence. An acquisition without a genuine
+  // function witness yields no pair.
   async function resolvePairedSelection(input) {
     const resolved = await resolveSelectionCore(input);
     if (!resolved) return null;
-    const raw = resolved.acquisition;
-    if (!raw || typeof raw !== 'object') return null;
-    const descriptor = Object.getOwnPropertyDescriptor(raw, 'witness');
-    if (!descriptor || !Object.hasOwn(descriptor, 'value')
-      || typeof descriptor.value !== 'function') return null;
-    return { selection: resolved.selection, witness: descriptor.value };
+    if (typeof resolved.witness !== 'function') return null;
+    return { selection: resolved.selection, witness: resolved.witness };
   }
 
   return Object.freeze({ resolveSelection, resolvePairedSelection });

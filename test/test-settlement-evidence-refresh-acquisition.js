@@ -845,8 +845,8 @@ if (!threads.isMainThread) {
       assert.equal(w.calls.commitWithoutRecovery, 0, 'no unguarded fallback');
       assert.equal(w.mock.calls.length, w.providerCallsAfterSeed,
         'zero additional provider GETs on the success path');
-      assert.equal(w.readerCalls, 3,
-        'reader read once per witness mint (prepare + confirm) and once at admission');
+      assert.equal(w.readerCalls, 5,
+        'reader sampled at acquisition entry and rechecked at publication for each of prepare and confirm (4), plus once at admission (1)');
       const outcome = await w.controller.outcome(ADMISSION_CONTEXT, { operationId: admissionOp(1) });
       assert.equal(outcome.status, 'committed');
       assert.equal(JSON.stringify([prepared, receipt, outcome]).includes('witness'), false,
@@ -1034,7 +1034,8 @@ if (!threads.isMainThread) {
       const receipt = await pending;
       assert.equal(receipt.status, 'committed');
       assert.equal(w.document().operations.length, 1);
-      assert.equal(w.readerCalls, 3, 'the witness was consulted exactly once, before the write');
+      assert.equal(w.readerCalls, 5,
+        'entry + publication reader samples for prepare and confirm (4), and the witness itself consulted exactly once, before the write (1)');
       await drain();
     } finally { await w.close(); }
   });
@@ -1070,9 +1071,13 @@ if (!threads.isMainThread) {
     try {
       await bounded(Refresh.serve(canonical, env), 'seed serve');
       await drain();
+      // A valid reader is required for any admitting witness (B1); this
+      // labelled synthetic reader serves the lifecycle cases below.
+      const cell = { canonical, env, revision: 1 };
+      const reader = () => ({ canonical: cell.canonical, env: cell.env, contextRevision: cell.revision });
       const [a, b] = await Promise.all([
-        bounded(Refresh.acquireSettlementWithWitness(canonical, env), 'witness acquire a'),
-        bounded(Refresh.acquireSettlementWithWitness(canonical, env), 'witness acquire b'),
+        bounded(Refresh.acquireSettlementWithWitness(canonical, env, { contextReader: reader }), 'witness acquire a'),
+        bounded(Refresh.acquireSettlementWithWitness(canonical, env, { contextReader: reader }), 'witness acquire b'),
       ]);
       await drain();
       assert.deepEqual(Object.keys(a).sort(), ['acquisition', 'witness']);
@@ -1086,15 +1091,15 @@ if (!threads.isMainThread) {
       // No global latest-witness slot: a later witness for the same
       // context never revives an earlier one — each witness answers only
       // for the state its own publication validated.
-      const firstPair = await bounded(Refresh.acquireSettlementWithWitness(canonical, env),
-        'witness acquire first');
+      const firstPair = await bounded(Refresh.acquireSettlementWithWitness(canonical, env,
+        { contextReader: reader }), 'witness acquire first');
       await drain();
       assert.equal(firstPair.witness(), true);
       await bounded(Refresh.serve(canonical, env, { forceRefresh: true }), 'republish');
       await drain();
       assert.equal(firstPair.witness(), false, 'the earlier witness stays refused after a republish');
-      const secondPair = await bounded(Refresh.acquireSettlementWithWitness(canonical, env),
-        'witness acquire second');
+      const secondPair = await bounded(Refresh.acquireSettlementWithWitness(canonical, env,
+        { contextReader: reader }), 'witness acquire second');
       await drain();
       assert.equal(secondPair.witness(), true, 'the fresh witness admits');
       assert.equal(firstPair.witness(), false, 'and the earlier witness is not revived by it');
@@ -1111,7 +1116,10 @@ if (!threads.isMainThread) {
     try {
       await bounded(Refresh.serve(canonical, env), 'seed serve');
       await drain();
-      const first = await bounded(Refresh.acquireSettlementWithWitness(canonical, env), 'witness acquire');
+      // A valid reader is required for any admitting witness (B1).
+      const cell = { canonical, env, revision: 1 };
+      const reader = () => ({ canonical: cell.canonical, env: cell.env, contextRevision: cell.revision });
+      const first = await bounded(Refresh.acquireSettlementWithWitness(canonical, env, { contextReader: reader }), 'witness acquire');
       await drain();
       assert.equal(first.witness(), true);
       await Refresh.withProviderWrite(async () => {});
@@ -1121,7 +1129,7 @@ if (!threads.isMainThread) {
       await bounded(Refresh.serve(canonical, env), 'reseed serve');
       await drain();
       // Superseding live job for the same context.
-      const second = await bounded(Refresh.acquireSettlementWithWitness(canonical, env), 'witness reacquire');
+      const second = await bounded(Refresh.acquireSettlementWithWitness(canonical, env, { contextReader: reader }), 'witness reacquire');
       await drain();
       assert.equal(second.witness(), true);
       mock.hold();
@@ -1133,7 +1141,7 @@ if (!threads.isMainThread) {
       await bounded(live, 'live job completion');
       await drain();
       // Replay hold after a failed forced refresh.
-      const third = await bounded(Refresh.acquireSettlementWithWitness(canonical, env), 'witness reacquire 2');
+      const third = await bounded(Refresh.acquireSettlementWithWitness(canonical, env, { contextReader: reader }), 'witness reacquire 2');
       await drain();
       mock.mode('failure');
       await rejection(bounded(Refresh.serve(canonical, env, { forceRefresh: true }), 'forced failure'),
@@ -1171,7 +1179,11 @@ if (!threads.isMainThread) {
       }
       // Day rollover: the witness re-derives the financial day at
       // invocation and refuses once it no longer matches the job's day.
-      const paired = await bounded(Refresh.acquireSettlementWithWitness(canonical, env), 'witness acquire (day)');
+      // (A valid reader is required for the admitting witness — B1.)
+      const dayCell = { canonical, env, revision: 1 };
+      const dayReader = () => ({ canonical: dayCell.canonical, env: dayCell.env, contextRevision: dayCell.revision });
+      const paired = await bounded(Refresh.acquireSettlementWithWitness(canonical, env,
+        { contextReader: dayReader }), 'witness acquire (day)');
       await drain();
       assert.equal(paired.witness(), true);
       now = '2026-08-21T18:00:00.000Z';
@@ -1179,6 +1191,103 @@ if (!threads.isMainThread) {
       now = CLOCK;
     } finally {
       now = CLOCK;
+      mock.release();
+      await mock.close();
+    }
+  });
+
+  test('WA-L4 a fenced acquisition mints no admitting witness without the required reader (B1)', { timeout: 120000 }, async () => {
+    const mock = await helper.provider();
+    const env = helper.environment(mock.base);
+    const canonical = Fixture.canonical();
+    try {
+      await bounded(Refresh.serve(canonical, env), 'seed serve');
+      await drain();
+      // The approved contract requires a freshly read current context and
+      // a monotonic revision: hashing the job's captured inputs was never
+      // a fallback. Without a valid synchronous reader the acquisition
+      // itself still resolves, but no witness it yields may admit.
+      for (const [name, options] of [
+        ['no options', undefined],
+        ['empty options', {}],
+        ['reader explicitly undefined', { contextReader: undefined }],
+      ]) {
+        const paired = await bounded(Refresh.acquireSettlementWithWitness(canonical, env, options),
+          'readerless acquire (' + name + ')');
+        await drain();
+        assert.ok(paired.acquisition && paired.acquisition.packet,
+          name + ': the acquisition itself still resolves');
+        assert.equal(typeof paired.witness, 'function', name + ': a witness is still returned');
+        assert.equal(paired.witness(), false, name + ': a readerless witness never admits');
+      }
+      // Control: the same acquisition WITH a valid reader admits.
+      const cell = { canonical, env, revision: 1 };
+      const reader = () => ({ canonical: cell.canonical, env: cell.env, contextRevision: cell.revision });
+      const paired = await bounded(Refresh.acquireSettlementWithWitness(canonical, env,
+        { contextReader: reader }), 'reader acquire (control)');
+      await drain();
+      assert.equal(paired.witness(), true, 'control: a valid reader admits');
+    } finally {
+      mock.release();
+      await mock.close();
+    }
+  });
+
+  test('WA-L5 context replacement or ABA during acquisition invalidates that acquisition (B2)', { timeout: 120000 }, async () => {
+    const mock = await helper.provider();
+    const env = helper.environment(mock.base);
+    const canonical = Fixture.canonical();
+    try {
+      await bounded(Refresh.serve(canonical, env), 'seed serve');
+      await drain();
+      // The reader's context/revision is captured at acquisition ENTRY,
+      // before the asynchronous worker runs, and rechecked in the
+      // publication continuation. The mutations below happen in the same
+      // synchronous tick as the acquire call — structurally before any
+      // worker publication can arrive — so the barrier is deterministic:
+      // no sleeps, no timing window.
+      const cell = { canonical, env, revision: 1 };
+      const reader = () => ({ canonical: cell.canonical, env: cell.env, contextRevision: cell.revision });
+      // Control: nothing changes while the acquisition is in flight.
+      const control = await bounded(Refresh.acquireSettlementWithWitness(canonical, env,
+        { contextReader: reader }), 'in-flight control acquire');
+      await drain();
+      assert.equal(control.witness(), true, 'control: an untouched in-flight context admits');
+      // Same-content replacement in flight: identical bytes under a new
+      // object and an advanced revision. Content-derived keys cannot see
+      // it; the entry-captured revision must refuse the witness.
+      const replacedPromise = Refresh.acquireSettlementWithWitness(canonical, env,
+        { contextReader: reader });
+      cell.canonical = JSON.parse(JSON.stringify(canonical));
+      cell.revision = 2;
+      const replaced = await bounded(replacedPromise, 'in-flight replacement acquire');
+      await drain();
+      assert.ok(replaced.acquisition && replaced.acquisition.packet,
+        'replacement: the acquisition itself still resolves');
+      assert.equal(replaced.witness(), false,
+        'a context replaced during acquisition is not adopted as the baseline');
+      // ABA in flight: the content leaves and returns to the original
+      // object while the revision advances twice. The returning bytes
+      // must not revalidate the acquisition either.
+      cell.canonical = canonical;
+      cell.revision = 3;
+      const abaPromise = Refresh.acquireSettlementWithWitness(canonical, env,
+        { contextReader: reader });
+      cell.canonical = JSON.parse(JSON.stringify(canonical));
+      cell.revision = 4;
+      cell.canonical = canonical;
+      cell.revision = 5;
+      const aba = await bounded(abaPromise, 'in-flight ABA acquire');
+      await drain();
+      assert.equal(aba.witness(), false,
+        'an ABA excursion during acquisition refuses, even back on identical bytes');
+      // A fresh acquisition on the settled context admits again: the
+      // refusal belongs to the invalidated acquisition, not the context.
+      const fresh = await bounded(Refresh.acquireSettlementWithWitness(canonical, env,
+        { contextReader: reader }), 'post-ABA fresh acquire');
+      await drain();
+      assert.equal(fresh.witness(), true, 'a fresh acquisition on the settled context admits');
+    } finally {
       mock.release();
       await mock.close();
     }
