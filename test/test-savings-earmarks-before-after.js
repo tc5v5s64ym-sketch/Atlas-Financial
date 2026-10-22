@@ -25,6 +25,22 @@ assert.equal(current.planSpendPaydayFunding.status, 'unavailable');
 assert.deepEqual(current.savingsInventory.pools.map(p => [p.intent, p.unallocated]), [[247.80, 53.37], [99.99, 44.09]]);
 const empty = clone(data.plan); delete empty.savingsEarmarks; delete empty.savingsPoolObservation;
 const legacyBefore = before.recommend(empty, AS_OF, opts), legacyAfter = F.recommend(empty, AS_OF, opts);
+// Exactly these three synthetic native commitments have fixed original costs.
+// Pin expectations to the unchanged immutable engine, never the current packet.
+const nativeCommitmentIds = ['trip-a', 'club-first', 'club-second'];
+assert.deepEqual(empty.commitments.map(row => row.id).sort(), nativeCommitmentIds.slice().sort());
+const immutableCommitmentCosts = new Map();
+for (const id of nativeCommitmentIds) {
+  const native = empty.commitments.filter(row => row.id === id);
+  assert.equal(native.length, 1); assert.equal(typeof native[0].amount, 'number');
+  assert.equal(native[0].settledOn, undefined);
+  for (const field of ['fundingSequence', 'majorPlans']) {
+    const original = legacyBefore[field].filter(row => row.id === id);
+    assert.equal(original.length, 1, field + ': one immutable native counterpart');
+    assert.equal(original[0].need, native[0].amount, 'immutable no-evidence need is the fixture fixed cost');
+  }
+  immutableCommitmentCosts.set(id, legacyBefore.fundingSequence.find(row => row.id === id).need);
+}
 // Budget progress deliberately adds a read-only namespace to period records.
 // Validate that namespace on each concrete publication path, then compare
 // every incumbent field to the immutable engine. No incumbent money/trust field is
@@ -33,6 +49,30 @@ const legacyBefore = before.recommend(empty, AS_OF, opts), legacyAfter = F.recom
 // against the immutable schedule rows: this probe supplies no actual packet.
 function incumbentPublication(value) {
   const copy = clone(incumbentAdvice(value, AS_OF));
+  // Admit only six complete, positively validated additive packets. All old
+  // fields and any cost namespace outside these exact rows remain compared.
+  for (const field of ['fundingSequence', 'majorPlans']) {
+    assert.ok(Array.isArray(copy[field]));
+    const seen = new Set();
+    for (const row of copy[field]) {
+      if (!immutableCommitmentCosts.has(row.id)) {
+        assert.equal(Object.hasOwn(row, 'commitmentCost'), false,
+          field + ': noncommitment row cannot carry the new namespace');
+        continue;
+      }
+      assert.equal(seen.has(row.id), false, field + ': native cost identity is unique');
+      seen.add(row.id);
+      assert.deepEqual(row.commitmentCost, {
+        asOf: AS_OF,
+        originalCost: { status: 'known', amount: immutableCommitmentCosts.get(row.id), range: null },
+        confirmedLinkedPaid: { status: 'unconfigured', amount: null, range: null },
+        unpaidCost: { status: 'unconfigured', amount: null, range: null },
+      }, field + ': complete cost packet agrees with immutable fixed-cost expectations');
+      delete row.commitmentCost;
+    }
+    assert.deepEqual(Array.from(seen).sort(), nativeCommitmentIds.slice().sort(),
+      field + ': all three expected native packets are present');
+  }
   const periodSets = [copy.defaultView.calendarPeriods, copy.pastPeriodViews, copy.payPeriodViews];
   let count = 0;
   for (const periods of periodSets) for (const period of periods) {
@@ -68,6 +108,48 @@ function incumbentPublication(value) {
 }
 const inventory = legacyAfter.savingsInventory; delete legacyAfter.savingsInventory;
 assert.equal(inventory.status, 'setup-unknown');
+let rejectedCostMutations = 0;
+for (const field of ['fundingSequence', 'majorPlans']) {
+  const mutations = [
+    ['changed original cost', row => { row.commitmentCost.originalCost.amount += 1; }],
+    ['unconfigured paid promoted to known zero', row => {
+      row.commitmentCost.confirmedLinkedPaid = { status: 'known', amount: 0, range: null };
+    }],
+    ['wrong opening date', row => { row.commitmentCost.asOf = '2000-01-01'; }],
+    ['unexpected nested field', row => { row.commitmentCost.originalCost.unexpected = true; }],
+    ['missing expected packet', row => { delete row.commitmentCost; }],
+  ];
+  for (const [name, mutate] of mutations) {
+    const changed = clone(legacyAfter);
+    mutate(changed[field].find(row => row.id === 'trip-a'));
+    assert.throws(() => incumbentPublication(changed), assert.AssertionError, field + ': ' + name);
+    rejectedCostMutations++;
+  }
+  const noncommitment = clone(legacyAfter);
+  noncommitment[field].push({ id: 'annual-a', source: 'yearly-card-paid-bill',
+    commitmentCost: clone(legacyAfter[field].find(row => row.id === 'trip-a').commitmentCost) });
+  assert.throws(() => incumbentPublication(noncommitment), assert.AssertionError,
+    field + ': noncommitment row cannot acquire a removable cost namespace');
+  rejectedCostMutations++;
+  const duplicate = clone(legacyAfter);
+  duplicate[field].push(clone(duplicate[field].find(row => row.id === 'trip-a')));
+  assert.throws(() => incumbentPublication(duplicate), assert.AssertionError,
+    field + ': duplicate native identity cannot be normalized');
+  rejectedCostMutations++;
+  const missing = clone(legacyAfter);
+  missing[field] = missing[field].filter(row => row.id !== 'trip-a');
+  assert.throws(() => incumbentPublication(missing), assert.AssertionError,
+    field + ': every expected native commitment must publish its packet');
+  rejectedCostMutations++;
+}
+for (const placement of ['root', 'defaultView']) {
+  const unexpected = clone(legacyAfter), destination = placement === 'root' ? unexpected : unexpected.defaultView;
+  destination.commitmentCost = clone(legacyAfter.fundingSequence.find(row => row.id === 'trip-a').commitmentCost);
+  assert.throws(() => assert.deepEqual(incumbentPublication(unexpected), legacyBefore), assert.AssertionError,
+    placement + ': unauthorized cost placement remains visible to whole-object equality');
+  rejectedCostMutations++;
+}
+assert.equal(rejectedCostMutations, 18, 'every bounded cost rejection control executed');
 assert.deepEqual(incumbentPublication(legacyAfter), legacyBefore, 'every incumbent recommend field is unchanged with absent configuration');
 const changedBalance = clone(legacyAfter); changedBalance.binding.balance += 1;
 assert.throws(() => assert.deepEqual(incumbentPublication(changedBalance), legacyBefore),
@@ -102,3 +184,4 @@ empty.savingsEarmarks = { version: 1, currency: 'CAD', pools: [], history: [] };
 const explicitEmpty = F.recommend(empty, AS_OF, opts); delete explicitEmpty.savingsInventory;
 assert.deepEqual(incumbentPublication(explicitEmpty), before.recommend(empty, AS_OF, opts), 'explicitly empty configuration also preserves every incumbent field');
 console.log('PASS immutable before/after against ' + BASE + ': missing inventory and unsafe incremental instruction reproduced; configured reconciliation/withholding proved; complete incumbent recommend preserved when absent or empty');
+console.log('PASS bounded commitmentCost acceptance: exactly six positively validated additions; 18 rejection controls; immutable baseline and incumbent assertions preserved');

@@ -101,6 +101,294 @@ const reverseCmd = (targetOperationId, cents = 500) => {
 };
 const retractCmd = targetOperationId => ({ version: 1, kind: 'retract', targetOperationId });
 
+// Publication prerequisite: independent synthetic cost/paid/unpaid expectations.
+// These facts describe the eligible native roster at the opening, never Saved,
+// feasibility shortfall, a projected payment, or additional money to save.
+function costPublication(x, evidence) {
+  const opts = { ...x.opts, weeklyVariable: 0, debts: [], settlementEvidence: evidence };
+  const advice = F.recommend(x.plan, x.asOf, opts);
+  const funding = advice.savingsFunding || F.savingsDailyFunding(x.plan, [], x.asOf, opts);
+  return { advice, funding,
+    goal: goalOf(x, opts, 'commitment:near'),
+    sequence: advice.fundingSequence.find(r => r.id === 'near'),
+    major: advice.majorPlans.find(r => r.id === 'near'),
+    item: [...funding.backing.items, ...funding.unresolved].find(r => r.id === 'near'),
+    row: funding.rows.find(r => r.members.includes('near@2026-10-21')) };
+}
+function combinedInput() {
+  const x = require('./fixtures/chronological-savings-data').policy(fx.advance(input(), '2026-10-07'));
+  x.plan.commitments = x.plan.commitments.filter(c => c.id === 'near');
+  return x;
+}
+function knownCost(amount, range = null) { return { status: 'known', amount, range }; }
+function unknownCost(status = 'unavailable') { return { status, amount: null, range: null }; }
+function assertCost(row, asOf, original, paid, unpaid) {
+  assert.ok(row, 'native publication row exists');
+  assert.deepEqual(row.commitmentCost, { asOf, originalCost: original,
+    confirmedLinkedPaid: paid, unpaidCost: unpaid });
+}
+for (const [name, cents, paid, unpaid] of [['partial', 2500, 25, 35], ['full', 6000, 60, 0]]) {
+  test('publication facts: ' + name + ' 60 cost survives every current boundary', () => {
+    const x = combinedInput(), before = JSON.stringify(x);
+    const p = costPublication(x, buildEvidence([linkCmd({ assignedCents: cents })]));
+    for (const row of [p.goal, p.sequence, p.major, p.item, p.row])
+      assertCost(row, x.asOf, knownCost(60), knownCost(paid), knownCost(unpaid));
+    assert.equal(p.sequence.need, unpaid);
+    assert.equal(p.item.needed, unpaid);
+    assert.equal(p.row.needed, unpaid);
+    assert.equal(p.major.remaining, 0, 'feasibility shortfall keeps its separate incumbent meaning');
+    assert.equal(p.funding.stock.amount, 119, 'reported stock is not payment history');
+    assert.equal(JSON.stringify(x), before, 'publication does not mutate inputs');
+  });
+}
+test('publication facts: unconfigured, empty, future-effective and retracted evidence remain distinct', () => {
+  const x = combinedInput();
+  const plain = costPublication(x);
+  for (const row of [plain.goal, plain.sequence, plain.major, plain.item, plain.row])
+    assertCost(row, x.asOf, knownCost(60), unknownCost('unconfigured'), unknownCost('unconfigured'));
+  const cases = [buildEvidence([]), buildEvidence([linkCmd({ evidenceDate: '2026-10-09', asOf: '2026-10-09' })]),
+    buildEvidence([linkCmd({}), retractCmd(op(1))])];
+  for (const evidence of cases) {
+    const p = costPublication(x, evidence);
+    for (const row of [p.goal, p.sequence, p.major, p.item, p.row])
+      assertCost(row, x.asOf, knownCost(60), knownCost(0), knownCost(60));
+    assert.equal(p.sequence.need, 60);
+  }
+});
+test('publication facts: uncertain settlement never becomes zero paid or unpaid', () => {
+  for (const commands of [[linkCmd({}), reverseCmd(op(1))], [linkCmd({ assignedCents: 7000, evidenceCents: 9000 })]]) {
+    const x = combinedInput(), p = costPublication(x, buildEvidence(commands));
+    for (const row of [p.goal, p.sequence, p.major, p.item, p.row])
+      assertCost(row, x.asOf, knownCost(60), unknownCost(), unknownCost());
+    assert.equal(p.item.needed, null);
+    assert.equal(p.major.remaining, null, 'existing unavailable feasibility publication stays withheld');
+  }
+});
+test('publication facts: original ranges survive; a linked range withholds payment and unpaid facts', () => {
+  const x = combinedInput(), c = x.plan.commitments.find(r => r.id === 'near');
+  delete c.amount; c.amountMin = 50; c.amountMax = 70;
+  for (const [evidence, paid, unpaid] of [[buildEvidence([]), knownCost(0), knownCost(null, { min: 50, max: 70 })],
+    [buildEvidence([linkCmd({})]), unknownCost(), unknownCost()]]) {
+    const p = costPublication(x, evidence);
+    for (const row of [p.goal, p.sequence, p.major, p.item, p.row])
+      assertCost(row, x.asOf, knownCost(null, { min: 50, max: 70 }), paid, unpaid);
+    assert.equal(p.sequence.need, null, 'no point cost is invented');
+  }
+});
+test('publication facts: native group totals reconcile 230 / 25 / 205 without label matching', () => {
+  const x = combinedInput();
+  x.plan.commitments.push(fx.fixture().plan.commitments[1]);
+  x.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'group', id: 'club' }];
+  x.plan.commitments[1].label = x.plan.commitments[0].label;
+  const evidence = buildEvidence([linkCmd({})]);
+  const goal = goalOf(x, { settlementEvidence: evidence }, 'group:club');
+  x.plan.savingsEarmarks.pools[0].goalRefs.push({ kind: 'commitment', id: 'near' });
+  const p = costPublication(x, evidence);
+  for (const row of [goal, p.row]) assertCost(row, x.asOf, knownCost(230), knownCost(25), knownCost(205));
+  assert.deepEqual(p.row.members, ['near@2026-10-21', 'far@2026-10-28']);
+  assert.equal(p.row.saved, 95, '119 stock funds 24 home cost and 95 club cost once');
+  const members = p.funding.backing.items.filter(i => p.row.members.includes(i.key));
+  for (const key of ['originalCost', 'confirmedLinkedPaid', 'unpaidCost'])
+    assert.equal(p.row.commitmentCost[key].amount * 100,
+      members.reduce((sum, i) => sum + Math.round(i.commitmentCost[key].amount * 100), 0));
+});
+test('publication facts: duplicate native identity withholds facts instead of counting twice or choosing a label', () => {
+  const x = combinedInput();
+  x.plan.commitments.push({ ...x.plan.commitments[0], label: 'Different invented label' });
+  const evidence = buildEvidence([linkCmd({})]);
+  const opts = { ...x.opts, settlementEvidence: evidence };
+  for (const row of F.fundingSequence(x.plan, x.asOf, opts).filter(r => r.id === 'near'))
+    assertCost(row, x.asOf, unknownCost(), unknownCost(), unknownCost());
+  const goal = goalOf(x, opts, 'commitment:near');
+  assertCost(goal, x.asOf, unknownCost(), unknownCost(), unknownCost());
+  const p = costPublication(x, evidence);
+  assertCost(p.item, x.asOf, unknownCost(), unknownCost(), unknownCost());
+  assertCost(p.row, x.asOf, unknownCost(), unknownCost(), unknownCost());
+});
+test('publication facts: manual retirement is not lifetime original cost and cannot re-open a goal', () => {
+  const x = combinedInput();
+  x.plan.commitments.push(fx.fixture().plan.commitments[1]);
+  x.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'group', id: 'club' }];
+  x.plan.commitments[0].settledOn = '2026-10-04';
+  const evidence = buildEvidence([linkCmd({})]), p = costPublication(x, evidence);
+  assert.equal(p.sequence, undefined);
+  assert.equal(p.item, undefined);
+  assertCost(goalOf(x, { settlementEvidence: evidence }, 'group:club'), x.asOf,
+    knownCost(170), knownCost(0), knownCost(170));
+  assertCost(p.funding.rows.find(r => r.key === 'group:club'), x.asOf, knownCost(170), knownCost(0), knownCost(170));
+});
+test('publication facts: historical pool policy also carries the opening facts', () => {
+  const x = input(), p = costPublication(x, buildEvidence([linkCmd({})]));
+  for (const row of [p.goal, p.sequence, p.major, p.item, p.row])
+    assertCost(row, x.asOf, knownCost(60), knownCost(25), knownCost(35));
+});
+for (const [name, commands] of [['reversal', [linkCmd({}), reverseCmd(op(1))]],
+  ['over-assignment', [linkCmd({ assignedCents: 7000, evidenceCents: 9000 })]]]) {
+  test('review repair: recommendation inventory keeps historical eligibility under ' + name, () => {
+    const x = input(), evidence = buildEvidence(commands);
+    x.plan.savingsEarmarks.history = [{ revision: 1, confirmedAt: x.asOf, source: 'Invented confirmation', pools: [
+      { poolId: 'club-pool', allocations: [{ goalRef: { kind: 'commitment', id: 'near' }, amount: 30 }] },
+      { poolId: 'home-pool', allocations: [] } ] }];
+    // The recommendation's incumbent inventory call supplied no funding opts.
+    // Its exact eligibility contract must survive annotation with the new facts.
+    const incumbent = F.savingsInventory(x.plan, x.asOf);
+    const advice = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [], settlementEvidence: evidence });
+    assert.equal(incumbent.incrementalInstructions, 'eligible');
+    assert.equal(incumbent.instructionReason,
+      'Funding proposals require matching payments and count backed assignments once. New contributions are proposals, not saved balances or transfers.');
+    assert.equal(advice.savingsInventory.incrementalInstructions, incumbent.incrementalInstructions);
+    assert.equal(advice.savingsInventory.instructionReason, incumbent.instructionReason);
+    const oldFields = value => JSON.parse(JSON.stringify(value, (key, v) => key === 'commitmentCost' ? undefined : v));
+    assert.deepEqual(oldFields(advice.savingsInventory), oldFields(incumbent), 'only new facts are annotated');
+    for (const row of [advice.savingsInventory.pools[0].plannedGoals[0], advice.savingsInventory.goals[0]])
+      assertCost(row, x.asOf, knownCost(60), unknownCost(), unknownCost());
+    assert.equal(advice.fundingSequence.find(r => r.id === 'near').need, null,
+      'the incumbent settlement-dependent funding need still withholds');
+  });
+}
+test('review repair: historical group facts exclude retired members without changing the retained roster', () => {
+  const x = fx.fixture(), evidence = buildEvidence([]);
+  x.plan.commitments[0].settledOn = '2026-10-04';
+  const opts = { ...x.opts, settlementEvidence: evidence };
+  const before = JSON.stringify(x), p = F.savingsDailyFunding(x.plan, [], x.asOf, opts);
+  const row = p.rows.find(r => r.key === 'group:club');
+  const goal = goalOf(x, opts, 'group:club');
+  assert.deepEqual(row.members, ['near@2026-10-21', 'far@2026-10-28'], 'retired intent remains in its incumbent roster');
+  assert.equal(row.needed, 170); assert.equal(row.saved, 95);
+  const retired = p.backing.items.find(i => i.id === 'near');
+  assert.equal(retired.inactive, true); assert.equal(retired.needed, 0); assert.equal(retired.saved, 0);
+  assertCost(retired, x.asOf, unknownCost(), unknownCost(), unknownCost());
+  assertCost(goal, x.asOf, knownCost(170), knownCost(0), knownCost(170));
+  assertCost(row, x.asOf, knownCost(170), knownCost(0), knownCost(170));
+  assert.equal(JSON.stringify(x), before, 'no settlement, intent or financial input is changed');
+});
+test('review repair: historical disabled and all-retired rosters retain incumbent amounts and eligibility', () => {
+  const x = fx.fixture(), evidence = buildEvidence([]);
+  const opts = { ...x.opts, settlementEvidence: evidence, disabled: ['near'] };
+  const disabled = F.savingsDailyFunding(x.plan, [], x.asOf, opts), row = disabled.rows.find(r => r.key === 'group:club');
+  assert.deepEqual(row.members, ['near@2026-10-21', 'far@2026-10-28']);
+  assert.equal(row.needed, 170); assert.equal(row.saved, 95);
+  assertCost(row, x.asOf, knownCost(170), knownCost(0), knownCost(170));
+  x.plan.commitments.forEach(c => { c.settledOn = '2026-10-04'; });
+  const retired = F.savingsDailyFunding(x.plan, [], x.asOf, { ...opts, disabled: [] });
+  const all = retired.rows.find(r => r.key === 'group:club');
+  assert.equal(all.needed, 0); assert.equal(all.saved, 0);
+  assert.deepEqual(all.members, ['near@2026-10-21', 'far@2026-10-28']);
+  assertCost(all, x.asOf, unknownCost(), unknownCost(), unknownCost());
+});
+test('publication facts: future roster retirement recomputes group facts from exact survivors', () => {
+  const x = require('./fixtures/savings-selected-roster-data')('card');
+  const evidence = buildEvidence([linkCmd({ goalId: 'commitment:early' }),
+    linkCmd({ goalId: 'commitment:next', txRef: tx(2), assignedCents: 1000 })]);
+  const advice = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [], settlementEvidence: evidence });
+  const current = advice.savingsFunding, before = JSON.stringify(current);
+  const period = advice.payPeriodViews.find(p => p.start === '2026-10-16');
+  const selected = F.savingsFundingPublication(current, { asOf: x.asOf, advice, periodId: period.id });
+  const row = selected.plannedRequirements.rows.find(r => r.key === 'group:installments');
+  assert.deepEqual(row.members, ['next@2026-10-30']);
+  assertCost(row, x.asOf, knownCost(40), knownCost(10), knownCost(30));
+  const item = selected.plannedRequirements.items.find(i => i.id === 'next');
+  assertCost(item, x.asOf, knownCost(40), knownCost(10), knownCost(30));
+  assert.equal(row.needed, 30);
+  assert.equal(item.actualSaved, null);
+  // Generic future wrappers do not promise these are future actual facts.
+  assertCost(selected.rows.find(r => r.key === 'group:installments'), x.asOf,
+    unknownCost(), unknownCost(), unknownCost());
+  const last = advice.payPeriodViews.find(p => p.start === '2026-10-30');
+  const retired = F.savingsFundingPublication(current, { asOf: x.asOf, advice, periodId: last.id });
+  assert.ok(!retired.plannedRequirements.rows.some(r => r.key === 'group:installments'));
+  assert.equal(JSON.stringify(current), before, 'navigation never mutates current actual facts');
+});
+test('publication facts: future-effective evidence stays future at projected publication', () => {
+  const x = require('./fixtures/savings-selected-roster-data')('card');
+  const evidence = buildEvidence([linkCmd({ goalId: 'commitment:next', evidenceDate: '2026-10-20', asOf: '2026-10-20' })]);
+  const advice = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [], settlementEvidence: evidence });
+  const period = advice.payPeriodViews.find(p => p.start === '2026-10-16');
+  const p = F.savingsFundingPublication(advice.savingsFunding, { asOf: x.asOf, advice, periodId: period.id });
+  assertCost(p.plannedRequirements.rows.find(r => r.key === 'group:installments'), x.asOf,
+    knownCost(40), knownCost(0), knownCost(40));
+});
+test('publication facts: selected closing scenario withholds opening facts at every generic future wrapper', () => {
+  const x = require('./fixtures/savings-selected-roster-data')();
+  const advice = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [],
+    settlementEvidence: buildEvidence([linkCmd({ goalId: 'commitment:next', assignedCents: 1000 })]) });
+  const period = advice.payPeriodViews.find(p => p.start === '2026-10-16');
+  const p = F.savingsFundingPublication(advice.savingsFunding, { asOf: x.asOf, advice, periodId: period.id });
+  assert.equal(p.forecastClosing.status, 'ready', 'exercise the publishing closing branch');
+  for (const row of [...p.rows, ...p.backing.items, ...p.unresolved, ...p.forecastClosing.items, ...p.forecastClosing.rows])
+    if (row.commitmentCost) assertCost(row, x.asOf, unknownCost(), unknownCost(), unknownCost());
+  assertCost(p.plannedRequirements.rows.find(r => r.key === 'group:installments'), x.asOf,
+    knownCost(40), knownCost(10), knownCost(30));
+});
+test('publication facts: group ranges aggregate exact member endpoints without inventing a point', () => {
+  const x = combinedInput(); x.plan.commitments.push(fx.fixture().plan.commitments[1]);
+  const near = x.plan.commitments[0]; delete near.amount; near.amountMin = 50.01; near.amountMax = 70.03;
+  x.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'group', id: 'club' }];
+  const evidence = buildEvidence([]), p = costPublication(x, evidence);
+  const range = knownCost(null, { min: 220.01, max: 240.03 });
+  for (const row of [goalOf(x, { settlementEvidence: evidence }, 'group:club'), p.row])
+    assertCost(row, x.asOf, range, knownCost(0), range);
+});
+test('publication facts: disabled and fully retired requirements cannot supply a paid or original-cost claim', () => {
+  const x = combinedInput(), evidence = buildEvidence([linkCmd({})]);
+  const opts = { ...x.opts, disabled: ['near'], settlementEvidence: evidence };
+  const goal = goalOf(x, opts, 'commitment:near');
+  assertCost(goal, x.asOf, unknownCost(), unknownCost(), unknownCost());
+  assert.ok(!F.fundingSequence(x.plan, x.asOf, opts).some(r => r.id === 'near'));
+  const p = F.savingsDailyFunding(x.plan, [], x.asOf, opts);
+  assert.ok(!p.backing.items.some(r => r.id === 'near'));
+  x.plan.commitments[0].settledOn = '2026-10-04';
+  const retired = goalOf(x, { settlementEvidence: evidence }, 'commitment:near');
+  assert.equal(retired.target, 0, 'the existing retired target is preserved');
+  assert.equal(retired.settled, true);
+  assertCost(retired, x.asOf, unknownCost(), unknownCost(), unknownCost());
+});
+test('publication facts: colliding native carriers withhold commitment facts', () => {
+  const x = combinedInput();
+  x.plan.bills.push({ id: 'near', label: 'Invented colliding bill', frequency: 'once',
+    date: '2026-10-21', amount: 60, confidence: 'confirmed' });
+  const p = costPublication(x, buildEvidence([linkCmd({})]));
+  for (const row of [p.goal, p.sequence, p.major, p.item, p.row])
+    assertCost(row, x.asOf, unknownCost(), unknownCost(), unknownCost());
+  x.plan.bills = [];
+  x.plan.groups.push({ id: 'club', label: 'Conflicting invented group' });
+  const ambiguous = costPublication(x, buildEvidence([linkCmd({})]));
+  for (const row of [ambiguous.goal, ambiguous.sequence, ambiguous.major, ambiguous.item, ambiguous.row])
+    assertCost(row, x.asOf, unknownCost(), unknownCost(), unknownCost());
+});
+test('publication facts: summary cards and confirmed-intent inventory preserve the same native facts', () => {
+  const x = combinedInput(), evidence = buildEvidence([linkCmd({})]);
+  x.plan.savingsEarmarks.history = [{ revision: 1, confirmedAt: x.asOf, source: 'Invented confirmation', pools: [
+    { poolId: 'club-pool', allocations: [{ goalRef: { kind: 'commitment', id: 'near' }, amount: 30 }] },
+    { poolId: 'home-pool', allocations: [] } ] }];
+  const p = costPublication(x, evidence);
+  const inventory = F.savingsInventory(x.plan, x.asOf, { settlementEvidence: evidence });
+  assertCost(inventory.goals.find(g => g.key === 'commitment:near'), x.asOf, knownCost(60), knownCost(25), knownCost(35));
+  assertCost(p.advice.savingsInventory.pools[0].plannedGoals[0], x.asOf, knownCost(60), knownCost(25), knownCost(35));
+  const cards = F.planSpendCards(p.advice.majorPlans), card = cards.find(c => c.group === 'club');
+  assertCost(card, x.asOf, knownCost(60), knownCost(25), knownCost(35));
+  assertCost(card.members[0], x.asOf, knownCost(60), knownCost(25), knownCost(35));
+});
+test('publication facts: relieved chronological cash is conserved and actual stock never grows from payment evidence', () => {
+  const x = require('./fixtures/chronological-savings-data').ledger();
+  const p = costPublication(x, buildEvidence([linkCmd({})]));
+  assert.equal(p.funding.timeline.status, 'ready');
+  for (const [date, operating, reserve, combined] of [['2026-10-07', 80, 119, 199],
+    ['2026-10-21', 80, 84, 164], ['2026-11-01', 80, 84, 164], ['2026-11-02', 157, 84, 241]]) {
+    const day = p.funding.timeline.daily.find(d => d.date === date);
+    assert.deepEqual([day.operatingCash, day.savingsCash, day.combinedHouseholdCash], [operating, reserve, combined]);
+  }
+  for (const day of p.funding.timeline.daily)
+    assert.equal(BigInt(Math.round(day.operatingCash * 100)) + BigInt(Math.round(day.savingsCash * 100)),
+      BigInt(Math.round(day.combinedHouseholdCash * 100)));
+  assert.equal(p.funding.stock.amount, 119);
+  assert.equal(p.item.saved, 35);
+  assert.equal(p.funding.timeline.payments.filter(r => r.id === 'near').length, 1);
+  assert.equal(p.funding.timeline.payments.find(r => r.id === 'near').amount, 35);
+  assert.equal(p.advice.planSpendPaydayFunding.costs.find(r => r.id === 'near').stillToFund, 0,
+    'the incumbent qualified shortfall is unchanged');
+});
+
 function goalOf(x, opts, key, poolId = 'club-pool') {
   const inventory = F.savingsInventory(x.plan, x.asOf, opts);
   const pool = (inventory.pools || []).find(p => p.id === poolId);
