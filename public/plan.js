@@ -5321,6 +5321,16 @@ function budgetSavingsMemberFigures(member, thisPeriodTrust, historical = false,
   };
 }
 
+function budgetSavingsCostHtml(packet, row, withheld = false) {
+  if (typeof SavingsInventory === 'undefined') return '';
+  const projected = packet.period?.kind === 'projected';
+  const cost = SavingsInventory.commitmentCostHtml(row, { withheld: withheld || packet.period?.kind === 'historical' || projected,
+    withholdSaved: packet.period?.kind === 'historical',
+    savedLabel: projected ? 'Saved at period close'
+      : packet.goalAllocation?.status === 'ready' && packet.backing?.status !== 'ready' ? 'Saved allocation' : 'Currently backed' });
+  return cost ? '<details class="budget-savings-members"><summary>Cost breakdown</summary>' + cost + '</details>' : '';
+}
+
 function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null, context = {}) {
   const projected = packet.period?.kind === 'projected';
   const value = (amount, trust) => budgetSavingsMoney(amount, trust, projected);
@@ -5335,12 +5345,13 @@ function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null,
       <span>${budgetV3Escape(figures.name)}${figures.date ? ` <small>${budgetV3Escape(fmtDate(figures.date))}</small>` : ''}</span>
       <span><span data-budget-savings-member-saved>${figures.saved}</span> / <span data-budget-savings-member-needed>${figures.needed}</span><small>Saved / needed</small></span>
       <span><span data-budget-savings-member-proposed>${figures.proposed}</span><small>This period</small></span>
+      ${budgetSavingsCostHtml(packet, member.item)}
     </li>`;
     }).join('')}</ul>` : '';
     return `<li data-budget-savings-total-goal="${budgetV3Escape(row.key)}">
       <span>${budgetV3Escape(group ? group.title : row.label)}</span>
       <span><span data-budget-savings-total-saved>${value(row.saved, row.savedTrust)}</span> / <span data-budget-savings-total-needed>${needed}</span><small>Saved / needed</small></span>
-      <span><span data-budget-savings-proposed>${value(row.thisPeriod, row.thisPeriodTrust)}</span><small>This period</small></span>${members}
+      <span><span data-budget-savings-proposed>${value(row.thisPeriod, row.thisPeriodTrust)}</span><small>This period</small></span>${budgetSavingsCostHtml(packet, row, listed.filter(other => other.key === row.key).length !== 1)}${members}
     </li>`;
   }).join('');
   const period = projected ? { ...packet.period, proposal: packet.forecastClosing?.contribution ?? null,
@@ -5350,6 +5361,14 @@ function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null,
       ? packet.forecastClosing?.reason || 'Closing Savings data is unavailable.' : null,
     packet.period?.status === 'unavailable' ? packet.period.reason : null,
   ].filter(reason => typeof reason === 'string' && reason))] : [];
+  // Opening facts belong to Forecast's surviving roster, never to the closing
+  // row/member roster. Keep their actual asOf visible inside the disclosure.
+  const openingRows = projected && !packet.forecastClosing?.gap ? packet.plannedRequirements?.rows || [] : [];
+  const openingCosts = typeof SavingsInventory === 'undefined' ? '' : openingRows.map(row => {
+    const cost = SavingsInventory.commitmentCostHtml(row, { savedLabel: 'Saved allocation',
+      withheld: openingRows.filter(other => other.key === row.key).length !== 1 });
+    return cost ? '<li><b>' + budgetV3Escape(row.label) + '</b>' + cost + '</li>' : '';
+  }).join('');
   return `<section data-budget-planned-savings-summary data-budget-daily-savings${projected ? ' data-budget-savings-forecast-evidence' : ''}>
     <ul class="budget-savings-contributions">${rows || (projected && (packet.forecastClosing?.status === 'ready' || packet.plannedRequirements?.rows.length === 0 && !packet.forecastClosing?.gap) ? '<li>No remaining Savings requirements.</li>' : '<li>Named savings unavailable.</li>')}</ul>${annualBillNote}
     <p class="operating-line"><span>${projected ? 'Added this period' : 'Unsent top-up today'}</span><strong data-budget-daily-proposal>${value(period?.proposal, period?.trust)}</strong></p>
@@ -5357,6 +5376,7 @@ function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null,
       ${projected ? projectedReasons.map(reason => '<p>' + budgetV3Escape(reason) + '</p>').join('')
         : '<p>' + budgetV3Escape(packet.allocationDescription || 'Savings allocation evidence is unavailable.') + ' These figures are replaced on refresh. Saved amounts are reported earmarks, not money moved or bills paid. New Bills contributions are qualified separately.</p>'}
       ${!projected && (packet.period?.reason || packet.backing?.reason) ? '<p>' + budgetV3Escape(packet.period?.reason || packet.backing?.reason) + '</p>' : ''}
+      ${openingCosts ? '<details data-savings-opening-costs><summary>Opening costs for surviving requirements</summary><ul>' + openingCosts + '</ul></details>' : ''}
       ${projected ? `<div class="operating-line"><span>Savings at period close</span><span>${value(packet.forecastClosing?.stock, packet.forecastClosing?.trust)}</span></div>
       ${packet.forecastClosing?.status === 'ready' ? `<div class="operating-line"><span>Bills at period close</span><span>${value(packet.forecastClosing?.operatingCash, packet.forecastClosing?.trust)}</span></div>` : ''}
       <div class="operating-line"><span>Added since this opening</span><span>${value(packet.forecastClosing?.projectedContributions, packet.forecastClosing?.trust)}</span></div>

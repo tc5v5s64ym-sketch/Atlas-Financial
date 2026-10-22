@@ -1155,3 +1155,68 @@ test('plan spend: operating-plan unavailable gate and empty state are preserved'
   const empty = loadPlanSpend().sandbox.planSpendPageHtml({ majorPlans: [] }, null);
   assert.match(empty.list, /data-plan-spend="empty"/);
 });
+
+// Savings display closure after #675: cost explanations use Forecast's
+// attached facts while all four mounts retain the incumbent publication gate.
+const displayFact = (html, name) => html.split(`data-savings-cost-${name}>`)[1]?.split('</dd>')[0];
+function displayInput(grouped = false) {
+  const x = require('./fixtures/chronological-savings-data').policy(fx.advance(fx.fixture(), '2026-10-07'));
+  if (!grouped) {
+    x.plan.commitments = x.plan.commitments.filter(c => c.id === 'near');
+    delete x.plan.commitments[0].group;
+  } else x.plan.commitments[1].label = x.plan.commitments[0].label;
+  return x;
+}
+test('plan spend: native disclosure separates original, assigned and unpaid cost from funding need', () => {
+  for (const [cents, paid, unpaid] of [[2500, 25, 35], [6000, 60, 0]]) {
+    const loaded = loadPlanSpend(), x = displayInput();
+    const mounts = renderPlanSpendPage(loaded, x, { status: { status: 'qualified' }, evidence: linkEvidence(cents) });
+    const list = mounts['plan-spend-list'].innerHTML;
+    assert.match(displayFact(list, 'original'), /60\.00/);
+    assert.ok(displayFact(list, 'paid').includes(paid.toFixed(2)));
+    assert.ok(displayFact(list, 'unpaid').includes(unpaid.toFixed(2)));
+    assert.match(list, /Funding requirement<\/small>/, 'relieved need is never labelled original Cost');
+    assert.match(list, /<details[^>]*>[\s\S]*Original cost/, 'cost explanation remains in the disclosure');
+    assert.match(list, /Known means published, not bank-verified/);
+  }
+});
+test('plan spend: group and same-label members print their own attached facts and independent backing', () => {
+  const loaded = loadPlanSpend(), x = displayInput(true);
+  const list = renderPlanSpendPage(loaded, x, QUALIFIED())['plan-spend-list'].innerHTML;
+  assert.match(displayFact(list, 'original'), /230\.00/);
+  assert.match(displayFact(list, 'paid'), /25\.00/);
+  assert.match(displayFact(list, 'unpaid'), /205\.00/);
+  for (const [id, original, paid, unpaid] of [['near', 60, 25, 35], ['far', 170, 0, 170]]) {
+    const member = list.split(`data-plan-spend-member="${id}"`)[1].split('</li>')[0];
+    assert.ok(displayFact(member, 'original').includes(original.toFixed(2)));
+    assert.ok(displayFact(member, 'paid').includes(paid.toFixed(2)));
+    assert.ok(displayFact(member, 'unpaid').includes(unpaid.toFixed(2)));
+  }
+  const before = structuredClone(x);
+  x.plan.commitments[0].settledOn = '2026-10-04';
+  const retired = renderPlanSpendPage(loadPlanSpend(), x, QUALIFIED())['plan-spend-list'].innerHTML;
+  assert.match(displayFact(retired, 'original'), /170\.00/);
+  assert.doesNotMatch(retired, /data-plan-spend-member="near"/);
+  assert.equal(before.plan.commitments.length, 2, 'synthetic group has exactly two native commitments');
+});
+test('plan spend: cost markup is replaced across qualified/unavailable/qualified on the same instance', () => {
+  const loaded = loadPlanSpend(), x = displayInput();
+  const first = renderPlanSpendPage(loaded, x, QUALIFIED());
+  assert.match(first['plan-spend-list'].innerHTML, /data-savings-cost-original/);
+  const calls = loaded.calls.length;
+  const withheld = renderPlanSpendPage(loaded, x, UNAVAILABLE('pin-unavailable'));
+  assert.equal(loaded.calls.length, calls, 'unavailable makes no dependent Forecast call');
+  assert.doesNotMatch(planSpendText(withheld), /data-savings-cost-|Original cost|Confirmed payment assignments|\$\s?\d/);
+  const recovered = renderPlanSpendPage(loaded, x, QUALIFIED());
+  assert.deepEqual(recovered, first, 'no stale markup after recovery');
+});
+test('plan: cost disclosure markup clears on unavailable and returns only from the new qualified publication', () => {
+  const loaded = loadPlan(), x = displayInput(true);
+  const first = renderPlanPage(loaded, x, QUALIFIED());
+  assert.match(first['savings-inventory'].innerHTML, /data-savings-cost-original/);
+  const withheld = renderPlanPage(loaded, x, UNAVAILABLE('digest-mismatch'));
+  for (const id of ['savings-inventory', 'operating-surface-body'])
+    assert.doesNotMatch(withheld[id].innerHTML, /data-savings-cost-|Original cost|Confirmed payment assignments/);
+  const recovered = renderPlanPage(loaded, x, QUALIFIED());
+  assert.equal(recovered['savings-inventory'].innerHTML, first['savings-inventory'].innerHTML);
+});

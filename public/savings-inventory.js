@@ -10,6 +10,31 @@
     'cash-unknown': 'Cash unknown', 'intent-unknown': 'Assignments unknown',
     'pending-evidence': 'Pending evidence', 'goal-unresolved': 'Goal needs reconciliation' };
   const amount = (label, value, trust, attr, periodContext = false) => `<div class="savings-inventory-fact"${attr ? ` data-savings-${attr}` : ''}><dt>${label}</dt><dd>${money(value)}${periodContext ? '' : ` <small>${escape(trust || 'unknown')}</small>`}</dd></div>`;
+  // Format the exact attached publication only. Each fact is independent:
+  // no subtraction, member aggregation, raw commitment lookup or need fallback.
+  // The caller withholds historical/closing facts and ambiguous row identities.
+  function commitmentCostHtml(row, options = {}) {
+    if (!row || !(row.commitmentCost || row.source === 'commitment'
+        || /^(commitment|group):/.test(row.key))) return '';
+    const cost = row.commitmentCost;
+    const date = cost?.asOf;
+    const dated = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      && Number.isFinite(Date.parse(date)) && new Date(date).toISOString().slice(0, 10) === date;
+    const numeric = n => typeof n === 'number' && Number.isFinite(n) && n >= 0;
+    const fact = value => {
+      if (options.withheld || !dated || value?.status !== 'known') return 'Unknown';
+      if (numeric(value.amount) && value.range === null) return money(value.amount);
+      if (value.amount === null && numeric(value.range?.min) && numeric(value.range?.max)
+          && value.range.min <= value.range.max)
+        return money(value.range.min) + ' - ' + money(value.range.max);
+      return 'Unknown';
+    };
+    const savedTrust = row.savedTrust ?? row.trust;
+    const saved = !options.withholdSaved && numeric(row.saved) && ['verified', 'calculated', 'estimated'].includes(savedTrust)
+      ? money(row.saved) + ' <small>' + escape(savedTrust) + '</small>' : 'Unknown';
+    const field = (name, label, value) => `<div class="savings-inventory-fact" data-savings-cost-${name}><dt>${label}</dt><dd>${value}</dd></div>`;
+    return `<div data-savings-cost-breakdown>${dated && !options.withheld ? '<p>Cost facts as of ' + escape(date) + '</p>' : ''}<dl>${field('original', 'Original cost', fact(cost?.originalCost))}${field('paid', 'Confirmed payment assignments', fact(cost?.confirmedLinkedPaid))}${field('unpaid', 'Unpaid cost', fact(cost?.unpaidCost))}${options.includeSaved === false ? '' : field('saved', escape(options.savedLabel || 'Currently backed'), saved)}</dl><p>Known means published, not bank-verified. Payment assignments are separate from Saved. Unpaid cost is not additional savings needed or a funding shortfall.</p></div>`;
+  }
   // Presentation join only, mirroring the Budget savings surfaces: a grouped
   // row's members are already published by Forecast (backing.items, plus
   // unresolved for withheld members) and its this-period components already
@@ -80,7 +105,8 @@
       const savedLabel = projected ? 'Saved'
         : packet.goalAllocation?.status === 'ready' && packet.backing?.status !== 'ready'
         ? 'Saved allocation' : 'Currently backed';
-      return `<li data-savings-member="${escape(member.key)}"><b>${escape(item ? item.label : 'Member name unavailable')}</b> <span>${escape(item?.date || 'Date unavailable')}</span><dl>${amount(savedLabel, item ? item.saved : null, item ? item.trust : 'unknown', 'member-backed', projected)}${needed}${amount(projected ? 'This period' : 'Projected this period', member.thisPeriod, member.thisPeriod == null ? 'unknown' : row.thisPeriodTrust, 'member-period', projected)}</dl></li>`;
+      const cost = commitmentCostHtml(item, { withheld: projected, savedLabel: projected ? 'Saved at period close' : savedLabel });
+      return `<li data-savings-member="${escape(member.key)}"><b>${escape(item ? item.label : 'Member name unavailable')}</b> <span>${escape(item?.date || 'Date unavailable')}</span><dl>${amount(savedLabel, item ? item.saved : null, item ? item.trust : 'unknown', 'member-backed', projected)}${needed}${amount(projected ? 'This period' : 'Projected this period', member.thisPeriod, member.thisPeriod == null ? 'unknown' : row.thisPeriodTrust, 'member-period', projected)}</dl>${cost ? '<details><summary>Cost breakdown</summary>' + cost + '</details>' : ''}</li>`;
     }).join('');
     return { title: group.title, html: `<ul class="savings-inventory-members">${members}</ul>` };
   }
@@ -125,7 +151,13 @@
         : 'Stock for this selected period: Unknown.';
       const savedLabel = projected ? 'Saved' : packet.goalAllocation?.status === 'ready' && packet.backing?.status !== 'ready'
         ? 'Saved allocation' : 'Currently backed';
-      const rows = publishedRows.filter(row => row?.key !== annualBillRow).map(row => { const members = memberHtml(packet, row); return `<article data-savings-goal="${escape(row.key)}"><h3>${escape(members.title)}</h3><dl>${amount(savedLabel, row.saved, row.savedTrust, 'backed', projected)}${amount('Needed', row.needed, row.neededTrust, 'needed', projected)}${amount(projected ? 'This period' : 'Projected this period', row.thisPeriod, row.thisPeriodTrust, null, projected)}</dl>${members.html}</article>`; }).join('');
+      const rows = publishedRows.filter(row => row?.key !== annualBillRow).map(row => {
+        const members = memberHtml(packet, row);
+        const cost = commitmentCostHtml(row, { withheld: projected || packet.period?.kind === 'historical'
+          || publishedRows.filter(other => other.key === row.key).length !== 1,
+          savedLabel: projected ? 'Saved at period close' : savedLabel });
+        return `<article data-savings-goal="${escape(row.key)}"><h3>${escape(members.title)}</h3><dl>${amount(savedLabel, row.saved, row.savedTrust, 'backed', projected)}${amount('Needed', row.needed, row.neededTrust, 'needed', projected)}${amount(projected ? 'This period' : 'Projected this period', row.thisPeriod, row.thisPeriodTrust, null, projected)}</dl>${cost ? '<details><summary>Cost breakdown</summary>' + cost + '</details>' : ''}${members.html}</article>`;
+      }).join('');
       const pools = (packet.backing?.pools || []).map(pool => `<li>${escape(pool.label || pool.accountId)}: ${money(pool.observedCash)} <small>${escape(pool.observedAsOf || 'Date unavailable')}</small></li>`).join('');
       return `<section class="savings-inventory" data-savings-inventory="${escape(projected ? packet.forecastClosing?.status || 'unavailable' : packet.backing?.status || 'unavailable')}"><h2>One savings pot</h2><p>${stockCopy}${projected ? '' : ' ' + savedLabel + ' amounts follow unpaid planning dates across both reserves.'}</p>${projected ? !closing ? '<p>'+escape(packet.forecastClosing?.reason || 'Closing Savings data is unavailable.')+'</p>' : '' : '<p>'+escape(packet.goalAllocation?.status === 'ready' ? packet.allocationDescription : 'Calculated backing is separate from manual assignments, actual transfers and future projected top-ups.')+'</p>'}${!projected && packet.backing?.reason ? '<p>'+escape(packet.backing.reason)+'</p>' : ''}${rows}${annualBillExcluded ? '<p class="operating-note" data-savings-annual-bill-note>Travel Visa annual fee is treated as a bill; its funding is unchanged.</p>' : ''}<details><summary>Accounts &amp; evidence</summary><ul>${pools}</ul>${projected ? '' : '<p>Saved allocation is a reported earmark, not money moved or a bill paid. Physical withdrawal routing and money movement are not authorized by this view.</p>'}</details></section>`;
     }
@@ -143,11 +175,11 @@
     </article>`).join('');
     const goals = (packet.goals || []).map(goal => `<article class="savings-inventory-goal" data-savings-goal="${escape(goal.key)}"><h3>${escape(goal.label)}</h3>
       <dl>${amount('Confirmed across pools', goal.intent, 'calculated')}${amount('Currently backed', goal.backed, goal.backedTrust)}${amount('Existing goal requirement', goal.target, goal.targetTrust)}${goal.targetMax != null && goal.targetMax !== goal.target ? amount('Upper requirement', goal.targetMax, goal.targetTrust) : ''}</dl>
-      ${goal.settled ? '<p>Goal is settled. Its earmark remains assigned.</p>' : ''}<p class="operating-note">${escape(goal.release)}</p></article>`).join('');
+      ${commitmentCostHtml({ ...goal, saved: goal.backed, savedTrust: goal.backedTrust })}${goal.settled ? '<p>Goal is settled. Its earmark remains assigned.</p>' : ''}<p class="operating-note">${escape(goal.release)}</p></article>`).join('');
     return `<section class="savings-inventory" data-savings-inventory="ready">${head}<p class="operating-note">These assignments divide the same observed cash. They are not extra cash to add to balances or reserve backing. Deposits remain unallocated; settled withdrawals use that residual first. Silver already in a pool is included once, with no inferred purpose.</p>
       <div class="savings-inventory-pools">${pools}</div>${goals ? `<details class="savings-inventory-goals"><summary>Goal requirements and assignments</summary>${goals}</details>` : ''}
       <p class="operating-note" data-savings-instructions="withheld">${escape(packet.instructionReason)}</p></section>`;
   }
-  root.SavingsInventory = { html };
+  root.SavingsInventory = { html, commitmentCostHtml };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.SavingsInventory;
 })(typeof window !== 'undefined' ? window : globalThis);

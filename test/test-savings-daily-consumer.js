@@ -163,3 +163,101 @@ assert.ok(future?.packet);delete future.packet;ctx.futureId=future.id;
 const missingFuture=vm.runInContext('budgetDailySavingsFor(src,futureId)',ctx);
 assert.equal(missingFuture.status,'unavailable');assert.equal(missingFuture.stock,undefined);
 assert.equal(missingFuture.period.proposal,null,'no current offer is borrowed into a missing future publication');
+
+// The live disclosure consumes real Forecast publications over synthetic inputs.
+const costFact = (html, name) => html.split(`data-savings-cost-${name}>`)[1]?.split('</dd>')[0];
+const evidence = (cents, reversals = []) => ({ commitments: cents == null ? [] : [{ goalId: 'commitment:near',
+  links: [{ effectiveDate: '2026-10-03', assignedCents: cents, reversals }] }] });
+function costWorld(settlementEvidence, mutate = () => {}) {
+  const fx = require('./fixtures/savings-daily-allocation-contract');
+  const x = require('./fixtures/chronological-savings-data').policy(fx.advance(fx.fixture(), '2026-10-07'));
+  x.plan.commitments = x.plan.commitments.filter(row => row.id === 'near');
+  mutate(x.plan.commitments[0]);
+  const advice = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [], settlementEvidence });
+  ctx.src = { plan: x.plan, debts: [], asOf: x.asOf, advice };
+  ctx.costPacket = vm.runInContext('budgetDailySavingsFor(src)', ctx);
+  return vm.runInContext('budgetDailySavingsHtml(costPacket)', ctx);
+}
+for (const [ev, original, paid, unpaid] of [
+  [evidence(2500), /60\.00/, /25\.00/, /35\.00/],
+  [evidence(6000), /60\.00/, /60\.00/, /0\.00/],
+  [evidence(null), /60\.00/, /0\.00/, /60\.00/],
+  [undefined, /60\.00/, /Unknown/, /Unknown/],
+  [evidence(7000), /60\.00/, /Unknown/, /Unknown/],
+  [evidence(2500, [{}]), /60\.00/, /Unknown/, /Unknown/],
+]) {
+  const html = costWorld(ev);
+  // The yearly home-cost row has no commitment facts; first breakdown is near.
+  assert.match(costFact(html, 'original'), original);
+  assert.match(costFact(html, 'paid'), paid);
+  assert.match(costFact(html, 'unpaid'), unpaid);
+  assert.match(html, /Cost facts as of 2026-10-07/);
+}
+for (const ev of [evidence(null), evidence(2500)]) {
+  const html = costWorld(ev, row => { delete row.amount; row.amountMin = 50.01; row.amountMax = 70.03; });
+  assert.match(costFact(html, 'original'), /50\.01.*70\.03/);
+  assert.match(costFact(html, 'paid'), ev.commitments.length ? /Unknown/ : /0\.00/);
+  assert.match(costFact(html, 'unpaid'), ev.commitments.length ? /Unknown/ : /50\.01.*70\.03/);
+}
+// Malformed facts withhold independently; no need/saved fallback or coercion.
+costWorld(evidence(2500));
+const baseCostPacket = ctx.costPacket;
+for (const [name, malformed] of [
+  ['paid', { status: 'known', amount: '25', range: null }],
+  ['paid', { status: 'known', amount: -1, range: null }],
+  ['paid', { status: 'known', amount: Infinity, range: null }],
+  ['unpaid', { status: 'known', amount: null, range: { min: 70, max: 50 } }],
+  ['unpaid', { status: 'known', amount: 35, range: { min: 30, max: 40 } }],
+  ['unpaid', null],
+]) {
+  ctx.costPacket = structuredClone(baseCostPacket);
+  const row = ctx.costPacket.rows.find(row => row.commitmentCost);
+  row.commitmentCost[name === 'paid' ? 'confirmedLinkedPaid' : 'unpaidCost'] = malformed;
+  const html = vm.runInContext('budgetDailySavingsHtml(costPacket)', ctx);
+  assert.match(costFact(html, name), /Unknown/);
+  assert.match(costFact(html, 'original'), /60\.00/);
+  assert.match(costFact(html, name === 'paid' ? 'unpaid' : 'paid'), name === 'paid' ? /35\.00/ : /25\.00/);
+}
+for (const date of [undefined, '2026-02-30', 'not a date']) {
+  ctx.costPacket = structuredClone(baseCostPacket);
+  const row = ctx.costPacket.rows.find(row => row.commitmentCost);
+  row.commitmentCost.asOf = date;
+  const html = vm.runInContext('budgetDailySavingsHtml(costPacket)', ctx);
+  for (const field of ['original', 'paid', 'unpaid']) assert.match(costFact(html, field), /Unknown/);
+  assert.match(costFact(html, 'saved'), /35\.00/, 'invalid cost date cannot erase independently valid saved');
+}
+{
+  ctx.costPacket = structuredClone(baseCostPacket);
+  const row = ctx.costPacket.rows.find(row => row.commitmentCost);
+  row.commitmentCost.originalCost.amount = 0;
+  assert.match(costFact(vm.runInContext('budgetDailySavingsHtml(costPacket)', ctx), 'original'), /0\.00/, 'genuine original zero is known');
+  delete row.commitmentCost;
+  const missing = vm.runInContext('budgetDailySavingsHtml(costPacket)', ctx);
+  assert.match(costFact(missing, 'original'), /Unknown/, 'missing packet never falls back to needed');
+  assert.match(costFact(missing, 'saved'), /35\.00/);
+}
+// Same renderer instance, current -> future -> current. Future opening facts
+// belong only to Forecast's surviving roster and carry the actual opening date.
+{
+  const x = require('./fixtures/savings-selected-roster-data')();
+  const ev = { commitments: [{ goalId: 'commitment:next', links: [{ effectiveDate: '2026-10-03', assignedCents: 1000, reversals: [] }] }] };
+  const advice = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [], settlementEvidence: ev });
+  ctx.src = { plan: x.plan, debts: [], asOf: x.asOf, advice };
+  ctx.selectedCostPeriod = null;
+  const render = () => vm.runInContext('budgetDailySavingsHtml(budgetDailySavingsFor(src,selectedCostPeriod))', ctx);
+  const current = render();
+  ctx.selectedCostPeriod = advice.payPeriodViews.find(p => p.start === '2026-10-16').id;
+  const futureHtml = render();
+  const opening = futureHtml.split('data-savings-opening-costs>')[1];
+  assert.ok(opening, 'surviving opening facts are disclosed separately');
+  assert.match(opening, /Cost facts as of 2026-10-07/);
+  assert.match(costFact(opening, 'original'), /40\.00/);
+  assert.match(costFact(opening, 'paid'), /10\.00/);
+  assert.match(costFact(opening, 'unpaid'), /30\.00/);
+  assert.doesNotMatch(opening, /Invented early installment|Invented boundary installment/);
+  const closing = futureHtml.split('data-savings-opening-costs>')[0];
+  assert.doesNotMatch(closing, /Cost facts as of/);
+  ctx.selectedCostPeriod = null;
+  assert.equal(render(), current, 'returning current replaces future facts exactly');
+}
+console.log('PASS Savings cost disclosure: native partial/full/empty/unconfigured/uncertain/range publications, independent fail-closed fields and period replacement');

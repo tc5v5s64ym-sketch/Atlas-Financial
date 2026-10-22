@@ -116,7 +116,7 @@ function planSpendMoney(value) {
 
 function planSpendRequirement(row) {
   if (row.need != null && Number.isFinite(Number(row.need))) {
-    return { amount: money2(row.need), label: 'Cost', kind: 'point' };
+    return { amount: money2(row.need), label: 'Funding requirement', kind: 'point' };
   }
   if (row.amountMin != null && row.amountMax != null
       && Number.isFinite(Number(row.amountMin)) && Number.isFinite(Number(row.amountMax))) {
@@ -219,22 +219,37 @@ function planSpendScheduledFacts(cost) {
     ? `<p>Base floor scheduled; ${planSpendMoney(cost.uncertaintyAdditional)} above it remains uncertain.</p>` : ''}`;
 }
 
-function planSpendScheduledCard(card, cost, schedule, byId) {
+// The card/member already carries its exact native cost packet. Backing and
+// contribution figures stay the independent incumbent schedule publication.
+function planSpendCostHtml(row, cost, withheld = false) {
+  if (typeof SavingsInventory === 'undefined') return '';
+  const facts = SavingsInventory.commitmentCostHtml(row, { includeSaved: false, withheld });
+  return facts ? facts + planSpendScheduledFacts(cost) : '';
+}
+
+function planSpendScheduledCard(card, cost, schedule, byId, ambiguous = false) {
+  const group = card.kind === 'summary';
+  const costs = (group ? schedule?.groups : schedule?.costs) || [];
+  const detailCost = costs.filter(row => row.id === card.id).length === 1 ? cost : null;
+  const costHtml = planSpendCostHtml(card, detailCost, ambiguous);
   if (card.kind === 'summary') {
     const ids = (card.members || []).map(member => member.id);
     const affected = schedule && schedule.gap && ids.some(id => schedule.gap.affected.includes(id));
     const status = affected ? '<span class="chip c">PAYDAY FUNDING GAP</span>' : planSpendStatus(card, schedule);
     const lines = (card.members || []).map(member => {
       const row = byId.get(member.id);
+      const memberCost = planSpendCostHtml(member,
+        (schedule?.costs || []).filter(cost => cost.id === member.id).length === 1 ? row : null,
+        ambiguous || card.members.filter(other => other.id === member.id).length !== 1);
       return `<li data-plan-spend-member="${member.id}"><span>${member.label}</span><b>${planSpendMoney(member.need)}</b>
         <time>${member.date ? `Cash date ${fmtDateFull(member.date)}` : member.when || 'Cash date not established'}</time>
         ${row && row.nextContribution ? `<small>Next protect ${planSpendMoney(row.nextContribution.amount)} on ${fmtDateFull(row.nextContribution.payday)}</small>` : ''}
-        ${planSpendConfidence(member)}</li>`;
+        ${planSpendConfidence(member)}${memberCost ? '<details><summary>Cost breakdown</summary>' + memberCost + '</details>' : ''}</li>`;
     }).join('');
     return `<article class="planning-row plan-spend-card ${(PLAN_SPEND_VERDICT[card.verdict] || {}).cls || ''}" data-plan-spend-id="${card.id}" data-plan-spend-card="summary" data-plan-spend-verdict="${card.verdict || ''}" data-plan-spend-members="${ids.join(' ')}">
       <div class="plan-spend-glance"><h2>${card.label}</h2><div data-plan-spend-fact="schedule-remaining"><b>${planSpendMoney(card.scheduleRemaining)}</b><small>remaining schedule</small></div>
       <div class="plan-spend-status">${status}${planSpendConfidence(card)}</div>${planSpendScheduledFacts(cost)}</div>
-      <details class="plan-spend-more"><summary>Show payment schedule</summary><ul class="plan-spend-schedule">${lines}</ul></details></article>`;
+      <details class="plan-spend-more"><summary>Show payment schedule</summary>${costHtml}<ul class="plan-spend-schedule">${lines}</ul></details></article>`;
   }
   const requirement = planSpendRequirement(card);
   const affected = schedule && schedule.gap && schedule.gap.affected.includes(card.id);
@@ -242,9 +257,10 @@ function planSpendScheduledCard(card, cost, schedule, byId) {
   const facts = !card.date ? '<p>Funding schedule unavailable — cash date not established.</p>'
     : card.flexibility === 'optional' ? '<p>Optional cost; outside the current protected funding plan.</p>'
       : planSpendScheduledFacts(cost);
-  const details = cost && cost.contributions && cost.contributions.length
-    ? `<details class="plan-spend-more"><summary>Show funding schedule</summary><ul class="plan-spend-schedule">${cost.contributions.map(row =>
-      `<li><time>${fmtDateFull(row.payday)}</time><b>${planSpendMoney(row.amount)}</b></li>`).join('')}</ul></details>` : '';
+  const contributions = cost && cost.contributions && cost.contributions.length
+    ? `<ul class="plan-spend-schedule">${cost.contributions.map(row =>
+      `<li><time>${fmtDateFull(row.payday)}</time><b>${planSpendMoney(row.amount)}</b></li>`).join('')}</ul>` : '';
+  const details = costHtml || contributions ? `<details class="plan-spend-more"><summary>${contributions ? 'Show funding schedule' : 'Cost breakdown'}</summary>${costHtml}${contributions}</details>` : '';
   return `<article class="planning-row plan-spend-card" data-plan-spend-id="${card.id}" data-plan-spend-card="row" data-plan-spend-verdict="${card.verdict || ''}" data-plan-spend-amount="${requirement.kind}">
     <div class="plan-spend-glance"><h2>${card.label}</h2><div data-plan-spend-fact="requirement"><b>${requirement.amount}</b><small>${requirement.label}</small></div>
       <span data-plan-spend-when>${planSpendTiming(card).text}</span><div class="plan-spend-status">${status}${planSpendConfidence(card)}</div>${facts}</div>${details}</article>`;
@@ -288,7 +304,7 @@ function planSpendPageHtml(advice, liveOverlay, context = {}) {
   const groupById = new Map((schedule && schedule.groups || []).map(group => [group.id, group]));
   const list = cards.map(card => planSpendScheduledCard(card,
     card.kind === 'summary' ? groupById.get(card.id) : costById.get(card.id),
-    schedule, costById)).join('');
+    schedule, costById, cards.filter(other => other.kind === card.kind && other.id === card.id).length !== 1)).join('');
   return {
     lede: planSpendFundingHero(schedule),
     note: 'Forecast projects these amounts from the served opening. Protecting cash earmarks it; paying a planned cost is the one cash outflow.',
