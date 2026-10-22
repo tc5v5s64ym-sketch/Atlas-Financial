@@ -129,7 +129,7 @@ async function world(t) {
   const w = {
     dir, time: T0, pin: null, backups: new Map(), writes: [], calls: [], tokens: new Map(),
     authority: { householdId, actorId }, source: resolved(),
-    authHook: null, resolveHook: null, prepareHook: null, commitHook: null, outcomeHook: null,
+    authHook: null, resolveHook: null, prepareHook: null, commitHook: null, outcomeHook: null, inspectHook: null,
     lostPinAck: false, unreadablePin: false, failBackup: false,
   };
   const pinStore = {
@@ -203,8 +203,8 @@ async function world(t) {
     w.classifyOnce(input);
     return w.source;
   };
-  w.newController = (store = w.store) => createSettlementEvidenceConfirmation({
-    householdId, authorize: w.authorize, resolveSelection: w.resolve, now: () => w.time,
+  w.newController = (store = w.store, extraDeps = {}) => createSettlementEvidenceConfirmation({
+    householdId, authorize: w.authorize, resolveSelection: w.resolve, now: () => w.time, ...extraDeps,
     store: {
       async prepare(input) {
         w.calls.push('prepare');
@@ -218,6 +218,10 @@ async function world(t) {
       async outcome(input) {
         w.calls.push('outcome');
         return w.outcomeHook ? w.outcomeHook(input, store) : store.outcome(input);
+      },
+      async inspectAttempt(input) {
+        w.calls.push('inspectAttempt');
+        return w.inspectHook ? w.inspectHook(input, store) : store.inspectAttempt(input);
       },
       bootstrap() { assert.fail('controller must never bootstrap'); },
       reconcile() { assert.fail('controller must never reconcile'); },
@@ -1593,4 +1597,314 @@ test('Rule E lifetime: swallowed-error controls — a dead closure refused insid
   };
   assert.deepEqual(await w.prepare(3), { status: 'unavailable', reason: 'prepare-unavailable' });
   assert.equal(order.at(-1), 'own-second-swallowed');
+});
+
+// ---------------------------------------------------------------------------
+// P2 settled-uncertainty recovery (ATLAS-080): a private NO-ARGUMENT
+// recovery capability is exposed only through an optional trusted
+// construction-time registration callback. It captures the retained
+// uncertain attempt itself (no caller context, operation ID, proof, reset
+// flag or authority override), refuses while the commit/postauthorization
+// invocation is in flight, and clears only that latch + attempted entry on
+// exact committed/not-committed inspection proof AND store readiness. It
+// returns only a maintenance acknowledgement and never retries the commit.
+
+function captureRecovery(w, extraDeps = {}) {
+  let recovery = null;
+  const controller = w.newController(w.store, {
+    ...extraDeps,
+    registerRecovery: fn => { recovery = fn; },
+  });
+  return { controller, recovery: () => recovery };
+}
+const defaultAuth = w => async ctx => {
+  if (ctx.ticket === otherContext.ticket) return { householdId, actorId: otherActor };
+  if (ctx.ticket !== context.ticket) return null;
+  return w.authority;
+};
+
+test('P2 recovery: public shape is unchanged and the capability arrives only via the registration callback', async t => {
+  const w = await world(t);
+  const { controller, recovery } = captureRecovery(w);
+  assert.equal(typeof recovery(), 'function', 'registration callback received the private capability');
+  assert.equal(recovery().length, 0, 'the capability takes no arguments');
+  assert.deepEqual(Object.keys(controller).sort(), ['confirm', 'outcome', 'prepare'],
+    'public {prepare, confirm, outcome} shape preserved');
+  assert.equal(controller.recover, undefined);
+  assert.equal(controller.recoverSettledUncertainty, undefined);
+  assert.equal(controller.reset, undefined);
+  assert.deepEqual(await recovery()(), { status: 'idle' }, 'no uncertainty -> idle acknowledgement');
+  privateFree(await recovery()());
+  // Without the optional callback nothing is exposed and nothing breaks.
+  const plain = w.newController();
+  assert.deepEqual(Object.keys(plain).sort(), ['confirm', 'outcome', 'prepare']);
+  assert.equal((await plain.prepare(context, request(9))).status, 'prepared');
+});
+
+test('P2 recovery acceptance 1: durable commit + postcommit authorization failure -> recovery releases, receipt stays actor-bound, next save works, commit called once', async t => {
+  const w = await world(t);
+  const { controller, recovery } = captureRecovery(w);
+  const prepared = await controller.prepare(context, request(1));
+  assert.equal(prepared.status, 'prepared');
+  let landed = false;
+  w.commitHook = async (input, store) => {
+    const result = await store.commitWithoutRecovery(input);
+    landed = true;
+    return result;
+  };
+  const auth = defaultAuth(w);
+  w.authHook = async ctx => (landed && ctx.ticket === context.ticket ? null : auth(ctx));
+  const unknownResult = await controller.confirm(context,
+    { operationId: op(1), previewToken: prepared.previewToken, confirmed: true });
+  assert.deepEqual(unknownResult, { status: 'unknown', operationId: op(1) },
+    'postcommit authorization failure surfaces unknown even though the commit is durable');
+  assert.equal(w.document().operations.length, 1, 'the commit landed exactly once');
+  assert.equal(w.count('commitWithoutRecovery'), 1);
+  // Actor B still cannot read actor A's receipt, and B cannot clear the latch.
+  assert.deepEqual(await controller.outcome(otherContext, { operationId: op(1) }),
+    { status: 'unknown', operationId: op(1) });
+  assert.deepEqual(await controller.prepare(context, request(3)),
+    { status: 'unavailable', reason: 'outcome-unresolved' }, 'latch still set after B probe');
+  // TTL passing does not defeat the durable proof.
+  w.time += C.TTL_MS + 1;
+  // Recovery needs no caller context and no re-authorization (A auth is
+  // still failing): it inspects the retained attempt itself.
+  const ack = await recovery()();
+  assert.deepEqual(ack, { status: 'resolved' });
+  assert.deepEqual(Object.keys(ack), ['status'], 'acknowledgement carries no receipt/actor/financial data');
+  privateFree(ack);
+  assert.equal(w.count('commitWithoutRecovery'), 1, 'recovery never retries the original commit');
+  assert.equal(w.document().operations.length, 1);
+  // The original receipt is readable again by its owner only.
+  w.authHook = null; w.commitHook = null;
+  const receipt = await controller.outcome(context, { operationId: op(1) });
+  assert.equal(receipt.status, 'committed');
+  assert.equal(receipt.revision, 1);
+  assert.deepEqual(await controller.outcome(otherContext, { operationId: op(1) }),
+    { status: 'unknown', operationId: op(1) });
+  // The next unrelated save works.
+  const fixture2 = distinctTransaction(2);
+  w.source = fixture2.source; w.classification = fixture2.classification;
+  const prep2 = await controller.prepare(context, request(2, 1));
+  assert.equal(prep2.status, 'prepared');
+  const second = await controller.confirm(context,
+    { operationId: op(2), previewToken: prep2.previewToken, confirmed: true });
+  assert.equal(second.status, 'committed');
+  assert.equal(second.revision, 2);
+  assert.equal(w.count('commitWithoutRecovery'), 2);
+});
+
+test('P2 recovery acceptance 2+3: journal-resident attempt cannot unlock before explicit reconcile; R4 cleanup + fresh inspection retires it; no auto resubmission', async t => {
+  const w = await world(t);
+  const { controller, recovery } = captureRecovery(w);
+  const prepared = await controller.prepare(context, request(1));
+  assert.equal(prepared.status, 'prepared');
+  // Simulate journal landed / temp failed: a journal is resident in the
+  // store and the commit invocation settled unknown.
+  w.commitHook = async () => {
+    fs.writeFileSync(path.join(w.dir, 'journal.json'),
+      JSON.stringify({ version: 1, note: 'synthetic resident journal' }), { mode: 0o600 });
+    return { status: 'unknown', reason: 'temp-write-failed' };
+  };
+  assert.deepEqual(await controller.confirm(context,
+    { operationId: op(1), previewToken: prepared.previewToken, confirmed: true }),
+    { status: 'unknown', operationId: op(1) });
+  assert.equal(w.count('commitWithoutRecovery'), 1);
+  // Inspection sees the disposition (not committed at the exact base) but
+  // the resident journal means the store is not ready: blocked.
+  assert.deepEqual(await recovery()(), { status: 'blocked' });
+  assert.ok(fs.existsSync(path.join(w.dir, 'journal.json')), 'recovery never clears a journal');
+  assert.equal(w.document().operations.length, 0);
+  assert.deepEqual(await controller.prepare(context, request(2)),
+    { status: 'unavailable', reason: 'outcome-unresolved' });
+  // Explicit reconciliation remains the separate path that cleans up.
+  const report = await w.store.reconcile();
+  assert.equal(report.row, 'R4');
+  assert.equal(fs.existsSync(path.join(w.dir, 'journal.json')), false, 'R4 removed the journal');
+  // Only now does a FRESH inspection retire the attempt.
+  assert.deepEqual(await recovery()(), { status: 'resolved' });
+  assert.equal(w.document().operations.length, 0, 'no auto resubmission of the retired attempt');
+  assert.equal(w.count('commitWithoutRecovery'), 1, 'the original commit was never retried');
+  // The old token cannot confirm fresh work; a fresh prepare + explicit
+  // confirm is required.
+  assert.notEqual((await controller.confirm(context,
+    { operationId: op(1), previewToken: prepared.previewToken, confirmed: true })).status, 'committed');
+  assert.equal(w.count('commitWithoutRecovery'), 1);
+  w.commitHook = null;
+  const fresh = await controller.prepare(context, request(1));
+  assert.equal(fresh.status, 'prepared');
+  assert.notEqual(fresh.previewToken, prepared.previewToken);
+  assert.equal((await controller.confirm(context,
+    { operationId: op(1), previewToken: fresh.previewToken, confirmed: true })).status, 'committed');
+});
+
+test('P2 recovery acceptance 3: divergent or unreadable pin remains blocked even with a known base disposition', async t => {
+  const w = await world(t);
+  const { controller, recovery } = captureRecovery(w);
+  const prepared = await controller.prepare(context, request(1));
+  assert.equal(prepared.status, 'prepared');
+  w.commitHook = async () => ({ status: 'unknown', reason: 'lost-reply' });
+  assert.equal((await controller.confirm(context,
+    { operationId: op(1), previewToken: prepared.previewToken, confirmed: true })).status, 'unknown');
+  // Divergent pin: head no longer validates against the pin.
+  const realPin = clone(w.pin);
+  w.pin = { ...realPin, digest: 'f'.repeat(64) };
+  assert.deepEqual(await recovery()(), { status: 'blocked' });
+  assert.deepEqual(await controller.prepare(context, request(2)),
+    { status: 'unavailable', reason: 'outcome-unresolved' }, 'latch preserved while blocked');
+  // Unreadable pin.
+  w.pin = realPin;
+  w.unreadablePin = true;
+  assert.deepEqual(await recovery()(), { status: 'blocked' });
+  // Healed: exact-base not-committed proof + readiness resolves.
+  w.unreadablePin = false;
+  assert.deepEqual(await recovery()(), { status: 'resolved' });
+  assert.equal(w.count('commitWithoutRecovery'), 1);
+});
+
+test('P2 recovery acceptance 4: a paused commit or postauthorization invocation blocks recovery; a waiter timeout is not settlement', async t => {
+  const w = await world(t);
+  const { controller, recovery } = captureRecovery(w);
+  // Paused commit.
+  const prepared = await controller.prepare(context, request(1));
+  assert.equal(prepared.status, 'prepared');
+  const entered = deferred(), release = deferred();
+  w.commitHook = async (input, store) => {
+    entered.resolve(); await release.promise;
+    return store.commitWithoutRecovery(input);
+  };
+  const pending = controller.confirm(context,
+    { operationId: op(1), previewToken: prepared.previewToken, confirmed: true });
+  await entered.promise;
+  assert.deepEqual(await recovery()(), { status: 'blocked' },
+    'recovery refuses while the commit invocation is in flight');
+  assert.deepEqual(await controller.prepare(context, request(2)),
+    { status: 'unavailable', reason: 'outcome-unresolved' });
+  release.resolve();
+  assert.equal((await pending).status, 'committed');
+  assert.deepEqual(await recovery()(), { status: 'idle' }, 'the settled invocation resolved itself');
+  // Paused postauthorization (commit already returned, confirm not settled).
+  const fixture2 = distinctTransaction(2);
+  w.source = fixture2.source; w.classification = fixture2.classification;
+  const prep2 = await controller.prepare(context, request(2, 1));
+  assert.equal(prep2.status, 'prepared');
+  const enteredAuth = deferred(), releaseAuth = deferred();
+  let pauseArmed = false;
+  w.commitHook = async (input, store) => {
+    const result = await store.commitWithoutRecovery(input);
+    pauseArmed = true;
+    return result;
+  };
+  const auth = defaultAuth(w);
+  w.authHook = async ctx => {
+    if (pauseArmed) { pauseArmed = false; enteredAuth.resolve(); await releaseAuth.promise; }
+    return auth(ctx);
+  };
+  const pending2 = controller.confirm(context,
+    { operationId: op(2), previewToken: prep2.previewToken, confirmed: true });
+  await enteredAuth.promise;
+  assert.deepEqual(await recovery()(), { status: 'blocked' },
+    'recovery refuses while the postauthorization phase is in flight');
+  releaseAuth.resolve();
+  assert.equal((await pending2).status, 'committed');
+  assert.equal(w.count('commitWithoutRecovery'), 2, 'exactly one commit per operation');
+});
+
+test('P2 recovery acceptance 5+7: caller arguments are not proof — recovery captures only the retained attempt and leaves other generations untouched', async t => {
+  const w = await world(t);
+  const { controller, recovery } = captureRecovery(w);
+  const prep1 = await controller.prepare(context, request(1));
+  const prep2 = await controller.prepare(context, request(2, 1));
+  assert.equal(prep1.status, 'prepared');
+  assert.equal(prep2.status, 'prepared');
+  w.commitHook = async () => ({ status: 'unknown', reason: 'lost-reply' });
+  assert.equal((await controller.confirm(context,
+    { operationId: op(1), previewToken: prep1.previewToken, confirmed: true })).status, 'unknown');
+  w.commitHook = null;
+  // Forged caller context/proof/reset aimed at operation 2 changes nothing:
+  // the capability is no-argument and acts only on the retained attempt.
+  const ack = await recovery()({ operationId: op(2), actorId: otherActor, proof: 'forged', reset: true });
+  assert.deepEqual(ack, { status: 'resolved' });
+  assert.deepEqual(Object.keys(ack), ['status']);
+  // Operation 2's generation survived: it still confirms with its own token.
+  const second = await controller.confirm(context,
+    { operationId: op(2), previewToken: prep2.previewToken, confirmed: true });
+  assert.equal(second.status, 'committed');
+  assert.equal(w.document().operations.length, 1, 'only operation 2 ever landed; operation 1 was not resubmitted');
+  assert.equal(w.count('commitWithoutRecovery'), 2);
+});
+
+test('P2 recovery acceptance 6: a delayed inspection cannot clear a replaced generation or a newer uncertainty', async t => {
+  const w = await world(t);
+  const { controller, recovery } = captureRecovery(w);
+  const prepared = await controller.prepare(context, request(1));
+  assert.equal(prepared.status, 'prepared');
+  let landed = false;
+  w.commitHook = async (input, store) => {
+    const result = await store.commitWithoutRecovery(input);
+    landed = true;
+    return result;
+  };
+  const auth = defaultAuth(w);
+  w.authHook = async ctx => (landed && ctx.ticket === context.ticket ? null : auth(ctx));
+  assert.equal((await controller.confirm(context,
+    { operationId: op(1), previewToken: prepared.previewToken, confirmed: true })).status, 'unknown');
+  w.authHook = null; w.commitHook = null;
+  // Recovery starts; its inspection is delayed and will return a stale
+  // committed+ready verdict for operation 1.
+  const entered = deferred(), release = deferred();
+  w.inspectHook = async () => {
+    entered.resolve(); await release.promise;
+    return { disposition: 'committed', ready: true };
+  };
+  const pendingRecovery = recovery()();
+  await entered.promise;
+  // A legitimate resolution happens first: the owner's outcome read finds
+  // the durable receipt, clearing the latch and retiring the entry.
+  const receipt = await controller.outcome(context, { operationId: op(1) });
+  assert.equal(receipt.status, 'committed');
+  // A NEW uncertainty is latched for a different operation/generation.
+  const fixture2 = distinctTransaction(2);
+  w.source = fixture2.source; w.classification = fixture2.classification;
+  const prep2 = await controller.prepare(context, request(2, 1));
+  assert.equal(prep2.status, 'prepared');
+  w.commitHook = async () => ({ status: 'unknown', reason: 'lost-reply' });
+  assert.equal((await controller.confirm(context,
+    { operationId: op(2), previewToken: prep2.previewToken, confirmed: true })).status, 'unknown');
+  const commitsForOp2 = w.count('commitWithoutRecovery');
+  release.resolve();
+  assert.deepEqual(await pendingRecovery, { status: 'obsolete' },
+    'the delayed stale proof must not clear the newer uncertainty');
+  assert.deepEqual(await controller.prepare(context, request(3)),
+    { status: 'unavailable', reason: 'outcome-unresolved' }, 'new latch preserved');
+  assert.equal((await controller.confirm(context,
+    { operationId: op(2), previewToken: prep2.previewToken, confirmed: true })).status, 'unknown');
+  assert.equal(w.count('commitWithoutRecovery'), commitsForOp2, 'no retry of the newer attempt');
+  // A fresh recovery (real inspection) resolves the newer attempt on its
+  // own proof: it never landed, at the exact current base, journal absent.
+  w.inspectHook = null; w.commitHook = null;
+  assert.deepEqual(await recovery()(), { status: 'resolved' });
+});
+
+test('P2 recovery: a store without inspectAttempt cannot prove anything — blocked, latch preserved', async t => {
+  const w = await world(t);
+  let bareRecovery = null;
+  const bare = createSettlementEvidenceConfirmation({
+    householdId, authorize: w.authorize, resolveSelection: w.resolve, now: () => w.time,
+    registerRecovery: fn => { bareRecovery = fn; },
+    store: {
+      prepare: input => w.store.prepare(input),
+      commitWithoutRecovery: async () => ({ status: 'unknown', reason: 'lost-reply' }),
+      outcome: input => w.store.outcome(input),
+    },
+  });
+  const prepared = await bare.prepare(context, request(1));
+  assert.equal(prepared.status, 'prepared');
+  assert.equal((await bare.confirm(context,
+    { operationId: op(1), previewToken: prepared.previewToken, confirmed: true })).status, 'unknown');
+  assert.equal(typeof bareRecovery, 'function');
+  assert.deepEqual(await bareRecovery(), { status: 'blocked' });
+  assert.deepEqual(await bare.prepare(context, request(2)),
+    { status: 'unavailable', reason: 'outcome-unresolved' });
+  assert.equal(w.document().operations.length, 0);
 });
