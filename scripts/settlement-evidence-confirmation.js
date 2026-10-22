@@ -3,7 +3,12 @@
 // ATLAS-080 FOUNDATION — NOT COMPLETION. Strictly synthetic, unimported
 // prepare/confirm/outcome caller boundary. No route, provider client, default
 // identity, cookie interpretation, production resolver, identity hashing,
-// key/registry, environment access, bootstrap or recovery is supplied here.
+// key/registry, environment access or bootstrap is supplied here, and no
+// production recovery wiring either: the settled-uncertainty recovery below
+// (P2) is a private no-argument capability handed only to a trusted
+// construction-time registration callback; it is never a caller-facing
+// reset, takes no caller proof, and clears a latched uncertainty only on
+// the store's read-only inspection proof plus store readiness.
 //
 // Trusted injection contract:
 // - householdId binds the injected, unchanged store to ONE household;
@@ -68,7 +73,10 @@
 // Only the exact private store preview/digest may reach commit. The store
 // owns ledger math, conservation, revision/CAS, expiry and durable receipts.
 // Each retained operation permits at most one commit invocation, including
-// concurrent callers. An unknown result is never retried or recovered here.
+// concurrent callers. An unknown result is never retried here; the private
+// recovery capability never resubmits a commit either — on exact
+// not-committed proof it retires the attempted entry, and fresh work needs
+// a fresh prepare and an explicit confirm.
 // A subsequent explicit outcome/confirm may READ an original durable receipt,
 // even after preview expiry, later commits or restart. A restarted controller
 // has no uncommitted previews. Household effects are read independently through
@@ -228,9 +236,10 @@ function receipt(result, authority, operationId) {
 
 function createSettlementEvidenceConfirmation(deps) {
   if (!record(deps)) throw new TypeError('settlement-confirmation: dependencies required');
-  const { householdId, authorize, resolveSelection, store, now } = deps;
+  const { householdId, authorize, resolveSelection, store, now, registerRecovery } = deps;
   if (!matches(HOUSEHOLD, householdId) || typeof authorize !== 'function'
     || typeof resolveSelection !== 'function' || typeof now !== 'function'
+    || (registerRecovery !== undefined && typeof registerRecovery !== 'function')
     || !store || ['prepare', 'commitWithoutRecovery', 'outcome'].some(k => typeof store[k] !== 'function')) {
     throw new TypeError('settlement-confirmation: incomplete trusted dependencies');
   }
@@ -319,6 +328,55 @@ function createSettlementEvidenceConfirmation(deps) {
     retire(operationId, expected);
     return original;
   }
+
+  // Settled-uncertainty recovery (P2). This private NO-ARGUMENT capability
+  // is exposed only through the optional trusted construction-time
+  // registration callback below; it never appears on the public object. It
+  // captures the retained uncertain attempt itself — the entry's retained
+  // authority, frozen preview and confirmation digest — and accepts no
+  // caller context, operation ID, proof, reset flag or authority override,
+  // so nothing a caller supplies can aim it at another operation or
+  // fabricate the proof it acts on. It refuses while the actual
+  // commit/postauthorization invocation remains in flight (an outside
+  // waiter's timeout is not proof that invocation ended). After awaiting
+  // the store's read-only inspection it rechecks, with no intervening
+  // await, that the same latch, the same generation/entry (identity and
+  // token) and no in-flight write hold; only then, on exact committed or
+  // not-committed proof AND store readiness, does it clear only that latch
+  // and retire only its attempted entry. A delayed inspection that finds
+  // its generation replaced reports obsolete and preserves the newer
+  // state. It never retries the commit and returns only a maintenance
+  // acknowledgement — never a receipt, an actor or financial data.
+  const ack = status => Object.freeze({ status });
+  async function recoverSettledUncertainty() {
+    if (writeInFlight) return ack('blocked');
+    const operationId = uncertainOperation;
+    if (!operationId) return ack('idle');
+    const entry = previews.get(operationId);
+    if (!entry || !entry.attempted) return ack('blocked');
+    if (typeof store.inspectAttempt !== 'function') return ack('blocked');
+    const capturedToken = entry.previewToken;
+    let disposition, ready;
+    try {
+      const inspection = snapshot(await store.inspectAttempt({
+        actorId: entry.authority.actorId, preview: entry.preview,
+        confirmationDigest: entry.confirmationDigest,
+      }));
+      disposition = inspection.disposition; ready = inspection.ready;
+    } catch { return ack('blocked'); }
+    // Recheck with no intervening await: the decision and the clearing are
+    // one synchronous step after the inspection settles.
+    if (uncertainOperation !== operationId || previews.get(operationId) !== entry
+      || entry.previewToken !== capturedToken) return ack('obsolete');
+    if (writeInFlight) return ack('blocked');
+    if ((disposition === 'committed' || disposition === 'not-committed') && ready === true) {
+      uncertainOperation = null;
+      retire(operationId, entry);
+      return ack('resolved');
+    }
+    return ack('blocked');
+  }
+  if (registerRecovery) registerRecovery(recoverSettledUncertainty);
 
   async function prepare(context, input) {
     let request, ownedContext, reservation;

@@ -53,6 +53,20 @@
 // mismatch or CAS-false branch may reconcile, restore, quarantine or clean up.
 // Successful pinning may finalize this invocation's own journal normally.
 // Ordinary commit() and explicit reconcile() retain their recovery semantics.
+//
+// inspectAttempt is a trusted READ-ONLY inspection for settled-uncertainty
+// recovery (P2): given the controller-retained actor, the complete frozen
+// preview and the confirmation digest, it establishes only whether that
+// exact attempt is committed in the validated pinned ledger, not committed
+// at the preview's exact pinned base, or unresolved — and returns store
+// readiness separately (a qualified pinned head plus a successfully read
+// ABSENT journal; a present or unreadable journal is not ready, even when
+// the disposition is known). It snapshots its input before acquiring the
+// same shared lock, validates every binding under that lock, and never
+// writes, commits, reconciles, promotes, restores or clears a journal.
+// Explicit reconcile() remains the only cleanup path; after a successful
+// R4 cleanup a caller freshly inspects the pinned base rather than trusting
+// a cached or caller-supplied R4 report.
 
 const C = require('./planned-obligation-settlement-contract');
 
@@ -855,6 +869,92 @@ function createSettlementEvidenceStore(deps) {
   async function commit(input) { return commitWithPolicy(input, true); }
   async function commitWithoutRecovery(input) { return commitWithPolicy(input, false); }
 
+  // --- Settled-uncertainty inspection (P2) --------------------------------
+  async function inspectAttemptLocked(req) {
+    // A structurally malformed proof proves nothing and is never ready:
+    // the complete frozen preview shape (schema, household, actor,
+    // operation, expected base, TTL window, command) is validated before
+    // any adapter read can be interpreted through it.
+    if (!isRecord(req) || typeof req.actorId !== 'string' || !ACTOR_RE.test(req.actorId)
+      || !isHash(req.confirmationDigest) || !isRecord(req.preview)) {
+      return { disposition: 'unresolved', ready: false };
+    }
+    const preview = req.preview;
+    const previewKeys = Object.keys(preview).sort();
+    const wantedPreviewKeys = ['schema', 'householdId', 'actorId', 'operationId',
+      'expectedRevision', 'expectedDocumentDigest', 'issuedAt', 'expiresAt', 'command'].sort();
+    if (previewKeys.length !== wantedPreviewKeys.length
+      || previewKeys.some((k, i) => k !== wantedPreviewKeys[i])) {
+      return { disposition: 'unresolved', ready: false };
+    }
+    if (preview.schema !== C.PREVIEW_SCHEMA || preview.householdId !== householdId
+      || typeof preview.actorId !== 'string' || !ACTOR_RE.test(preview.actorId)
+      || typeof preview.operationId !== 'string' || !OPERATION_RE.test(preview.operationId)
+      || !Number.isSafeInteger(preview.expectedRevision) || preview.expectedRevision < 0
+      || !isHash(preview.expectedDocumentDigest)
+      || !isTick(preview.issuedAt) || preview.expiresAt !== preview.issuedAt + C.TTL_MS
+      || !isRecord(preview.command)) {
+      return { disposition: 'unresolved', ready: false };
+    }
+    let previewDigest;
+    try { previewDigest = C.digest(preview); } catch {
+      return { disposition: 'unresolved', ready: false };
+    }
+    const P = await readPinState();
+    const H = await readDocState();
+    const J = await readJournalState();
+    const head = P.kind === 'ok' && H.kind === 'ok' && H.bytes ? docState(H.bytes) : null;
+    const qualified = !!head && P.kind === 'ok'
+      && head.revision === P.pin.revision && head.digest === P.pin.digest;
+    // Readiness is a property of the store alone, reported separately from
+    // the disposition: a qualified pinned head plus a successfully read
+    // absent journal. A present or unreadable journal is not ready, even
+    // when the disposition below is known.
+    const ready = qualified && J.kind === 'ok' && !J.raw;
+    if (!qualified) return { disposition: 'unresolved', ready: false };
+    // Binding validation: the supplied actor must be the preview's actor
+    // and the supplied confirmation digest must be the preview's digest.
+    if (req.actorId !== preview.actorId || req.confirmationDigest !== previewDigest) {
+      return { disposition: 'unresolved', ready };
+    }
+    const recorded = head.operations.find(o => o.operationId === preview.operationId);
+    if (recorded) {
+      // Committed only on an exact ledger match: operation, actor, request
+      // digest, the recorded revision the preview's base implies, and the
+      // preview's expected digest over the validated immutable prefix. A
+      // mismatched same-ID record is unresolved, never not-committed.
+      const committed = recorded.actorId === req.actorId
+        && recorded.requestDigest === previewDigest
+        && recorded.revision === preview.expectedRevision + 1
+        && preview.expectedDocumentDigest === prefixDigest(head, preview.expectedRevision);
+      return { disposition: committed ? 'committed' : 'unresolved', ready };
+    }
+    // Not committed only at the preview's exact pinned base: an advanced
+    // head without the matching committed attempt proves nothing.
+    const notCommitted = head.revision === preview.expectedRevision
+      && head.digest === preview.expectedDocumentDigest;
+    return { disposition: notCommitted ? 'not-committed' : 'unresolved', ready };
+  }
+
+  async function inspectAttempt(input) {
+    // Snapshot the complete request at public entry, BEFORE waiting on
+    // the shared lock, exactly as the commit capabilities do: the caller
+    // retains (and may mutate) the original object across our awaits.
+    let snapshotInput;
+    try {
+      snapshotInput = deepCopy(input);
+    } catch {
+      return { disposition: 'unresolved', ready: false };
+    }
+    return lock.withLock(async () => {
+      try {
+        return await inspectAttemptLocked(snapshotInput);
+      } catch {
+        return { disposition: 'unresolved', ready: false };
+      }
+    });
+  }
+
   async function outcome(input) {
     // Read-only (F4): no writes, no repair, and the journal never
     // overrides what the pin and the validated document prove.
@@ -890,7 +990,7 @@ function createSettlementEvidenceStore(deps) {
     });
   }
 
-  return { bootstrap, prepare, commit, commitWithoutRecovery, outcome, reconcile };
+  return { bootstrap, prepare, commit, commitWithoutRecovery, outcome, reconcile, inspectAttempt };
 }
 
 module.exports = { createSettlementEvidenceStore };

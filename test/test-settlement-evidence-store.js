@@ -2239,3 +2239,250 @@ test('B3: an unavailable or malformed manifest never selects a destructive row (
     assertWorldUnchanged(world, worldSnap, 'B3 malformed manifest');
   }
 });
+
+// === P2 settled-uncertainty inspection (inspectAttempt) ==================
+// Trusted read-only inspection for the controller's retained uncertain
+// attempt: it establishes only committed / not-committed / unresolved from
+// the validated pinned ledger, returns store readiness separately
+// (qualified pinned head + successfully read ABSENT journal), snapshots
+// its input before the shared lock, and never writes, commits, reconciles,
+// promotes, restores or clears a journal.
+
+test('P2 inspect: durable commit -> committed + ready, zero writes by inspection', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  const receipt = await store.commitWithoutRecovery(confirmedRequest(prepared));
+  assert.equal(receipt.status, 'committed');
+  const snap = world.writeCounts();
+  const worldSnap = snapshotWorld(world);
+  const result = await store.inspectAttempt(confirmedRequest(prepared));
+  assert.deepEqual(result, { disposition: 'committed', ready: true });
+  world.noWritesSince(snap);
+  assertWorldUnchanged(world, worldSnap, 'P2 inspect committed');
+});
+
+test('P2 inspect: never-attempted preview at the exact pinned base -> not-committed + ready', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  const snap = world.writeCounts();
+  const result = await store.inspectAttempt(confirmedRequest(prepared));
+  assert.deepEqual(result, { disposition: 'not-committed', ready: true });
+  world.noWritesSince(snap);
+  assert.equal(world.durable.journal, null);
+  assert.equal(world.durable.pin.revision, 0);
+});
+
+test('P2 inspect: journal-resident unlanded attempt is not-committed but NOT ready until explicit R4 cleanup', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  world.failNext('doc.writeTemp', 'throw');
+  const res = await store.commitWithoutRecovery(confirmedRequest(prepared));
+  assert.equal(res.status, 'unknown');
+  assert.ok(world.durable.journal, 'journal resident after temp failure');
+  const snap = world.writeCounts();
+  const before = await store.inspectAttempt(confirmedRequest(prepared));
+  assert.deepEqual(before, { disposition: 'not-committed', ready: false },
+    'inspection alone cannot unlock while the journal is resident');
+  world.noWritesSince(snap);
+  assert.ok(world.durable.journal, 'inspection never clears a journal');
+  // Explicit reconciliation whose journal clear fails: the R4 report says
+  // not-committed, but a FRESH inspection still finds the journal resident.
+  world.failNext('journal.clear', 'throw');
+  const blockedReport = noteRow(await store.reconcile());
+  assert.equal(blockedReport.row, 'R4');
+  assert.equal(blockedReport.disposition, 'not-committed');
+  assert.equal(blockedReport.detail, 'journal-clear-failed');
+  assert.ok(world.durable.journal, 'journal survives the failed clear');
+  const stillBlocked = await store.inspectAttempt(confirmedRequest(prepared));
+  assert.deepEqual(stillBlocked, { disposition: 'not-committed', ready: false },
+    'a cached/caller-supplied R4 report is never trusted: readiness is re-read');
+  // Successful explicit R4 cleanup, then a fresh inspection of the pinned
+  // base proves the attempt not committed and the store ready.
+  const report = noteRow(await store.reconcile());
+  assert.equal(report.row, 'R4');
+  assert.equal(report.disposition, 'not-committed');
+  assert.equal(world.durable.journal, null);
+  const after = await store.inspectAttempt(confirmedRequest(prepared));
+  assert.deepEqual(after, { disposition: 'not-committed', ready: true });
+});
+
+test('P2 inspect: known disposition is not readiness — resident or unreadable journal after a commit stays not ready', async () => {
+  // (a) W5 leftover: commit landed, journal clear failed at C9.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.failNext('journal.clear', 'throw');
+    const receipt = await store.commitWithoutRecovery(confirmedRequest(prepared));
+    assert.equal(receipt.status, 'committed');
+    assert.ok(world.durable.journal, 'leftover journal resident');
+    const result = await store.inspectAttempt(confirmedRequest(prepared));
+    assert.deepEqual(result, { disposition: 'committed', ready: false });
+    assert.ok(world.durable.journal, 'inspection left the journal in place');
+  }
+  // (b) Journal read itself fails: disposition still established from the
+  // pinned ledger, readiness false.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    assert.equal((await store.commitWithoutRecovery(confirmedRequest(prepared))).status, 'committed');
+    world.failNext('journal.read', 'throw');
+    const result = await store.inspectAttempt(confirmedRequest(prepared));
+    assert.deepEqual(result, { disposition: 'committed', ready: false });
+  }
+});
+
+test('P2 inspect: unreadable or divergent pin/head -> unresolved + not ready, zero writes', async () => {
+  // Pin unreadable.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.flags.pinReadThrows = true;
+    const snap = world.writeCounts();
+    assert.deepEqual(await store.inspectAttempt(confirmedRequest(prepared)),
+      { disposition: 'unresolved', ready: false });
+    world.noWritesSince(snap);
+  }
+  // Corrupt head bytes.
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.durable.doc = Buffer.from('synthetic-corruption');
+    assert.deepEqual(await store.inspectAttempt(confirmedRequest(prepared)),
+      { disposition: 'unresolved', ready: false });
+    assert.equal(world.durable.doc.toString(), 'synthetic-corruption', 'inspection never restores');
+  }
+  // Forked pin (pin digest names no validated head).
+  {
+    const { world, store } = await bootWorld();
+    world.clock.advance(10);
+    const prepared = await prepareLink(store, 1);
+    world.durable.pin.digest = 'f'.repeat(64);
+    assert.deepEqual(await store.inspectAttempt(confirmedRequest(prepared)),
+      { disposition: 'unresolved', ready: false });
+  }
+  // Unbootstrapped store.
+  {
+    const world = makeWorld();
+    const store = newStore(world);
+    const fake = {
+      actorId, confirmationDigest: 'a'.repeat(64),
+      preview: { operationId: op(1), actorId, householdId, expectedRevision: 0 },
+    };
+    const result = await store.inspectAttempt(fake);
+    assert.equal(result.disposition, 'unresolved');
+    assert.equal(result.ready, false);
+  }
+});
+
+test('P2 inspect: wrong actor/digest/base, same-ID mismatch, advanced-head absence and malformed proof are unresolved', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  assert.equal((await store.commitWithoutRecovery(confirmedRequest(prepared))).status, 'committed');
+  const snap = world.writeCounts();
+  // Wrong actor for a committed operation (mismatched same-ID record).
+  assert.deepEqual(await store.inspectAttempt(confirmedRequest(prepared, actor2)),
+    { disposition: 'unresolved', ready: true });
+  // Wrong confirmation digest.
+  assert.deepEqual(await store.inspectAttempt({ ...confirmedRequest(prepared), confirmationDigest: 'f'.repeat(64) }),
+    { disposition: 'unresolved', ready: true });
+  // Same operation id, altered preview with its own self-consistent digest.
+  const alt = C.prepare(C.adopt({ householdId }), {
+    householdId, actorId, operationId: op(1), command: linkCmd({ assignedCents: 3000 }),
+    now: world.clock.now(),
+  });
+  assert.deepEqual(await store.inspectAttempt(confirmedRequest(alt)),
+    { disposition: 'unresolved', ready: true });
+  // Advanced head without the attempt: a preview minted at revision 0 whose
+  // operation is absent from the revision-1 head is NOT not-committed.
+  const stale = C.prepare(C.adopt({ householdId }), {
+    householdId, actorId, operationId: op(9), command: linkCmd({ txRef: tx(9) }),
+    now: world.clock.now(),
+  });
+  assert.deepEqual(await store.inspectAttempt(confirmedRequest(stale)),
+    { disposition: 'unresolved', ready: true },
+    'absence at an advanced head proves nothing about the retained base');
+  // Malformed proof shapes.
+  for (const bad of [null, {}, { actorId, preview: null, confirmationDigest: 'a'.repeat(64) },
+    { actorId: 'forged', preview: prepared.preview, confirmationDigest: prepared.confirmationDigest },
+    { actorId, preview: { ...prepared.preview, expiresAt: prepared.preview.expiresAt + 1 },
+      confirmationDigest: prepared.confirmationDigest },
+    { actorId, preview: { ...prepared.preview, extraKey: 1 },
+      confirmationDigest: C.digest({ ...prepared.preview, extraKey: 1 }) },
+    { actorId, preview: prepared.preview, confirmationDigest: 'not-a-hash' }]) {
+    const result = await store.inspectAttempt(bad);
+    assert.equal(result.disposition, 'unresolved', JSON.stringify(bad && bad.actorId));
+    assert.equal(result.ready, false, 'malformed proof is never ready');
+  }
+  world.noWritesSince(snap);
+});
+
+test('P2 inspect: a promotable landed-unpinned state is reported, never promoted or reconciled by inspection', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  world.failNext('backup.put', 'throw');
+  const res = await store.commitWithoutRecovery(confirmedRequest(prepared));
+  assert.equal(res.status, 'unknown');
+  assert.equal(stateOf(world.durable.doc).revision, 1, 'candidate landed');
+  assert.equal(world.durable.pin.revision, 0, 'unpinned');
+  const snap = world.writeCounts();
+  const worldSnap = snapshotWorld(world);
+  const result = await store.inspectAttempt(confirmedRequest(prepared));
+  assert.equal(result.disposition, 'unresolved', 'head is not the validated pinned ledger');
+  assert.equal(result.ready, false);
+  world.noWritesSince(snap);
+  assertWorldUnchanged(world, worldSnap, 'P2 inspect W3: no promotion, no restore, no journal clear');
+  assert.equal(world.durable.pin.revision, 0);
+  assert.ok(world.durable.journal);
+});
+
+test('P2 inspect: committed proof survives later commits and names the pinned ledger match', async () => {
+  const { world, store } = await bootWorld();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  const receipt = await store.commitWithoutRecovery(confirmedRequest(prepared));
+  assert.equal(receipt.status, 'committed');
+  world.clock.advance(10);
+  await commitLink(store, 2, { txRef: tx(2) });
+  const result = await store.inspectAttempt(confirmedRequest(prepared));
+  assert.deepEqual(result, { disposition: 'committed', ready: true });
+  const out = await store.outcome({ actorId, operationId: op(1) });
+  assert.equal(out.revision, receipt.revision, 'original receipt semantics unchanged');
+  assert.equal(out.digest, receipt.digest);
+});
+
+test('P2 inspect: input is snapshotted before the single shared-lock acquisition', async () => {
+  const world = makeWorld(), baseLock = makeLock();
+  let lockCalls = 0;
+  const lock = { withLock(fn) { lockCalls++; return baseLock.withLock(fn); } };
+  const store = newStore(world, lock);
+  await store.bootstrap();
+  world.clock.advance(10);
+  const prepared = await prepareLink(store, 1);
+  let enter, release;
+  const entered = new Promise(resolve => { enter = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  const holding = baseLock.withLock(async () => { enter(); await gate; });
+  await entered;
+  const request = confirmedRequest(JSON.parse(JSON.stringify(prepared)));
+  const previousLockCalls = lockCalls;
+  const pending = store.inspectAttempt(request);
+  request.actorId = actor2;
+  request.preview.operationId = op(99);
+  request.preview.command.assignedCents = 6000;
+  request.confirmationDigest = 'f'.repeat(64);
+  release(); await holding;
+  const result = await pending;
+  assert.equal(lockCalls, previousLockCalls + 1, 'exactly one lock acquisition');
+  assert.deepEqual(result, { disposition: 'not-committed', ready: true },
+    'the snapshot taken at entry, not the caller mutation, is inspected');
+  assert.equal(stateOf(world.durable.doc).operations.length, 0, 'inspection wrote nothing');
+});
