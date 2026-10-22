@@ -480,4 +480,91 @@ for (const [label, render, hook, figures] of [
   }
 }
 
-console.log('PASS grouped savings members: published member rows on sheet, tile and inventory; group totals verbatim; unknown/duplicate/missing identities fail closed; settled members never reconstructed; historical packets withhold member figures identically; projected allocations join by bare requirement id with uniqueness validation and no dual-alias fallback');
+// Cost facts are sealed, independently invented publications. Deliberately
+// inconsistent group/member totals prove the consumer never rebuilds a group.
+const costKnown = (amount, range = null) => ({ status: 'known', amount, range });
+const costUnknown = (status = 'unavailable') => ({ status, amount: null, range: null });
+const costFacts = (original, paid, unpaid, asOf = AS_OF) => ({ asOf,
+  originalCost: original, confirmedLinkedPaid: paid, unpaidCost: unpaid });
+const costValue = (html, name) => html.split(`data-savings-cost-${name}>`)[1]?.split('</dd>')[0];
+function costPacket(facts = costFacts(costKnown(230), costKnown(25), costKnown(205))) {
+  const packet = mainPacket();
+  const near = item({ key: 'cost-a@2027-03-01', id: 'cost-a', label: 'Same invented fee',
+    date: '2027-03-01', group: 'costs', saved: 35, needed: 35, trust: 'calculated',
+    commitmentCost: costFacts(costKnown(60), costKnown(25), costKnown(35)) });
+  const far = item({ key: 'cost-b@2027-04-01', id: 'cost-b', label: near.label,
+    date: '2027-04-01', group: 'costs', saved: 60, needed: 170, trust: 'calculated',
+    commitmentCost: costFacts(costKnown(170), costKnown(0), costKnown(170)) });
+  packet.backing.items = [near, far]; packet.unresolved = [];
+  packet.rows = [{ ...packet.rows[0], key: 'group:costs', label: near.label,
+    members: [near.key, far.key], saved: 95, needed: 205, commitmentCost: facts }];
+  return packet;
+}
+for (const [label, render, hook] of [['sheet', checkSheet, 'budget-savings-member'], ['inventory', checkInventory, 'savings-member']]) {
+  const packet = costPacket(), html = render(packet, 'cost ' + label);
+  assert.match(costValue(html, 'original'), /230\.00/, label + ': group original comes from group packet');
+  assert.match(costValue(html, 'paid'), /25\.00/);
+  assert.match(costValue(html, 'unpaid'), /205\.00/);
+  assert.match(costValue(html, 'saved'), /95\.00/, label + ': independent saved stock');
+  const members = memberBlocks(html, hook);
+  assert.match(costValue(members[packet.rows[0].members[0]], 'original'), /60\.00/);
+  assert.match(costValue(members[packet.rows[0].members[0]], 'unpaid'), /35\.00/);
+  assert.match(costValue(members[packet.rows[0].members[1]], 'original'), /170\.00/);
+  assert.match(costValue(members[packet.rows[0].members[1]], 'paid'), /0\.00/);
+  assert.match(html, /Confirmed payment assignments/);
+  assert.match(html, /Known means published, not bank-verified/);
+  assert.match(html, /Unpaid cost is not additional savings needed/);
+
+  // Single surviving member: no retired member is reconstructed or added.
+  const retired = costPacket(costFacts(costKnown(170), costKnown(0), costKnown(170)));
+  retired.backing.items.shift(); retired.rows[0].members.shift();
+  const retiredHtml = render(retired, 'retired ' + label);
+  assert.match(costValue(retiredHtml, 'original'), /170\.00/);
+  assert.doesNotMatch(retiredHtml, /cost-a@|60\.00/);
+
+  // Missing and duplicate native identities never borrow the same-label facts.
+  for (const missing of [true, false]) {
+    const bad = costPacket();
+    if (missing) bad.backing.items.shift(); else bad.backing.items.push({ ...bad.backing.items[0] });
+    const block = memberBlocks(render(bad, 'identity ' + label), hook)['cost-a@2027-03-01'];
+    assert.doesNotMatch(block, /data-savings-cost-original>[\s\S]*?60\.00/);
+  }
+  const independent = costPacket(costFacts(costKnown(999), costKnown(3), costKnown(222)));
+  assert.match(costValue(render(independent, 'verbatim ' + label), 'unpaid'), /222\.00/,
+    'no subtraction or sum is used to repair a publication');
+}
+// The collapsed tile retains its incumbent values and typed funding-bar inputs.
+{
+  const html = checkTile(costPacket(), 'compact costs');
+  const collapsed = html.split('<div data-budget-funding-savings hidden>')[0];
+  assert.doesNotMatch(collapsed, /data-savings-cost-|Original cost|Confirmed payment assignments/);
+  assert.match(collapsed, /data-budget-goal-saved-amount="95"/);
+  assert.match(collapsed, /data-budget-goal-required-amount="205"/);
+}
+// Confirmed-intent inventory retains its distinct backing/intent semantics.
+{
+  ctx.manualCost = { status: 'ready', pools: [], goals: [{ key: 'commitment:invented', label: 'Invented manual goal',
+    intent: 12, backed: 9, backedTrust: 'calculated', target: 35, targetTrust: 'calculated',
+    commitmentCost: costFacts(costKnown(60), costKnown(25), costKnown(35)) }] };
+  const html = vm.runInContext('SavingsInventory.html(manualCost)', ctx);
+  assert.match(costValue(html, 'original'), /60\.00/);
+  assert.match(costValue(html, 'unpaid'), /35\.00/);
+  assert.match(costValue(html, 'saved'), /9\.00/);
+}
+// A historical wrapper must still withhold even if a retained item carries
+// current cost facts. No opening date or actual amount may leak through it.
+{
+  const past = costPacket();
+  past.status = past.backing.status = past.period.status = 'unavailable';
+  past.period.kind = 'historical'; past.period.proposal = null;
+  for (const row of past.rows) Object.assign(row, { saved: null, savedTrust: 'unknown',
+    needed: null, neededTrust: 'unknown', thisPeriod: null, thisPeriodTrust: 'unknown' });
+  const { pub, nativeView } = viewWorld(past, { id: 'cost-past', timelineRole: 'past', start: START, end: END });
+  for (const render of [viewSheet, viewInventory]) {
+    const html = render(pub, nativeView);
+    assert.doesNotMatch(html, /Cost facts as of|\$(230|205|95|60|35|170|25)\.00/);
+    assert.match(costValue(html, 'original'), /Unknown/);
+  }
+}
+
+console.log('PASS grouped savings members and attached cost facts: exact publications on sheet/inventory, compact tile and unchanged funding attributes');
