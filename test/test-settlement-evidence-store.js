@@ -2486,3 +2486,157 @@ test('P2 inspect: input is snapshotted before the single shared-lock acquisition
     'the snapshot taken at entry, not the caller mutation, is inspected');
   assert.equal(stateOf(world.durable.doc).operations.length, 0, 'inspection wrote nothing');
 });
+
+// === Write admission (acquisition-bound freshness fence) ==================
+// commitAdmitted is the store's trusted admission capability: the same
+// single-lock, no-recovery pipeline as commitWithoutRecovery, except that
+// a caller-supplied synchronous freshness witness is invoked exactly
+// once — after every prewrite await and the synchronous candidate/journal
+// construction, immediately before the journal write — and only its
+// literal `true` admits the write. Anything else is a definite no-write
+// refusal ('admission-refused') with zero durable mutations. The witness
+// is never consulted on paths that produce no new candidate (original
+// pinned receipt, conflict, recovery-required, preview-expired), and a
+// successful admission is never re-checked while the write completes.
+
+test('WA-S1 commitAdmitted with a fresh witness commits exactly like the no-recovery pipeline', async () => {
+  const { world, store } = await bootWorld();
+  const prepared = await prepareLink(store, 1);
+  let calls = 0;
+  const witness = () => {
+    calls++;
+    assert.equal(world.durable.journal, null, 'witness runs before the journal write lands');
+    return true;
+  };
+  const receipt = await store.commitAdmitted(confirmedRequest(prepared), witness);
+  assert.equal(receipt.status, 'committed');
+  assert.equal(receipt.operationId, op(1));
+  assert.equal(calls, 1, 'witness invoked exactly once for the new candidate');
+  assert.equal(stateOf(world.durable.doc).operations.length, 1);
+  const view = await loadFromWorld(world);
+  assert.equal(view.status, 'qualified');
+});
+
+for (const [name, makeWitness] of [
+  ['returns false', () => () => false],
+  ['throws', () => () => { throw new Error('synthetic witness failure'); }],
+  ['returns a thenable', () => () => Promise.resolve(true)],
+  ['returns a truthy non-true value', () => () => 1],
+]) {
+  test(`WA-S2 admission refusal (${name}): definite no-write, zero mutations, no poisoning`, async () => {
+    const { world, store } = await bootWorld();
+    const prepared = await prepareLink(store, 1);
+    const snap = snapshotWorld(world);
+    const counts = world.writeCounts();
+    let calls = 0;
+    const base = makeWitness();
+    const witness = () => { calls++; return base(); };
+    const result = await store.commitAdmitted(confirmedRequest(prepared), witness);
+    assert.deepEqual(result, { status: 'rejected', reason: 'admission-refused' });
+    assert.equal(calls, 1, 'witness consulted exactly once');
+    assertWorldUnchanged(world, snap, 'admission refusal');
+    world.noWritesSince(counts);
+    // The refusal consumed nothing durable: the same request still commits
+    // through the ordinary no-recovery capability.
+    const receipt = await store.commitWithoutRecovery(confirmedRequest(prepared));
+    assert.equal(receipt.status, 'committed');
+  });
+}
+
+test('WA-S3 a non-function witness is refused without invocation or writes', async () => {
+  const { world, store } = await bootWorld();
+  const prepared = await prepareLink(store, 1);
+  const snap = snapshotWorld(world);
+  for (const bad of [undefined, null, 'witness', 42, {}]) {
+    assert.deepEqual(await store.commitAdmitted(confirmedRequest(prepared), bad),
+      { status: 'rejected', reason: 'admission-refused' });
+  }
+  assertWorldUnchanged(world, snap, 'non-function witness');
+});
+
+test('WA-S4 original pinned receipt precedes admission: witness never consulted', async () => {
+  const { world, store } = await bootWorld();
+  const prepared = await prepareLink(store, 1);
+  const receipt = await store.commitWithoutRecovery(confirmedRequest(prepared));
+  assert.equal(receipt.status, 'committed');
+  let calls = 0;
+  const again = await store.commitAdmitted(confirmedRequest(prepared),
+    () => { calls++; return false; });
+  assert.deepEqual(again, receipt, 'the original receipt is returned read-only');
+  assert.equal(calls, 0, 'no candidate is constructed for a recorded operation');
+});
+
+test('WA-S5 conflict precedence: altered input on a recorded operation conflicts before admission', async () => {
+  const { world, store } = await bootWorld();
+  const prepared = await prepareLink(store, 1);
+  await store.commitWithoutRecovery(confirmedRequest(prepared));
+  const altered = confirmedRequest(prepared);
+  altered.preview = JSON.parse(JSON.stringify(prepared.preview));
+  altered.preview.command.assignedCents = 999;
+  let calls = 0;
+  const result = await store.commitAdmitted(altered, () => { calls++; return false; });
+  assert.deepEqual(result, { status: 'conflict' });
+  assert.equal(calls, 0);
+});
+
+test('WA-S6 recovery-required precedence: a resident journal refuses before admission', async () => {
+  const { world, store } = await bootWorld();
+  const prepared = await prepareLink(store, 1);
+  const next = await prepareLink(store, 2, { txRef: tx(2) });
+  world.failNext('journal.write', 'throw-landed');
+  const crashed = await store.commit(confirmedRequest(prepared));
+  assert.equal(crashed.status, 'unknown');
+  assert.ok(world.durable.journal, 'journal is resident after the lost ack');
+  const journalBefore = world.durable.journal.toString('hex');
+  let calls = 0;
+  const result = await store.commitAdmitted(confirmedRequest(next), () => { calls++; return true; });
+  assert.deepEqual(result, { status: 'rejected', reason: 'recovery-required' });
+  assert.equal(calls, 0, 'no candidate is constructed while recovery is required');
+  assert.equal(world.durable.journal.toString('hex'), journalBefore, 'resident journal preserved');
+});
+
+test('WA-S7 preview expiry is decided by the contract before admission', async () => {
+  const { world, store } = await bootWorld();
+  const prepared = await prepareLink(store, 1);
+  world.clock.advance(C.TTL_MS + 1);
+  let calls = 0;
+  const result = await store.commitAdmitted(confirmedRequest(prepared), () => { calls++; return true; });
+  assert.deepEqual(result, { status: 'rejected', reason: 'preview-expired' });
+  assert.equal(calls, 0);
+});
+
+test('WA-S8 once admitted, a paused journal write completes without re-checking the witness', async () => {
+  const { world, store } = await bootWorld();
+  const prepared = await prepareLink(store, 1);
+  let enteredWrite, releaseWrite;
+  const writeEntered = new Promise(resolve => { enteredWrite = resolve; });
+  const writeGate = new Promise(resolve => { releaseWrite = resolve; });
+  const originalWrite = world.journalStore.write.bind(world.journalStore);
+  world.journalStore.write = async record => {
+    await originalWrite(record);
+    enteredWrite();
+    await writeGate;
+  };
+  let calls = 0;
+  const pending = store.commitAdmitted(confirmedRequest(prepared), () => { calls++; return true; });
+  await writeEntered;
+  // The admission decision is already made; nothing that changes while the
+  // journal I/O completes can convert this operation into a refusal.
+  releaseWrite();
+  const receipt = await pending;
+  assert.equal(receipt.status, 'committed');
+  assert.equal(calls, 1, 'witness invoked at most once, at the pre-write moment only');
+});
+
+test('WA-S9 commitAdmitted snapshots its input at entry like the incumbent capabilities', async () => {
+  const { world, store } = await bootWorld();
+  const prepared = await prepareLink(store, 1);
+  const input = confirmedRequest(prepared);
+  const pending = store.commitAdmitted(input, () => true);
+  input.preview.command.assignedCents = 999999;
+  input.confirmationDigest = 'f'.repeat(64);
+  const receipt = await pending;
+  assert.equal(receipt.status, 'committed');
+  assert.equal(stateOf(world.durable.doc).operations[0].command.assignedCents, 2500,
+    'the entry snapshot, not the caller mutation, was committed');
+});

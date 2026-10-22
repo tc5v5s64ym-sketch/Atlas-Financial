@@ -109,6 +109,100 @@ if (!isMainThread) {
     console.log(JSON.stringify(StageTiming.record(job.stages, job.evidence ? 'memory' : 'provider',
       job.outcome, job.check?.qualified, job.publicationMs)));
   }
+  // --- Write-admission freshness witness (private) -----------------------
+  // A witness is minted per waiter inside the acquisition publication
+  // continuation (settleWaiter, below) and paired with exactly that
+  // waiter's acquisition clone. It captures the lifecycle state the
+  // publication barriers just validated — generation, observationEpoch,
+  // financial day and context — and re-checks it synchronously at
+  // invocation: any invalidation since publication (a provider write, a
+  // superseding publish or live job, a replay hold, a day rollover, a
+  // context replacement) refuses. The trusted caller's synchronous
+  // current-context reader is REQUIRED (B1): a fenced acquisition mints
+  // no admitting witness without it — recomputing freshness from the
+  // job's captured inputs is not a fallback, since replacement or ABA
+  // outside those captured objects would be invisible. The reader's
+  // context and monotonic revision are first captured at acquisition
+  // ENTRY, before the asynchronous worker runs (B2), and rechecked in
+  // the publication continuation: replacement or ABA while the worker
+  // was running refuses that acquisition's witness rather than adopting
+  // the newer state as its baseline. Coalesced reuse is bound to the
+  // job's issuing stamp (the creating waiter's reader domain and entry
+  // capture): a waiter that joined across a revision, or from another
+  // reader domain, refuses even when its own capture is fresh, because
+  // the shared work was issued under the earlier state. At invocation the witness
+  // requires a fresh reading whose recomputed context key matches AND
+  // whose revision is unchanged since entry, so replacement and ABA are
+  // detected even where content — and therefore the context key —
+  // returns to identical bytes. Reader failure, malformed or
+  // asynchronous results, or any uncertainty refuse. There is no global
+  // latest-witness slot: each closure captures only its own job's state.
+  // Each waiter owns its witness — including a refusing one: minting
+  // returns a fresh closure per waiter, never a shared constant.
+  const REFUSING_WITNESS = () => () => false;
+  function readContextReader(reader) {
+    try {
+      const value = reader();
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+      if (typeof value.then === 'function') return null;
+      const revision = value.contextRevision;
+      if (!Number.isSafeInteger(revision) || revision < 0) return null;
+      const metadata = { readable: true };
+      const key = jobKey(value.canonical, value.env, metadata);
+      if (!metadata.readable) return null;
+      return { key, revision };
+    } catch { return null; }
+  }
+  // Capture the trusted reader's current context at acquisition ENTRY,
+  // synchronously, before any asynchronous work runs (B2). The capture
+  // is valid only when the reader is a function whose synchronous
+  // reading is well-formed and names exactly the context being acquired;
+  // anything else (no reader, a non-function, a throwing / asynchronous
+  // / malformed reader, a context mismatch) captures null, and a null
+  // capture can never mint an admitting witness (B1).
+  function captureEntryContext(suppliedReader, context) {
+    if (typeof suppliedReader !== 'function') return null;
+    const reading = readContextReader(suppliedReader);
+    if (!reading || reading.key !== context) return null;
+    return reading;
+  }
+  function mintWitness(job, suppliedReader, entryCapture) {
+    const context = job.context, day = job.day;
+    const gen = generation, epoch = observationEpoch;
+    // B1: the reader is required — no reader or no valid entry capture
+    // yields a permanently refusing witness, never a captured-input
+    // recomputation.
+    if (typeof suppliedReader !== 'function' || !entryCapture) return REFUSING_WITNESS();
+    // B2 (joined case): coalesced reuse is bound to the job's ISSUING
+    // stamp — the reader domain and entry capture of the waiter that
+    // created the job. A waiter that joined a job issued under a
+    // different reader, or at an earlier context/revision, does not
+    // inherit an admitting witness from its own later, fresher capture:
+    // the work it would admit was started under the issuing state.
+    if (suppliedReader !== job.issuingReader || !job.issuingCapture
+      || entryCapture.key !== job.issuingCapture.key
+      || entryCapture.revision !== job.issuingCapture.revision) return REFUSING_WITNESS();
+    // B2: recheck the entry capture in the publication continuation. A
+    // context replaced — or taken away and returned — while the worker
+    // ran has an advanced revision, so this acquisition's witness
+    // refuses rather than adopting the newer state as its baseline.
+    const current = readContextReader(suppliedReader);
+    if (!current || current.key !== entryCapture.key
+      || current.revision !== entryCapture.revision) return REFUSING_WITNESS();
+    const baseline = entryCapture;
+    const reader = suppliedReader;
+    return function freshnessWitness() {
+      try {
+        if (generation !== gen || observationEpoch !== epoch) return false;
+        if (activeWrites !== 0 || replayHeld) return false;
+        if (jobs.has(context + ':live')) return false;
+        if (financialDay() !== day) return false;
+        const reading = readContextReader(reader);
+        if (!reading || reading.key !== context || reading.revision !== baseline.revision) return false;
+        return true;
+      } catch { return false; }
+    };
+  }
   function settleWaiter(job, waiter, error, data) {
     if (!job.waiters.delete(waiter)) return;
     clearTimeout(waiter.timer);
@@ -122,7 +216,14 @@ if (!isMainThread) {
         qualified: job.check?.qualified === true,
         checkedAt: typeof checkedAt === 'string' && Number.isFinite(Date.parse(checkedAt)) ? checkedAt : null }); }
       catch (_) { /* Response closed; never change a financial result. */ }
-      waiter.resolve(structuredClone(data));
+      // Admission waiters receive their own acquisition clone plus their
+      // own witness, minted now — inside the publication continuation,
+      // after every barrier above has validated this exact job. The
+      // witness pairs the job's validated state with the reader that
+      // waiter itself supplied. The acquisition itself is unchanged and
+      // carries no witness.
+      if (job.admission) waiter.resolve({ acquisition: structuredClone(data), witness: mintWitness(job, waiter.contextReader, waiter.entryCapture) });
+      else waiter.resolve(structuredClone(data));
     }
   }
   function finishJob(job, error, data) {
@@ -379,5 +480,84 @@ if (!isMainThread) {
       if (fresh) startJob(job, input, workerEnv);
     });
   }
-  module.exports = { serve, acquireSettlement, withProviderWrite, LIVE_REFRESH_TIMEOUT_MS, MAX_ACTIVE_LIVE_REFRESHES };
+  // Unserved private write-admission acquisition: the identical
+  // memory-replay lifecycle as acquireSettlement (same singleton state,
+  // jobs discipline, caps, deadlines and publication barriers — never a
+  // second lifecycle or cache), except each waiter additionally receives
+  // its own synchronous freshness witness minted inside the publication
+  // continuation and paired with exactly its acquisition clone:
+  // acquireSettlementWithWitness(...) -> { acquisition, witness }.
+  // options.contextReader is a REQUIRED trusted synchronous reader
+  // returning the current canonical/environment inputs and a monotonic
+  // contextRevision; it is supplied only by a trusted composition (in
+  // tests, a labelled synthetic fixture) — no production authority reader
+  // is wired anywhere. Without a valid reader the acquisition still
+  // resolves, but its witness can never admit (B1). The witness is a
+  // private capability for the settlement store's admission fence: it is
+  // never served, logged, serialized or attached to the acquisition
+  // itself.
+  function acquireSettlementWithWitness(canonical, env, options = {}) {
+    const Live = require('./live-plan');
+    if (Live.overlayModeFromEnv(env) !== 'live') return Promise.reject(unavailable('live-refresh-unavailable'));
+    const signal = options.signal;
+    if (signal?.aborted) return Promise.reject(unavailable('live-refresh-cancelled'));
+    if (activeWrites) return Promise.reject(unavailable('live-refresh-invalidated'));
+    // Shorter budgets support bounded callers/tests; no caller can raise the cap.
+    const requested = options.timeoutMs;
+    const budget = Number.isFinite(requested) && requested > 0
+      ? Math.min(requested, LIVE_REFRESH_TIMEOUT_MS) : LIVE_REFRESH_TIMEOUT_MS;
+    let context, evidence = null, input, workerEnv;
+    const metadata = { readable: true };
+    try {
+      input = structuredClone(canonical);
+      workerEnv = Object.fromEntries(Object.entries(env || process.env).map(([name, value]) => [name, String(value)]));
+      context = jobKey(input, workerEnv, metadata);
+      if (!metadata.readable || replayHeld || jobs.has(context + ':live')) {
+        return Promise.reject(unavailable('live-refresh-unavailable'));
+      }
+      evidence = observations.read(context);
+      if (!evidence) return Promise.reject(unavailable('live-refresh-unavailable'));
+    } catch (_) { return Promise.reject(unavailable('live-refresh-unavailable')); }
+    // B2: capture this caller's current context/revision NOW, in the
+    // synchronous entry, before the asynchronous worker runs; the
+    // publication continuation rechecks it per waiter (see mintWitness).
+    const entryCapture = captureEntryContext(options.contextReader, context);
+    const key = context + ':acquire-witness';
+    let job = jobs.get(key);
+    const fresh = !job;
+    // Equivalent callers can join even when the distinct-worker cap is full.
+    if (fresh && active.size >= MAX_ACTIVE_LIVE_REFRESHES) return Promise.reject(unavailable('live-refresh-busy'));
+    if (fresh) {
+      job = { key, context, evidence, acquire: true, admission: true, cacheable: metadata.readable,
+        day: financialDay(), generation, observationEpoch,
+        contextInput: input, contextEnv: workerEnv,
+        // The issuing stamp (B2 joined case): the creating waiter's
+        // reader domain and entry capture. Joining waiters are bound to
+        // it at minting; see mintWitness.
+        issuingReader: options.contextReader, issuingCapture: entryCapture,
+        started: performance.now(), waiters: new Set(), waiterCount: 0,
+        peakWaiters: 0, cancelledWaiters: 0, timedOutWaiters: 0, settled: false, hadForcedWaiter: false };
+      jobs.set(key, job);
+    }
+    return new Promise((resolve, reject) => {
+      const waiter = { resolve, reject, signal, contextReader: options.contextReader, entryCapture };
+      const leave = code => {
+        if (!job.waiters.has(waiter)) return;
+        if (code === 'live-refresh-cancelled') job.cancelledWaiters++;
+        else job.timedOutWaiters++;
+        const error = unavailable(code);
+        settleWaiter(job, waiter, error);
+        if (!job.waiters.size) finishJob(job, error);
+      };
+      waiter.cancelled = () => leave('live-refresh-cancelled');
+      waiter.timer = setTimeout(() => leave('live-refresh-timeout'), budget);
+      job.waiters.add(waiter);
+      job.waiterCount++;
+      job.peakWaiters = Math.max(job.peakWaiters, job.waiters.size);
+      signal?.addEventListener('abort', waiter.cancelled, { once: true });
+      if (signal?.aborted) waiter.cancelled();
+      if (fresh) startJob(job, input, workerEnv);
+    });
+  }
+  module.exports = { serve, acquireSettlement, acquireSettlementWithWitness, withProviderWrite, LIVE_REFRESH_TIMEOUT_MS, MAX_ACTIVE_LIVE_REFRESHES };
 }

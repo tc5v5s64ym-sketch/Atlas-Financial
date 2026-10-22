@@ -54,6 +54,21 @@
 // Successful pinning may finalize this invocation's own journal normally.
 // Ordinary commit() and explicit reconcile() retain their recovery semantics.
 //
+// commitAdmitted is a further distinct capability for fenced confirmation
+// callers: the identical single-lock, no-recovery pipeline, except that a
+// synchronous freshness witness paired with the caller's acquisition is
+// invoked exactly once — after every prewrite await and the synchronous
+// candidate/journal construction, immediately before the journal write —
+// and only its literal true admits the write. Refusal, a throw, or any
+// other value (thenables are never awaited or assimilated) returns
+// rejected('admission-refused'): a definite pre-write refusal with zero
+// durable mutations. Paths that produce no new candidate (the original
+// pinned receipt, a conflict, recovery-required, preview-expired) precede
+// the fence and never invoke the witness; once admission succeeds, later
+// invalidation neither cancels a partly written operation nor converts
+// uncertain persistence into a definite refusal. Admission is a
+// process-local freshness fence, not the durable pin transition.
+//
 // inspectAttempt is a trusted READ-ONLY inspection for settled-uncertainty
 // recovery (P2): given the controller-retained actor, the complete frozen
 // preview and the confirmation digest, it establishes only whether that
@@ -548,7 +563,7 @@ function createSettlementEvidenceStore(deps) {
   }
 
   // --- Commit pipeline C0-C10 ---------------------------------------------
-  async function executeCandidate(pin, headBytes, head, req, allowRecovery) {
+  async function executeCandidate(pin, headBytes, head, req, allowRecovery, witness) {
     // C1: re-verify the qualified head immediately before candidate
     // creation (guards adapter races between the pre-pass and here).
     const P2 = await readPinState();
@@ -596,6 +611,21 @@ function createSettlementEvidenceStore(deps) {
       resultingRevision: candidate.revision, resultingDigest: candidate.digest,
       recordedAt,
     };
+    // Write admission (fenced commits only): the paired freshness witness
+    // is invoked synchronously at the last pre-write moment — after every
+    // prewrite await above and the synchronous candidate/journal
+    // construction, immediately before the journal write, with no
+    // intervening await. Only its literal `true` admits the write; a
+    // refusal, a throw, or any other value (a thenable is never awaited
+    // or assimilated) is a definite no-write refusal with zero durable
+    // mutations. It runs at most once per new candidate, under the same
+    // single lock, and a successful admission is never re-checked while
+    // the write completes.
+    if (witness) {
+      let admitted = false;
+      try { admitted = witness() === true; } catch { admitted = false; }
+      if (!admitted) return { status: 'rejected', reason: 'admission-refused' };
+    }
     try {
       await journalStore.write(journal);
     } catch {
@@ -669,7 +699,7 @@ function createSettlementEvidenceStore(deps) {
     };
   }
 
-  async function commitLocked(input, allowRecovery) {
+  async function commitLocked(input, allowRecovery, witness) {
     if (!isRecord(input)) return unavailable('invalid-request');
     const { actorId, preview, confirmationDigest } = input;
     if (typeof actorId !== 'string' || !ACTOR_RE.test(actorId)
@@ -745,7 +775,7 @@ function createSettlementEvidenceStore(deps) {
       if (!J.raw && qualified) {
         return executeCandidate(pin, H.bytes, head, {
           actorId, preview, confirmationDigest, previewDigest,
-        }, allowRecovery);
+        }, allowRecovery, witness);
       }
       if (!allowRecovery) return { status: 'rejected', reason: 'recovery-required' };
       if (pass === 1) return unavailable('store-divergent');
@@ -844,7 +874,7 @@ function createSettlementEvidenceStore(deps) {
     });
   }
 
-  async function commitWithPolicy(input, allowRecovery) {
+  async function commitWithPolicy(input, allowRecovery, witness) {
     // B2: take a validated, owned snapshot of the complete request at
     // public entry, BEFORE waiting on the lock. The caller retains (and
     // may mutate) the original object across our awaits; the snapshot's
@@ -857,7 +887,7 @@ function createSettlementEvidenceStore(deps) {
     }
     return lock.withLock(async () => {
       try {
-        return await commitLocked(snapshot, allowRecovery);
+        return await commitLocked(snapshot, allowRecovery, witness);
       } catch {
         return unavailable('internal-error');
       }
@@ -868,6 +898,19 @@ function createSettlementEvidenceStore(deps) {
   // input. Neither capability calls the other or nests the injected lock.
   async function commit(input) { return commitWithPolicy(input, true); }
   async function commitWithoutRecovery(input) { return commitWithPolicy(input, false); }
+
+  // commitAdmitted is the trusted write-admission capability: the same
+  // single-lock, no-recovery pipeline as commitWithoutRecovery, fenced by
+  // a synchronous freshness witness paired with the caller's acquisition.
+  // The witness is consulted only at the pre-write moment of a genuinely
+  // new candidate (see executeCandidate): original pinned receipts,
+  // conflicts, recovery-required and preview-expired outcomes all precede
+  // it and never invoke it. A non-function witness is itself a definite
+  // refusal — nothing is snapshotted, locked or written.
+  async function commitAdmitted(input, witness) {
+    if (typeof witness !== 'function') return { status: 'rejected', reason: 'admission-refused' };
+    return commitWithPolicy(input, false, witness);
+  }
 
   // --- Settled-uncertainty inspection (P2) --------------------------------
   async function inspectAttemptLocked(req) {
@@ -990,7 +1033,7 @@ function createSettlementEvidenceStore(deps) {
     });
   }
 
-  return { bootstrap, prepare, commit, commitWithoutRecovery, outcome, reconcile, inspectAttempt };
+  return { bootstrap, prepare, commit, commitWithoutRecovery, commitAdmitted, outcome, reconcile, inspectAttempt };
 }
 
 module.exports = { createSettlementEvidenceStore };

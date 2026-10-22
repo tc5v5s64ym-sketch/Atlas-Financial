@@ -1354,3 +1354,116 @@ test('AC-39/AD-6 module posture: no authorize, no session imports, no crosswalk 
   assert.ok(/64-bit/.test(source) && /birthday/i.test(source),
     'the header states ~64-bit birthday strength for the 128-bit truncated output');
 });
+
+// === Write admission (paired resolver capability) =========================
+// resolvePairedSelection resolves and classifies exactly once through the
+// same core as resolveSelection and returns the ordinary selection plus
+// the freshness witness PAIRED with that exact acquisition, captured from
+// the raw acquisition's own data descriptor in the same uninterrupted
+// snapshot continuation as the four data fields (never reread from the
+// retained envelope after classification). Only data enters the snapshot /
+// binding path: the witness is never snapshotted, serialized, digested or
+// invoked by the resolver, and an acquisition without a genuine function
+// witness (absent, non-function, or behind an accessor) yields no pair.
+
+test('WA-R1 resolvePairedSelection returns the ordinary selection plus its paired witness, classifying once', async () => {
+  const witness = () => true;
+  const acq = { ...standardAcquisition(), witness };
+  const resolver = resolverFor(acq);
+  const stub = stubClassify();
+  const paired = await resolver.resolvePairedSelection(
+    { authority: AUTHORITY, selection: handlesFor(acq), classify: stub.classify });
+  assert.ok(paired, 'paired resolution succeeds');
+  assert.deepEqual(Object.keys(paired).sort(), ['selection', 'witness']);
+  assert.equal(paired.witness, witness, 'the exact paired witness is returned');
+  assert.equal(stub.calls.length, 1, 'classify invoked exactly once');
+  const plain = await resolveDirect(resolverFor(acq), handlesFor(acq), stubClassify().classify);
+  assert.deepEqual(paired.selection, plain, 'the paired selection is the ordinary selection');
+  assert.equal(JSON.stringify(paired.selection).includes('witness'), false,
+    'no witness material enters the selection');
+});
+
+test('WA-R2 an acquisition without a genuine function witness yields no pair', async () => {
+  const cases = [
+    ['absent', standardAcquisition()],
+    ['non-function', { ...standardAcquisition(), witness: 'fresh' }],
+    ['null', { ...standardAcquisition(), witness: null }],
+  ];
+  for (const [name, acq] of cases) {
+    const paired = await resolverFor(acq).resolvePairedSelection(
+      { authority: AUTHORITY, selection: handlesFor(standardAcquisition()), classify: stubClassify().classify });
+    assert.equal(paired, null, name);
+  }
+  // An accessor witness is refused WITHOUT being invoked.
+  let getterCalls = 0;
+  const accessorAcq = standardAcquisition();
+  Object.defineProperty(accessorAcq, 'witness', { enumerable: true,
+    get() { getterCalls++; return () => true; } });
+  const paired = await resolverFor(accessorAcq).resolvePairedSelection(
+    { authority: AUTHORITY, selection: handlesFor(standardAcquisition()), classify: stubClassify().classify });
+  assert.equal(paired, null, 'accessor witness refused');
+  assert.equal(getterCalls, 0, 'the accessor was never invoked');
+});
+
+test('WA-R3 resolveSelection ignores a paired witness entirely and never invokes it', async () => {
+  let witnessCalls = 0;
+  const acq = { ...standardAcquisition(), witness: () => { witnessCalls++; return true; } };
+  const selection = await resolveDirect(resolverFor(acq), handlesFor(acq), stubClassify().classify);
+  assert.ok(selection, 'ordinary resolution is unaffected by the pairing');
+  assert.equal(witnessCalls, 0);
+});
+
+test('WA-R4 a failed resolution yields no pair even when a witness is present', async () => {
+  const acq = { ...standardAcquisition(), join: [], witness: () => true };
+  const paired = await resolverFor(acq).resolvePairedSelection(
+    { authority: AUTHORITY, selection: handlesFor(standardAcquisition()), classify: stubClassify().classify });
+  assert.equal(paired, null);
+});
+
+test('WA-R5 the paired witness is captured at snapshot time, not reread after classification (B3)', async () => {
+  const originalWitness = () => true;
+  const substitutedWitness = () => false;
+  const acq = { ...standardAcquisition(), witness: originalWitness };
+  const resolver = resolverFor(acq);
+  const stub = stubClassify();
+  // A mutation during classification replaces the retained envelope's
+  // witness between the acquisition snapshot and any later read. The
+  // pair must carry the witness captured in the same uninterrupted
+  // snapshot continuation as the four data fields.
+  const classify = (tx, plan, opts) => {
+    const verdict = stub.classify(tx, plan, opts);
+    acq.witness = substitutedWitness;
+    return verdict;
+  };
+  const paired = await resolver.resolvePairedSelection(
+    { authority: AUTHORITY, selection: handlesFor(acq), classify });
+  assert.ok(paired, 'paired resolution succeeds');
+  assert.equal(stub.calls.length, 1, 'classify invoked exactly once');
+  assert.equal(paired.witness, originalWitness,
+    'the snapshot-time witness is carried, not the post-classification substitute');
+  assert.notEqual(paired.witness, substitutedWitness);
+});
+
+test('WA-R6 the paired witness survives a mutation queued as a microtask during classification (B3)', async () => {
+  const originalWitness = () => true;
+  const substitutedWitness = () => false;
+  const acq = { ...standardAcquisition(), witness: originalWitness };
+  const resolver = resolverFor(acq);
+  const stub = stubClassify();
+  // The substitution is QUEUED as a microtask during classification: it
+  // lands after the core's synchronous continuation yields but before
+  // any post-await reread of the retained envelope could run. The pair
+  // must still carry the snapshot-time witness.
+  const classify = (tx, plan, opts) => {
+    const verdict = stub.classify(tx, plan, opts);
+    queueMicrotask(() => { acq.witness = substitutedWitness; });
+    return verdict;
+  };
+  const paired = await resolver.resolvePairedSelection(
+    { authority: AUTHORITY, selection: handlesFor(acq), classify });
+  assert.ok(paired, 'paired resolution succeeds');
+  assert.equal(stub.calls.length, 1, 'classify invoked exactly once');
+  assert.equal(paired.witness, originalWitness,
+    'the snapshot-time witness is carried, not the microtask substitute');
+  assert.notEqual(paired.witness, substitutedWitness);
+});
