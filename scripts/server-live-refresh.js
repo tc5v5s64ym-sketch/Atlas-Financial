@@ -13,11 +13,21 @@ if (!isMainThread) {
   const controller = new AbortController();
   let check = { qualified: false, checkedAt: null, evidence: null };
   parentPort.on('message', () => controller.abort());
-  StageTiming.run(() => Live.applyForServer(workerData.canonical, process.env, { signal: controller.signal,
-    evidence: workerData.evidence, onObservation: value => { check = value; } }),
-  stages => parentPort.postMessage({ type: StageTiming.MESSAGE, stages }))
-    .then(data => parentPort.postMessage({ data, check }))
-    .catch(() => parentPort.postMessage({ error: 'live-refresh-unavailable' }));
+  if (workerData.acquire) {
+    // Private acquisition job: the result is an acquisition for the
+    // private waiter only. It is never a served response.
+    StageTiming.run(() => Live.acquireSettlementForServer(workerData.canonical, process.env, { signal: controller.signal,
+      evidence: workerData.evidence, onObservation: value => { check = value; } }),
+    stages => parentPort.postMessage({ type: StageTiming.MESSAGE, stages }))
+      .then(acquisition => parentPort.postMessage({ acquisition, check }))
+      .catch(() => parentPort.postMessage({ error: 'live-refresh-unavailable' }));
+  } else {
+    StageTiming.run(() => Live.applyForServer(workerData.canonical, process.env, { signal: controller.signal,
+      evidence: workerData.evidence, onObservation: value => { check = value; } }),
+    stages => parentPort.postMessage({ type: StageTiming.MESSAGE, stages }))
+      .then(data => parentPort.postMessage({ data, check }))
+      .catch(() => parentPort.postMessage({ error: 'live-refresh-unavailable' }));
+  }
 } else {
   const crypto = require('node:crypto');
   const fs = require('node:fs');
@@ -157,7 +167,7 @@ if (!isMainThread) {
       finishJob(job, unavailable('live-refresh-timeout'));
     }, LIVE_REFRESH_TIMEOUT_MS);
     try {
-      const worker = job.worker = new Worker(__filename, { workerData: { canonical, evidence: job.evidence }, env });
+      const worker = job.worker = new Worker(__filename, { workerData: { canonical, evidence: job.evidence, acquire: job.acquire === true }, env });
       active.add(worker);
       worker.once('online', () => { if (!job.settled) job.online = performance.now(); });
       worker.on('message', result => {
@@ -213,6 +223,13 @@ if (!isMainThread) {
           observationEpoch++;
           observations.clear();
           return finishJob(job, unavailable('live-refresh-unavailable'));
+        }
+        if (job.acquire) {
+          // The private waiter receives the acquisition and nothing
+          // else; serve waiters on other jobs never see this result.
+          return result?.acquisition
+            ? finishJob(job, null, result.acquisition)
+            : finishJob(job, unavailable('live-refresh-unavailable'));
         }
         return result?.data ? finishJob(job, null, result.data) : finishJob(job, unavailable('live-refresh-unavailable'));
         } finally { job.publicationMs = Math.max(0, performance.now() - publicationStarted); }
@@ -301,5 +318,66 @@ if (!isMainThread) {
       if (fresh) startJob(job, input, workerEnv);
     });
   }
-  module.exports = { serve, withProviderWrite, LIVE_REFRESH_TIMEOUT_MS, MAX_ACTIVE_LIVE_REFRESHES };
+  // Unserved private settlement acquisition. Memory-replay only: the
+  // retained source observation for this exact context is re-evaluated
+  // by a distinct private job through the same worker lifecycle, caps,
+  // ownership, deadlines and publication barriers as serve(). Held,
+  // unreadable, superseded or missing memory is unavailable — an
+  // acquisition never starts a provider (live) job, never joins one,
+  // and is never returned to a serve caller. Each call reacquires; no
+  // acquisition is retained after its waiters settle.
+  function acquireSettlement(canonical, env, options = {}) {
+    const Live = require('./live-plan');
+    if (Live.overlayModeFromEnv(env) !== 'live') return Promise.reject(unavailable('live-refresh-unavailable'));
+    const signal = options.signal;
+    if (signal?.aborted) return Promise.reject(unavailable('live-refresh-cancelled'));
+    if (activeWrites) return Promise.reject(unavailable('live-refresh-invalidated'));
+    // Shorter budgets support bounded callers/tests; no caller can raise the cap.
+    const requested = options.timeoutMs;
+    const budget = Number.isFinite(requested) && requested > 0
+      ? Math.min(requested, LIVE_REFRESH_TIMEOUT_MS) : LIVE_REFRESH_TIMEOUT_MS;
+    let context, evidence = null, input, workerEnv;
+    const metadata = { readable: true };
+    try {
+      input = structuredClone(canonical);
+      workerEnv = Object.fromEntries(Object.entries(env || process.env).map(([name, value]) => [name, String(value)]));
+      context = jobKey(input, workerEnv, metadata);
+      if (!metadata.readable || replayHeld || jobs.has(context + ':live')) {
+        return Promise.reject(unavailable('live-refresh-unavailable'));
+      }
+      evidence = observations.read(context);
+      if (!evidence) return Promise.reject(unavailable('live-refresh-unavailable'));
+    } catch (_) { return Promise.reject(unavailable('live-refresh-unavailable')); }
+    const key = context + ':acquire';
+    let job = jobs.get(key);
+    const fresh = !job;
+    // Equivalent callers can join even when the distinct-worker cap is full.
+    if (fresh && active.size >= MAX_ACTIVE_LIVE_REFRESHES) return Promise.reject(unavailable('live-refresh-busy'));
+    if (fresh) {
+      job = { key, context, evidence, acquire: true, cacheable: metadata.readable, day: financialDay(), generation, observationEpoch,
+        started: performance.now(), waiters: new Set(), waiterCount: 0,
+        peakWaiters: 0, cancelledWaiters: 0, timedOutWaiters: 0, settled: false, hadForcedWaiter: false };
+      jobs.set(key, job);
+    }
+    return new Promise((resolve, reject) => {
+      const waiter = { resolve, reject, signal };
+      const leave = code => {
+        if (!job.waiters.has(waiter)) return;
+        if (code === 'live-refresh-cancelled') job.cancelledWaiters++;
+        else job.timedOutWaiters++;
+        const error = unavailable(code);
+        settleWaiter(job, waiter, error);
+        if (!job.waiters.size) finishJob(job, error);
+      };
+      waiter.cancelled = () => leave('live-refresh-cancelled');
+      waiter.timer = setTimeout(() => leave('live-refresh-timeout'), budget);
+      job.waiters.add(waiter);
+      job.waiterCount++;
+      job.peakWaiters = Math.max(job.peakWaiters, job.waiters.size);
+      signal?.addEventListener('abort', waiter.cancelled, { once: true });
+      if (signal?.aborted) waiter.cancelled();
+      if (fresh) startJob(job, input, workerEnv);
+    });
+  }
+  module.exports = { serve, acquireSettlement, withProviderWrite, LIVE_REFRESH_TIMEOUT_MS, MAX_ACTIVE_LIVE_REFRESHES };
 }

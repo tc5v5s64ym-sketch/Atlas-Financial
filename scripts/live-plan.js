@@ -1390,6 +1390,15 @@ function observeForOverlay(canonical, payload, accountMap) {
   }));
 }
 
+function observeForSettlementAcquisition(canonical, payload, accountMap) {
+  return O.observeWithSettlementCrosswalk(observeInput({
+    data: canonical,
+    payload,
+    accountMap,
+    identity: loadIdentity(),
+  }));
+}
+
 function applyObservedOverlay(canonical, report, operatingEvaluation) {
   try {
     return overlayLiveState({ data: canonical, report, operatingEvaluation }).data;
@@ -1457,6 +1466,49 @@ async function applyForServer(canonical, env, options) {
   } catch (err) {
     const message = err && err.message ? err.message : 'overlay-failed';
     return StageTiming.sync('overlayMs', () => failedOverlay(canonical, message));
+  }
+}
+
+// Private settlement acquisition composition. Memory-replay only: the
+// retained source observation is re-evaluated through the observer's
+// paired entry, and the incumbent overlay qualification on that same
+// report decides whether the pass's own acquisition may be returned.
+// The paired result is consumed exactly once — no second observation,
+// no provider fetch and no fallback. Missing, malformed or unqualified
+// memory returns null; the dated check is still reported so the refresh
+// lifecycle can apply its incumbent clearing rule. Nothing here is
+// served, and ordinary applyForServer behaviour is untouched.
+async function acquireSettlementForServer(canonical, env, options) {
+  const notify = value => {
+    if (options && options.onObservation) options.onObservation(value);
+  };
+  if (overlayModeFromEnv(env) !== 'live'
+    || !options || !options.evidence
+    || options.evidence.schema !== ObservationMemory.SCHEMA) {
+    notify({ qualified: false, checkedAt: null, evidence: null });
+    return null;
+  }
+  try {
+    const accountMap = O.loadLiveAccountMap(env || process.env, canonical);
+    const payload = StageTiming.sync('sourceReplayMs',
+      () => ObservationMemory.sourceInputs(options.evidence.payload));
+    const paired = StageTiming.sync('normalizeMs',
+      () => observeForSettlementAcquisition(canonical, payload, accountMap));
+    if (!paired || !paired.report) {
+      notify({ qualified: false, checkedAt: null, evidence: null });
+      return null;
+    }
+    const operatingEvaluation = OA.createRefreshEvaluation();
+    const data = StageTiming.sync('overlayMs',
+      () => applyObservedOverlay(canonical, paired.report, operatingEvaluation));
+    const qualified = data.liveOverlay?.applied === true
+      && paired.report.observationReceipt?.readyForReconciliation === true;
+    notify({ qualified, checkedAt: paired.report.fetchedAt || null, evidence: null });
+    return qualified ? paired.acquisition : null;
+  } catch (err) {
+    // Mirrors applyForServer's failure path: no observation is
+    // reported, so the lifecycle check stays undated and unqualified.
+    return null;
   }
 }
 
@@ -1579,6 +1631,7 @@ const api = {
   scheduledCashEventsOn,
   serveCanonicalOrFixture,
   applyForServer,
+  acquireSettlementForServer,
   livePostedHistoryDays,
   failedOverlay,
   snapshotPaths,
