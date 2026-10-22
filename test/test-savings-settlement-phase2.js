@@ -222,6 +222,60 @@ test('publication facts: historical pool policy also carries the opening facts',
   for (const row of [p.goal, p.sequence, p.major, p.item, p.row])
     assertCost(row, x.asOf, knownCost(60), knownCost(25), knownCost(35));
 });
+for (const [name, commands] of [['reversal', [linkCmd({}), reverseCmd(op(1))]],
+  ['over-assignment', [linkCmd({ assignedCents: 7000, evidenceCents: 9000 })]]]) {
+  test('review repair: recommendation inventory keeps historical eligibility under ' + name, () => {
+    const x = input(), evidence = buildEvidence(commands);
+    x.plan.savingsEarmarks.history = [{ revision: 1, confirmedAt: x.asOf, source: 'Invented confirmation', pools: [
+      { poolId: 'club-pool', allocations: [{ goalRef: { kind: 'commitment', id: 'near' }, amount: 30 }] },
+      { poolId: 'home-pool', allocations: [] } ] }];
+    // The recommendation's incumbent inventory call supplied no funding opts.
+    // Its exact eligibility contract must survive annotation with the new facts.
+    const incumbent = F.savingsInventory(x.plan, x.asOf);
+    const advice = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [], settlementEvidence: evidence });
+    assert.equal(incumbent.incrementalInstructions, 'eligible');
+    assert.equal(incumbent.instructionReason,
+      'Funding proposals require matching payments and count backed assignments once. New contributions are proposals, not saved balances or transfers.');
+    assert.equal(advice.savingsInventory.incrementalInstructions, incumbent.incrementalInstructions);
+    assert.equal(advice.savingsInventory.instructionReason, incumbent.instructionReason);
+    const oldFields = value => JSON.parse(JSON.stringify(value, (key, v) => key === 'commitmentCost' ? undefined : v));
+    assert.deepEqual(oldFields(advice.savingsInventory), oldFields(incumbent), 'only new facts are annotated');
+    for (const row of [advice.savingsInventory.pools[0].plannedGoals[0], advice.savingsInventory.goals[0]])
+      assertCost(row, x.asOf, knownCost(60), unknownCost(), unknownCost());
+    assert.equal(advice.fundingSequence.find(r => r.id === 'near').need, null,
+      'the incumbent settlement-dependent funding need still withholds');
+  });
+}
+test('review repair: historical group facts exclude retired members without changing the retained roster', () => {
+  const x = fx.fixture(), evidence = buildEvidence([]);
+  x.plan.commitments[0].settledOn = '2026-10-04';
+  const opts = { ...x.opts, settlementEvidence: evidence };
+  const before = JSON.stringify(x), p = F.savingsDailyFunding(x.plan, [], x.asOf, opts);
+  const row = p.rows.find(r => r.key === 'group:club');
+  const goal = goalOf(x, opts, 'group:club');
+  assert.deepEqual(row.members, ['near@2026-10-21', 'far@2026-10-28'], 'retired intent remains in its incumbent roster');
+  assert.equal(row.needed, 170); assert.equal(row.saved, 95);
+  const retired = p.backing.items.find(i => i.id === 'near');
+  assert.equal(retired.inactive, true); assert.equal(retired.needed, 0); assert.equal(retired.saved, 0);
+  assertCost(retired, x.asOf, unknownCost(), unknownCost(), unknownCost());
+  assertCost(goal, x.asOf, knownCost(170), knownCost(0), knownCost(170));
+  assertCost(row, x.asOf, knownCost(170), knownCost(0), knownCost(170));
+  assert.equal(JSON.stringify(x), before, 'no settlement, intent or financial input is changed');
+});
+test('review repair: historical disabled and all-retired rosters retain incumbent amounts and eligibility', () => {
+  const x = fx.fixture(), evidence = buildEvidence([]);
+  const opts = { ...x.opts, settlementEvidence: evidence, disabled: ['near'] };
+  const disabled = F.savingsDailyFunding(x.plan, [], x.asOf, opts), row = disabled.rows.find(r => r.key === 'group:club');
+  assert.deepEqual(row.members, ['near@2026-10-21', 'far@2026-10-28']);
+  assert.equal(row.needed, 170); assert.equal(row.saved, 95);
+  assertCost(row, x.asOf, knownCost(170), knownCost(0), knownCost(170));
+  x.plan.commitments.forEach(c => { c.settledOn = '2026-10-04'; });
+  const retired = F.savingsDailyFunding(x.plan, [], x.asOf, { ...opts, disabled: [] });
+  const all = retired.rows.find(r => r.key === 'group:club');
+  assert.equal(all.needed, 0); assert.equal(all.saved, 0);
+  assert.deepEqual(all.members, ['near@2026-10-21', 'far@2026-10-28']);
+  assertCost(all, x.asOf, unknownCost(), unknownCost(), unknownCost());
+});
 test('publication facts: future roster retirement recomputes group facts from exact survivors', () => {
   const x = require('./fixtures/savings-selected-roster-data')('card');
   const evidence = buildEvidence([linkCmd({ goalId: 'commitment:early' }),

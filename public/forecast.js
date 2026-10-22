@@ -929,6 +929,10 @@
   // Missing or ambiguous membership withholds the fact, never a subtotal.
   // Projected survivors retain their actual opening asOf, never future payment.
   function aggregateCommitmentCost(members, asOf) {
+    // Historical backing retains inactive intent in its roster. Only the new
+    // facts exclude those incumbent retired/disabled occurrences; old roster,
+    // needed and saved publications keep their existing semantics.
+    members = members.filter(member => !member.inactive);
     const result = unavailableCommitmentCost(asOf);
     if (!members.length || new Set(members.map(i => i.key || i.id)).size !== members.length
         || members.some(i => !i.commitmentCost || i.commitmentCost.asOf !== asOf)) return result;
@@ -1232,6 +1236,22 @@
       packet.incrementalInstructions = 'eligible';
       packet.instructionReason = 'Funding proposals require matching payments and count backed assignments once. New contributions are proposals, not saved balances or transfers.';
     } else packet.instructionReason = funding.reason;
+    return packet;
+  }
+
+  // Recommendation historically evaluated this inventory without funding opts.
+  // Annotate only the new facts AFTER that evaluation: evidence/disabled opts
+  // must not flow into its incumbent eligibility or change any old field.
+  function savingsInventoryWithCommitmentCost(plan, asOf, opts) {
+    const packet = savingsInventory(plan, asOf), facts = new Map();
+    const annotate = (row, ref) => {
+      if (!row.commitmentCost) return;
+      if (!facts.has(row.key)) facts.set(row.key,
+        savingsGoal(plan, ref, asOf, opts?.settlementEvidence, opts?.disabled).commitmentCost);
+      row.commitmentCost = facts.get(row.key);
+    };
+    for (const pool of packet.pools) for (const goal of pool.plannedGoals) annotate(goal, goal.ref);
+    for (const goal of packet.goals) annotate(goal, goal.goalRef);
     return packet;
   }
 
@@ -15524,7 +15544,7 @@
             groups: (savingsSchedule.groups || []).map(hold) };
         }
         savingsFunding.allocationMode = historicalSavings ? 'historical-pools' : 'combined';
-        savingsFunding.manualInventory = historicalSavings ? savingsInventory(plan, asOf, paydayOpts) : null;
+        savingsFunding.manualInventory = historicalSavings ? savingsInventoryWithCommitmentCost(plan, asOf, paydayOpts) : null;
         savingsFunding.schedule = savingsSchedule;
         const todayReady = savingsFunding.status === 'ready' && savingsFunding.period?.status === 'ready';
         const savingsNext = savingsSchedule.status !== 'unavailable' ? savingsSchedule.paydays?.[0] : null;
@@ -15671,7 +15691,7 @@
         fundingSequence: sequence,
         majorPlans: plans,
         planSpendPaydayFunding: savingsSchedule,
-        savingsInventory: savingsInventory(plan, asOf, paydayOpts),
+        savingsInventory: savingsInventoryWithCommitmentCost(plan, asOf, paydayOpts),
         plannedDebt: debt,
         infeasible: mode === 'infeasible' ? (infeasible || protectedAtCap.first) : null,
         // Named joint-cash obligations already in `zero.events` on the next
