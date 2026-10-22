@@ -940,3 +940,218 @@ test('plan: same-instance recovery from unavailable to unconfigured restores pub
     'recovered render matches a fresh unconfigured render');
   assert.equal(recovered['plan-window'].textContent, fresh['plan-window'].textContent);
 });
+
+/* --------------------------------------------------- plan spend page */
+// Plan Spend settlement publication gap (Dale's launch audit). Plan Spend
+// renders Forecast.recommend output — the savings inventory, payday funding
+// lede, planned-spending cards and note — but never read the served
+// settlement outcome: qualified relief was dropped and a configured-
+// unavailable store published legacy figures. These tests drive the real
+// plan-spend.js script and its registered renderer with synthetic data.
+
+const PLAN_SPEND_MOUNTS = ['savings-inventory', 'plan-spend-lede', 'plan-spend-list', 'plan-spend-note'];
+
+function loadPlanSpend() {
+  const loaded = loadBrowserScripts([
+    'public/app.js',
+    'public/forecast.js',
+    'public/savings-inventory.js',
+    'public/plan-spend.js',
+  ]);
+  // Record every Forecast.recommend call the page makes; the real
+  // Forecast still computes every figure.
+  const calls = [];
+  const real = loaded.sandbox.Forecast.recommend;
+  loaded.sandbox.Forecast.recommend = function (...args) { calls.push(args); return real.apply(this, args); };
+  loaded.calls = calls;
+  return loaded;
+}
+
+function renderPlanSpendPage(loaded, x, settlement) {
+  loaded.sandbox.renderPlanSpend(servedData(x, settlement), periods());
+  const out = {};
+  for (const id of PLAN_SPEND_MOUNTS) {
+    const el = loaded.dom.element(id);
+    out[id] = { innerHTML: el.innerHTML, textContent: el.textContent };
+  }
+  return out;
+}
+
+const planSpendText = mounts => Object.values(mounts).map(m => m.innerHTML + m.textContent).join('\n');
+
+// Outcome corpus shared by the parity test: every status shape the two
+// incumbent mirrors distinguish.
+function settlementCorpus() {
+  const valid = linkEvidence();
+  const bad = mutate => { const e = structuredClone(valid); mutate(e); return e; };
+  const reasons = ['invalid-configuration', 'pin-unavailable', 'pin-invalid',
+    'document-unavailable', 'document-missing', 'document-malformed',
+    'household-mismatch', 'revision-mismatch', 'document-ahead-of-pin',
+    'digest-mismatch', 'document-invalid', 'document-changed'];
+  return [
+    {},
+    { settlementEvidenceStatus: { status: 'unconfigured' } },
+    { settlementEvidenceStatus: { status: 'unconfigured' }, settlementEvidence: valid },
+    { settlementEvidenceStatus: { status: 'qualified' }, settlementEvidence: valid },
+    { settlementEvidenceStatus: { status: 'qualified' } },
+    { settlementEvidenceStatus: { status: 'qualified' }, settlementEvidence: bad(e => { e.commitments[0].links[0].assignedCents = 0; }) },
+    { settlementEvidenceStatus: { status: 'qualified' }, settlementEvidence: bad(e => { e.commitments[0].links[0].txRef = 'tx-1'; }) },
+    { settlementEvidenceStatus: { status: 'qualified' }, settlementEvidence: bad(e => { e.commitments.push(structuredClone(e.commitments[0])); }) },
+    { settlementEvidenceStatus: { status: 'qualified' }, settlementEvidence: bad(e => { e.commitments[0].links[0].effectiveDate = '2026-02-30'; }) },
+    { settlementEvidenceStatus: { status: 'qualified' }, settlementEvidence: [] },
+    ...reasons.map(reason => ({ settlementEvidenceStatus: { status: 'unavailable', reason } })),
+    { settlementEvidenceStatus: { status: 'unavailable', reason: 'not-a-loader-reason' } },
+    { settlementEvidenceStatus: { status: 'unavailable' } },
+    { settlementEvidenceStatus: { status: 'unavailable', reason: 'pin-unavailable' }, settlementEvidence: valid },
+    { settlementEvidenceStatus: { status: 'bogus' } },
+    { settlementEvidenceStatus: null },
+    { settlementEvidenceStatus: 'qualified', settlementEvidence: valid },
+    { settlementEvidenceStatus: ['qualified'] },
+    { settlementEvidence: valid },
+  ];
+}
+
+test('plan spend: settlement outcome is in parity with the Planning and Plan mirrors', () => {
+  const ps = loadPlanSpend().sandbox;
+  assert.equal(typeof ps.planSpendSettlementOutcome, 'function', 'Plan Spend reads the served settlement outcome');
+  const planning = loadPlanning().sandbox;
+  const plan = loadPlan().sandbox;
+  assert.deepEqual(
+    [...vm.runInContext('PLAN_SPEND_SETTLEMENT_REASONS', ps)].sort(),
+    [...vm.runInContext('PLANNING_SETTLEMENT_REASONS', planning)].sort(),
+    'reason vocabulary matches Planning');
+  assert.deepEqual(
+    [...vm.runInContext('PLAN_SPEND_SETTLEMENT_REASONS', ps)].sort(),
+    [...vm.runInContext('PLAN_SETTLEMENT_REASONS', plan)].sort(),
+    'reason vocabulary matches Plan');
+  const corpus = settlementCorpus();
+  for (let i = 0; i < corpus.length; i++) {
+    const d = corpus[i];
+    const mine = JSON.stringify(ps.planSpendSettlementOutcome(d));
+    assert.equal(mine, JSON.stringify(planning.planningSettlementOutcome(d)), `case ${i}: parity with Planning`);
+    assert.equal(mine, JSON.stringify(plan.planSettlementOutcome(d)), `case ${i}: parity with Plan`);
+  }
+});
+
+test('plan spend: absent status and explicit unconfigured render identically and call Forecast without evidence', () => {
+  const a = loadPlanSpend(), b = loadPlanSpend();
+  const ra = renderPlanSpendPage(a, fixtureInput(), null);
+  const rb = renderPlanSpendPage(b, fixtureInput(), UNCONFIGURED);
+  assert.deepEqual(rb, ra);
+  assert.equal(a.calls.length, 1);
+  assert.equal(Object.prototype.hasOwnProperty.call(a.calls[0][2], 'settlementEvidence'), false,
+    'unconfigured (default-inactive) recommend options carry no settlement evidence key');
+  assert.ok(ra['plan-spend-list'].innerHTML.includes('$60.00'), 'legacy output publishes the unrelieved cost');
+});
+
+test('plan spend: qualified evidence reaches Forecast.recommend unchanged and its relieved figures are published', () => {
+  const loaded = loadPlanSpend();
+  const served = QUALIFIED();
+  const supplied = structuredClone(served.evidence);
+  loaded.sandbox.renderPlanSpend(servedData(fixtureInput(), served), periods());
+  assert.equal(loaded.calls.length, 1, 'one dependent Forecast call');
+  assert.equal(loaded.calls[0][2].settlementEvidence, served.evidence,
+    'the served evidence object itself is passed (no copy, no transformation)');
+  assert.deepEqual(served.evidence, supplied, 'the page does not mutate the evidence');
+  // Compare supplied evidence with Forecast's own numbers (the test does
+  // the arithmetic; the page never does).
+  const direct = directRecommend(fixtureInput(), linkEvidence());
+  const seq = (direct.fundingSequence || []).find(e => e.id === 'near');
+  const assigned = supplied.commitments[0].links[0].assignedCents;
+  assert.equal(seq.need, 60 - assigned / 100, 'Forecast relieves the cost by the assigned evidence');
+  const list = loaded.dom.element('plan-spend-list').innerHTML;
+  assert.ok(list.includes('$35.00'), 'relieved remaining published on Plan Spend');
+  const plain = renderPlanSpendPage(loadPlanSpend(), fixtureInput(), null);
+  assert.notEqual(list, plain['plan-spend-list'].innerHTML, 'qualified render differs from legacy');
+  // Evidence amounts are read only by the structural validator (shape
+  // checks, as in the incumbent mirrors); nothing else in the page
+  // touches them, so relief can only come from Forecast.
+  const src = fs.readFileSync(path.join(ROOT, 'public/plan-spend.js'), 'utf8');
+  const start = src.indexOf('function planSpendSettlementEvidenceValid(');
+  const end = src.indexOf('\nfunction planSpendSettlementOutcome(');
+  assert.ok(start > 0 && end > start, 'validator located');
+  const outside = src.slice(0, start) + src.slice(end);
+  assert.doesNotMatch(outside, /assignedCents|\.cents\b|\.links\b|\.reversals\b/,
+    'Plan Spend never reads evidence amounts outside validation');
+});
+
+test('plan spend: unavailable withholds every dependent mount, distinctly per reason, with no Forecast call', () => {
+  const renders = REASONS.map(reason => {
+    const loaded = loadPlanSpend();
+    const mounts = renderPlanSpendPage(loaded, fixtureInput(), UNAVAILABLE(reason));
+    assert.equal(loaded.calls.length, 0, `${reason}: no dependent Forecast.recommend call`);
+    return mounts;
+  });
+  for (let i = 0; i < renders.length; i++) {
+    const m = renders[i];
+    assert.match(m['plan-spend-list'].innerHTML, /data-settlement-evidence="unavailable"/);
+    assert.ok(m['plan-spend-list'].innerHTML.includes(REASONS[i]), 'reason named');
+    assert.match(m['savings-inventory'].innerHTML, /data-settlement-evidence="unavailable"/,
+      'savings inventory replaced by the withheld notice');
+    assert.equal(m['plan-spend-lede'].innerHTML, '', 'funding lede cleared');
+    assert.equal(m['plan-spend-note'].textContent, '', 'note cleared');
+    assert.doesNotMatch(planSpendText(m), /\$\s?\d/, 'no amount (and no substituted zero) is published');
+    assert.ok(!planSpendText(m).includes('Invented first club cost'), 'no dependent claim names the cost');
+    for (let j = i + 1; j < renders.length; j++) assert.notDeepEqual(renders[i], renders[j]);
+  }
+});
+
+test('plan spend: withheld output does not depend on the withheld amounts', () => {
+  const a = renderPlanSpendPage(loadPlanSpend(), fixtureInput(60), UNAVAILABLE('digest-mismatch'));
+  const b = renderPlanSpendPage(loadPlanSpend(), fixtureInput(97), UNAVAILABLE('digest-mismatch'));
+  assert.deepEqual(b, a);
+  const ready = renderPlanSpendPage(loadPlanSpend(), fixtureInput(97), null);
+  assert.notDeepEqual(ready, a, 'control: unconfigured publishes');
+});
+
+test('plan spend: malformed or unknown statuses fail closed as invalid-configuration', () => {
+  const valid = linkEvidence();
+  for (const s of [
+    { status: { status: 'qualified' } },
+    { status: { status: 'bogus' } },
+    { status: { status: 'unavailable', reason: 'not-a-loader-reason' } },
+    { status: null },
+    { status: { status: 'unavailable', reason: 'pin-unavailable' }, evidence: valid },
+    { status: { status: 'qualified' }, evidence: { commitments: [{ goalId: 'commitment:near', links: [] }] } },
+  ]) {
+    const loaded = loadPlanSpend();
+    const data = servedData(fixtureInput(), null);
+    data.settlementEvidenceStatus = s.status;
+    if (s.evidence !== undefined) data.settlementEvidence = s.evidence;
+    loaded.sandbox.renderPlanSpend(data, periods());
+    const list = loaded.dom.element('plan-spend-list').innerHTML;
+    assert.match(list, /data-settlement-evidence="unavailable"/, JSON.stringify(s.status));
+    assert.ok(list.includes('invalid-configuration'));
+    assert.equal(loaded.calls.length, 0, 'no Forecast call when malformed');
+  }
+});
+
+test('plan spend: same-instance transitions never leave stale amounts and recover fully', () => {
+  const stale = m => /\$\s?\d/.test(planSpendText(m)) || planSpendText(m).includes('Invented first club cost');
+  // legacy -> unavailable
+  let loaded = loadPlanSpend();
+  assert.ok(stale(renderPlanSpendPage(loaded, fixtureInput(), null)), 'control: legacy publishes amounts');
+  assert.ok(!stale(renderPlanSpendPage(loaded, fixtureInput(), UNAVAILABLE('pin-unavailable'))), 'legacy -> unavailable');
+  // unavailable -> unconfigured recovery
+  const recovered = renderPlanSpendPage(loaded, fixtureInput(), null);
+  assert.deepEqual(recovered, renderPlanSpendPage(loadPlanSpend(), fixtureInput(), null), 'unconfigured recovery');
+  // qualified -> unavailable
+  loaded = loadPlanSpend();
+  renderPlanSpendPage(loaded, fixtureInput(), QUALIFIED());
+  assert.ok(!stale(renderPlanSpendPage(loaded, fixtureInput(), UNAVAILABLE('document-missing'))), 'qualified -> unavailable');
+  // unavailable -> qualified
+  const requal = renderPlanSpendPage(loaded, fixtureInput(), QUALIFIED());
+  assert.deepEqual(requal, renderPlanSpendPage(loadPlanSpend(), fixtureInput(), QUALIFIED()), 'unavailable -> qualified');
+  assert.ok(requal['plan-spend-list'].innerHTML.includes('$35.00'));
+});
+
+test('plan spend: operating-plan unavailable gate and empty state are preserved', () => {
+  const loaded = loadPlanSpend();
+  const data = servedData(fixtureInput(), null);
+  data.liveOverlay = { applied: false, operatingPlan: 'unavailable', operatingPlanNote: 'Synthetic stale opening.' };
+  loaded.sandbox.renderPlanSpend(data, periods());
+  assert.match(loaded.dom.element('plan-spend-list').innerHTML, /data-operating-plan="unavailable"/);
+  assert.ok(loaded.dom.element('plan-spend-list').innerHTML.includes('Synthetic stale opening.'));
+  const empty = loadPlanSpend().sandbox.planSpendPageHtml({ majorPlans: [] }, null);
+  assert.match(empty.list, /data-plan-spend="empty"/);
+});
