@@ -178,6 +178,19 @@ function readCookie(req, name) {
 function authed(req) {
   return verify(readCookie(req, 'hfd_session')) !== null;
 }
+// FOUNDATION - NOT COMPLETION: available only from this signed login, never
+// from a caller-supplied actor or an expiry-only legacy cookie. This is not
+// person identity, settlement authorization, or permission to read old receipts.
+// No settlement consumer is connected in this prerequisite.
+function sessionActor(req) {
+  let token;
+  try { token = readCookie(req, 'hfd_session'); } catch { return null; }
+  if (typeof token !== 'string' || token.split('.').length !== 2) return null;
+  const payload = verify(token);
+  if (!payload || !Number.isSafeInteger(payload.exp)
+      || typeof payload.sid !== 'string' || !/^[0-9a-f]{64}$/.test(payload.sid)) return null;
+  return `session-${payload.sid}`;
+}
 function assistantConfigured() {
   return Assistant.tokenConfigured({ ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN });
 }
@@ -285,7 +298,10 @@ app.post('/login', (req, res) => {
     return res.status(401).type('html').send(LOGIN_HTML('That password is not right.'));
   }
   attempts.delete(ip);
-  const token = sign({ exp: Date.now() + SESSION_HOURS * 3600 * 1000 });
+  const token = sign({
+    exp: Date.now() + SESSION_HOURS * 3600 * 1000,
+    sid: crypto.randomBytes(32).toString('hex'),
+  });
   res.set('Set-Cookie',
     `hfd_session=${encodeURIComponent(token)}; HttpOnly;${secureFlag(req)} SameSite=Lax; Path=/; Max-Age=${SESSION_HOURS * 3600}`);
   res.redirect('/');

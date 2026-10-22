@@ -101,7 +101,22 @@ async function main() {
   ok(setCookie.includes('hfd_session='), 'session cookie issued');
   ok(setCookie.includes('HttpOnly'), 'cookie is HttpOnly');
   ok(setCookie.includes('SameSite=Lax'), 'cookie is SameSite=Lax');
+  ok(setCookie.includes('Path=/'), 'cookie path is unchanged');
+  ok(setCookie.includes('Max-Age=1209600'), 'cookie retains its 14-day lifetime');
   const cookie = setCookie.split(';')[0];
+  const payload = JSON.parse(Buffer.from(decodeURIComponent(cookie.slice('hfd_session='.length)).split('.')[0], 'base64url'));
+  ok(typeof payload.sid === 'string' && /^[0-9a-f]{64}$/.test(payload.sid),
+    'login carries a 256-bit session identity');
+  r = await fetch(`${BASE}/login`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
+    body: `password=${encodeURIComponent(PASS)}&sid=${'f'.repeat(64)}`,
+  });
+  const secondCookie = (r.headers.get('set-cookie') || '').split(';')[0];
+  const secondPayload = JSON.parse(Buffer.from(decodeURIComponent(secondCookie.slice('hfd_session='.length)).split('.')[0], 'base64url'));
+  ok(r.status === 302 && /^[0-9a-f]{64}$/.test(secondPayload.sid)
+      && secondPayload.sid !== payload.sid && secondPayload.sid !== 'f'.repeat(64),
+    'fresh successful login assigns its own distinct identity');
 
   console.log('\n=== authenticated ===');
   r = await fetch(`${BASE}/data.json`, { headers: { cookie } });
@@ -144,6 +159,17 @@ async function main() {
   console.log('\n=== tampered cookie ===');
   r = await fetch(`${BASE}/data.json`, { headers: { cookie: cookie.replace(/.$/, 'X') }, redirect: 'manual' });
   ok(r.status === 401, 'tampered session rejected', `status ${r.status}`);
+
+  console.log('\n=== logout ===');
+  r = await fetch(`${BASE}/logout`, { method: 'POST', headers: { cookie }, redirect: 'manual' });
+  const cleared = r.headers.get('set-cookie') || '';
+  ok(r.status === 302 && r.headers.get('location') === '/login'
+      && cleared.startsWith('hfd_session=;') && cleared.includes('Max-Age=0'),
+    'logout clears this browser cookie');
+  r = await fetch(`${BASE}/talk/capability`, { redirect: 'manual' });
+  ok(r.status === 401, 'browser without the cleared cookie is unauthenticated');
+  r = await fetch(`${BASE}/talk/capability`, { headers: { cookie }, redirect: 'manual' });
+  ok(r.status === 200, 'copied token remains valid until expiry; logout does not revoke it');
 
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
   process.exit(failures === 0 ? 0 : 1);
