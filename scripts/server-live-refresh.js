@@ -126,15 +126,20 @@ if (!isMainThread) {
   // ENTRY, before the asynchronous worker runs (B2), and rechecked in
   // the publication continuation: replacement or ABA while the worker
   // was running refuses that acquisition's witness rather than adopting
-  // the newer state as its baseline, and coalesced waiters are each
-  // rechecked against their own entry capture. At invocation the witness
+  // the newer state as its baseline. Coalesced reuse is bound to the
+  // job's issuing stamp (the creating waiter's reader domain and entry
+  // capture): a waiter that joined across a revision, or from another
+  // reader domain, refuses even when its own capture is fresh, because
+  // the shared work was issued under the earlier state. At invocation the witness
   // requires a fresh reading whose recomputed context key matches AND
   // whose revision is unchanged since entry, so replacement and ABA are
   // detected even where content — and therefore the context key —
   // returns to identical bytes. Reader failure, malformed or
   // asynchronous results, or any uncertainty refuse. There is no global
   // latest-witness slot: each closure captures only its own job's state.
-  const REFUSING_WITNESS = () => false;
+  // Each waiter owns its witness — including a refusing one: minting
+  // returns a fresh closure per waiter, never a shared constant.
+  const REFUSING_WITNESS = () => () => false;
   function readContextReader(reader) {
     try {
       const value = reader();
@@ -167,14 +172,23 @@ if (!isMainThread) {
     // B1: the reader is required — no reader or no valid entry capture
     // yields a permanently refusing witness, never a captured-input
     // recomputation.
-    if (typeof suppliedReader !== 'function' || !entryCapture) return REFUSING_WITNESS;
+    if (typeof suppliedReader !== 'function' || !entryCapture) return REFUSING_WITNESS();
+    // B2 (joined case): coalesced reuse is bound to the job's ISSUING
+    // stamp — the reader domain and entry capture of the waiter that
+    // created the job. A waiter that joined a job issued under a
+    // different reader, or at an earlier context/revision, does not
+    // inherit an admitting witness from its own later, fresher capture:
+    // the work it would admit was started under the issuing state.
+    if (suppliedReader !== job.issuingReader || !job.issuingCapture
+      || entryCapture.key !== job.issuingCapture.key
+      || entryCapture.revision !== job.issuingCapture.revision) return REFUSING_WITNESS();
     // B2: recheck the entry capture in the publication continuation. A
     // context replaced — or taken away and returned — while the worker
     // ran has an advanced revision, so this acquisition's witness
     // refuses rather than adopting the newer state as its baseline.
     const current = readContextReader(suppliedReader);
     if (!current || current.key !== entryCapture.key
-      || current.revision !== entryCapture.revision) return REFUSING_WITNESS;
+      || current.revision !== entryCapture.revision) return REFUSING_WITNESS();
     const baseline = entryCapture;
     const reader = suppliedReader;
     return function freshnessWitness() {
@@ -517,6 +531,10 @@ if (!isMainThread) {
       job = { key, context, evidence, acquire: true, admission: true, cacheable: metadata.readable,
         day: financialDay(), generation, observationEpoch,
         contextInput: input, contextEnv: workerEnv,
+        // The issuing stamp (B2 joined case): the creating waiter's
+        // reader domain and entry capture. Joining waiters are bound to
+        // it at minting; see mintWitness.
+        issuingReader: options.contextReader, issuingCapture: entryCapture,
         started: performance.now(), waiters: new Set(), waiterCount: 0,
         peakWaiters: 0, cancelledWaiters: 0, timedOutWaiters: 0, settled: false, hadForcedWaiter: false };
       jobs.set(key, job);

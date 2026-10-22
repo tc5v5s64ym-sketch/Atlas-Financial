@@ -1293,4 +1293,62 @@ if (!threads.isMainThread) {
     }
   });
 
+  test('WA-L6 a waiter joining across a revision inherits the issuing stamp, not its own later capture (B2 joined case)', { timeout: 120000 }, async () => {
+    const mock = await helper.provider();
+    const env = helper.environment(mock.base);
+    const canonical = Fixture.canonical();
+    try {
+      await bounded(Refresh.serve(canonical, env), 'seed serve');
+      await drain();
+      // One legitimate monotonic reader throughout the joined trace.
+      const cell = { canonical, env, revision: 1 };
+      const reader = () => ({ canonical: cell.canonical, env: cell.env, contextRevision: cell.revision });
+      // (i) The joined trace, revisions [1, 3]: A starts at revision 1;
+      // before yielding, an identical-content replacement and an ABA
+      // back to the original object advance the revision to 3; B then
+      // starts — before A's worker publishes — and joins A's job,
+      // capturing revision 3. B must not admit work that was issued at
+      // revision 1, however fresh B's own capture is: reuse is bound to
+      // the job's issuing context/revision, not the joiner's.
+      const aPromise = Refresh.acquireSettlementWithWitness(canonical, env, { contextReader: reader });
+      cell.canonical = JSON.parse(JSON.stringify(canonical));
+      cell.revision = 2;
+      cell.canonical = canonical;
+      cell.revision = 3;
+      const bPromise = Refresh.acquireSettlementWithWitness(canonical, env, { contextReader: reader });
+      const [a, b] = await Promise.all([bounded(aPromise, 'joined acquire A'), bounded(bPromise, 'joined acquire B')]);
+      await drain();
+      assert.equal(a.witness(), false, 'A refuses: its context moved during acquisition');
+      assert.equal(b.witness(), false,
+        'B refuses: it joined work issued at revision 1, however fresh its own capture');
+      assert.notEqual(a.witness, b.witness, 'waiter ownership is preserved even when both refuse');
+      assert.notEqual(a.acquisition, b.acquisition, 'each waiter still owns its acquisition clone');
+      // (ii) Reader-domain incompatibility: a different reader function
+      // over identical content at the same revision is a different
+      // domain; its joiner must not ride the issuing waiter's stamp.
+      const otherCell = { canonical, env, revision: 3 };
+      const otherReader = () => ({ canonical: otherCell.canonical, env: otherCell.env, contextRevision: otherCell.revision });
+      const cPromise = Refresh.acquireSettlementWithWitness(canonical, env, { contextReader: reader });
+      const dPromise = Refresh.acquireSettlementWithWitness(canonical, env, { contextReader: otherReader });
+      const [c, d] = await Promise.all([bounded(cPromise, 'domain acquire C'), bounded(dPromise, 'domain acquire D')]);
+      await drain();
+      assert.equal(c.witness(), true, 'the issuing waiter admits');
+      assert.equal(d.witness(), false, 'a joiner from a different reader domain refuses');
+      // (iii) Unchanged-revision coalescing control: two waiters on one
+      // job, same reader, same revision — both admit, separately owned.
+      const [e, f] = await Promise.all([
+        bounded(Refresh.acquireSettlementWithWitness(canonical, env, { contextReader: reader }), 'coalesced acquire E'),
+        bounded(Refresh.acquireSettlementWithWitness(canonical, env, { contextReader: reader }), 'coalesced acquire F'),
+      ]);
+      await drain();
+      assert.equal(e.witness(), true, 'coalesced waiter E admits');
+      assert.equal(f.witness(), true, 'coalesced waiter F admits');
+      assert.notEqual(e.witness, f.witness, 'coalesced waiters own distinct witnesses');
+      assert.notEqual(e.acquisition, f.acquisition, 'coalesced waiters own distinct acquisitions');
+    } finally {
+      mock.release();
+      await mock.close();
+    }
+  });
+
 }
