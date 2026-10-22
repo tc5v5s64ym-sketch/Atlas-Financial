@@ -385,6 +385,51 @@ test('Amendment 4 / AD-7 pins: descriptor-safe __proto__, getter-free holes, inc
   assert.throws(() => R.bindSnapshot(new Array(200000)), /length/);
 });
 
+test('B4 snapshot and encoder enforce equivalent incremental encoded-byte budgets, framing included', () => {
+  // PR #671 Systems Review B4: the snapshot's byte budget must account for
+  // exactly the bytes the encoder emits — tags, length/count framing and
+  // content — incrementally, or values pass the snapshot and fail the
+  // encoder (Atlas's probe: four 8-MiB strings). Parity is pinned at the
+  // exact limit (both accept) and at limit-plus-one (both fail closed).
+  const MAX = R.BIND_LIMITS.maxBytes;
+  assert.equal(MAX, 33554432, 'the shared encoded-byte budget');
+  // (a) Four max-length strings: raw content alone equals the budget, so
+  // framing pushes the encoded total over it. BOTH paths must refuse.
+  const fourMax = Array.from({ length: 4 }, () => 'x'.repeat(R.BIND_LIMITS.maxStringBytes));
+  assert.throws(() => R.bindEncode(fourMax), undefined, 'encoder refuses four max strings');
+  assert.throws(() => R.bindSnapshot(fourMax), undefined, 'snapshot refuses four max strings (framing counted)');
+  // (a) Exact limit: [4 x 8,388,598-byte strings, true] frames to exactly
+  // 33,554,432 encoded bytes (array header 3 + 4 x (9 + 8,388,598) + 1).
+  const exactStrings = [...Array.from({ length: 4 }, () => 'x'.repeat(8388598)), true];
+  assert.equal(R.bindEncode(exactStrings).length, MAX, 'encoder accepts at the exact limit');
+  assert.doesNotThrow(() => R.bindSnapshot(exactStrings), 'snapshot accepts at the exact limit');
+  assert.equal(R.bindEncode(R.bindSnapshot(exactStrings)).length, MAX, 'snapshot output encodes to the same total');
+  // (a) Limit plus one framed byte: both refuse.
+  const overStrings = [...Array.from({ length: 4 }, (_, i) => 'x'.repeat(i === 0 ? 8388599 : 8388598)), true];
+  assert.throws(() => R.bindEncode(overStrings), undefined, 'encoder refuses limit-plus-one');
+  assert.throws(() => R.bindSnapshot(overStrings), undefined, 'snapshot refuses limit-plus-one');
+  // (b) Key-dominated parity: 511 keys of exactly 65,536 bytes each. The
+  // encoder must preflight cumulative key bytes BEFORE allocating any
+  // encoded-key buffer; the snapshot must charge the same framed key cost.
+  // Framed total with a 61,437-byte string value on one key is exactly the
+  // budget (record header 5 + 511 x (7 + 65,536) + 510 x 1 + (7 + 61,437)).
+  const keyOf = i => String(i).padStart(6, '0') + 'k'.repeat(65536 - 6);
+  const keyedExact = {};
+  for (let i = 0; i < 511; i++) keyedExact[keyOf(i)] = true;
+  keyedExact[keyOf(0)] = 'x'.repeat(61437);
+  assert.equal(R.bindEncode(keyedExact).length, MAX, 'encoder accepts the key-dominated exact limit');
+  assert.doesNotThrow(() => R.bindSnapshot(keyedExact), 'snapshot accepts the key-dominated exact limit');
+  const keyedOver = { ...keyedExact, [keyOf(0)]: 'x'.repeat(61438) };
+  assert.throws(() => R.bindEncode(keyedOver), undefined, 'encoder refuses key-dominated limit-plus-one');
+  assert.throws(() => R.bindSnapshot(keyedOver), undefined, 'snapshot refuses key-dominated limit-plus-one');
+  // (b) Atlas's allocation probe shape: 513 max-length keys (33,619,968 raw
+  // key bytes) refuse on BOTH paths.
+  const keyedHuge = {};
+  for (let i = 0; i < 513; i++) keyedHuge[keyOf(i)] = 1;
+  assert.throws(() => R.bindEncode(keyedHuge), undefined, 'encoder refuses 513 max-length keys');
+  assert.throws(() => R.bindSnapshot(keyedHuge), undefined, 'snapshot refuses 513 max-length keys');
+});
+
 // ---------------------------------------------------------------------------
 // txRef v1 (contract section 2).
 // ---------------------------------------------------------------------------
@@ -578,6 +623,45 @@ test('Amendment 1 multiple visible rows under one local id refuse every tuple on
   assert.equal(calls.length, 0, 'an ambiguous local id is never classified');
 });
 
+test('B2 tuple keys are injective: NUL-shifted producer pairs refuse before classify', async () => {
+  // PR #671 Systems Review B2: a NUL-delimited string key collapses
+  // (account 'acct<NUL>one', transaction 't') and (account 'acct',
+  // transaction 'one<NUL>t') onto one key. Two such provenance entries
+  // sharing one local id and one packet row must be TWO producers of that
+  // row — ambiguity that refuses — never one merged tuple resolving with
+  // matchCount 1. Native ids do not exclude NUL, so the key encoding must
+  // be injective (nested maps / structural identity), and txRef v1 is
+  // untouched by the fix.
+  const shiftedA = { providerAccountId: 'acct\u0000one', transactionId: 't' };
+  const shiftedB = { providerAccountId: 'acct', transactionId: 'one\u0000t' };
+  const nulMap = standardMap();
+  nulMap.mappings.push(
+    { providerAccountId: shiftedA.providerAccountId, atlasRole: 'household-cash', canonical: { collection: 'cash', id: 'chequing-a' } },
+    { providerAccountId: shiftedB.providerAccountId, atlasRole: 'household-cash', canonical: { collection: 'cash', id: 'chequing-a' } },
+  );
+  const acq = {
+    packet: standardPacket([spendRow()]),
+    join: [{ localId: 'tx-1', ...shiftedA }, { localId: 'tx-1', ...shiftedB }],
+    plan: standardPlan(), map: nulMap,
+  };
+  const { classify, calls } = classifyRecorder();
+  const resolver = resolverFor(acq);
+  assert.equal(await resolveDirect(resolver, handlesFor(acq, shiftedA), classify), null,
+    'the first shifted tuple must not resolve through the collision');
+  assert.equal(await resolveDirect(resolver, handlesFor(acq, shiftedB), classify), null,
+    'the second shifted tuple must not resolve through the collision');
+  assert.equal(calls.length, 0, 'ambiguous producers refuse BEFORE classify is invoked');
+  // Control: either tuple ALONE over the same row resolves normally, so the
+  // refusal above is the ambiguity, not the NUL content itself.
+  const solo = { ...acq, join: [{ localId: 'tx-1', ...shiftedA }] };
+  const soloMap = standardMap();
+  soloMap.mappings.push({ providerAccountId: shiftedA.providerAccountId, atlasRole: 'household-cash', canonical: { collection: 'cash', id: 'chequing-a' } });
+  solo.map = soloMap;
+  const stub = stubClassify();
+  assert.ok(await resolveDirect(resolverFor(solo), handlesFor(solo, shiftedA), stub.classify),
+    'a sole NUL-bearing tuple resolves when it is unambiguous');
+});
+
 test('AC-34 two packet rows sharing one local id refuse even with a single join fact', async () => {
   const acq = standardAcquisition();
   acq.packet = standardPacket([spendRow(), spendRow({ amount: 25 })]);
@@ -645,16 +729,32 @@ test('AC-33 (amended) handles are recomputable selectors: a never-minted but cur
   assert.equal(calls.length, 1, 'refusals never reach classify');
 });
 
-test('AC-31 handles from a superseded instance refuse when their content is absent, even with a warm identification memo', async () => {
+test('B1/AC-31 (corrected) identification is current-derivation only: an amount change kills the old handle pair in warm and fresh factories alike', async () => {
+  // PR #671 Systems Review B1: the identification memo is removed. A handle
+  // pair identifies ONLY by matching derivations from the CURRENT
+  // acquisition; process history revives nothing. Changing the packet row
+  // amount 60 -> 61 changes the row digest and therefore the instance
+  // digest and the selection handle, so the old pair is unresolvable in
+  // EVERY factory over the new content — warm (this factory resolved the
+  // pair a moment ago) or fresh. The resolver returns null and classify is
+  // never invoked; at the controller this surfaces as selection-unavailable.
   let current = standardAcquisition();
   const resolver = makeResolver(async () => current);
   const { classify, calls } = classifyRecorder();
   const original = handlesFor(current);
   assert.ok(await resolveDirect(resolver, original, classify), 'resolves on its own instance');
+  const callsAfterResolve = calls.length;
+  current = standardAcquisition();
+  current.packet.transactions[0] = spendRow({ amount: 61 });
+  assert.equal(await resolveDirect(resolver, original, classify), null,
+    'a warm factory must not revive an invalidated handle pair');
+  assert.equal(await resolveDirect(resolverFor(current), original, classify), null,
+    'a fresh factory over identical current content refuses identically');
+  assert.equal(calls.length, callsAfterResolve, 'no classify invocation for an invalidated handle');
+  assert.ok(await resolveDirect(resolver, handlesFor(current), classify),
+    'the current content\u2019s own handles resolve in the same warm factory');
   // Superseding instance: a completely different transaction set. The tuple
-  // the handles name is absent, so neither current derivation nor this
-  // process\u2019s memo (identities only, re-derived against live content) can
-  // resolve them.
+  // the handles name is absent from current content, so nothing resolves.
   current = {
     packet: standardPacket([spendRow({ id: 'tx-9' })]),
     join: [{ localId: 'tx-9', providerAccountId: ACCT_A, transactionId: 'synthetic-provider-transaction-9' }],
@@ -663,7 +763,6 @@ test('AC-31 handles from a superseded instance refuse when their content is abse
   const before = calls.length;
   assert.equal(await resolveDirect(resolver, original, classify), null);
   assert.equal(calls.length, before, 'no classify invocation for a stale handle');
-  // A foreign resolver (fresh process state) over the new content refuses too.
   assert.equal(await resolveDirect(resolverFor(current), original, classify), null);
 });
 
@@ -744,6 +843,35 @@ test('AC-27 (resolver half) acquisition failure fails closed and classify is nev
   const garbage = makeResolver(async () => ({ packet: null, join: [], plan: null, map: null }));
   assert.equal(await resolveDirect(garbage, handlesFor(standardAcquisition()), classify), null);
   assert.equal(calls.length, 0);
+});
+
+test('B3 every required acquisition-envelope field is taken via validated own data descriptors; accessors refuse uninvoked', async () => {
+  // PR #671 Systems Review B3: reading raw.packet (etc.) directly invokes
+  // an enumerable getter on the acquisition object BEFORE ownership. Each
+  // required envelope field — packet, join, plan, map — must be obtained
+  // via its own DATA descriptor; an accessor field refuses resolution and
+  // its getter is never invoked. Each field is pinned individually.
+  const base = standardAcquisition();
+  const handles = handlesFor(base);
+  for (const field of ['packet', 'join', 'plan', 'map']) {
+    let getterCalls = 0;
+    const holder = { packet: base.packet, join: base.join, plan: base.plan, map: base.map };
+    Object.defineProperty(holder, field, {
+      enumerable: true, configurable: true,
+      get() { getterCalls++; return base[field]; },
+    });
+    const { classify, calls } = classifyRecorder();
+    const resolver = makeResolver(async () => holder);
+    assert.equal(await resolveDirect(resolver, handles, classify), null,
+      `an accessor ${field} field refuses resolution`);
+    assert.equal(getterCalls, 0, `the ${field} getter is never invoked`);
+    assert.equal(calls.length, 0, `no classify invocation behind an accessor ${field}`);
+  }
+  // Control: the same values behind plain data properties resolve normally.
+  const plain = { packet: base.packet, join: base.join, plan: base.plan, map: base.map };
+  const stub = stubClassify();
+  assert.ok(await resolveDirect(resolverFor(plain), handles, stub.classify),
+    'plain data envelope fields resolve');
 });
 
 // ---------------------------------------------------------------------------
@@ -907,14 +1035,28 @@ test('AC-20 mode F: a rebuilt identical acquisition confirms; a moved asOf is se
   assert.equal(w2.document().operations.length, 0);
 });
 
-test('AC-22 (amended) / Amendment 2: retained packet drift binds, notes-side-only change does not, a notes-driven retained flip must drift', async t => {
-  // (i) A change to the retained canonical packet row drifts the binding.
+test('AC-22 (amended) / Amendment 2 + B1: retained packet drift binds; handle-invalidating drift fails closed as selection-unavailable; a notes-driven retained flip must drift', async t => {
+  // (i) A change to the retained canonical packet row drifts the binding —
+  // shown directly (the relabelled content, resolved under its own current
+  // handles, binds differently). At confirm, the row sits inside handle
+  // derivation (row digest -> instance digest), so the presented pair is
+  // invalidated and, with the identification memo removed (B1), confirm
+  // fails closed as selection-unavailable rather than selection-changed.
+  const stub = stubClassify();
+  const baseSelection = await resolveDirect(
+    resolverFor(standardAcquisition()), handlesFor(standardAcquisition()), stub.classify);
+  const relabelledDirect = standardAcquisition();
+  relabelledDirect.packet.transactions[0] = spendRow({ categoryLabel: 'Restaurants' });
+  const relabelledSelection = await resolveDirect(
+    resolverFor(relabelledDirect), handlesFor(relabelledDirect), stub.classify);
+  assert.notEqual(relabelledSelection.selectionBinding, baseSelection.selectionBinding,
+    'the binding itself drifts on a retained packet-row change');
   const w1 = await world(t);
   await w1.prepare(1);
   const relabelled = standardAcquisition();
   relabelled.packet.transactions[0] = spendRow({ categoryLabel: 'Restaurants' });
   w1.acquisition = relabelled;
-  assert.deepEqual(await w1.confirm(1), { status: 'rejected', reason: 'selection-changed' });
+  assert.deepEqual(await w1.confirm(1), { status: 'rejected', reason: 'selection-unavailable' });
   assert.equal(w1.document().operations.length, 0);
   // (ii) A notes-only change whose retained effects are unchanged does NOT
   // drift. Notes live upstream of the sanitizer and never reach the
@@ -937,27 +1079,36 @@ test('AC-22 (amended) / Amendment 2: retained packet drift binds, notes-side-onl
   const flipped = standardAcquisition();
   flipped.packet.transactions[0] = spendRow({ personalOwner: 'dale' });
   w3.acquisition = flipped;
-  assert.deepEqual(await w3.confirm(1), { status: 'rejected', reason: 'selection-changed' });
+  // The flip changes the canonical packet row, so the binding drifts (the
+  // direct comparison in (i) is the binding-level pin); at confirm the
+  // invalidated handle pair fails closed as selection-unavailable (B1).
+  assert.deepEqual(await w3.confirm(1), { status: 'rejected', reason: 'selection-unavailable' });
   assert.equal(w3.document().operations.length, 0);
 });
 
-test('AC-23 an unrelated commitment added to the plan drifts the goal binding', async t => {
+test('AC-23 (B1-corrected) an unrelated commitment added to the plan invalidates the choice handle: selection-unavailable', async t => {
+  // The plan digest feeds the choice handle, so ANY plan change — even to
+  // an unrelated commitment — invalidates the presented pair. Under
+  // current-derivation-only identification (B1) the resolver returns null
+  // and confirm fails closed as selection-unavailable; reaching a binding
+  // comparison (selection-changed) requires a pair that still re-resolves,
+  // e.g. the preserved packet-envelope/map/asOf drift classes.
   const w = await world(t);
   await w.prepare(1);
   const grown = standardAcquisition();
   grown.plan.commitments.push({ id: 'synthetic-other', label: 'Synthetic Other', amount: 10 });
   w.acquisition = grown;
-  assert.deepEqual(await w.confirm(1), { status: 'rejected', reason: 'selection-changed' });
+  assert.deepEqual(await w.confirm(1), { status: 'rejected', reason: 'selection-unavailable' });
   assert.equal(w.document().operations.length, 0);
 });
 
-test('AC-24 a change to the goal row itself drifts', async t => {
+test('AC-24 (B1-corrected) a change to the goal row itself invalidates the choice handle: selection-unavailable', async t => {
   const w = await world(t);
   await w.prepare(1);
   const changed = standardAcquisition();
   changed.plan.commitments[0] = { id: 'synthetic-trip', label: 'Synthetic Trip', amount: 350 };
   w.acquisition = changed;
-  assert.deepEqual(await w.confirm(1), { status: 'rejected', reason: 'selection-changed' });
+  assert.deepEqual(await w.confirm(1), { status: 'rejected', reason: 'selection-unavailable' });
   assert.equal(w.document().operations.length, 0);
 });
 
@@ -993,7 +1144,44 @@ test('AC-27 (controller half) confirm-time acquisition failure is selection-unav
   assert.ok(w.documentBytes().equals(before), 'document bytes unchanged');
 });
 
-test('AD-13 plan-only change: the old selection handle resolves with the newly derived choice handle; the stale pair is selection-changed at confirm', async t => {
+test('B1 (controller) an amount change at confirm invalidates the handle pair: selection-unavailable, document untouched', async t => {
+  // The controller's own distinction (confirmation :393-394): a resolver
+  // null at confirm is selection-unavailable; a re-resolved selection whose
+  // bindings differ is selection-changed. With the memo removed, an amount
+  // change (60 -> 61) changes the row/instance digests, the presented pair
+  // no longer re-resolves, and confirm fails closed as unavailable — it
+  // must NOT be revived into a binding comparison by process history.
+  const w = await world(t);
+  await w.prepare(1);
+  const before = w.documentBytes();
+  const drifted = standardAcquisition();
+  drifted.packet.transactions[0] = spendRow({ amount: 61 });
+  w.acquisition = drifted;
+  assert.deepEqual(await w.confirm(1), { status: 'rejected', reason: 'selection-unavailable' });
+  assert.ok(w.documentBytes().equals(before), 'document bytes unchanged');
+  assert.equal(w.document().operations.length, 0);
+});
+
+test('B1 (controller, preserved drift pin) a packet permutation at confirm still re-resolves and is selection-changed', async t => {
+  // Packet permutation is in Atlas's preserved list: the instance digest
+  // sorts row digests, so the handles survive, the selection re-resolves
+  // against current content, and the order-sensitive packet binding then
+  // refuses the drift as selection-changed through the unchanged controller.
+  const w = await world(t);
+  const twoRows = standardAcquisition();
+  twoRows.packet = standardPacket([spendRow(), spendRow({ id: 'tx-2', amount: 25, atlasAccountId: 'chequing-b' })]);
+  twoRows.join = [{ localId: 'tx-1', ...TUPLE_A }, { localId: 'tx-2', ...TUPLE_B }];
+  w.acquisition = twoRows;
+  w.selection = handlesFor(twoRows);
+  await w.prepare(1);
+  const permuted = clone(twoRows);
+  permuted.packet.transactions.reverse();
+  w.acquisition = permuted;
+  assert.deepEqual(await w.confirm(1), { status: 'rejected', reason: 'selection-changed' });
+  assert.equal(w.document().operations.length, 0);
+});
+
+test('AD-13 (B1-corrected) plan-only change: the old selection handle resolves with the newly derived choice handle; the stale pair fails closed at confirm', async t => {
   const w = await world(t);
   await w.prepare(1);
   const changed = standardAcquisition();
@@ -1008,10 +1196,15 @@ test('AD-13 plan-only change: the old selection handle resolves with the newly d
   assert.ok(direct, 'selection handle is plan-independent; the new choice handle matches current derivation');
   assert.notEqual(direct.goalBinding, (await resolveDirect(
     resolverFor(standardAcquisition()), w.selection, stub.classify)).goalBinding);
-  // Controller: the retained stale pair re-resolves its identity but the
-  // binding comparison refuses the drift.
+  // Controller: the retained stale pair no longer re-resolves — the plan
+  // change invalidated its choice handle — so confirm fails closed as
+  // selection-unavailable (B1: no memo revival into a binding comparison).
+  // Handles remain content selectors (D1): a resolving handle still proves
+  // nothing at confirm beyond current derivation, and drift that leaves
+  // handles derivable (packet permutation, envelope, map, asOf) is what
+  // reaches the binding comparison as selection-changed.
   w.acquisition = changed;
-  assert.deepEqual(await w.confirm(1), { status: 'rejected', reason: 'selection-changed' });
+  assert.deepEqual(await w.confirm(1), { status: 'rejected', reason: 'selection-unavailable' });
   assert.equal(w.document().operations.length, 0);
 });
 

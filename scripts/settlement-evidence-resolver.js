@@ -37,23 +37,24 @@
 // dependency (contract P1). The controller's fixture authorize in tests is
 // a labelled synthetic mapping, the posture the controller already ships.
 //
-// Identification across drift (the one design decision this foundation had
-// to take explicitly): handles are deterministic derivations over content
-// digests, so any bound-content change re-mints them. The controller's
-// confirm nevertheless requires a FRESH selection for the same identity so
-// its deep compare can refuse drift as selection-changed (cases AC-22,
-// AC-23, AC-24, AD-13), while a handle whose identity is gone from the
-// current acquisition must resolve to null (AC-31, AC-33). This module
-// therefore resolves in two steps: (1) match the presented handles against
-// derivations from the CURRENT acquisition; (2) if that fails, consult a
-// process-local identification memo — handle pair -> (tuple, goalId) —
-// recorded only by this process's own successful resolutions. The memo
-// carries IDENTITIES ONLY, never content: every row, verdict, binding and
-// evidence value is re-derived from the current acquisition on every call,
-// a memo-named tuple or goal absent from the current acquisition resolves
-// to null, and with no current acquisition nothing resolves at all (E3).
-// Foreign or fabricated handles match neither step and resolve to null.
-// The memo dies with the process, exactly like the controller's previews.
+// Identification is current-derivation only (PR #671 Systems Review B1
+// repair): handles are deterministic derivations over content digests, and
+// a presented handle pair identifies ONLY by matching derivations computed
+// from the CURRENT acquisition. There is deliberately NO identification
+// memo and no other use of process history: a factory that resolved a pair
+// a moment ago and a factory in a fresh process behave identically over
+// identical current content. Content inside handle derivation (a packet
+// row, the plan) changing re-mints the affected handle, so the old pair
+// resolves to null and an in-flight confirm fails closed as
+// selection-unavailable through the unchanged controller; drift OUTSIDE
+// handle derivation (packet permutation, packet-envelope fields such as
+// coverageStart or observationAsOf, the account map) leaves the pair
+// resolvable, re-derives fresh bindings from current content, and the
+// controller's deep compare refuses that drift as selection-changed.
+// A tuple or goal absent from the current acquisition resolves to null,
+// and with no current acquisition nothing resolves at all (E3).
+// Foreign or fabricated handles match no current derivation and resolve
+// to null (AC-31, AC-33 as corrected).
 //
 // Hash strength, stated correctly: txRef and the handles are 128-bit
 // truncations of SHA-256 digests. A 128-bit truncated output has roughly
@@ -73,7 +74,6 @@ const CHOICE_PATTERN = /^choice-[a-f0-9]{32}$/;
 const IDENTIFIER_PATTERN = /^[a-z0-9][a-z0-9-]{0,127}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const PROVIDER = 'lunchmoney';
-const MEMO_CAPACITY = 1024;
 
 // ---------------------------------------------------------------------------
 // BIND — the binding encoding (addendum section B). A tagged, length/count
@@ -228,12 +228,26 @@ function encodeInto(state, value, depth, ancestors) {
   if (proto !== Object.prototype && proto !== null) throw bindError('non-plain object');
   const entries = ownDataDescriptors(value, false);
   if (entries.length > BIND_LIMITS.maxKeysPerRecord) throw bindError('record key bound exceeded');
+  // Key-byte preflight (B4): cumulative framed key bytes are totalled from
+  // lengths alone and checked against the remaining output budget BEFORE
+  // any encoded-key buffer is allocated — a record of hundreds of
+  // max-length keys must refuse without first allocating tens of megabytes
+  // of key buffers the budget was always going to reject.
+  const keyByteLengths = entries.map(([key]) => {
+    const byteLength = wtf8ByteLength(key);
+    if (byteLength > BIND_LIMITS.maxKeyBytes) throw bindError('key byte bound exceeded');
+    return byteLength;
+  });
+  const headerBytes = 1 + String(entries.length).length + 1;
+  let framedKeyBytes = 0;
+  for (const byteLength of keyByteLengths) framedKeyBytes += 1 + String(byteLength).length + 1 + byteLength;
+  if (state.bytes + headerBytes + framedKeyBytes > BIND_LIMITS.maxBytes) {
+    throw bindError('output byte bound exceeded');
+  }
   ancestors.add(value);
   encodeChunk(state, Buffer.from('o' + entries.length + ':'));
   const encodedKeys = entries.map(([key]) => {
     encodeNode(state);
-    const byteLength = wtf8ByteLength(key);
-    if (byteLength > BIND_LIMITS.maxKeyBytes) throw bindError('key byte bound exceeded');
     return { key, bytes: wtf8Encode(key) };
   });
   // Keys sort by lexicographic WTF-8 byte order (no locale, no collation).
@@ -281,24 +295,40 @@ function snapshotNode(state) {
   if (state.nodes > BIND_LIMITS.maxNodes) throw bindError('node bound exceeded');
 }
 
-function snapshotStringBytes(state, value) {
-  const byteLength = wtf8ByteLength(value);
-  if (byteLength > BIND_LIMITS.maxStringBytes) throw bindError('string byte bound exceeded');
-  state.stringBytes += byteLength;
-  if (state.stringBytes > BIND_LIMITS.maxBytes) throw bindError('total byte bound exceeded');
-  return byteLength;
+// The snapshot's byte budget is the ENCODER's budget, accounted
+// incrementally in exactly the chunks the encoder emits — one-byte tags,
+// 'n'/'s'/'a'/'o' length/count headers and content, framing included (B4).
+// Raw content bytes alone are NOT the budget: length-prefixed strings and
+// keys cost their headers too, so a value passes this snapshot iff its
+// encoded form fits maxBytes — parity pinned at the exact limit and at
+// limit-plus-one for both paths.
+function snapshotCharge(state, bytes) {
+  state.bytes += bytes;
+  if (state.bytes > BIND_LIMITS.maxBytes) throw bindError('total byte bound exceeded');
+}
+
+function framedHeaderBytes(length) {
+  return 1 + String(length).length + 1;
 }
 
 function snapshotInto(state, value, depth, ancestors) {
   snapshotNode(state);
-  if (value === null || typeof value === 'boolean' || value === undefined) return value;
+  if (value === null || typeof value === 'boolean' || value === undefined) {
+    snapshotCharge(state, 1);
+    return value;
+  }
   const type = typeof value;
   if (type === 'number') {
     if (!Number.isFinite(value)) throw bindError('non-finite number');
+    const spelling = Object.is(value, -0) ? '-0' : String(value);
+    snapshotCharge(state, framedHeaderBytes(spelling.length) + spelling.length);
     return value;
   }
   if (type === 'string') {
-    snapshotStringBytes(state, value);
+    const byteLength = wtf8ByteLength(value);
+    if (byteLength > BIND_LIMITS.maxStringBytes) throw bindError('string byte bound exceeded');
+    snapshotCharge(state, framedHeaderBytes(byteLength));
+    snapshotCharge(state, byteLength);
     return value;
   }
   if (type !== 'object') throw bindError('unsupported value type');
@@ -308,11 +338,13 @@ function snapshotInto(state, value, depth, ancestors) {
     if (value.length > BIND_LIMITS.maxArrayLength) throw bindError('array length bound exceeded');
     ownDataDescriptors(value, true);
     ancestors.add(value);
+    snapshotCharge(state, framedHeaderBytes(value.length));
     const copy = new Array(value.length);
     for (let i = 0; i < value.length; i++) {
       const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
       if (!descriptor) {
         snapshotNode(state);
+        snapshotCharge(state, 1);
         continue;
       }
       if (!descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
@@ -328,13 +360,14 @@ function snapshotInto(state, value, depth, ancestors) {
   const entries = ownDataDescriptors(value, false);
   if (entries.length > BIND_LIMITS.maxKeysPerRecord) throw bindError('record key bound exceeded');
   ancestors.add(value);
+  snapshotCharge(state, framedHeaderBytes(entries.length));
   const copy = {};
   for (const [key, entryValue] of entries) {
     snapshotNode(state);
     const byteLength = wtf8ByteLength(key);
     if (byteLength > BIND_LIMITS.maxKeyBytes) throw bindError('key byte bound exceeded');
-    state.stringBytes += byteLength;
-    if (state.stringBytes > BIND_LIMITS.maxBytes) throw bindError('total byte bound exceeded');
+    snapshotCharge(state, framedHeaderBytes(byteLength));
+    snapshotCharge(state, byteLength);
     Object.defineProperty(copy, key, {
       value: snapshotInto(state, entryValue, depth + 1, ancestors),
       enumerable: true, writable: true, configurable: true,
@@ -345,7 +378,7 @@ function snapshotInto(state, value, depth, ancestors) {
 }
 
 function bindSnapshot(value) {
-  return snapshotInto({ nodes: 0, stringBytes: 0 }, value, 1, new Set());
+  return snapshotInto({ nodes: 0, bytes: 0 }, value, 1, new Set());
 }
 
 function freezeDeep(value, seen = new Set()) {
@@ -466,14 +499,6 @@ function createSettlementEvidenceResolver(deps) {
     throw new TypeError('settlement-evidence-resolver: an injected acquisition is required — '
       + 'the production crosswalk exporter is unimplemented and no default acquisition exists');
   }
-  // Identification memo: handle pair -> { providerAccountId, transactionId,
-  // goalId }. Identities only; see the header note. Bounded, oldest-first.
-  const memo = new Map();
-  function remember(pairKey, entry) {
-    if (!memo.has(pairKey) && memo.size >= MEMO_CAPACITY) memo.delete(memo.keys().next().value);
-    memo.set(pairKey, entry);
-  }
-
   async function resolveSelection(input) {
     let classifyError = null;
     try {
@@ -488,13 +513,24 @@ function createSettlementEvidenceResolver(deps) {
 
       const raw = await acquire();
       if (!plainRecord(raw)) return null;
+      // Every required envelope field is obtained via its validated own
+      // DATA descriptor (B3): reading raw.packet directly would invoke an
+      // enumerable getter on the acquisition object before ownership, so
+      // an accessor (or missing) field refuses resolution WITHOUT being
+      // invoked. Unrelated envelope metadata is never read at all.
+      const envelope = {};
+      for (const field of ['packet', 'join', 'plan', 'map']) {
+        const descriptor = Object.getOwnPropertyDescriptor(raw, field);
+        if (!descriptor || !Object.hasOwn(descriptor, 'value')) return null;
+        envelope[field] = descriptor.value;
+      }
       // One coherent acquisition, consumed as owned frozen snapshots: after
       // this point derivation and the single classify invocation run in one
       // synchronous continuation, and no source object is read again.
-      const packet = freezeDeep(bindSnapshot(raw.packet));
-      const join = freezeDeep(bindSnapshot(raw.join));
-      const plan = freezeDeep(bindSnapshot(raw.plan));
-      const map = freezeDeep(bindSnapshot(raw.map));
+      const packet = freezeDeep(bindSnapshot(envelope.packet));
+      const join = freezeDeep(bindSnapshot(envelope.join));
+      const plan = freezeDeep(bindSnapshot(envelope.plan));
+      const map = freezeDeep(bindSnapshot(envelope.map));
       if (!plainRecord(packet) || !Array.isArray(packet.transactions)) return null;
       if (!validDateString(packet.observationAsOf)) return null;
       if (!Array.isArray(join)) return null;
@@ -511,43 +547,56 @@ function createSettlementEvidenceResolver(deps) {
         if (!rowsByLocalId.has(row.id)) rowsByLocalId.set(row.id, []);
         rowsByLocalId.get(row.id).push(row);
       }
-      const tuples = new Map();
+      // Tuple identity is structural, never a delimited string (B2): a
+      // NUL-joined key collapses ('acct<NUL>one', 't') with ('acct',
+      // 'one<NUL>t') into one tuple, and native ids do not exclude NUL.
+      // Tuples are keyed by nested Maps — one Map per component — and
+      // cross-referenced by record identity: injective by construction.
+      const tuplesByAccount = new Map();
       const producersByLocalId = new Map();
       for (const entry of join) {
         if (!plainRecord(entry) || typeof entry.localId !== 'string'
           || !nonEmptyString(entry.providerAccountId) || !nonEmptyString(entry.transactionId)) return null;
-        const key = entry.providerAccountId + '\u0000' + entry.transactionId;
-        if (!tuples.has(key)) {
-          tuples.set(key, {
+        let byTransaction = tuplesByAccount.get(entry.providerAccountId);
+        if (!byTransaction) {
+          byTransaction = new Map();
+          tuplesByAccount.set(entry.providerAccountId, byTransaction);
+        }
+        let tuple = byTransaction.get(entry.transactionId);
+        if (!tuple) {
+          tuple = {
             providerAccountId: entry.providerAccountId,
             transactionId: entry.transactionId,
             localIds: new Set(),
-          });
+          };
+          byTransaction.set(entry.transactionId, tuple);
         }
-        tuples.get(key).localIds.add(entry.localId);
+        tuple.localIds.add(entry.localId);
         if (!producersByLocalId.has(entry.localId)) producersByLocalId.set(entry.localId, new Set());
-        producersByLocalId.get(entry.localId).add(key);
+        producersByLocalId.get(entry.localId).add(tuple);
       }
       const resolvable = new Map();
-      for (const [key, tuple] of tuples) {
-        if (tuple.localIds.size !== 1) continue;
-        const localId = [...tuple.localIds][0];
-        const rows = rowsByLocalId.get(localId);
-        if (!rows || rows.length !== 1) continue;
-        if (producersByLocalId.get(localId).size !== 1) continue;
-        resolvable.set(key, {
-          providerAccountId: tuple.providerAccountId,
-          transactionId: tuple.transactionId,
-          row: rows[0],
-          txRef: deriveTxRef({ householdId, providerAccountId: tuple.providerAccountId, transactionId: tuple.transactionId }),
-        });
+      for (const byTransaction of tuplesByAccount.values()) {
+        for (const tuple of byTransaction.values()) {
+          if (tuple.localIds.size !== 1) continue;
+          const localId = [...tuple.localIds][0];
+          const rows = rowsByLocalId.get(localId);
+          if (!rows || rows.length !== 1) continue;
+          if (producersByLocalId.get(localId).size !== 1) continue;
+          resolvable.set(tuple, {
+            providerAccountId: tuple.providerAccountId,
+            transactionId: tuple.transactionId,
+            row: rows[0],
+            txRef: deriveTxRef({ householdId, providerAccountId: tuple.providerAccountId, transactionId: tuple.transactionId }),
+          });
+        }
       }
       // Instance-level txRef uniqueness (contract section 2.2): two
       // distinct tuples deriving one ref refuse the whole instance.
       const refOwners = new Map();
-      for (const [key, entry] of resolvable) {
-        if (refOwners.has(entry.txRef) && refOwners.get(entry.txRef) !== key) return null;
-        refOwners.set(entry.txRef, key);
+      for (const [tuple, entry] of resolvable) {
+        if (refOwners.has(entry.txRef) && refOwners.get(entry.txRef) !== tuple) return null;
+        refOwners.set(entry.txRef, tuple);
       }
 
       const goals = new Map();
@@ -565,9 +614,10 @@ function createSettlementEvidenceResolver(deps) {
       const packetDigest = computePacketDigest(packet);
       const accountMapDigest = computeAccountMapDigest(map);
 
-      // Identification, step 1: current-derivation match. An ambiguous
-      // handle in current content (two tuples or two goals deriving it)
-      // refuses outright rather than picking one.
+      // Identification: current-derivation match (the only identification
+      // there is — see the header note). An ambiguous handle in current
+      // content (two tuples or two goals deriving it) refuses outright
+      // rather than picking one.
       let matchedEntry = null;
       let matchedGoal = null;
       let tupleMatches = 0;
@@ -586,20 +636,13 @@ function createSettlementEvidenceResolver(deps) {
         }
       }
       if (tupleMatches > 1 || goalMatches > 1) return null;
+      // Identification is the current-derivation match above and nothing
+      // else (B1): no memo, no history. A pair that does not match exactly
+      // one current tuple derivation and one current goal derivation is
+      // unresolvable, however recently it resolved.
       let identified = null;
       if (tupleMatches === 1 && goalMatches === 1) {
         identified = { entry: matchedEntry, goal: matchedGoal };
-      } else {
-        // Identification, step 2: this process's own memo. Content is
-        // still re-derived fresh below; the memo names only the identity.
-        const entry = memo.get(presentedSelection + '|' + presentedChoice);
-        if (entry) {
-          const candidate = resolvable.get(entry.providerAccountId + '\u0000' + entry.transactionId);
-          const goalRow = goals.get(entry.goalId);
-          if (candidate && goalRow && !duplicateGoals.has(entry.goalId)) {
-            identified = { entry: candidate, goal: { goalId: entry.goalId, row: goalRow } };
-          }
-        }
       }
       if (!identified) return null;
       const { entry, goal } = identified;
@@ -668,16 +711,6 @@ function createSettlementEvidenceResolver(deps) {
         asOf,
         evidence,
       };
-      const memoEntry = {
-        providerAccountId: entry.providerAccountId,
-        transactionId: entry.transactionId,
-        goalId: goal.goalId,
-      };
-      remember(presentedSelection + '|' + presentedChoice, memoEntry);
-      const freshSelection = deriveSelectionHandle(instanceDigest, {
-        householdId, providerAccountId: entry.providerAccountId, transactionId: entry.transactionId,
-      });
-      remember(freshSelection + '|' + deriveChoiceHandle(planDigest, goal.goalId), memoEntry);
       return qualifiedSelection;
     } catch (error) {
       if (classifyError) throw classifyError;
