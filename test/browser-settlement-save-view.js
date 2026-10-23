@@ -911,7 +911,8 @@ function rendererReversalEvidence(withReversal) {
         w.base.settlementEvidence = rendererReversalEvidence(false);
         if (override != null) await page.addInitScript(value => localStorage.setItem('hfd-plan-knobs-v1', JSON.stringify({ weeklyVariable: value })), override);
         await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null && document.querySelector('[data-budget-savings-goals]'));
-        const ids = ['cap-headline', 'cap-split', 'cap-basis', 'budget-out', 'budget-basis', 'budget-cats-note'];
+        await page.evaluate(() => { document.getElementById('road-ahead').hidden = false; App.rerender(); });
+        const ids = ['cap-headline', 'cap-split', 'cap-basis', 'budget-out', 'budget-basis', 'budget-cats-note', 'hero-tiles'];
         const snapshot = () => page.evaluate(ids => ids.map(id => ({ id, html: document.getElementById(id).innerHTML,
           text: document.getElementById(id).textContent })), ids);
         const ready = await snapshot();
@@ -933,12 +934,53 @@ function rendererReversalEvidence(withReversal) {
           assert.ok(row.text.includes(publication.reason), row.id + ': published reason');
           assert.doesNotMatch(row.text, /protected funding shortfall|\$0\/wk|\$0\s*\/\s*week/);
         }
+        assert.equal(w.base.plan.budget.categories[0].plannedWeekly, 40, 'synthetic groceries are independently positive');
+        const essential = page.locator('#hero-tiles .tile').filter({ has: page.locator('.lab', { hasText: /^Essential variable need$/ }) });
+        assert.equal(await essential.locator('.val').textContent(), 'unavailable');
+        assert.ok((await essential.locator('.note').textContent()).includes(publication.reason));
         assert.equal(await page.locator('#budget-cats').innerHTML(), categories, 'known categories/history remain unchanged');
         w.base.settlementEvidence = rendererReversalEvidence(false);
         await page.evaluate(async () => { const d = await (await fetch('/data.json', { credentials: 'same-origin' })).json(); Object.assign(App.data, d); App.rerender(); });
         assert.deepEqual(await snapshot(), ready, 'ready control restores exactly after uncertainty');
         assert.equal(w.calls.commit, 0); assert.equal(w.calls.storage, 0);
         fixture.details = { publication, override, cycle: ['ready', 'unavailable', 'ready'], normalizedSyntheticEvidence: true, actualDataRoute: true };
+      }, false, width);
+    }
+    for (const width of [390, 1440]) {
+      await run('renderer hidden diagnostics unfunded sentinel ' + width, async (w, fixture) => {
+        const { page } = fixture;
+        // Same invented $400 buffer / $150 cash / empty funding source as the
+        // registered weekly suite: independent unfunded gap = $250.
+        const payload = { meta: { asOf: '2026-08-16', title: 'Synthetic unfunded renderer' },
+          debts: [], revolvingExtra: [], paypal: null, helocHistory: [],
+          plan: { windowDays: 21, defaults: { scenario: 'expected', extraDebtMonthly: 0, targetBuffer: 400 },
+            obligations: [], bills: [], commitments: [], actions: [], startingCash: { amount: 150, note: '' },
+            income: [{ id: 'later-pay', label: 'Later pay', frequency: 'once', date: '2026-08-30', amount: 3000, confidence: 'confirmed' }],
+            funding: { heading: 'Cover the gap', note: '', options: [{ id: 'empty', label: 'Empty pot', short: 'empty', available: 0, rank: 1 }] },
+            budget: { basis: 'ytd', categories: [
+              { id: 'groceries', label: 'Groceries', class: 'essential', from: ['Groceries'], plannedMonthly: 1200 },
+              { id: 'fuel', label: 'Fuel', class: 'essential', from: ['Fuel'], plannedMonthly: 800 },
+              { id: 'dining', label: 'Dining', class: 'discretionary', from: ['Dining'], plannedMonthly: 400 }] } } };
+        for (const key of Object.keys(w.base)) delete w.base[key]; Object.assign(w.base, payload);
+        await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+        const trace = await page.evaluate(() => {
+          const hidden = document.getElementById('road-ahead').hidden;
+          const advice = Forecast.recommend(App.data.plan, App.data.meta.asOf,
+            { ...App.data.plan.defaults, fundingSources: App.data.plan.funding.options, debts: [] });
+          let calls = 0, error = null;
+          const original = Forecast.counterfactuals;
+          Forecast.counterfactuals = (...args) => { calls++; return original(...args); };
+          try { App.rerender(); } catch (e) { error = e.message; } finally { Forecast.counterfactuals = original; }
+          return { hidden, weekly: advice.weekly, feasible: advice.funding.feasible, shortfall: advice.funding.shortfall,
+            calls, error, headline: document.getElementById('cap-headline').textContent };
+        });
+        fixture.details = { trace, actualDataRoute: true, normalizedSyntheticEvidence: false };
+        assert.equal(trace.hidden, true, 'actual default root is hidden');
+        assert.equal(trace.weekly, 0); assert.equal(trace.feasible, false); assert.equal(trace.shortfall, 250);
+        assert.equal(trace.calls, 0, 'hidden root never enables counterfactual calculations');
+        assert.equal(trace.error, null, 'unfunded zero sentinel completes the renderer');
+        assert.match(trace.headline, /unavailable/); assert.match(trace.headline, /250/);
+        assert.equal(w.calls.storage, 0); assert.equal(w.calls.commit, 0);
       }, false, width);
     }
   } finally { await browser.close(); }

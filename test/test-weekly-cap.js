@@ -751,6 +751,17 @@ const settle = () => new Promise(r => setTimeout(r, 0));
 
   const unfundedPage = bootPage(null, unfundedPayload, FIXTURE_PERIODS);
   await settle();
+  let hiddenError = null;
+  try {
+    unfundedPage.run(`document.getElementById('road-ahead').hidden = true;
+      globalThis.hiddenCounterfactualCalls = 0;
+      const originalCounterfactuals = Forecast.counterfactuals;
+      Forecast.counterfactuals = (...args) => { hiddenCounterfactualCalls++; return originalCounterfactuals(...args); };
+      try { App.rerender(); } finally { Forecast.counterfactuals = originalCounterfactuals; }`);
+  } catch (error) { hiddenError = error; }
+  ok(!hiddenError, 'hidden diagnostics unfunded sentinel completes renderer', hiddenError?.message || '');
+  ok(unfundedPage.run('hiddenCounterfactualCalls') === 0, 'hidden diagnostics never enables counterfactual calculations');
+  unfundedPage.run(`document.getElementById('road-ahead').hidden = false; App.rerender();`);
   const u = capSurfaces(unfundedPage);
   const uTile = capTile(u.tiles);
   ok(uTile.val === 'unavailable',
@@ -864,7 +875,7 @@ const settle = () => new Promise(r => setTimeout(r, 0));
       'unchanged budgetBreakdown publishes null cap rather than invented zero');
     const page = bootPage(override == null ? null : { weeklyVariable: override }, ready);
     await settle();
-    const ids = ['cap-headline', 'cap-split', 'cap-basis', 'budget-out', 'budget-basis', 'budget-cats-note'];
+    const ids = ['cap-headline', 'cap-split', 'cap-basis', 'budget-out', 'budget-basis', 'budget-cats-note', 'hero-tiles'];
     const before = ids.map(id => ({ html: page.get(id).innerHTML, text: page.get(id).textContent }));
     const categories = page.get('budget-cats').innerHTML;
     ready.settlementEvidence = unknown.settlementEvidence;
@@ -878,6 +889,10 @@ const settle = () => new Promise(r => setTimeout(r, 0));
       ok(output.includes(advice.operatingPlanNote), id + ' replaces stale permission with the published reason');
       ok(!/protected funding shortfall|\$0\/wk|\$0\s*\/\s*week/.test(output), id + ' invents neither zero nor shortfall');
     }
+    const essentialTile = /Essential variable need<\/div>\s*<div class="val">([^<]*)<\/div>\s*<div class="note">([\s\S]*?)<\/div>/.exec(page.get('hero-tiles').innerHTML);
+    ok(ready.plan.budget.categories[0].plannedWeekly === 40, 'independently invented groceries stay positive');
+    ok(essentialTile?.[1] === 'unavailable' && essentialTile[2].includes(advice.operatingPlanNote),
+      'absent cap withholds essential and food/fuel hero publication rather than inventing zero');
     ok(page.get('budget-cats').innerHTML === categories, 'independently known category/history facts survive');
     ready.settlementEvidence = reversalRendererFixture(false).settlementEvidence;
     page.run('App.rerender()');
