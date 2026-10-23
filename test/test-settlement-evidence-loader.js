@@ -1435,6 +1435,236 @@ test('invocation: an accessor call getter never fires — the body rejection cla
   assertIntrinsicInvocation(counts, value);
 });
 
+// --- Receipt-bound qualified publication read --------------------------------
+// The private opt-in capability: a caller that already holds an
+// authorized original committed receipt — the store's immutable-prefix
+// receipt {status, operationId, actorId, revision, digest} — plus the
+// trusted original actor identity supplied alongside it (never derived
+// from a browser-supplied lookup) can establish whether the SAME
+// qualified, pinned, stable snapshot this loader verifies includes
+// that original operation. An included outcome carries that snapshot's
+// effectiveEvidence publication and nothing else; every other state is
+// unavailable and never an inclusion claim. The receipt oracle below
+// restates the store's receipt definition (receiptForOperation over
+// prefixDigest, settlement-evidence-store.js) over the contract
+// digest, derived from the parsed document — never from the loader's
+// new code. These assertions use their own helpers: the reason-coverage
+// pin below enumerates only the base loader's REASONS.
+const otherActor = 'session-' + 'd'.repeat(64);
+const docRetracted = docWith([linkCmd({}),
+  { version: 1, kind: 'retract', targetOperationId: op(1) }]);
+function receiptOf(bytes, operationId) {
+  const state = stateOf(bytes);
+  const recorded = state.operations.find(o => o.operationId === operationId);
+  assert.ok(recorded, 'oracle receipt names a recorded operation');
+  return {
+    status: 'committed', operationId, actorId: recorded.actorId,
+    revision: recorded.revision,
+    digest: C.digest({
+      schema: C.SCHEMA, householdId: state.householdId, revision: recorded.revision,
+      operations: state.operations.slice(0, recorded.revision),
+    }),
+  };
+}
+function expectIncluded(outcome) {
+  assert.equal(outcome.status, 'included');
+  assert.deepEqual(Object.keys(outcome).sort(), ['evidence', 'status'],
+    'an included outcome carries only the same-snapshot publication');
+  return outcome.evidence;
+}
+function expectReceiptUnavailable(outcome, reason) {
+  assert.equal(outcome.status, 'unavailable');
+  assert.equal(outcome.reason, reason);
+  assert.deepEqual(Object.keys(outcome).sort(), ['reason', 'status'],
+    'a receipt-bound unavailable outcome carries a reason and nothing else');
+  assert.ok(!('evidence' in outcome), 'no publication accompanies a non-inclusion');
+}
+const receiptArgs = (bytes, receipt, actor = actorId) => ({
+  config: { householdId, pin: pinOf(bytes) }, readDocument: reader(bytes),
+  receipt, actorId: actor,
+});
+
+test('receipt-bound: a matching original receipt is included with the same-snapshot publication', async () => {
+  const receipt = receiptOf(doc1, op(1));
+  const evidence = expectIncluded(await L.loadReceiptBoundPublication(receiptArgs(doc1, receipt)));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
+test('receipt-bound: a later revision retaining the operation still includes the original receipt', async () => {
+  const receipt = receiptOf(doc1, op(1));
+  const evidence = expectIncluded(await L.loadReceiptBoundPublication(receiptArgs(doc2, receipt)));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc2)),
+    'the publication is the pinned rev-2 snapshot, not the receipt revision');
+});
+
+test('receipt-bound: a later retraction does not erase the historical acknowledgement', async () => {
+  const receipt = receiptOf(doc1, op(1));
+  const evidence = expectIncluded(await L.loadReceiptBoundPublication(receiptArgs(docRetracted, receipt)));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(docRetracted)));
+  assert.deepEqual(evidence.commitments, [],
+    'the retracted link is absent from the publication while the receipt stays included');
+});
+
+test('receipt-bound: tampered receipt fields never include', async () => {
+  const receipt = receiptOf(doc2, op(1));
+  const flip = h => h.slice(0, 63) + (h.endsWith('0') ? '1' : '0');
+  const variants = [
+    { ...receipt, digest: flip(receipt.digest) },
+    { ...receipt, revision: 2 },
+    { ...receipt, operationId: op(2) },
+    { ...receipt, status: 'committed', revision: 1, digest: receiptOf(doc2, op(2)).digest },
+  ];
+  for (const variant of variants) {
+    expectReceiptUnavailable(
+      await L.loadReceiptBoundPublication(receiptArgs(doc2, variant)), 'receipt-not-included');
+  }
+});
+
+test('receipt-bound: actor discontinuity never includes', async () => {
+  const receipt = receiptOf(doc1, op(1));
+  // The trusted actor supplied alongside the receipt is not the
+  // receipt's actor.
+  expectReceiptUnavailable(
+    await L.loadReceiptBoundPublication(receiptArgs(doc1, receipt, otherActor)),
+    'receipt-not-included');
+  // A receipt naming a different actor than the recorded operation,
+  // even when the supplied actor matches the receipt.
+  const foreign = { ...receipt, actorId: otherActor };
+  expectReceiptUnavailable(
+    await L.loadReceiptBoundPublication(receiptArgs(doc1, foreign, otherActor)),
+    'receipt-not-included');
+});
+
+test('receipt-bound: a receipt absent from the pinned history never includes', async () => {
+  const laterReceipt = receiptOf(doc2, op(2));
+  expectReceiptUnavailable(
+    await L.loadReceiptBoundPublication(receiptArgs(doc1, laterReceipt)), 'receipt-not-included');
+});
+
+test('receipt-bound: malformed bindings are receipt-invalid and perform no reads', async () => {
+  const receipt = receiptOf(doc1, op(1));
+  let docReads = 0; let pinReads = 0;
+  const args = over => ({
+    config: { householdId },
+    readPin: () => { pinReads += 1; return pinOf(doc1); },
+    readDocument: () => { docReads += 1; return doc1; },
+    ...over,
+  });
+  const malformed = [
+    { receipt: undefined, actorId },
+    { receipt: null, actorId },
+    { receipt: [], actorId },
+    { receipt: { ...receipt, status: 'recorded' }, actorId },
+    { receipt: { ...receipt, operationId: 'op-1' }, actorId },
+    { receipt: { ...receipt, actorId: 'session-short' }, actorId },
+    { receipt: { ...receipt, revision: 0 }, actorId },
+    { receipt: { ...receipt, revision: 1.5 }, actorId },
+    { receipt: { ...receipt, digest: 'zz' }, actorId },
+    { receipt, actorId: undefined },
+    { receipt, actorId: 'not-a-session' },
+  ];
+  for (const over of malformed) {
+    expectReceiptUnavailable(await L.loadReceiptBoundPublication(args(over)), 'receipt-invalid');
+  }
+  assert.equal(pinReads, 0, 'a malformed binding is refused before the pin read');
+  assert.equal(docReads, 0, 'a malformed binding is refused before any document read');
+});
+
+test('receipt-bound: caller mutation during acquisition cannot swap the frozen binding', async () => {
+  const receipt = receiptOf(doc1, op(1));
+  let calls = 0;
+  const mutatingReader = () => {
+    calls += 1;
+    if (calls === 1) {
+      receipt.digest = 'f'.repeat(64);
+      receipt.operationId = op(9);
+      receipt.revision = 99;
+    }
+    return doc1;
+  };
+  const evidence = expectIncluded(await L.loadReceiptBoundPublication({
+    config: { householdId, pin: pinOf(doc1) }, readDocument: mutatingReader,
+    receipt, actorId,
+  }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(receipt.operationId, op(9), 'the mutation really landed on the caller object');
+  assert.equal(receipt.revision, 99, 'the frozen copy governed, not the mutated fields');
+});
+
+test('receipt-bound: a snapshot that moves during the read never includes', async () => {
+  const receipt = receiptOf(doc2, op(1));
+  let calls = 0;
+  const shifting = () => { calls += 1; return calls === 1 ? doc2 : docRetracted; };
+  expectReceiptUnavailable(await L.loadReceiptBoundPublication({
+    config: { householdId, pin: pinOf(doc2) }, readDocument: shifting, receipt, actorId,
+  }), 'document-changed');
+});
+
+test('receipt-bound: load failures stay unavailable with the loader reason', async () => {
+  const receipt = receiptOf(doc1, op(1));
+  expectReceiptUnavailable(await L.loadReceiptBoundPublication({
+    config: { householdId }, readPin: () => { throw new Error('pin store down'); },
+    readDocument: reader(doc1), receipt, actorId,
+  }), 'pin-unavailable');
+  expectReceiptUnavailable(await L.loadReceiptBoundPublication({
+    config: { householdId, pin: pinOf(doc1) }, readDocument: () => null, receipt, actorId,
+  }), 'document-missing');
+  expectReceiptUnavailable(await L.loadReceiptBoundPublication({
+    config: { householdId, pin: pinOf(docFork) }, readDocument: reader(doc1), receipt, actorId,
+  }), 'digest-mismatch');
+});
+
+test('receipt-bound: a wholly unconfigured input is unavailable, never included', async () => {
+  const receipt = receiptOf(doc1, op(1));
+  expectReceiptUnavailable(
+    await L.loadReceiptBoundPublication({ receipt, actorId }), 'invalid-configuration');
+});
+
+test('receipt-bound: failure then recovery includes, with no second commit and no extra reads', async () => {
+  const receipt = receiptOf(doc1, op(1));
+  const receiptBefore = JSON.stringify(receipt);
+  let docReads = 0; let failures = 1;
+  const flaky = () => {
+    docReads += 1;
+    if (failures > 0) { failures -= 1; throw new Error('store unavailable'); }
+    return doc1;
+  };
+  const args = () => ({
+    config: { householdId, pin: pinOf(doc1) }, readDocument: flaky, receipt, actorId,
+  });
+  expectReceiptUnavailable(await L.loadReceiptBoundPublication(args()), 'document-unavailable');
+  assert.equal(docReads, 1, 'the failed acquisition stopped at the throwing read');
+  const evidence = expectIncluded(await L.loadReceiptBoundPublication(args()));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(docReads, 3,
+    'recovery is one fresh acquisition: the verification read plus the stability re-read');
+  assert.equal(JSON.stringify(receipt), receiptBefore, 'the read path never writes the receipt');
+});
+
+test('receipt-bound: proof and publication derive from one acquisition', async () => {
+  const receipt = receiptOf(doc2, op(1));
+  let pinReads = 0; let docReads = 0;
+  const evidence = expectIncluded(await L.loadReceiptBoundPublication({
+    config: { householdId },
+    readPin: () => { pinReads += 1; return pinOf(doc2); },
+    readDocument: () => { docReads += 1; return doc2; },
+    receipt, actorId,
+  }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc2)));
+  assert.equal(pinReads, 1, 'exactly one pin acquisition');
+  assert.equal(docReads, 2,
+    'exactly the loader stability pair — no separate read serves the receipt proof');
+});
+
+test('receipt-bound: async readers include identically, and a frozen receipt is honoured read-only', async () => {
+  const receipt = Object.freeze(receiptOf(doc1, op(1)));
+  const evidence = expectIncluded(await L.loadReceiptBoundPublication({
+    config: { householdId, pin: pinOf(doc1) },
+    readDocument: async () => doc1, receipt, actorId,
+  }));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
 // --- Reason coverage ------------------------------------------------------------
 test('coverage: every enumerated unavailable reason was exercised above', async () => {
   assert.deepEqual([...seenReasons].sort(), [...L.REASONS].sort(),

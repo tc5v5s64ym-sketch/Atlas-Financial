@@ -1338,3 +1338,115 @@ test('booted server: production default serves /data.json with no settlement fie
     await atlas.stop();
   }
 });
+
+/* ------------------------------------------- 9. receipt-bound publication read
+ * The private opt-in capability over the REAL durable store. Every
+ * receipt below is a receipt the store itself issued from its public
+ * prepare/commit flow — the authorized original committed receipt an
+ * internal caller would hold — never a hand-written document. */
+
+// Commit one command through the fixture store's public flow and
+// return the store's own receipt for it.
+async function commitCapturingReceipt(fixture, n, command) {
+  const prepared = await fixture.store.prepare({ actorId, operationId: op(n), command });
+  assert.ok(prepared.preview, 'prepare returns a contract preview');
+  const receipt = await fixture.store.commit({
+    actorId, preview: prepared.preview, confirmationDigest: prepared.confirmationDigest,
+  });
+  assert.equal(receipt.status, 'committed', 'synthetic command commits through the store');
+  return receipt;
+}
+
+test('receipt-bound: a real store receipt is included with the same-snapshot publication', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const fixture = await makeStoreFixture([]);
+  const receipt = await commitCapturingReceipt(fixture, 1, linkCmd({}));
+  const serving = createSettlementEvidenceServing(fixtureDependency(fixture));
+  const outcome = await serving.receiptBoundPublication(receipt, actorId);
+  assert.equal(outcome.status, 'included');
+  assert.deepEqual(Object.keys(outcome).sort(), ['evidence', 'status']);
+  const parsed = JSON.parse(fs.readFileSync(fixture.documentFile).toString('utf8'));
+  assert.deepEqual(outcome.evidence, C.effectiveEvidence({
+    householdId: parsed.householdId, revision: parsed.revision, operations: parsed.operations,
+  }), 'the publication is the pinned document’s own effective evidence');
+});
+
+test('receipt-bound: a tampered store receipt and a foreign actor never include', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const fixture = await makeStoreFixture([]);
+  const receipt = await commitCapturingReceipt(fixture, 1, linkCmd({}));
+  const serving = createSettlementEvidenceServing(fixtureDependency(fixture));
+  const flip = h => h.slice(0, 63) + (h.endsWith('0') ? '1' : '0');
+  assert.deepEqual(
+    await serving.receiptBoundPublication({ ...receipt, digest: flip(receipt.digest) }, actorId),
+    { status: 'unavailable', reason: 'receipt-not-included' });
+  assert.deepEqual(
+    await serving.receiptBoundPublication({ ...receipt, revision: 2 }, actorId),
+    { status: 'unavailable', reason: 'receipt-not-included' });
+  assert.deepEqual(
+    await serving.receiptBoundPublication(receipt, 'session-' + 'e'.repeat(64)),
+    { status: 'unavailable', reason: 'receipt-not-included' });
+});
+
+test('receipt-bound: document failure then recovery includes, with no second commit', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const fixture = await makeStoreFixture([]);
+  const receipt = await commitCapturingReceipt(fixture, 1, linkCmd({}));
+  const serving = createSettlementEvidenceServing(fixtureDependency(fixture));
+  const docBefore = fs.readFileSync(fixture.documentFile);
+  const pinBefore = fixture.transport.readRaw(NS + '/pin.json');
+  const moved = fixture.documentFile + '.moved-away';
+  fs.renameSync(fixture.documentFile, moved);
+  try {
+    const down = await serving.receiptBoundPublication(receipt, actorId);
+    assert.deepEqual(down, { status: 'unavailable', reason: 'document-missing' });
+  } finally {
+    fs.renameSync(moved, fixture.documentFile);
+  }
+  const up = await serving.receiptBoundPublication(receipt, actorId);
+  assert.equal(up.status, 'included', 'the same receipt includes once the document is restored');
+  const parsed = JSON.parse(docBefore.toString('utf8'));
+  assert.deepEqual(up.evidence, C.effectiveEvidence({
+    householdId: parsed.householdId, revision: parsed.revision, operations: parsed.operations,
+  }));
+  // Recovery here is a read-side restoration of the exact bytes: the
+  // read path performed no commit, no cleanup and no pin movement.
+  assert.ok(fs.readFileSync(fixture.documentFile).equals(docBefore),
+    'document bytes are byte-identical after the failure/recovery reads');
+  assert.ok(fixture.transport.readRaw(NS + '/pin.json').equals(pinBefore),
+    'the pin record is byte-identical after the failure/recovery reads');
+  assert.equal(await fixture.fileAdapter.journalStore.read(), null,
+    'no journal is written or left resident by a read');
+});
+
+test('receipt-bound: retraction through the store keeps the original receipt included', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const fixture = await makeStoreFixture([]);
+  const receipt = await commitCapturingReceipt(fixture, 1, linkCmd({}));
+  const retractReceipt = await commitCapturingReceipt(fixture, 2,
+    { version: 1, kind: 'retract', targetOperationId: op(1) });
+  const serving = createSettlementEvidenceServing(fixtureDependency(fixture));
+  const outcome = await serving.receiptBoundPublication(receipt, actorId);
+  assert.equal(outcome.status, 'included',
+    'the historical acknowledgement survives the later retraction');
+  assert.deepEqual(outcome.evidence, { commitments: [] },
+    'the retracted link is absent from the same snapshot’s publication');
+  const own = await serving.receiptBoundPublication(retractReceipt, actorId);
+  assert.equal(own.status, 'included', 'the retraction’s own receipt is included too');
+});
+
+test('receipt-bound: attach output is untouched by the capability over the durable fixture', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const fixture = await makeStoreFixture([]);
+  const receipt = await commitCapturingReceipt(fixture, 1, linkCmd({}));
+  const serving = createSettlementEvidenceServing(fixtureDependency(fixture));
+  const before = await serving.attach({ plan: {} });
+  await serving.receiptBoundPublication(receipt, actorId);
+  const after = await serving.attach({ plan: {} });
+  assert.equal(JSON.stringify(after), JSON.stringify(before),
+    'attach bytes are identical before and after a receipt-bound read');
+  assert.deepEqual(Object.keys(after).sort(),
+    ['plan', 'settlementEvidence', 'settlementEvidenceStatus']);
+  assert.ok(!JSON.stringify(after).includes(receipt.digest),
+    'the receipt prefix digest never reaches served output');
+});

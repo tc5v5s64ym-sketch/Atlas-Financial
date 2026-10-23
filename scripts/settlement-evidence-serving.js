@@ -54,8 +54,22 @@
 // raw document, its history, household identity beyond what the
 // projection itself carries, credentials, reader configuration, or
 // raw read errors.
+//
+// One private opt-in capability rides the same construction:
+// `receiptBoundPublication(receipt, actorId)` exposes the loader's
+// receipt-bound qualified publication read over this serving's fixed
+// dependency. It is not part of `attach`: it takes no served object,
+// adds no field to any served output, and nothing a request can supply
+// can invoke it or select its readers — the receipt and the trusted
+// original actor identity are presented by an internal caller that
+// already holds them. Inactive, malformed, and empty configurations
+// refuse it as unavailable('invalid-configuration'), and its outcome
+// is the loader's own: included with the same-snapshot publication,
+// or unavailable with the loader's reason and no evidence.
 
-const { loadSettlementEvidence } = require('./settlement-evidence-loader');
+const {
+  loadSettlementEvidence, loadReceiptBoundPublication,
+} = require('./settlement-evidence-loader');
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -63,6 +77,10 @@ function isRecord(value) {
 }
 
 const invalidConfiguration = () => ({ status: 'unavailable', reason: 'invalid-configuration' });
+// The receipt-bound refusal for servings that cannot run a load at
+// all (inactive, malformed, or empty dependency): frozen, in the
+// loader's outcome shape.
+const receiptRefused = () => Object.freeze(invalidConfiguration());
 
 // Snapshot the top-level served object with both settlement fields
 // stripped: the seam owns them, so nothing a previous stage (or a
@@ -107,7 +125,11 @@ function createSettlementEvidenceServing(dependency) {
   // to the served object itself, so served output is byte-identical
   // and no reader exists to invoke.
   if (dependency === undefined || dependency === null) {
-    return Object.freeze({ active: false, attach: async served => served });
+    return Object.freeze({
+      active: false,
+      attach: async served => served,
+      receiptBoundPublication: async () => receiptRefused(),
+    });
   }
   // A supplied dependency that is not a plain record is malformed
   // configuration: fail closed on every serve, never as unconfigured.
@@ -115,6 +137,7 @@ function createSettlementEvidenceServing(dependency) {
     return Object.freeze({
       active: true,
       attach: async served => project(served, invalidConfiguration()),
+      receiptBoundPublication: async () => receiptRefused(),
     });
   }
   let householdId; let readDocument; let readPin; let pin;
@@ -124,6 +147,7 @@ function createSettlementEvidenceServing(dependency) {
     return Object.freeze({
       active: true,
       attach: async served => project(served, invalidConfiguration()),
+      receiptBoundPublication: async () => receiptRefused(),
     });
   }
   // A record carrying none of the load-bearing pieces is partial
@@ -154,6 +178,29 @@ function createSettlementEvidenceServing(dependency) {
         outcome = invalidConfiguration();
       }
       return projectOnto(rest, outcome);
+    },
+    // The private receipt-bound read over this serving's fixed
+    // dependency. The receipt and actor identity are passed straight
+    // to the loader in the same synchronous turn, so the loader's
+    // binding snapshot is taken before any suspension; nothing here
+    // reads, copies, or caches them, and no outcome is cached.
+    async receiptBoundPublication(receipt, actorId) {
+      if (empty) return receiptRefused();
+      let outcome;
+      try {
+        outcome = await loadReceiptBoundPublication({
+          config: pin !== undefined ? { householdId, pin } : { householdId },
+          readDocument,
+          readPin,
+          receipt,
+          actorId,
+        });
+      } catch {
+        // As with attach, a defect in an injected reader's shape must
+        // never break the caller — the capability withholds instead.
+        outcome = receiptRefused();
+      }
+      return outcome;
     },
   });
 }

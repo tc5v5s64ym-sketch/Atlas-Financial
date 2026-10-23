@@ -46,6 +46,14 @@
 //   { status: 'qualified', evidence }     — the pinned bytes verified.
 //   { status: 'unavailable', reason }     — anything else, with one of
 //     the stable REASONS codes and no evidence.
+//
+// The same acquisition also serves one private opt-in read,
+// loadReceiptBoundPublication: a caller holding an authorized original
+// committed receipt (plus the trusted original actor identity supplied
+// alongside it) can establish whether the qualified snapshot includes
+// that original operation, receiving that snapshot's publication only
+// on inclusion. It adds no reads of its own and changes no outcome
+// above; see the receipt section at the end of this module.
 
 const C = require('./planned-obligation-settlement-contract');
 
@@ -214,24 +222,24 @@ function parsePin(record) {
   return { revision: value.revision, digest: value.digest };
 }
 
-async function loadSettlementEvidence(input) {
-  if (input === undefined || input === null) return Object.freeze({ status: 'unconfigured' });
-  if (!isRecord(input)) return unavailable('invalid-configuration');
+async function acquireQualified(input) {
+  if (input === undefined || input === null) return { outcome: Object.freeze({ status: 'unconfigured' }) };
+  if (!isRecord(input)) return { outcome: unavailable('invalid-configuration') };
   // Validate supplied fields BEFORE any absent path or pin source is
   // selected: a field that is present but malformed is a configuration
   // defect, never deliberate absence, and a malformed readPin must not
   // silently fall back to the static config pin. Absence is expressed
   // only by an undefined or null field (the documented absent forms).
   if (input.config !== undefined && input.config !== null && !isRecord(input.config)) {
-    return unavailable('invalid-configuration');
+    return { outcome: unavailable('invalid-configuration') };
   }
   if (input.readDocument !== undefined && input.readDocument !== null
     && typeof input.readDocument !== 'function') {
-    return unavailable('invalid-configuration');
+    return { outcome: unavailable('invalid-configuration') };
   }
   if (input.readPin !== undefined && input.readPin !== null
     && typeof input.readPin !== 'function') {
-    return unavailable('invalid-configuration');
+    return { outcome: unavailable('invalid-configuration') };
   }
   const config = isRecord(input.config) ? input.config : null;
   const readDocument = typeof input.readDocument === 'function' ? input.readDocument : null;
@@ -248,11 +256,11 @@ async function loadSettlementEvidence(input) {
 
   // Deliberate wholly-unconfigured input is the only unconfigured outcome.
   if (!hasConfig && !readDocument && !readPin) {
-    return Object.freeze({ status: 'unconfigured' });
+    return { outcome: Object.freeze({ status: 'unconfigured' }) };
   }
   // Anything partially supplied is a configuration defect, not absence.
-  if (!householdIdValid(householdId)) return unavailable('invalid-configuration');
-  if (!readDocument) return unavailable('invalid-configuration');
+  if (!householdIdValid(householdId)) return { outcome: unavailable('invalid-configuration') };
+  if (!readDocument) return { outcome: unavailable('invalid-configuration') };
 
   // Resolve the independently supplied pin, by the base precedence:
   // a live pin reader when one is injected, otherwise the static pin
@@ -268,42 +276,42 @@ async function loadSettlementEvidence(input) {
   let pinRecord;
   if (readPin) {
     try { pinRecord = await acquire(readPin, snapshotPinValue); }
-    catch { return unavailable('pin-unavailable'); }
+    catch { return { outcome: unavailable('pin-unavailable') }; }
   } else if (config && config.pin !== undefined) {
     try { pinRecord = snapshotPinValue(config.pin); }
-    catch { return unavailable('pin-unavailable'); }
+    catch { return { outcome: unavailable('pin-unavailable') }; }
   } else {
-    return unavailable('invalid-configuration');
+    return { outcome: unavailable('invalid-configuration') };
   }
   const pin = parsePin(pinRecord);
-  if (!pin) return unavailable('pin-invalid');
+  if (!pin) return { outcome: unavailable('pin-invalid') };
 
   // First read: acquired into the one loader-owned byte snapshot
   // everything derives from; the stability re-read below is a separate
   // owned copy compared against this preserved snapshot.
   let firstSnap;
   try { firstSnap = await acquire(readDocument, snapshotDocumentValue); }
-  catch { return unavailable('document-unavailable'); }
+  catch { return { outcome: unavailable('document-unavailable') }; }
   if (firstSnap.raw === null || firstSnap.raw === undefined) {
-    return unavailable('document-missing');
+    return { outcome: unavailable('document-missing') };
   }
   const bytes = firstSnap.bytes;
-  if (bytes && bytes.length === 0) return unavailable('document-missing');
-  if (!bytes) return unavailable('document-malformed');
+  if (bytes && bytes.length === 0) return { outcome: unavailable('document-missing') };
+  if (!bytes) return { outcome: unavailable('document-malformed') };
 
   // Staging: parse the snapshot to attribute divergence precisely. These
   // checks name the reason; the contract verification below is the
   // authority — staging never qualifies anything by itself.
   let doc;
-  try { doc = JSON.parse(bytes.toString('utf8')); } catch { return unavailable('document-malformed'); }
+  try { doc = JSON.parse(bytes.toString('utf8')); } catch { return { outcome: unavailable('document-malformed') }; }
   if (!isRecord(doc) || typeof doc.householdId !== 'string'
     || !Number.isSafeInteger(doc.revision) || typeof doc.digest !== 'string') {
-    return unavailable('document-malformed');
+    return { outcome: unavailable('document-malformed') };
   }
-  if (doc.householdId !== householdId) return unavailable('household-mismatch');
-  if (doc.revision > pin.revision) return unavailable('document-ahead-of-pin');
-  if (doc.revision < pin.revision) return unavailable('revision-mismatch');
-  if (doc.digest !== pin.digest) return unavailable('digest-mismatch');
+  if (doc.householdId !== householdId) return { outcome: unavailable('household-mismatch') };
+  if (doc.revision > pin.revision) return { outcome: unavailable('document-ahead-of-pin') };
+  if (doc.revision < pin.revision) return { outcome: unavailable('revision-mismatch') };
+  if (doc.digest !== pin.digest) return { outcome: unavailable('digest-mismatch') };
 
   // Authoritative verification of the same bytes through the Phase 1
   // contract, under the expected household, against the independent pin:
@@ -311,11 +319,11 @@ async function loadSettlementEvidence(input) {
   // from the supplied {revision, digest}. This refuses corrupt bytes,
   // stale embedded digests, and replayed-invalid histories alike.
   let verifiedPin;
-  try { verifiedPin = C.pin(bytes, householdId); } catch { return unavailable('document-invalid'); }
+  try { verifiedPin = C.pin(bytes, householdId); } catch { return { outcome: unavailable('document-invalid') }; }
   const expectedPin = C.digest({
     householdId, revision: pin.revision, documentDigest: pin.digest,
   });
-  if (verifiedPin !== expectedPin) return unavailable('document-invalid');
+  if (verifiedPin !== expectedPin) return { outcome: unavailable('document-invalid') };
 
   // Read consistency: the store must still hold the verified bytes before
   // anything is projected from them. A rejected re-read lands in the
@@ -323,9 +331,9 @@ async function loadSettlementEvidence(input) {
   // the first snapshot; the comparison is owned copy against owned copy.
   let secondSnap;
   try { secondSnap = await acquire(readDocument, snapshotDocumentValue); }
-  catch { return unavailable('document-changed'); }
+  catch { return { outcome: unavailable('document-changed') }; }
   const secondBytes = secondSnap.bytes;
-  if (!secondBytes || !secondBytes.equals(bytes)) return unavailable('document-changed');
+  if (!secondBytes || !secondBytes.equals(bytes)) return { outcome: unavailable('document-changed') };
 
   // Projection: the contract replays the verified snapshot's state and
   // publishes active evidence only. No raw document leaves the loader.
@@ -334,8 +342,118 @@ async function loadSettlementEvidence(input) {
     evidence = C.effectiveEvidence({
       householdId: doc.householdId, revision: doc.revision, operations: doc.operations,
     });
-  } catch { return unavailable('document-invalid'); }
-  return Object.freeze({ status: 'qualified', evidence });
+  } catch { return { outcome: unavailable('document-invalid') }; }
+  return { doc, evidence };
 }
 
-module.exports = { loadSettlementEvidence, REASONS };
+async function loadSettlementEvidence(input) {
+  const acquired = await acquireQualified(input);
+  if (acquired.outcome) return acquired.outcome;
+  return Object.freeze({ status: 'qualified', evidence: acquired.evidence });
+}
+
+// --- Receipt-bound qualified publication read -----------------------------
+// A private opt-in capability for an internal caller that already
+// holds an authorized original committed receipt — the store's
+// immutable-prefix receipt {status, operationId, actorId, revision,
+// digest} (receiptForOperation over prefixDigest in
+// settlement-evidence-store.js) — together with the trusted original
+// actor identity supplied alongside it. That identity is an input to
+// this read, never derived from a browser-supplied lookup or from any
+// served data.
+//
+// The read runs the ONE acquisition above and judges the receipt
+// against the same validated snapshot that produced the publication:
+// the recorded operation is found in the snapshot's validated history
+// (never in the active-link projection — a later valid retraction
+// appends to the history and must not erase the historical
+// acknowledgement), actor continuity is required against both the
+// receipt and the supplied identity, the revision must be the
+// operation's original committed revision, and the digest must equal
+// the contract digest of the immutable prefix ending at that revision
+// — the store's receipt definition, recomputed with the contract's own
+// digest over the snapshot's operations. Revision comparison alone
+// and active-link search are each insufficient, and neither is used.
+//
+// Outcomes are explicit and frozen:
+//   { status: 'included', evidence }      — the snapshot includes the
+//     original operation; evidence is that same snapshot's
+//     effectiveEvidence publication.
+//   { status: 'unavailable', reason }      — anything else: the
+//     acquisition's own reason for a failed load, 'receipt-invalid'
+//     for a malformed binding, or 'receipt-not-included' when the
+//     validated history does not carry the bound operation. A
+//     non-inclusion never carries evidence.
+const RECEIPT_REASONS = Object.freeze([...REASONS, 'receipt-invalid', 'receipt-not-included']);
+const OPERATION_ID_RE = /^operation-[a-f0-9]{32}$/;
+const ACTOR_ID_RE = /^session-[a-f0-9]{64}$/;
+
+// Snapshot the receipt binding into loader-owned scalars in the
+// caller's synchronous turn, before any acquisition suspension: a
+// caller mutating its receipt object while the load is in flight must
+// not be able to swap the binding being judged. Only the load-bearing
+// fields are read, by direct property access, mirroring the pin
+// snapshot; a malformed binding is receipt-invalid and no read is made.
+function snapshotReceiptBinding(input) {
+  if (!isRecord(input)) return null;
+  let status; let operationId; let receiptActorId; let revision; let digest; let actorId;
+  try {
+    const receipt = input.receipt;
+    if (!isRecord(receipt)) return null;
+    status = receipt.status;
+    operationId = receipt.operationId;
+    receiptActorId = receipt.actorId;
+    revision = receipt.revision;
+    digest = receipt.digest;
+    actorId = input.actorId;
+  } catch { return null; }
+  if (status !== 'committed') return null;
+  if (typeof operationId !== 'string' || !OPERATION_ID_RE.test(operationId)) return null;
+  if (typeof receiptActorId !== 'string' || !ACTOR_ID_RE.test(receiptActorId)) return null;
+  if (typeof actorId !== 'string' || !ACTOR_ID_RE.test(actorId)) return null;
+  if (!Number.isSafeInteger(revision) || revision < 1) return null;
+  if (!hashValid(digest)) return null;
+  return Object.freeze({ operationId, receiptActorId, actorId, revision, digest });
+}
+
+// Judge the frozen binding against the one validated snapshot. The
+// snapshot's document was verified through the contract (decode and
+// replay) before this runs, so its operation list is the validated
+// history; the prefix digest reuses the contract digest unchanged.
+function receiptIncluded(doc, binding) {
+  try {
+    if (binding.actorId !== binding.receiptActorId) return false;
+    if (!doc || !Array.isArray(doc.operations)) return false;
+    const recorded = doc.operations.find(entry => isRecord(entry)
+      && entry.operationId === binding.operationId);
+    if (!recorded) return false;
+    if (recorded.actorId !== binding.receiptActorId) return false;
+    if (recorded.revision !== binding.revision) return false;
+    const prefixDigest = C.digest({
+      schema: C.SCHEMA, householdId: doc.householdId, revision: binding.revision,
+      operations: doc.operations.slice(0, binding.revision),
+    });
+    return prefixDigest === binding.digest;
+  } catch { return false; }
+}
+
+async function loadReceiptBoundPublication(input) {
+  // The binding is frozen first, synchronously, before the
+  // acquisition's first suspension can let a caller move it.
+  const binding = snapshotReceiptBinding(input);
+  if (!binding) return unavailable('receipt-invalid');
+  const acquired = await acquireQualified(input);
+  if (acquired.outcome) {
+    // Without a qualified snapshot there is no usable dependent
+    // publication, so even a wholly unconfigured input is unavailable
+    // to this read — never an inclusion.
+    return acquired.outcome.status === 'unconfigured'
+      ? unavailable('invalid-configuration') : acquired.outcome;
+  }
+  if (!receiptIncluded(acquired.doc, binding)) return unavailable('receipt-not-included');
+  return Object.freeze({ status: 'included', evidence: acquired.evidence });
+}
+
+module.exports = {
+  loadSettlementEvidence, loadReceiptBoundPublication, REASONS, RECEIPT_REASONS,
+};
