@@ -89,7 +89,7 @@ async function complete(page, dialog) {
         assert.deepEqual(fixture.external, [], 'zero external network requests');
         assert.deepEqual(fixture.errors, [], 'zero page errors');
         results.push({ name, width, status: 'PASS', commits: w.calls.commit, journalWrites: w.calls.journal,
-          requests: fixture.requests }); console.log('PASS ' + name);
+          requests: fixture.requests, details: fixture.details }); console.log('PASS ' + name);
       } catch (error) {
         // Independent cases still execute, but any failure makes the command
         // fail. Preserve the actual trace instead of manufacturing a green run.
@@ -323,25 +323,80 @@ async function complete(page, dialog) {
       assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 1);
     }, true, 390, { now: () => previewClock });
     for (const width of [390, 1440]) {
-      await run('direct pointer Accounts & evidence entry ' + width, async (_w, fixture) => {
+      await run('direct pointer Accounts & evidence and original source lifecycle ' + width, async (w, fixture) => {
         const { page } = fixture;
-        const opener = page.locator('[data-budget-savings-goals] [data-budget-funding-inventory]');
-        await opener.waitFor({ state: 'attached' });
-        fixture.details = await opener.evaluate(node => {
-          const rect = node.getBoundingClientRect(), style = getComputedStyle(node);
-          return { openerClass: node.className, width: rect.width, height: rect.height,
-            display: style.display, overflow: style.overflow, maxHeight: style.maxHeight };
-        });
-        await opener.click({ timeout: 5000 }); // ordinary pointer action; no force/evaluate dispatch
-        const dialog = page.locator('[data-budget-detail-sheet]'); await dialog.waitFor({ state: 'visible' });
-        await dialog.getByRole('button', { name: 'Assign a recorded payment', exact: true }).waitFor();
+        fixture.details = [];
+        const cycle = async (view, branch) => {
+          const tile = page.locator('[data-budget-savings-goals]');
+          const opener = tile.locator('[data-budget-funding-inventory]');
+          const source = await tile.locator('[data-budget-funding-savings]').elementHandle();
+          assert.ok(source, view + ': original Savings source exists');
+          const parent = await source.evaluateHandle(node => node.parentNode);
+          const before = await source.evaluate(node => ({ hidden: node.hidden, inert: node.inert,
+            clipped: node.classList.contains('blend-goals-source'), maxHeight: getComputedStyle(node).maxHeight }));
+          assert.equal(before.clipped, true, view + ': evidence source remains clipped while closed');
+          if (branch === 'fallback') assert.equal(await tile.locator('.budget-goal-notice').count(), 1);
+          else assert.equal(await tile.locator('.budget-goal-notice').count(), 0);
+          if (branch === 'projected') assert.equal(await tile.locator('[data-budget-savings-forecast-stock]').count(), 1);
+          const geometry = await opener.evaluate(node => ({ height: node.getBoundingClientRect().height,
+            clipped: node.classList.contains('blend-goals-source') }));
+          assert.ok(geometry.height > 0, view + ': original opener has pointer area');
+          assert.equal(geometry.clipped, false, view + ': interactive opener is excluded from source clipping');
+          const dialog = page.locator('[data-budget-detail-sheet]');
+          const originalIsInDialog = () => source.evaluate(node =>
+            node.parentNode === document.querySelector('[data-budget-detail-body]')
+            && document.querySelector('[data-budget-detail-sheet]').contains(node)
+            && document.querySelector('[data-budget-detail-sheet] [data-budget-funding-savings]') === node);
+          const restored = async () => {
+            assert.equal(await source.evaluate((node, originalParent) => node.parentNode === originalParent, parent), true,
+              view + ': close restores the identical source to its original parent');
+            assert.deepEqual(await source.evaluate(node => ({ hidden: node.hidden, inert: node.inert,
+              clipped: node.classList.contains('blend-goals-source'), maxHeight: getComputedStyle(node).maxHeight })), before,
+            view + ': close restores original hidden/inert/clipping state');
+          };
+          try {
+            await opener.click({ timeout: 5000 }); // genuine unforced pointer; never evaluate/force-click
+            await dialog.waitFor({ state: 'visible' });
+            assert.equal(await originalIsInDialog(), true, view + ': sheet holds that exact original node');
+            assert.equal(await dialog.locator('[data-budget-funding-savings]').count(), 1);
+            await dialog.getByRole('button', { name: 'Assign a recorded payment', exact: true }).waitFor();
+            await dialog.locator('[data-budget-detail-close]').click();
+            await dialog.waitFor({ state: 'hidden' }); await restored();
+            await opener.click({ timeout: 5000 });
+            await dialog.waitFor({ state: 'visible' });
+            assert.equal(await originalIsInDialog(), true, view + ': pointer reopen moves the same node again');
+            await page.keyboard.press('Escape');
+            await dialog.waitFor({ state: 'hidden' }); await restored();
+            fixture.details.push({ view, branch, geometry, originalNodeIdentity: true, restoredState: before });
+          } finally { await parent.dispose(); await source.dispose(); }
+        };
+        const step = async key => {
+          const start = await page.locator('[data-budget-window-progress]').getAttribute('data-start');
+          await page.locator('.river').focus(); await page.keyboard.press(key);
+          await page.waitForFunction(start => document.querySelector('[data-budget-window-progress]')?.dataset.start !== start, start);
+        };
+        await cycle('daily current', 'daily');
+        await step('ArrowRight'); await cycle('daily projected after period change', 'projected');
+        await page.evaluate(() => App.rerender()); await cycle('daily projected after rerender', 'projected');
+        await step('ArrowLeft'); await cycle('daily current after return', 'daily');
+        // Both real markup branches: without the optional policy, the next
+        // period consumes Forecast's incumbent fallback publication.
+        delete w.base.plan.savingsEarmarks.allocationPolicy;
+        delete w.acquisition.plan.savingsEarmarks.allocationPolicy;
+        await page.reload();
+        await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null
+          && App.data.plan.savingsEarmarks.allocationPolicy == null);
+        await step('ArrowRight'); await cycle('fallback next period', 'fallback');
+        await page.evaluate(() => App.rerender()); await cycle('fallback after rerender', 'fallback');
+        await step('ArrowLeft'); await step('ArrowRight'); await cycle('fallback after period return', 'fallback');
+        assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
       }, true, width);
     }
   } finally { await browser.close(); }
   fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ synthetic: true,
     head: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'],
       { cwd: path.resolve(__dirname, '..'), encoding: 'utf8' }).trim(),
-    repositorySources: Object.fromEntries(['server.js', 'public/app.js', 'public/plan.js',
+    repositorySources: Object.fromEntries(['server.js', 'public/app.js', 'public/plan.js', 'public/budget-blend.js',
       'scripts/settlement-evidence-http.js', 'scripts/settlement-evidence-resolver.js',
       'scripts/settlement-evidence-serving.js', 'test/test-settlement-evidence-http.js',
       'test/browser-settlement-save-view.js'].map(file => [file,
