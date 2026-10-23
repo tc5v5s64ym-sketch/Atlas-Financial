@@ -427,5 +427,95 @@ function loadPage(script) {
     'S32g guard: without the waiver daily funding stays unavailable', J(sav(aGuard)));
 }
 
+// S33–S35 (Atlas 1792766201.177409 / 1792766321.556569): remaining HOLD
+// regression pins through actual consumers. S33 billsAccountPeriodBalance
+// (direct and as published by recommend().defaultView); S34 a MALFORMED
+// schedule with a waived occurrence; S35 a mixed waived/non-waived window,
+// where the non-waived unknown must still withhold.
+{
+  const fx = require('./fixtures/bills-period-end-balance-data');
+  const NULLTERM_AUG = [{ from: '2026-08-01', until: '2026-09-01', amount: null }];
+  const OVERLAP_AUG = [{ from: '2026-08-01', until: '2026-08-26', amount: 5 }, { from: '2026-08-20', until: '2026-09-01', amount: 6 }];
+  const bab = change => { const x = fx.requirementsFixture(); change(x);
+    const d = F.billsAccountPeriodBalance(x.plan, x.asOf, x.opts);
+    const pub = F.recommend(x.plan, x.asOf, x.opts).defaultView.billsAccountPeriodBalance;
+    return [d, pub].map(r => ({ amount: r.amount, status: r.status, codes: (r.issues || []).map(i => i.code) })); };
+  const svc = x => x.plan.bills[0]; // once bill dated 2026-08-24 inside the fixture's 08-14..08-27 period
+  const waive = x => { svc(x).noPaymentRequiredOn = [svc(x).date]; };
+  // Incumbent oracle from test-bills-period-end-native-requirements.js:
+  // 'native named no-pay unknown bill' => 976.85; unknown bill => null.
+  const known = rows => rows.every(r => r.amount === 976.85 && r.status === 'ready');
+  const withheld = rows => rows.every(r => r.amount === null && r.status === 'unavailable' && r.codes.includes('remaining-cash-unknown'));
+  const s33 = bab(x => { waive(x); svc(x).amountSchedule = NULLTERM_AUG; });
+  ok(known(s33), 'S33 bills-account-waived-null-term: waived occurrence in a null-amount term is a known zero in billsAccountPeriodBalance (direct and published)', J(s33));
+  const s33g = bab(x => { svc(x).amountSchedule = NULLTERM_AUG; });
+  ok(withheld(s33g), 'S33g guard: the same null term without the waiver withholds billsAccountPeriodBalance with remaining-cash-unknown', J(s33g));
+  const s34 = bab(x => { waive(x); svc(x).amountSchedule = OVERLAP_AUG; });
+  ok(known(s34), 'S34 bills-account-malformed-waived: a waived occurrence of a malformed (overlapping) schedule is a known zero', J(s34));
+  const s34g = bab(x => { svc(x).amountSchedule = OVERLAP_AUG; });
+  ok(withheld(s34g), 'S34g guard: the malformed schedule without the waiver withholds billsAccountPeriodBalance', J(s34g));
+  const s35 = bab(x => { waive(x); svc(x).amountSchedule = NULLTERM_AUG;
+    x.plan.bills.push({ id: 'service-2', label: 'Invented second service', frequency: 'once', date: '2026-08-25',
+      amount: 9, confidence: 'confirmed', payingAccount: 'chequing-a', amountSchedule: NULLTERM_AUG }); });
+  ok(withheld(s35), 'S35a bills-account-mixed: a waived null-term occurrence cannot hide a non-waived null-term occurrence in the same period', J(s35));
+
+  // Waterfall / annual Savings / daily funding on the same chronological
+  // ledger as S30–S32.
+  const { ledger } = require('./fixtures/chronological-savings-data');
+  const { advance } = require('./fixtures/savings-daily-allocation-contract');
+  const base = () => {
+    const i = advance(ledger(), '2026-10-10');
+    i.plan.income[0].anchor = '2026-08-14';
+    i.plan.opening.paydaySnapshot = { periodStart: '2026-10-09', asOf: '2026-10-09', opening: 80 };
+    i.plan.opening.representedEvents = [];
+    i.opts.currentPeriodActuals.coverageStart = '2026-10-09';
+    i.opts.currentPeriodActuals.savingsFetchCoverage.startDate = '2026-10-09';
+    i.plan.bills = [{ id: 'annual', label: 'Invented annual premium', amount: 17.29,
+      frequency: 'yearly', month: 10, day: 25, firstDue: '2026-10-25', jointCash: false, confidence: 'estimated' }];
+    i.plan.savingsEarmarks.pools[1].goalRefs = [{ kind: 'yearly-bill', id: 'annual' }];
+    return i;
+  };
+  const run = i => F.recommend(i.plan, i.asOf, { ...i.opts, debts: i.debts || [], weeklyVariable: 0 });
+  const fig = a => { const p = a.payPeriodViews.find(p => p.start === '2026-10-09') || {};
+    return { periodBillLoad: p.periodBillLoad, afterBills: p.afterBills, bad: p.balanceAfterDeductions,
+      extraDebtReason: p.extraDebt && p.extraDebt.reason || null }; };
+  const sav = a => { const t = a.savingsFunding && a.savingsFunding.timeline; return { status: t && t.status, reason: t && t.reason || null }; };
+  const mk = f => { const i = base(); f(i); return run(i); };
+  const NULLTERM = [{ from: '2026-10-01', until: '2026-11-01', amount: null }];
+  const OVERLAP = [{ from: '2026-10-01', until: '2026-10-20', amount: 5 }, { from: '2026-10-10', until: '2026-11-01', amount: 6 }];
+  const monthly = (id, day, extra) => Object.assign({ id, label: 'Invented ' + id, amount: 20, day,
+    frequency: 'monthly', confidence: 'confirmed' }, extra);
+  const annualMsg = 'An annual planned savings cost has unknown amount or timing.';
+  const wCtl = mk(i => i.plan.bills.push(monthly('promo', 15, { noPaymentRequiredOn: ['2026-10-15'] })));
+  // S34 malformed + waived through the waterfall: only the waived occurrence
+  // falls in the 10-09 period, so it keeps control parity.
+  const s34w = mk(i => i.plan.bills.push(monthly('promo', 15, { noPaymentRequiredOn: ['2026-10-15'], amountSchedule: OVERLAP })));
+  ok(fig(wCtl).periodBillLoad === 0 && J(fig(s34w)) === J(fig(wCtl)),
+    'S34w waterfall-malformed-waived: the waived occurrence of a malformed schedule keeps the period known-zero (control parity)',
+    J({ control: fig(wCtl), candidate: fig(s34w) }));
+  const s34wg = mk(i => i.plan.bills.push(monthly('promo', 15, { amountSchedule: OVERLAP })));
+  ok(fig(s34wg).periodBillLoad === null && fig(s34wg).bad === null,
+    'S34wg guard: the malformed schedule without the waiver withholds the period', J(fig(s34wg)));
+  // S35 mixed waived / non-waived.
+  const s35w = mk(i => { i.plan.bills.push(monthly('promo', 15, { noPaymentRequiredOn: ['2026-10-15'], amountSchedule: NULLTERM }));
+    i.plan.bills.push(monthly('promo-2', 20, { amountSchedule: NULLTERM })); });
+  ok(fig(s35w).periodBillLoad === null && fig(s35w).afterBills === null && fig(s35w).bad === null,
+    'S35b waterfall-mixed: a waived null-term occurrence cannot hide a non-waived null-term occurrence in the same period', J(fig(s35w)));
+  const s35a = mk(i => { i.plan.bills[0].noPaymentRequiredOn = ['2026-10-25']; i.plan.bills[0].amountSchedule = NULLTERM;
+    i.plan.bills.push({ id: 'annual-2', label: 'Invented second annual', amount: 11, frequency: 'yearly', month: 10, day: 27,
+      firstDue: '2026-10-27', jointCash: false, confidence: 'estimated', amountSchedule: NULLTERM });
+    i.plan.savingsEarmarks.pools[1].goalRefs.push({ kind: 'yearly-bill', id: 'annual-2' }); });
+  ok(fig(s35a).extraDebtReason === annualMsg && sav(s35a).status === 'unavailable',
+    'S35c annual-savings-and-daily-mixed: a waived annual null-term occurrence cannot hide a second, non-waived one',
+    J({ fig: fig(s35a), savings: sav(s35a) }));
+  const s35d = mk(i => { i.plan.bills[0].noPaymentRequiredOn = ['2026-10-25'];
+    i.plan.bills[0].amountSchedule = [{ from: '2026-10-01', until: '2028-01-01', amount: null }]; });
+  const s35dCtl = mk(i => { i.plan.bills[0].noPaymentRequiredOn = ['2026-10-25'];
+    i.plan.bills[0].amountSchedule = [{ from: '2026-10-01', until: '2028-01-01', amount: 5 }]; });
+  ok(sav(s35d).status === 'unavailable' && sav(s35dCtl).status === 'ready',
+    'S35d daily-funding-mixed-same-bill: waiving one occurrence of a long null term does not clear a later non-waived occurrence in the funding timeline',
+    J({ candidate: sav(s35d), knownTermControl: sav(s35dCtl) }));
+}
+
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All ATLAS-075 bill amount schedule checks passed'));
 process.exit(failures === 0 ? 0 : 1);
