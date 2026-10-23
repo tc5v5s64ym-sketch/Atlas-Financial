@@ -114,6 +114,25 @@ function observeMarkerMutations() {
     };
   }
 }
+function rendererReversalEvidence(withReversal) {
+  const C = require('../scripts/planned-obligation-settlement-contract');
+  const householdId = 'household-' + 'a'.repeat(32), actorId = 'session-' + 'b'.repeat(64);
+  const op = n => 'operation-' + n.toString(16).padStart(32, '0');
+  const evidence = { accountId: 'chequing-a', currency: 'cad', direction: 'debit', date: '2026-10-03', cents: 6000, posted: true };
+  const link = { version: 1, kind: 'link', goalId: 'commitment:near', txRef: 'tx-' + 'c'.repeat(32),
+    evidence, evidenceDigest: C.digest(evidence), assignedCents: 2500, asOf: '2026-10-05' };
+  const counter = { ...evidence, direction: 'credit', cents: 1000 };
+  const commands = [link, ...(withReversal ? [{ version: 1, kind: 'reverse', targetOperationId: op(1),
+    counterTxRef: 'tx-' + 'd'.repeat(32), counterEvidence: counter, counterEvidenceDigest: C.digest(counter), cents: 1000 }] : []),
+  { ...link, goalId: 'commitment:far', assignedCents: 2000 }];
+  let body = C.adopt({ householdId });
+  commands.forEach((command, i) => {
+    const p = C.prepare(body, { householdId, actorId, operationId: op(i + 1), command, now: 100 + i * 2 });
+    body = C.confirmCandidate(body, { householdId, actorId, preview: p.preview,
+      confirmationDigest: p.confirmationDigest, now: 101 + i * 2 }).document;
+  });
+  return C.effectiveEvidence(JSON.parse(body));
+}
 (async () => {
   fs.mkdirSync(out, { recursive: true });
   const browser = await chromium.launch({ headless: true,
@@ -885,6 +904,43 @@ function observeMarkerMutations() {
         assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
       }, true, width);
     }
+    for (const width of [390, 1440]) for (const override of [null, 1800]) {
+      await run('renderer reversal uncertainty ready-unknown-ready ' + width + ' override ' + override, async (w, fixture) => {
+        const { page } = fixture;
+        w.base.settlementEvidenceStatus = { status: 'qualified' };
+        w.base.settlementEvidence = rendererReversalEvidence(false);
+        if (override != null) await page.addInitScript(value => localStorage.setItem('hfd-plan-knobs-v1', JSON.stringify({ weeklyVariable: value })), override);
+        await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null && document.querySelector('[data-budget-savings-goals]'));
+        const ids = ['cap-headline', 'cap-split', 'cap-basis', 'budget-out', 'budget-basis', 'budget-cats-note'];
+        const snapshot = () => page.evaluate(ids => ids.map(id => ({ id, html: document.getElementById(id).innerHTML,
+          text: document.getElementById(id).textContent })), ids);
+        const ready = await snapshot();
+        const categories = await page.locator('#budget-cats').innerHTML();
+        w.base.settlementEvidence = rendererReversalEvidence(true);
+        const publication = await page.evaluate(async () => {
+          const d = await (await fetch('/data.json', { credentials: 'same-origin' })).json();
+          const advice = Forecast.recommend(d.plan, d.meta.asOf, { ...d.plan.defaults, ...d.liveOverlay,
+            weeklyVariable: state.weeklyVariable, debts: d.debts, settlementEvidence: d.settlementEvidence });
+          const cap = Forecast.budgetBreakdown(d.plan, App.periods, { weeklyCap: advice.weekly }).cap;
+          // Explicit mutable fixture input exercises the renderer lifecycle;
+          // production acquisition/reload policy is not being changed here.
+          Object.assign(App.data, d); App.rerender();
+          return { weekly: advice.weekly, cap, reason: advice.operatingPlanNote };
+        });
+        assert.equal(publication.weekly, null); assert.equal(publication.cap, null);
+        assert.match(publication.reason, /remaining cost is uncertain/);
+        for (const row of await snapshot()) {
+          assert.ok(row.text.includes(publication.reason), row.id + ': published reason');
+          assert.doesNotMatch(row.text, /protected funding shortfall|\$0\/wk|\$0\s*\/\s*week/);
+        }
+        assert.equal(await page.locator('#budget-cats').innerHTML(), categories, 'known categories/history remain unchanged');
+        w.base.settlementEvidence = rendererReversalEvidence(false);
+        await page.evaluate(async () => { const d = await (await fetch('/data.json', { credentials: 'same-origin' })).json(); Object.assign(App.data, d); App.rerender(); });
+        assert.deepEqual(await snapshot(), ready, 'ready control restores exactly after uncertainty');
+        assert.equal(w.calls.commit, 0); assert.equal(w.calls.storage, 0);
+        fixture.details = { publication, override, cycle: ['ready', 'unavailable', 'ready'], normalizedSyntheticEvidence: true, actualDataRoute: true };
+      }, false, width);
+    }
   } finally { await browser.close(); }
   assert.ok(results.length, 'at least one browser case must run');
   fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ synthetic: true,
@@ -894,7 +950,7 @@ function observeMarkerMutations() {
     repositorySources: Object.fromEntries(['server.js', 'public/app.js', 'public/plan.js', 'public/budget-blend.js',
       'scripts/settlement-evidence-http.js', 'scripts/settlement-evidence-confirmation.js', 'scripts/settlement-evidence-resolver.js',
       'scripts/settlement-evidence-serving.js', 'test/test-settlement-evidence-http.js',
-      'test/test-settlement-evidence-confirmation.js', 'test/browser-settlement-save-view.js'].map(file => [file,
+      'test/test-settlement-evidence-confirmation.js', 'test/test-weekly-cap.js', 'test/browser-settlement-save-view.js'].map(file => [file,
       require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(__dirname, '..', file))).digest('hex')])),
     actualHttpAndBrowser: true, results }, null, 2) + '\n');
   console.log('Proof: ' + out);
