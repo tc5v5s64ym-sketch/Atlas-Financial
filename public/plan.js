@@ -5749,7 +5749,7 @@ function budgetDetailSheetController(mount) {
       hidden: source.hidden, inert: source.inert, expanded: trigger.getAttribute('aria-expanded'),
       forecastClipped: source.hasAttribute('data-budget-funding-savings')
         && source.classList.contains('blend-goals-source')
-        && !!source.querySelector('[data-budget-savings-forecast-evidence]'),
+        && !!source.querySelector('[data-budget-savings-forecast-evidence], [data-settlement-assignment]'),
       today: !!source.closest('.budget-surface-today'), scrollTop: 0,
       origin: nested ? parents[0].origin : motion('origin', visibleOpener) };
     body.appendChild(source);
@@ -7516,6 +7516,8 @@ function wireBudgetFunding(mount, sheet) {
       const goalSource = goalId && periodSource?.querySelector(`[data-budget-goal-fulfillment-evidence="${CSS.escape(goalId)}"]`);
       const source = goalSource || periodSource;
       if (!source) return;
+      if (button.hasAttribute('data-budget-funding-inventory') && typeof SettlementSave !== 'undefined')
+        SettlementSave.mount(source);
       const disclosure = source.matches('details') ? source : source.querySelector('details');
       if (disclosure) disclosure.open = true;
       sheet.open(source, button, button.hasAttribute('data-budget-goal-open') ? goalSource ? button.querySelector('strong')?.textContent || 'Goal contribution evidence' : 'Period contribution evidence'

@@ -48,13 +48,24 @@ const TalkSession = require('./scripts/talk-session.js');
 const TalkStream = require('./scripts/talk-stream.js');
 const TalkWhy = require('./scripts/talk-why.js');
 
-const PASSWORD = process.env.SITE_PASSWORD;
-const SECRET = process.env.SESSION_SECRET;
-const ASSISTANT_TOKEN = process.env.ATLAS_ASSISTANT_TOKEN || '';
-const TALK_GEMINI_KEY = process.env.ATLAS_TALK_GEMINI_API_KEY || '';
-const PORT = process.env.PORT || 3000;
+// Trusted construction is available for explicitly injected synthetic proofs.
+// Executable startup calls this with no options: settlement stays inactive.
+function createApplication(options = {}) {
+const environment = options.env || process.env;
+const baseSource = options.baseSource;
+// The incumbent ordinary read seam keeps its existing attach flow. Only a
+// trusted opt-in composition can supply its readers; executable startup cannot.
+const ordinarySettlementServing = options.settlement
+  ? SettlementEvidenceServing.createSettlementEvidenceServing({ householdId: options.settlement.householdId,
+    readDocument: options.settlement.readDocument, readPin: options.settlement.readPin })
+  : settlementEvidenceServing;
+
+const PASSWORD = environment.SITE_PASSWORD;
+const SECRET = environment.SESSION_SECRET;
+const ASSISTANT_TOKEN = environment.ATLAS_ASSISTANT_TOKEN || '';
+const TALK_GEMINI_KEY = environment.ATLAS_TALK_GEMINI_API_KEY || '';
 const SESSION_HOURS = 24 * 14;
-const MCP_OAUTH = AssistantOAuth.readConfig(process.env);
+const MCP_OAUTH = AssistantOAuth.readConfig(environment);
 const STANDING_CORRECTIONS = StandingRuntime.fromEnv({ resource: MCP_OAUTH.resource?.href });
 const lunchMoneyService = LunchMoneyAssistant.createService({ standingCorrections: STANDING_CORRECTIONS });
 const lunchMoneyAssistant = {
@@ -125,7 +136,8 @@ const talkSessions = TalkSession.createSessionContext({ secret: SECRET });
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // Render terminates TLS in front of us
-app.use(express.urlencoded({ extended: false, limit: '8kb' }));
+const formParser = express.urlencoded({ extended: false, limit: '8kb' });
+app.use((req, res, next) => /^\/settlement(?:\/|$)/i.test(req.path) ? next() : formParser(req, res, next));
 
 // ---------------------------------------------------------------- security
 app.use((req, res, next) => {
@@ -238,7 +250,7 @@ async function buildCurrentAssistantPacket(req, res) {
   });
   return Assistant.buildPacket({
     data: served,
-    env: process.env,
+    env: environment,
     now: new Date().toISOString(),
     sourceCheck: { check: capturedCheck, attemptedAt: new Date().toISOString() },
   });
@@ -321,6 +333,8 @@ app.post('/logout', (req, res) => {
 // literal string "ok" and reads nothing, so this widens no data surface.
 app.get('/healthz', (_req, res) => res.type('text/plain').send('ok'));
 
+require('./scripts/settlement-evidence-http').mountSettlementHttp(app, sessionActor, options.settlement);
+
 // OAuth protected-resource discovery is public metadata. It contains no token,
 // credential, or household data. The authorization server itself is external;
 // Atlas remains only the read-only resource server.
@@ -354,8 +368,9 @@ async function servedAtlasData(req, res, options = {}) {
   res?.once('close', cancel);
   if (req?.aborted || res?.destroyed) controller.abort();
   try {
-    const served = await ServerLiveRefresh.serve(loadCanonicalData(), process.env, { ...options, signal: controller.signal });
-    return await settlementEvidenceServing.attach(served);
+    const served = baseSource ? await baseSource()
+      : await ServerLiveRefresh.serve(loadCanonicalData(), environment, { ...options, signal: controller.signal });
+    return await ordinarySettlementServing.attach(served);
   } finally {
     req?.removeListener('aborted', cancel);
     res?.removeListener('close', cancel);
@@ -791,7 +806,7 @@ app.get('/balance-history.json', (_req, res) => {
 
 // Bind the label to this HTML response, not a later metadata fetch or GitHub
 // main. An open tab keeps its own build identity across a deployment.
-const runningBuildSha = Assistant.versionIdentifier(process.env).gitSha;
+const runningBuildSha = Assistant.versionIdentifier(environment).gitSha;
 const budgetHtml = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
   .replace('Running build unavailable', RunningBuild.label(__dirname, runningBuildSha));
 app.get(['/', '/index.html'], (_req, res) => res.type('html').end(budgetHtml));
@@ -828,6 +843,13 @@ app.use(express.static(path.join(__dirname, 'public'), {
 
 app.use((_req, res) => res.status(404).type('text/plain').send('Not found'));
 
-app.listen(PORT, () => {
-  console.log(`Household finance dashboard listening on ${PORT}`);
-});
+return app;
+}
+
+module.exports = { createApplication };
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  createApplication().listen(PORT, () => {
+    console.log(`Household finance dashboard listening on ${PORT}`);
+  });
+}

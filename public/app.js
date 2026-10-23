@@ -285,6 +285,173 @@ const fmtMonths = m => {
 // from CSS variables at render time, so a theme change means a re-render.
 const THEME_KEY = 'hfd-theme';
 
+// Only a correlation id and bounded phase cross a restart. The HttpOnly
+// signed cookie remains inaccessible here. A preview token is memory only.
+const SettlementSave = (() => {
+  const KEY = 'atlas-settlement-pending-v1';
+  const OP = /^operation-[a-f0-9]{32}$/;
+  let bootPublication = null;
+  const record = value => value && typeof value === 'object' && !Array.isArray(value);
+  function pending() {
+    const raw = localStorage.getItem(KEY);
+    if (raw === null) return null;
+    if (raw.length > 160) throw new Error('settlement-reconciliation');
+    const value = JSON.parse(raw);
+    if (!record(value) || Object.keys(value).length !== 2 || !OP.test(value.operationId)
+      || !['preview', 'dispatched'].includes(value.phase)) throw new Error('settlement-reconciliation');
+    return value;
+  }
+  function persist(operationId, phase) {
+    const previous = pending();
+    if (previous && previous.operationId !== operationId
+      || phase === 'dispatched' && (previous?.operationId !== operationId || previous.phase !== 'preview'))
+      throw new Error('settlement-reconciliation');
+    const raw = JSON.stringify({ operationId, phase });
+    localStorage.setItem(KEY, raw);
+    if (localStorage.getItem(KEY) !== raw) throw new Error('settlement-persistence');
+  }
+  async function post(path, body, signal) {
+    const timeout = new AbortController();
+    const abort = () => timeout.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    const timer = setTimeout(abort, 20000);
+    try {
+      const response = await fetch('/settlement/' + path, { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Atlas-Settlement': 'same-origin' },
+        body: JSON.stringify(body), signal: timeout.signal });
+      if (!response.ok) throw new Error('settlement-reconciliation');
+      const value = await response.json();
+      if (!record(value) || typeof value.status !== 'string') throw new Error('settlement-reconciliation');
+      return value;
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
+  }
+  async function initialData(ordinary, signal) {
+    bootPublication = null;
+    let marker;
+    try { marker = pending(); } catch { throw new Error('settlement-reconciliation'); }
+    // This phase is written before confirm is even enabled. No dispatch can
+    // have happened without a durable transition to dispatched.
+    if (marker?.phase === 'preview') {
+      localStorage.removeItem(KEY);
+      marker = null;
+    }
+    if (!marker) return ordinary();
+    const outcome = await post('outcome', { operationId: marker.operationId }, signal);
+    if (outcome.status !== 'committed' || outcome.operationId !== marker.operationId)
+      throw new Error('settlement-reconciliation');
+    const view = await post('publication', { operationId: marker.operationId }, signal);
+    if (view.status !== 'committed' || !['included', 'unavailable'].includes(view.publication)
+      || !record(view.data) || !record(view.data.plan) || !record(view.data.meta)
+      || !record(view.data.plan.defaults) || !record(view.data.plan.startingCash)
+      || !['income', 'bills', 'obligations', 'commitments'].every(k => Array.isArray(view.data.plan[k]))
+      || !Array.isArray(view.data.debts)
+      || view.data.settlementEvidenceStatus?.status !== (view.publication === 'included' ? 'qualified' : 'unavailable')
+      || view.publication === 'included' && !record(view.data.settlementEvidence)
+      || view.publication === 'unavailable' && Object.hasOwn(view.data, 'settlementEvidence')) {
+      throw new Error('settlement-reconciliation');
+    }
+    bootPublication = { operationId: marker.operationId, status: view.publication };
+    return view.data;
+  }
+  function initialized() {
+    // Called only AFTER DATA installation, once-hooks and render complete.
+    if (bootPublication?.status === 'included') {
+      const marker = pending();
+      if (marker?.operationId === bootPublication.operationId) localStorage.removeItem(KEY);
+    }
+    if (bootPublication?.status === 'unavailable') {
+      const message = document.createElement('p');
+      message.setAttribute('data-settlement-recovery', '');
+      message.textContent = 'Saved; view unavailable. ';
+      const retry = document.createElement('button'); retry.type = 'button';
+      retry.textContent = 'Check saved view'; retry.onclick = () => location.reload();
+      message.append(retry); document.querySelector('.wrap')?.prepend(message);
+    }
+  }
+  function mount(source) {
+    if (!source || source.querySelector('[data-settlement-assignment]')) return;
+    const panel = document.createElement('section');
+    panel.setAttribute('data-settlement-assignment', '');
+    source.append(panel);
+    const text = value => { panel.textContent = value; };
+    const button = (label, action) => {
+      const node = document.createElement('button'); node.type = 'button'; node.textContent = label;
+      node.onclick = action; panel.append(node); return node;
+    };
+    const recover = () => {
+      text('Assignment outcome needs reconciliation. No new confirmation is available. ');
+      button('Check saved view', () => location.reload());
+    };
+    fetch('/settlement/capability', { credentials: 'same-origin', cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null).then(capability => {
+        if (capability?.status !== 'active') return;
+        if (pending()) { recover(); return; }
+        button('Assign a recorded payment', async event => {
+          event.currentTarget.disabled = true;
+          try {
+            if (pending()) { recover(); return; }
+            const catalogue = await post('selections', {});
+            if (catalogue.status !== 'available' || !Array.isArray(catalogue.transactions)
+              || !Array.isArray(catalogue.commitments)) throw new Error('catalogue');
+            text('Choose a recorded payment and planned cost. Eligibility is checked at preview and confirmation.');
+            const select = (label, rows) => {
+              const field = document.createElement('label'); field.textContent = label;
+              const node = document.createElement('select'); node.setAttribute('aria-label', label);
+              for (const row of rows) {
+                const option = document.createElement('option'); option.value = row.handle;
+                option.textContent = row.label; node.append(option);
+              }
+              field.append(node); panel.append(field); return node;
+            };
+            const payment = select('Recorded payment', catalogue.transactions);
+            const goal = select('Planned cost', catalogue.commitments);
+            const label = document.createElement('label'); label.textContent = 'Amount to assign (CAD)';
+            const amount = document.createElement('input'); amount.type = 'text'; amount.inputMode = 'decimal';
+            amount.setAttribute('aria-label', 'Amount to assign (CAD)'); label.append(amount); panel.append(label);
+            const message = document.createElement('p'); message.setAttribute('role', 'status'); panel.append(message);
+            button('Preview assignment', async event => {
+              if (!/^(?:0|[1-9]\d{0,7})(?:\.\d{1,2})?$/.test(amount.value)) {
+                message.textContent = 'Enter a positive CAD amount with at most two decimal places.'; return;
+              }
+              const [whole, fraction = ''] = amount.value.split('.');
+              const assignedCents = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+              if (!Number.isSafeInteger(assignedCents) || assignedCents <= 0) return;
+              event.currentTarget.disabled = true;
+              const operationId = 'operation-' + [...crypto.getRandomValues(new Uint8Array(16))]
+                .map(x => x.toString(16).padStart(2, '0')).join('');
+              try {
+                if (pending()) { recover(); return; }
+                const preview = await post('prepare', { operationId,
+                  selection: { transaction: payment.value, commitment: goal.value }, assignedCents });
+                if (preview.status !== 'prepared' || preview.operationId !== operationId
+                  || !/^[a-f0-9]{64}$/.test(preview.previewToken) || preview.assignedCents !== assignedCents
+                  || preview.currency !== 'cad' || !Number.isSafeInteger(preview.expiresAt)
+                  || typeof preview.date !== 'string' || !record(preview.labels)) throw new Error('preview');
+                persist(operationId, 'preview');
+                text('Assign ' + money2(preview.assignedCents / 100) + ' ' + preview.currency.toUpperCase()
+                  + ' from ' + preview.labels.payment + ' (' + preview.date + ') to ' + preview.labels.goal
+                  + '. Preview expires ' + new Date(preview.expiresAt).toISOString() + '. ');
+                button('Confirm assignment', async event => {
+                  event.currentTarget.disabled = true;
+                  // Failure to persist or verify the marker PREVENTS dispatch.
+                  try { persist(operationId, 'dispatched'); }
+                  catch { text('Confirmation was not sent: pending state could not be saved. Reload to continue.'); return; }
+                  try {
+                    const outcome = await post('confirm', { operationId, previewToken: preview.previewToken, confirmed: true });
+                    if (outcome.status === 'committed' && outcome.operationId === operationId) { location.reload(); return; }
+                  } catch { /* A possibly dispatched request is unresolved. */ }
+                  recover();
+                });
+              } catch { text('Preview unavailable. No confirmation was sent. Reload to start again.'); }
+            });
+          } catch { text('Recorded payment selections unavailable. Reload to try again.'); }
+        });
+      }).catch(() => text('Assignment controls unavailable.'));
+  }
+  return { initialData, initialized, mount };
+})();
+
 function applyTheme(mode) {
   if (mode === 'light' || mode === 'dark') {
     document.documentElement.setAttribute('data-theme', mode);
@@ -714,7 +881,7 @@ const App = (() => {
       // textContent reset above wipes the notice's children; success
       // removes it with the notice.
       notice.append(buildBootTreatment());
-      const wants = [fetch(forceRefresh ? '/data.json?refresh=force' : '/data.json', { credentials: 'same-origin', signal: controller.signal })
+      const wants = [SettlementSave.initialData(() => fetch(forceRefresh ? '/data.json?refresh=force' : '/data.json', { credentials: 'same-origin', signal: controller.signal })
         .then(async r => {
           if (r.status === 401) { location.href = '/login'; throw new Error('auth'); }
           if (!r.ok) throw new Error('data unavailable');
@@ -730,7 +897,7 @@ const App = (() => {
           const json = await r.json();
           responses.data = { path: '/data.json', status: r.status };
           return json;
-        })];
+        }), controller.signal)];
       wants.push(opts.periods
         ? fetch('/periods.json', { credentials: 'same-origin', signal: controller.signal })
           .then(async r => {
@@ -764,6 +931,7 @@ const App = (() => {
         }
         for (const fn of onceHooks) fn(DATA, PERIODS, HISTORY);
         rerender();
+        SettlementSave.initialized();
         checkStatus.textContent = formatObservationCheck(check, d.refreshTrust);
         refresh.disabled = false;
         restoreShell();
@@ -773,7 +941,9 @@ const App = (() => {
         if (err.message === 'auth') return;
         controller.abort();
         notice.className = 'note-box crit';
-        notice.textContent = cancelled
+        notice.textContent = err.message === 'settlement-reconciliation'
+          ? 'Assignment outcome needs reconciliation. Figures remain unavailable. '
+          : cancelled
           ? 'Loading cancelled. Figures remain unavailable. '
           : forceRefresh ? 'Provider refresh failed. Figures remain unavailable. '
             : 'Current data could not be loaded. Figures remain unavailable. ';
