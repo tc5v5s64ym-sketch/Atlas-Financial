@@ -146,6 +146,82 @@ module.exports = { startWorld, op, env, householdId };
 
 if (require.main === module) {
   const test = require('node:test');
+  const correlatedConfirm = (w, p, overrides = {}) => w.post('confirm', {
+    operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true, ...overrides });
+  const negative = p => ({ status: 'not-applied', operationId: p.operationId,
+    previewToken: p.previewToken, generation: p.generation });
+  test('terminal proof: real store expiry after final controller check is prejournal no-effect', async t => {
+    let clock = Date.now(); const w = await startWorld(true, { now: () => clock }); t.after(w.close);
+    const p = await w.prepare(); clock = p.expiresAt - 1;
+    const before = Buffer.from(w.durable.doc), pin = JSON.stringify(w.durable.pin);
+    w.hooks.admission = async () => { clock = p.expiresAt; };
+    const ack = await correlatedConfirm(w, p);
+    assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 0);
+    assert.ok(w.durable.doc.equals(before)); assert.equal(JSON.stringify(w.durable.pin), pin);
+    console.log(JSON.stringify({ type: 'store-expiry-boundary', status: ack.status, reason: ack.reason,
+      commitInvocations: w.calls.commit, journalWrites: w.calls.journal, durableBytesUnchanged: true }));
+    assert.equal(ack.status, 'not-applied');
+    assert.equal(require('node:util').isDeepStrictEqual(ack, negative(p)), true, 'exact generation-bound negative acknowledgement');
+    assert.equal((await w.prepare()).status, 'unavailable', 'terminal operation is not recycled in this controller');
+  });
+  test('terminal proof: real store expiry still requires transport postauthorization', async t => {
+    let clock = Date.now(); const w = await startWorld(true, { now: () => clock }); t.after(w.close);
+    const p = await w.prepare(); clock = p.expiresAt - 1;
+    const before = Buffer.from(w.durable.doc);
+    w.hooks.admission = async () => { clock = p.expiresAt; };
+    let calls = 0; w.hooks.authorize = async () => { if (++calls === 7) w.authorized = false; };
+    const r = await w.raw('confirm', { operationId: p.operationId, previewToken: p.previewToken,
+      generation: p.generation, confirmed: true });
+    assert.equal(r.status, 503); assert.deepEqual(await r.json(), { status: 'unavailable' });
+    assert.equal(calls, 7); assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 0);
+    assert.ok(w.durable.doc.equals(before));
+  });
+  test('terminal proof: expiry binds exact generation; same-ID reuse refuses until controller restart', async t => {
+    let clock = Date.now(); const w = await startWorld(true, { now: () => clock }); t.after(w.close);
+    const p = await w.prepare(); assert.match(p.generation, /^generation-[a-f0-9]{32}$/);
+    clock += require('../scripts/planned-obligation-settlement-contract').TTL_MS;
+    assert.deepEqual(await correlatedConfirm(w, p), negative(p));
+    assert.equal((await w.prepare()).status, 'unavailable', 'retired correlation is not recycled in this controller');
+    assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
+    w.recreate(); const next = await w.prepare();
+    assert.equal(next.status, 'prepared'); assert.notEqual(next.generation, p.generation);
+    assert.notEqual(next.previewToken, p.previewToken);
+    assert.notEqual((await correlatedConfirm(w, p)).status, 'not-applied', 'old generation has no negative authority over replacement');
+    assert.equal((await correlatedConfirm(w, next)).status, 'committed');
+    assert.equal(w.calls.commit, 1);
+    const durable = w.durable.doc.toString('utf8');
+    assert.equal(durable.includes(next.generation), false, 'correlation never enters ledger/receipt');
+    assert.equal(durable.includes(next.previewToken), false, 'preview token remains transient');
+  });
+  test('terminal proof: selection drift and actual prejournal admission refusal; errors are not proof', async t => {
+    const w = await startWorld(); t.after(w.close);
+    let p = await w.prepare(1); w.acquisition.packet.observationAsOf = '2026-10-06';
+    assert.deepEqual(await correlatedConfirm(w, p), negative(p));
+    assert.equal(w.calls.commit, 0);
+    p = await w.prepare(2); w.hooks.admission = async () => { w.cell.revision++; };
+    assert.deepEqual(await correlatedConfirm(w, p), negative(p));
+    assert.equal(w.calls.journal, 0);
+    delete w.hooks.admission; p = await w.prepare(3);
+    for (const generation of [null, {}, 'invalid']) {
+      assert.equal((await w.raw('confirm', { operationId: p.operationId, previewToken: p.previewToken,
+        generation, confirmed: true })).status, 400);
+    }
+    assert.equal((await correlatedConfirm(w, p, { generation: 'generation-' + 'f'.repeat(32) })).status, 'rejected');
+    assert.equal((await correlatedConfirm(w, p, { previewToken: 'f'.repeat(64) })).status, 'rejected');
+    assert.equal((await correlatedConfirm(w, p)).status, 'committed');
+  });
+  test('terminal proof: authorization revoked after controller result suppresses HTTP acknowledgement', async t => {
+    let clock = Date.now(); const w = await startWorld(true, { now: () => clock }); t.after(w.close);
+    const p = await w.prepare(); clock += require('../scripts/planned-obligation-settlement-contract').TTL_MS;
+    let calls = 0;
+    w.hooks.authorize = async () => { if (++calls === 5) w.authorized = false; };
+    // Route preauth, controller authority/outcome reauth/terminal reauth,
+    // then transport postauth. Revoke that final authorization only.
+    const r = await w.raw('confirm', { operationId: p.operationId, previewToken: p.previewToken,
+      generation: p.generation, confirmed: true });
+    assert.equal(r.status, 503); assert.deepEqual(await r.json(), { status: 'unavailable' });
+    assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
+  });
   test('default actual application is inactive and touches zero settlement storage', async t => {
     const w = await startWorld(false); t.after(w.close);
     const response = await fetch(w.origin + '/settlement/capability', { headers: { Cookie: w.cookie } });

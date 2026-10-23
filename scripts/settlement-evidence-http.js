@@ -118,7 +118,9 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     return result.status === 'prepared' ? { ...result, labels: { payment: payment.label, goal: goal.label } } : result;
   });
   const operation = body => shape(body, ['operationId']) && OP.test(body.operationId);
-  post('/confirm', body => shape(body, ['operationId', 'previewToken', 'confirmed'])
+  post('/confirm', body => (shape(body, ['operationId', 'previewToken', 'confirmed'])
+    || shape(body, ['operationId', 'previewToken', 'generation', 'confirmed'])
+      && /^generation-[a-f0-9]{32}$/.test(body.generation))
     && OP.test(body.operationId) && /^[a-f0-9]{64}$/.test(body.previewToken) && body.confirmed === true,
   (context, _authority, body) => controller.confirm(context, body));
   post('/outcome', operation, (context, _authority, body) => controller.outcome(context, body));

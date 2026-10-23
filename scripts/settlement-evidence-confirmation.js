@@ -276,6 +276,11 @@ function createSettlementEvidenceConfirmation(deps) {
     throw new TypeError('settlement-confirmation: incomplete trusted dependencies');
   }
   const previews = new Map(), preparing = new Map();
+  // Never recycle a terminal-proof operation in this composition. Bounded and
+  // fail-closed, not a durable/global nonreuse claim: restart/other instances
+  // are fenced in the browser by the separate random generation discriminator.
+  const terminalOperations = new Set();
+  const MAX_TERMINAL_OPERATIONS = 1000;
   let writeInFlight = false, uncertainOperation = null;
   function tick() { const value = now(); if (!positive(value)) fail(); return value; }
   function retire(operationId, expected) {
@@ -298,6 +303,33 @@ function createSettlementEvidenceConfirmation(deps) {
     if (entry.attempted && !definitiveAttempt) return unknown(operationId);
     retire(operationId, entry);
     return rejected(reason);
+  }
+  async function terminalNoEffect(context, authority, request, entry, reason, prejournalRefused = false) {
+    // Legacy clients have no persisted generation. Keep their existing
+    // conservative receipt-only recovery; a reason string is never proof.
+    if (!Object.hasOwn(request, 'generation')) {
+      if (prejournalRefused) uncertainOperation = null;
+      return terminal(request.operationId, entry, reason, prejournalRefused);
+    }
+    await sameAuthority(context, authority);
+    if (previews.get(request.operationId) !== entry || request.previewToken !== entry.previewToken
+      || request.generation !== entry.generation || terminalOperations.size >= MAX_TERMINAL_OPERATIONS)
+      return unknown(request.operationId);
+    if (prejournalRefused) {
+      // The sole store invocation has returned an exact trusted prejournal
+      // admission/expiry refusal
+      // and was reauthorized. Its invocation remains excluded until finally.
+      if (!entry.attempted || !writeInFlight || uncertainOperation !== request.operationId)
+        return unknown(request.operationId);
+    } else if (entry.attempted || writeInFlight || uncertainOperation) return unknown(request.operationId);
+    // No await between exclusion, retirement and acknowledgement construction.
+    // Every suspended confirmation still holds this retired entry and fails
+    // the exact-entry check before it can enter a future commit.
+    terminalOperations.add(request.operationId);
+    retire(request.operationId, entry);
+    if (prejournalRefused) uncertainOperation = null;
+    return Object.freeze({ status: 'not-applied', operationId: request.operationId,
+      generation: entry.generation, previewToken: entry.previewToken });
   }
   // One resolve call under the Rule E binding. The classify closure stays
   // open until this helper's own continuation of the resolver await runs
@@ -441,6 +473,8 @@ function createSettlementEvidenceConfirmation(deps) {
         || !positive(request.assignedCents)) return unavailable('invalid-request');
       sweepExpired();
       if (uncertainOperation) return unavailable('outcome-unresolved');
+      if (terminalOperations.has(request.operationId) || terminalOperations.size >= MAX_TERMINAL_OPERATIONS)
+        return unavailable('preview-unavailable');
       if (previews.has(request.operationId) || preparing.has(request.operationId)
         || previews.size + preparing.size >= MAX_PREVIEWS) return unavailable('preview-unavailable');
       reservation = {}; preparing.set(request.operationId, reservation);
@@ -461,12 +495,13 @@ function createSettlementEvidenceConfirmation(deps) {
       if (tick() >= preview.expiresAt) return rejected('preview-expired');
       if (uncertainOperation) return unavailable('outcome-unresolved');
       const previewToken = crypto.randomBytes(32).toString('hex');
+      const generation = 'generation-' + crypto.randomBytes(16).toString('hex');
       // Convert the reservation to a live entry without counting both slots.
       preparing.delete(request.operationId);
       previews.set(request.operationId, { authority, selection, request, preview,
-        confirmationDigest: result.confirmationDigest, previewToken, attempted: false });
+        confirmationDigest: result.confirmationDigest, previewToken, generation, attempted: false });
       return snapshot({ status: 'prepared', operationId: request.operationId,
-        previewToken,
+        previewToken, generation,
         selection: request.selection, assignedCents: command.assignedCents,
         currency: command.evidence.currency, date: command.evidence.date, asOf: command.asOf,
         operation: { version: 1, kind: 'link' }, expiresAt: preview.expiresAt });
@@ -480,8 +515,9 @@ function createSettlementEvidenceConfirmation(deps) {
     let request, enteredCommit = false;
     try {
       const ownedContext = snapshot(context); request = snapshot(input);
-      if (!record(ownedContext) || !shape(request, ['operationId'], ['confirmed', 'previewToken'])
+      if (!record(ownedContext) || !shape(request, ['operationId'], ['confirmed', 'previewToken', 'generation'])
         || !matches(OPERATION, request.operationId)
+        || (Object.hasOwn(request, 'generation') && !matches(/^generation-[a-f0-9]{32}$/, request.generation))
         || (Object.hasOwn(request, 'confirmed') && typeof request.confirmed !== 'boolean')) {
         return unavailable('invalid-request');
       }
@@ -494,9 +530,10 @@ function createSettlementEvidenceConfirmation(deps) {
       const retained = previews.get(request.operationId);
       if (!retained || !isDeepStrictEqual(retained.authority, authority)) return unknown(request.operationId);
       if (!matches(HASH, request.previewToken) || request.previewToken !== retained.previewToken) return rejected('preview-token-invalid');
+      if (Object.hasOwn(request, 'generation') && request.generation !== retained.generation) return rejected('preview-generation-invalid');
       if (retained.attempted) return unknown(request.operationId);
       if (request.confirmed !== true) return rejected('confirmation-required');
-      if (tick() >= retained.preview.expiresAt) return terminal(request.operationId, retained, 'preview-expired');
+      if (tick() >= retained.preview.expiresAt) return await terminalNoEffect(ownedContext, authority, request, retained, 'preview-expired');
       let fresh, admissionWitness = null;
       try {
         const resolvedCall = await resolveClassified(authority, retained.request.selection);
@@ -509,7 +546,7 @@ function createSettlementEvidenceConfirmation(deps) {
         // selection, the deep compare, or any persisted shape.
         admissionWitness = resolvedCall.witness;
       } catch { return retained.attempted ? unknown(request.operationId) : rejected('selection-unavailable'); }
-      if (!isDeepStrictEqual(fresh, retained.selection)) return terminal(request.operationId, retained, 'selection-changed');
+      if (!isDeepStrictEqual(fresh, retained.selection)) return await terminalNoEffect(ownedContext, authority, request, retained, 'selection-changed');
       // Read-only optimization only: another caller can change the store
       // after this probe releases the lock (including during authorization).
       // commitWithoutRecovery owns the atomic no-recovery decision under the
@@ -525,7 +562,7 @@ function createSettlementEvidenceConfirmation(deps) {
         return terminal(request.operationId, retained, 'store-conflict');
       }
       await sameAuthority(ownedContext, authority);
-      if (tick() >= retained.preview.expiresAt) return terminal(request.operationId, retained, 'preview-expired');
+      if (tick() >= retained.preview.expiresAt) return await terminalNoEffect(ownedContext, authority, request, retained, 'preview-expired');
       // No await between this check, consuming the sole attempt and invoking
       // commit. The store sees the original frozen preview, never a rebase.
       if (retained.attempted || writeInFlight || uncertainOperation) return unknown(request.operationId);
@@ -548,10 +585,17 @@ function createSettlementEvidenceConfirmation(deps) {
         // postauthorization discipline as the other definitive outcomes
         // (a sameAuthority failure above still preserves uncertainty for
         // P2). Fresh work requires a fresh prepare and explicit confirm.
-        uncertainOperation = null; return terminal(request.operationId, retained, 'admission-refused', true);
+        if (Object.hasOwn(request, 'generation') && (!fenced || !shape(result, ['status', 'reason'])))
+          return unknown(request.operationId);
+        return await terminalNoEffect(ownedContext, authority, request, retained, 'admission-refused', true);
       }
       if (result.status === 'rejected' && result.reason === 'preview-expired') {
-        uncertainOperation = null; return terminal(request.operationId, retained, 'preview-expired', true);
+        // The real store validates expiry before its journal write. Time can
+        // cross the boundary after the controller's final read-only check.
+        // Only the exact trusted fenced result is negative proof.
+        if (Object.hasOwn(request, 'generation') && (!fenced || !shape(result, ['status', 'reason'])))
+          return unknown(request.operationId);
+        return await terminalNoEffect(ownedContext, authority, request, retained, 'preview-expired', true);
       }
       if (result.status === 'rejected' && result.reason === 'recovery-required') {
         uncertainOperation = null; return terminal(request.operationId, retained, 'recovery-required', true);

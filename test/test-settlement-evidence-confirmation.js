@@ -27,6 +27,62 @@ const context = { ticket: 'synthetic-session-a' };
 const otherContext = { ticket: 'synthetic-session-b' };
 const T0 = Date.parse('2026-10-20T12:00:00Z');
 const clone = x => JSON.parse(JSON.stringify(x));
+
+// Terminal-proof tests use the existing labelled durable-memory fixture;
+// no file adapter, provider, real household authority or storage trial.
+async function terminalWorld(t) {
+  let clock = Date.now();
+  const w = await require('./test-settlement-evidence-http').startWorld(true, { now: () => clock }); t.after(w.close);
+  const R = require('../scripts/settlement-evidence-resolver');
+  const resolver = R.createSettlementEvidenceResolver({ householdId, acquire: () => w.syntheticAcquire(w.contextReader) });
+  const ctx = { actorId };
+  const create = extra => createSettlementEvidenceConfirmation({ householdId, authorize: w.dependency.authorize,
+    resolveSelection: resolver.resolveSelection, resolvePairedSelection: resolver.resolvePairedSelection,
+    store: w.store, commitAdmitted: w.dependency.commitAdmitted, now: () => clock, ...extra });
+  const controller = create();
+  const selection = await w.selection();
+  return { w, ctx, create, controller, resolver, advance: () => { clock += C.TTL_MS; }, rewind: () => { clock -= C.TTL_MS; },
+    prepare: (n = 1) => controller.prepare(ctx, { operationId: op(n), selection, assignedCents: 2500 }) };
+}
+test('terminal proof controller retirement prevents a suspended confirm from later admitting', async t => {
+  const a = await terminalWorld(t); const { w, ctx, resolver } = a;
+  let calls = 0; const gate = deferred(), seen = deferred();
+  const controller = a.create({ resolvePairedSelection: async input => {
+    const value = await resolver.resolvePairedSelection(input);
+    if (++calls === 2) { seen.resolve(); await gate.promise; }
+    return value;
+  } });
+  const p = await controller.prepare(ctx, { operationId: op(1), selection: await w.selection(), assignedCents: 2500 });
+  assert.match(p.generation, /^generation-[a-f0-9]{32}$/);
+  const input = { operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true };
+  const paused = controller.confirm(ctx, input); await seen.promise;
+  a.advance(); const ack = await controller.confirm(ctx, input);
+  assert.deepEqual(ack, { status: 'not-applied', operationId: p.operationId, previewToken: p.previewToken, generation: p.generation });
+  a.rewind(); gate.resolve();
+  assert.notEqual((await paused).status, 'committed'); assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
+  assert.equal((await controller.prepare(ctx, { operationId: op(1), selection: await w.selection(), assignedCents: 2500 })).status, 'unavailable');
+});
+test('terminal proof controller never upgrades ambiguous store conflicts or uncertainty into negative proof', async t => {
+  for (const result of [{ status: 'conflict' }, { status: 'rejected', reason: 'recovery-required' }, { status: 'unknown' },
+    { status: 'rejected', reason: 'admission-refused', untrusted: true },
+    { status: 'rejected', reason: 'preview-expired', untrusted: true }]) {
+    const a = await terminalWorld(t);
+    const controller = a.create({ commitAdmitted: async () => result });
+    const p = await controller.prepare(a.ctx, { operationId: op(1), selection: await a.w.selection(), assignedCents: 2500 });
+    const r = await controller.confirm(a.ctx, { operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true });
+    assert.notEqual(r.status, 'not-applied');
+  }
+});
+test('terminal proof controller requires exact token/generation and fresh authorization', async t => {
+  const a = await terminalWorld(t); const p = await a.prepare();
+  const input = { operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true };
+  a.advance();
+  assert.notEqual((await a.controller.confirm(a.ctx, { ...input, generation: 'generation-' + 'f'.repeat(32) })).status, 'not-applied');
+  assert.notEqual((await a.controller.confirm(a.ctx, { ...input, previewToken: 'f'.repeat(64) })).status, 'not-applied');
+  a.w.authorized = false;
+  assert.notEqual((await a.controller.confirm(a.ctx, input)).status, 'not-applied');
+  assert.equal(a.w.calls.commit, 0); assert.equal(a.w.calls.journal, 0);
+});
 function deferred() {
   let resolve;
   const promise = new Promise(r => { resolve = r; });
@@ -556,8 +612,9 @@ test('prepare is read-only and returns only the exact sanitized selection/amount
   const w = await world(t);
   const before = fs.readFileSync(path.join(w.dir, 'document.json'));
   const result = await w.prepare();
-  const { previewToken, ...shown } = result;
+  const { previewToken, generation, ...shown } = result;
   assert.match(previewToken, /^[a-f0-9]{64}$/);
+  assert.match(generation, /^generation-[a-f0-9]{32}$/);
   assert.deepEqual(shown, { status: 'prepared', operationId: op(1), selection,
     assignedCents: 2500, currency: 'cad', date: '2026-10-19', asOf: '2026-10-20',
     operation: { version: 1, kind: 'link' }, expiresAt: T0 + C.TTL_MS });
