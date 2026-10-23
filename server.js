@@ -53,12 +53,6 @@ const TalkWhy = require('./scripts/talk-why.js');
 function createApplication(options = {}) {
 const environment = options.env || process.env;
 const baseSource = options.baseSource;
-// The incumbent ordinary read seam keeps its existing attach flow. Only a
-// trusted opt-in composition can supply its readers; executable startup cannot.
-const ordinarySettlementServing = options.settlement
-  ? SettlementEvidenceServing.createSettlementEvidenceServing({ householdId: options.settlement.householdId,
-    readDocument: options.settlement.readDocument, readPin: options.settlement.readPin })
-  : settlementEvidenceServing;
 
 const PASSWORD = environment.SITE_PASSWORD;
 const SECRET = environment.SESSION_SECRET;
@@ -370,7 +364,7 @@ async function servedAtlasData(req, res, options = {}) {
   try {
     const served = baseSource ? await baseSource()
       : await ServerLiveRefresh.serve(loadCanonicalData(), environment, { ...options, signal: controller.signal });
-    return await ordinarySettlementServing.attach(served);
+    return await settlementEvidenceServing.attach(served);
   } finally {
     req?.removeListener('aborted', cancel);
     res?.removeListener('close', cancel);

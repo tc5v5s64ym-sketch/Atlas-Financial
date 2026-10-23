@@ -96,8 +96,15 @@ async function startWorld(active = true) {
       if (w.hooks.pin) await w.hooks.pin();
       return pinStore.read();
     } };
+  // Explicit synthetic COMPLETE base source. It uses the incumbent ordinary
+  // read seam over these same durable-memory readers. The application does not
+  // opt ordinary /data.json, Talk or assistant into settlement as a side effect
+  // of mounting assignment routes; real production base composition stays gated.
+  const syntheticBaseServing = require('../scripts/settlement-evidence-serving')
+    .createSettlementEvidenceServing({ householdId,
+      readDocument: w.dependency.readDocument, readPin: w.dependency.readPin });
   w.recreate = () => {
-    const app = createApplication({ env, baseSource: async () => w.base,
+    const app = createApplication({ env, baseSource: async () => active ? syntheticBaseServing.attach(w.base) : w.base,
       ...(active ? { settlement: w.dependency } : {}) });
     server.removeAllListeners('request'); server.on('request', app); w.app = app;
   };
