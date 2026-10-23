@@ -371,5 +371,61 @@ function loadPage(script) {
     J({ np: by('np'), uc: by('uc'), yc: yc && yc.need }));
 }
 
+// S30–S32 (ATLAS-075 HOLD 1792765825.698399): noPaymentRequiredOn keeps
+// precedence over term selection in the REAL consumers. A waived occurrence
+// inside a null-amount term is a known zero; the same term without the
+// waiver stays unknown (guards). Driven through Forecast.recommend on the
+// existing synthetic chronological-savings ledger, compared with an
+// unscheduled waived control. Dates sit in that fixture's cycle.
+{
+  const { ledger } = require('./fixtures/chronological-savings-data');
+  const { advance } = require('./fixtures/savings-daily-allocation-contract');
+  const base = () => {
+    const i = advance(ledger(), '2026-10-10');
+    i.plan.income[0].anchor = '2026-08-14';
+    i.plan.opening.paydaySnapshot = { periodStart: '2026-10-09', asOf: '2026-10-09', opening: 80 };
+    i.plan.opening.representedEvents = [];
+    i.opts.currentPeriodActuals.coverageStart = '2026-10-09';
+    i.opts.currentPeriodActuals.savingsFetchCoverage.startDate = '2026-10-09';
+    i.plan.bills = [{ id: 'annual', label: 'Invented annual premium', amount: 17.29,
+      frequency: 'yearly', month: 10, day: 25, firstDue: '2026-10-25', jointCash: false, confidence: 'estimated' }];
+    i.plan.savingsEarmarks.pools[1].goalRefs = [{ kind: 'yearly-bill', id: 'annual' }];
+    return i;
+  };
+  const NULLTERM = [{ from: '2026-10-01', until: '2026-11-01', amount: null }];
+  const monthly = (waive, sched) => Object.assign({ id: 'promo', label: 'Invented promo', amount: 20, day: 15,
+    frequency: 'monthly', confidence: 'confirmed' }, waive ? { noPaymentRequiredOn: ['2026-10-15'] } : {},
+    sched ? { amountSchedule: NULLTERM } : {});
+  const run = i => F.recommend(i.plan, i.asOf, { ...i.opts, debts: i.debts || [], weeklyVariable: 0 });
+  const fig = a => { const p = a.payPeriodViews.find(p => p.start === '2026-10-09') || {};
+    return { periodBillLoad: p.periodBillLoad, afterBills: p.afterBills, bad: p.balanceAfterDeductions,
+      extraDebtReason: p.extraDebt && p.extraDebt.reason || null }; };
+  const sav = a => { const t = a.savingsFunding && a.savingsFunding.timeline;
+    return { status: t && t.status, reason: t && t.reason || null }; };
+  const mk = f => { const i = base(); f(i); return run(i); };
+  const wCtl = mk(i => i.plan.bills.push(monthly(true, false)));
+  const wNew = mk(i => i.plan.bills.push(monthly(true, true)));
+  const wGuard = mk(i => i.plan.bills.push(monthly(false, true)));
+  ok(fig(wCtl).periodBillLoad === 0 && J(fig(wNew)) === J(fig(wCtl)) && J(sav(wNew)) === J(sav(wCtl)),
+    'S30 waived-in-null-term-waterfall: a waived occurrence in a null-amount term keeps known-zero periodBillLoad/afterBills/BAD (control parity)',
+    J({ control: fig(wCtl), candidate: fig(wNew), savings: sav(wNew) }));
+  ok(fig(wGuard).periodBillLoad === null && fig(wGuard).afterBills === null && fig(wGuard).bad === null && sav(wGuard).status === 'unavailable',
+    'S30g guard: the same null term without the waiver still withholds the waterfall', J(fig(wGuard)));
+  const aCtl = mk(i => { i.plan.bills[0].noPaymentRequiredOn = ['2026-10-25']; });
+  const aNew = mk(i => { i.plan.bills[0].noPaymentRequiredOn = ['2026-10-25']; i.plan.bills[0].amountSchedule = NULLTERM; });
+  const aGuard = mk(i => { i.plan.bills[0].amountSchedule = NULLTERM; });
+  const annualMsg = 'An annual planned savings cost has unknown amount or timing.';
+  ok(fig(aNew).extraDebtReason !== annualMsg && J(fig(aNew)) === J(fig(aCtl)),
+    'S31 waived-in-null-term-annual-savings: a waived annual savings occurrence in a null term is not an unknown annual savings cost',
+    J({ control: fig(aCtl), candidate: fig(aNew) }));
+  ok(fig(aGuard).extraDebtReason === annualMsg,
+    'S31g guard: the same annual null term without the waiver stays an unknown annual savings cost', J(fig(aGuard)));
+  ok(sav(aCtl).status === 'ready' && J(sav(aNew)) === J(sav(aCtl)),
+    'S32 waived-in-null-term-daily-funding: savings daily funding stays ready (control parity) for a waived null-term occurrence',
+    J({ control: sav(aCtl), candidate: sav(aNew) }));
+  ok(sav(aGuard).status === 'unavailable',
+    'S32g guard: without the waiver daily funding stays unavailable', J(sav(aGuard)));
+}
+
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All ATLAS-075 bill amount schedule checks passed'));
 process.exit(failures === 0 ? 0 : 1);

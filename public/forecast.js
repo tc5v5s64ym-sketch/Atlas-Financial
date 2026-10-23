@@ -2778,6 +2778,11 @@
   // knownness test runs on the selected RAW amount, so each incumbent gate
   // keeps its strictness; an invalid schedule is always unknown.
   function billOccurrenceRequirementUnknown(bill, date, known) {
+    // noPaymentRequiredOn keeps precedence: a waived occurrence is a known
+    // zero requirement before any term/regular selection or validity check
+    // (same order as billOccurrenceCashAmount and scheduledAmountUnknowns).
+    if (date && Array.isArray(bill && bill.noPaymentRequiredOn)
+        && bill.noPaymentRequiredOn.includes(date)) return false;
     const sel = billAmountScheduleSelect(bill, date);
     if (sel.invalid) return true;
     if (sel.term) {
