@@ -1220,3 +1220,402 @@ test('plan: cost disclosure markup clears on unavailable and returns only from t
   const recovered = renderPlanPage(loaded, x, QUALIFIED());
   assert.equal(recovered['savings-inventory'].innerHTML, first['savings-inventory'].innerHTML);
 });
+
+/* ----------------- renderer-seam composition (real stack) ------ */
+// Renderer-seam composition coverage: the join the sections above
+// cannot express. Every pin above hands the surfaces a settlement
+// outcome built in this file — linkEvidence() runs the Phase 1
+// contract directly and servedData() attaches its projection by
+// hand. Here the outcome is produced by the real read composition:
+// the confirmation controller (scripts/settlement-evidence-
+// confirmation.js) commits through the real store over the merged
+// file + object adapters in a temp directory, and the serving bridge
+// (scripts/settlement-evidence-serving.js) runs the loader over that
+// durable state and projects the outcome onto the served object —
+// the same fields, produced the production way. The receipt-bound
+// read rides as an independent oracle only: it must include the
+// controller's own receipt against the same snapshot attach
+// publishes; its output is never fed to a renderer and never written
+// into a served object. Renderers are fed only JSON-round-tripped
+// attach output (the /data.json byte shape).
+//
+// Synthetic authority/transport, explicitly: the controller's
+// authorize and selection resolver are synthetic trusted fixtures
+// (the resolver invokes the controller-owned classify closure
+// exactly once, so the verdict comes from the real Forecast
+// classifier); the object transport is a file-backed double in a
+// temp directory; encryption is a synthetic double. This is
+// renderer-seam coverage in the vm harness the sections above use —
+// NOT browser acceptance, NOT theme or App.rerender acceptance, and
+// NOT an implemented whole-view replacement: no production wiring
+// performs this composition while the serving is default-inactive.
+//
+// On base b7280dde this coverage does not exist: this suite imported
+// no serving, loader, controller, store or adapter module. That is
+// missing coverage, not a failing-before claim — every production
+// module below is exercised unchanged.
+const rsOs = require('node:os');
+const rsCrypto = require('node:crypto');
+const rsStoreModule = require(path.join(ROOT, 'scripts/settlement-evidence-store.js'));
+const rsFileAdapterModule = require(path.join(ROOT, 'scripts/settlement-evidence-file-adapter.js'));
+const rsObjectAdapterModule = require(path.join(ROOT, 'scripts/settlement-evidence-object-adapter.js'));
+const rsConfirmationModule = require(path.join(ROOT, 'scripts/settlement-evidence-confirmation.js'));
+const rsServingModule = require(path.join(ROOT, 'scripts/settlement-evidence-serving.js'));
+
+const RS_NS = 'gating-composition-fixture';
+const rsSha256 = bytes => rsCrypto.createHash('sha256').update(bytes).digest('hex');
+const rsEvidence = (over = {}) => ({
+  accountId: 'acct-main', currency: 'cad', direction: 'debit',
+  date: '2026-10-03', cents: 6000, posted: true, ...over,
+});
+
+// Minimal file-backed object transport implementing the object
+// adapter's contract (conditional create/replace with version +
+// integrity acks, paged list) — the server-seam suite's double,
+// layout-compatible: objects are JSON records under
+// <root>/objects/<base64url(key)>.json.
+function rsMakeFileTransport(root) {
+  const dir = path.join(root, 'objects');
+  fs.mkdirSync(dir, { recursive: true });
+  const fileFor = key => path.join(dir, Buffer.from(key, 'utf8').toString('base64url') + '.json');
+  const readRec = key => {
+    try { return JSON.parse(fs.readFileSync(fileFor(key), 'utf8')); } catch { return null; }
+  };
+  const conflict = () => { const e = new Error('synthetic transport: conditional write conflict'); e.code = 'conflict'; return e; };
+  return {
+    dir,
+    fileFor,
+    readRaw(key) {
+      const rec = readRec(key);
+      return rec ? Buffer.from(rec.bytesB64, 'base64') : null;
+    },
+    async read(key) {
+      const rec = readRec(key);
+      return rec ? { bytes: Buffer.from(rec.bytesB64, 'base64'), version: rec.version, metadata: { ...rec.metadata } } : null;
+    },
+    async create(key, bytes, metadata) {
+      if (readRec(key)) throw conflict();
+      fs.writeFileSync(fileFor(key), JSON.stringify({
+        bytesB64: Buffer.from(bytes).toString('base64'), version: 'v1', metadata,
+      }));
+      return { version: 'v1', integrity: rsSha256(bytes) };
+    },
+    async replace(key, bytes, version, metadata) {
+      const rec = readRec(key);
+      if (!rec || rec.version !== version) throw conflict();
+      const next = 'v' + (Number.parseInt(version.slice(1), 10) + 1);
+      fs.writeFileSync(fileFor(key), JSON.stringify({
+        bytesB64: Buffer.from(bytes).toString('base64'), version: next, metadata,
+      }));
+      return { version: next, integrity: rsSha256(bytes) };
+    },
+    async list(prefix, cursor) {
+      const keys = fs.readdirSync(dir).filter(f => f.endsWith('.json'))
+        .map(f => Buffer.from(f.slice(0, -'.json'.length), 'base64url').toString('utf8'))
+        .filter(k => k.startsWith(prefix)).sort();
+      const offset = cursor === null ? 0 : Number.parseInt(cursor, 10);
+      const page = keys.slice(offset, offset + 2);
+      return {
+        entries: page.map(k => ({ key: k, metadata: { ...readRec(k).metadata } })),
+        nextCursor: offset + 2 < keys.length ? String(offset + 2) : null,
+      };
+    },
+  };
+}
+
+// Synthetic encryption double (the adapter never decrypts; backups
+// are owner-recovery-only by design). Output always differs from
+// plaintext.
+const rsSyntheticEncrypt = async bytes => Buffer.concat([
+  Buffer.from('synthetic-enc:'), Buffer.from(bytes).reverse(),
+]);
+
+const rsTreeHash = root => {
+  const out = [];
+  const walk = dir => {
+    for (const name of fs.readdirSync(dir).sort()) {
+      const p = path.join(dir, name);
+      if (fs.statSync(p).isDirectory()) walk(p);
+      else out.push(path.relative(root, p) + ':' + rsSha256(fs.readFileSync(p)));
+    }
+  };
+  walk(root);
+  return out.join('\n');
+};
+
+// The real read stack over one durable fixture: merged adapters,
+// real store (bootstrapped genesis), real controller, and servings
+// over the adapters' real async read methods — the server-seam §9
+// composition, rebuilt here because neither suite exports helpers.
+async function rsMakeStack() {
+  const dir = fs.mkdtempSync(path.join(rsOs.tmpdir(), 'atlas-gating-rs-'));
+  const transport = rsMakeFileTransport(path.join(dir, 'vault'));
+  const clock = { t: T0 };
+  const now = () => (clock.t += 1);
+  const openAdapters = () => {
+    const fileAdapter = rsFileAdapterModule.createSettlementEvidenceFileAdapter(dir);
+    const objectAdapter = rsObjectAdapterModule.createSettlementEvidenceObjectAdapter({
+      householdId, namespace: RS_NS, transport, encrypt: rsSyntheticEncrypt,
+    });
+    return { fileAdapter, objectAdapter };
+  };
+  const openStore = ({ fileAdapter, objectAdapter }) => rsStoreModule.createSettlementEvidenceStore({
+    householdId,
+    documentStore: fileAdapter.documentStore, journalStore: fileAdapter.journalStore,
+    pinStore: objectAdapter.pinStore, backupStore: objectAdapter.backupStore,
+    quarantine: fileAdapter.quarantine, lock: fileAdapter.lock, now,
+  });
+  const adapters = openAdapters();
+  const store = openStore(adapters);
+  assert.equal((await store.bootstrap()).status, 'bootstrapped', 'composition store bootstraps genesis');
+  const authorize = async ctx => (ctx.ticket === 'synthetic-seam-session' ? { householdId, actorId } : null);
+  // Synthetic trusted resolver: one stable provider identity -> tx(1),
+  // the 6000-cent posted CAD debit on 2026-10-03, goal commitment:near
+  // — the same commitment the gating fixtures render, so the real
+  // controller links the very goal these pages publish.
+  const resolveSelection = async input => {
+    const transactionId = 'synthetic-provider-transaction';
+    input.classify(
+      { id: transactionId, date: '2026-10-03', amount: 60, categoryLabel: 'Groceries', merchantKnown: true },
+      { budget: { categories: [{ id: 'groceries', label: 'Groceries' }], excluded: [] } },
+      { currentPeriodActuals: { representedActuals: [], transactions: [] } });
+    return {
+      matchCount: 1,
+      identity: { householdId, source: 'lunchmoney', providerAccountId: 'synthetic-provider-account', transactionId },
+      txRef: tx(1), selectionBinding: 'synthetic-private-selection-v1',
+      goalId: 'commitment:near', goalBinding: 'synthetic-plan-goal-v1', asOf: '2026-10-04',
+      evidence: rsEvidence(),
+    };
+  };
+  const controllerFor = st => rsConfirmationModule.createSettlementEvidenceConfirmation({
+    householdId, authorize, resolveSelection, store: st, now,
+  });
+  const servingFor = (a, over = {}) => rsServingModule.createSettlementEvidenceServing({
+    householdId,
+    readDocument: over.readDocument || (() => a.fileAdapter.documentStore.read()),
+    readPin: over.readPin || (() => a.objectAdapter.pinStore.read()),
+  });
+  return {
+    dir, transport, adapters, store, openAdapters, openStore, controllerFor, servingFor,
+    documentFile: adapters.fileAdapter.paths.documentFile,
+    ctl: controllerFor(store),
+  };
+}
+
+const RS_CONTEXT = { ticket: 'synthetic-seam-session' };
+const RS_SELECTION = { transaction: 'selection-' + '1'.repeat(32), commitment: 'choice-' + '2'.repeat(32) };
+
+async function rsConfirm(stack, cents) {
+  const prepared = await stack.ctl.prepare(RS_CONTEXT, { operationId: op(1), selection: RS_SELECTION, assignedCents: cents });
+  assert.equal(prepared.status, 'prepared', 'controller prepares');
+  const receipt = await stack.ctl.confirm(RS_CONTEXT, { operationId: op(1), confirmed: true, previewToken: prepared.previewToken });
+  assert.equal(receipt.status, 'committed', 'controller commits');
+  return receipt;
+}
+
+// The durable bytes the two separate reads (oracle, then attach)
+// must leave untouched: document bytes, pin bytes, and a hash of
+// every file in the fixture tree (journal, backups, vault included).
+function rsDurableBytes(stack) {
+  return {
+    document: fs.readFileSync(stack.documentFile),
+    pin: stack.transport.readRaw(RS_NS + '/pin.json'),
+    tree: rsTreeHash(stack.dir),
+  };
+}
+function rsAssertBytesUnchanged(stack, before, label) {
+  const after = rsDurableBytes(stack);
+  assert.ok(after.document.equals(before.document), `${label}: document bytes unchanged`);
+  assert.ok(after.pin.equals(before.pin), `${label}: pin bytes unchanged`);
+  assert.equal(after.tree, before.tree, `${label}: no durable write anywhere in the fixture tree`);
+}
+
+const rsRoundTrip = value => JSON.parse(JSON.stringify(value));
+const rsBaseServed = () => servedData(fixtureInput(), null);
+
+// renderPlanPage's preamble, but over an already-built served object
+// (the round-tripped attach output), with B1's selected-month state
+// as an option.
+function rsRenderPlanData(loaded, data, month) {
+  const { sandbox } = loaded;
+  vm.runInContext(`state.debts = []; state.extraFacilities = undefined;`, sandbox);
+  vm.runInContext(`loadKnobs({ scenario: 'expected', targetBuffer: 20, extraDebtMonthly: 0 });`, sandbox);
+  if (month) vm.runInContext(`budgetGranularity = 'month'; budgetSelectedMonth = '${month}';`, sandbox);
+  sandbox.renderPlan(data, periods(), []);
+  return snapshotMounts(loaded.dom);
+}
+
+// Same-instance snapshot comparison for the Plan page. The fake DOM
+// registers an element only when a render touches it, so a later
+// snapshot on one instance can list a mount the first snapshot never
+// registered (the unavailable path touches mounts the qualified path
+// leaves alone). Every mount the first render DID publish must match
+// exactly; a mount registered only later must be in the untouched
+// default state — no content may hide in the registry gap.
+function rsAssertSameMounts(actual, expected, label) {
+  for (const [id, mount] of Object.entries(expected)) {
+    assert.deepEqual(actual[id], mount, `${label}: mount ${id} matches`);
+  }
+  for (const [id, mount] of Object.entries(actual)) {
+    if (!(id in expected)) {
+      assert.deepEqual(mount, {
+        innerHTML: '', textContent: '', className: '', hidden: false, attrs: {}, planStatus: undefined,
+      }, `${label}: mount ${id} was only registered, never published to`);
+    }
+  }
+}
+
+// renderPlanSpendPage's mount capture, over an already-built served
+// object.
+function rsRenderPlanSpendData(loaded, data) {
+  loaded.sandbox.renderPlanSpend(data, periods());
+  const out = {};
+  for (const id of PLAN_SPEND_MOUNTS) {
+    const el = loaded.dom.element(id);
+    out[id] = { innerHTML: el.innerHTML, textContent: el.textContent };
+  }
+  return out;
+}
+
+test('renderer-seam composition: a real controller commit publishes through attach to Plan Spend and Plan', async () => {
+  const stack = await rsMakeStack();
+  const receipt = await rsConfirm(stack, 2500);
+  assert.deepEqual(Object.keys(receipt).sort(), ['digest', 'operationId', 'revision', 'status'],
+    'the controller receipt is exactly the four-field public shape');
+  assert.ok(!Object.hasOwn(receipt, 'actorId'), 'no embedded actor is projected');
+  assert.deepEqual(await stack.ctl.outcome(RS_CONTEXT, { operationId: op(1) }), receipt,
+    'controller outcome returns the original receipt');
+  const serving = stack.servingFor(stack.adapters);
+  const beforeReads = rsDurableBytes(stack);
+  // Oracle (independent): the receipt-bound read includes the
+  // controller's own receipt against this snapshot. Its output is
+  // asserted here and never fed to a renderer.
+  const oracle = await serving.receiptBoundPublication(receipt, actorId);
+  assert.equal(oracle.status, 'included', 'receipt-bound oracle includes the controller receipt');
+  assert.deepEqual(Object.keys(oracle).sort(), ['evidence', 'status']);
+  const attached = await serving.attach(rsBaseServed());
+  rsAssertBytesUnchanged(stack, beforeReads, 'oracle + attach reads');
+  assert.deepEqual(attached.settlementEvidenceStatus, { status: 'qualified' });
+  assert.deepEqual(attached.settlementEvidence, linkEvidence(2500),
+    'the real stack publishes the same effective evidence the contract builds directly');
+  assert.deepEqual(oracle.evidence, attached.settlementEvidence,
+    'the oracle publication is the same snapshot attach publishes');
+  // Plan Spend, from attach output only: identical mounts to the
+  // incumbent hand-built qualified render, with the relieved figure.
+  const spend = rsRenderPlanSpendData(loadPlanSpend(), rsRoundTrip(attached));
+  assert.deepEqual(spend, renderPlanSpendPage(loadPlanSpend(), fixtureInput(), QUALIFIED()),
+    'attach-driven Plan Spend render matches the incumbent qualified render');
+  assert.ok(spend['plan-spend-list'].innerHTML.includes('$35.00'),
+    'relieved remaining is published on Plan Spend');
+  // Named cost facts on the disclosure fixture: the original cost
+  // may stand at 60.00; what relief moves is paid / unpaid.
+  const displayAttached = await serving.attach(servedData(displayInput(), null));
+  const displaySpend = rsRenderPlanSpendData(loadPlanSpend(), rsRoundTrip(displayAttached));
+  const list = displaySpend['plan-spend-list'].innerHTML;
+  assert.match(displayFact(list, 'original'), /60\.00/, 'original cost stands at 60.00');
+  assert.ok(displayFact(list, 'paid').includes('25.00'), 'linked paid is 25.00');
+  assert.ok(displayFact(list, 'unpaid').includes('35.00'),
+    'unpaid remaining is 35.00, not the original 60.00');
+  // Plan, from attach output only.
+  const plan = rsRenderPlanData(loadPlan(), rsRoundTrip(await serving.attach(rsBaseServed())));
+  assert.deepEqual(plan, renderPlanPage(loadPlan(), fixtureInput(), QUALIFIED()),
+    'attach-driven Plan render matches the incumbent qualified render');
+  assert.ok(plan['major-plans-list'].innerHTML.includes('Invented first club cost'),
+    'major plans name the commitment');
+  assert.ok(plan['major-plans-list'].innerHTML.includes('$35.00'),
+    'relieved remaining is published on Plan');
+  assert.deepEqual(await stack.ctl.outcome(RS_CONTEXT, { operationId: op(1) }), receipt,
+    'the original receipt is unchanged after every read');
+});
+
+test('renderer-seam composition: same-instance qualified → unavailable → recovered, no second commit', async () => {
+  const stack = await rsMakeStack();
+  const receipt = await rsConfirm(stack, 2500);
+  const serving = stack.servingFor(stack.adapters);
+  const oracle = await serving.receiptBoundPublication(receipt, actorId);
+  assert.equal(oracle.status, 'included', 'receipt-bound oracle includes the controller receipt');
+  const afterCommit = rsDurableBytes(stack);
+  const qualifiedData = async () => rsRoundTrip(await serving.attach(rsBaseServed()));
+  // Plan Spend on one page instance.
+  const spendLoaded = loadPlanSpend();
+  const spendFirst = rsRenderPlanSpendData(spendLoaded, await qualifiedData());
+  assert.ok(spendFirst['plan-spend-list'].innerHTML.includes('$35.00'),
+    'prime: the qualified attach output publishes the relieved remaining');
+  const callsAfterPrime = spendLoaded.calls.length;
+  // Wholesale replacement of the served object with a fresh attach
+  // output taken while the pin reader fails (the C6 idiom).
+  const downServing = stack.servingFor(stack.adapters, {
+    readPin: () => Promise.reject(new Error('synthetic pin transport down')),
+  });
+  const downAttached = await downServing.attach(rsBaseServed());
+  assert.deepEqual(downAttached.settlementEvidenceStatus, { status: 'unavailable', reason: 'pin-unavailable' });
+  assert.ok(!('settlementEvidence' in downAttached), 'unavailable attach carries no evidence');
+  const spendWithheld = rsRenderPlanSpendData(spendLoaded, rsRoundTrip(downAttached));
+  assert.equal(spendLoaded.calls.length, callsAfterPrime,
+    'the unavailable replacement makes no dependent Forecast call');
+  assert.match(spendWithheld['plan-spend-list'].innerHTML, /data-settlement-evidence="unavailable"/,
+    'the withheld notice replaces the dependent list');
+  assert.doesNotMatch(planSpendText(spendWithheld), /\$\s?\d/,
+    'no amount survives the unavailable replacement');
+  assert.ok(!planSpendText(spendWithheld).includes('Invented first club cost'),
+    'no dependent claim names the commitment under unavailable');
+  // Read-only recovery on the same instance: a fresh attach over the
+  // restored readers republishes exactly the first render.
+  const spendRecovered = rsRenderPlanSpendData(spendLoaded, await qualifiedData());
+  assert.deepEqual(spendRecovered, spendFirst,
+    'recovered Plan Spend render matches the first qualified render');
+  // Plan on one page instance.
+  const planLoaded = loadPlan();
+  const planFirst = rsRenderPlanData(planLoaded, await qualifiedData());
+  const planWithheld = rsRenderPlanData(planLoaded, rsRoundTrip(await downServing.attach(rsBaseServed())));
+  assert.equal(planWithheld['status-band'].planStatus, 'unavailable',
+    'status band carries the unavailable verdict');
+  assert.ok(!planWithheld['major-plans-list'].innerHTML.includes('Invented first club cost'),
+    'dependent major-plan claims clear under unavailable');
+  assert.ok(planWithheld['snapshot-tiles'].innerHTML.includes('Consumer debt'),
+    'independent reported debt stocks stay published under unavailable');
+  const planRecovered = rsRenderPlanData(planLoaded, await qualifiedData());
+  rsAssertSameMounts(planRecovered, planFirst,
+    'recovered Plan render matches the first qualified render');
+  // Nothing above committed again: durable bytes, the recorded
+  // revision / operation count and the original receipt are all
+  // unchanged by the failure + recovery sequence.
+  rsAssertBytesUnchanged(stack, afterCommit, 'failure + recovery sequence');
+  const parsed = JSON.parse(fs.readFileSync(stack.documentFile, 'utf8'));
+  assert.equal(parsed.revision, 1, 'still the original revision — no second commit');
+  assert.equal(parsed.operations.length, 1, 'still the original single operation');
+  assert.deepEqual(await stack.ctl.outcome(RS_CONTEXT, { operationId: op(1) }), receipt,
+    'the original receipt is unchanged after failure and recovery');
+});
+
+test('renderer-seam composition: selected-month change and repeated renders follow Forecast semantics', async () => {
+  const stack = await rsMakeStack();
+  const receipt = await rsConfirm(stack, 2500);
+  const serving = stack.servingFor(stack.adapters);
+  assert.equal((await serving.receiptBoundPublication(receipt, actorId)).status, 'included',
+    'receipt-bound oracle includes the controller receipt');
+  const data = rsRoundTrip(await serving.attach(rsBaseServed()));
+  // Repeated renders of the same qualified object are identical.
+  const planLoaded = loadPlan();
+  const first = rsRenderPlanData(planLoaded, data);
+  assert.deepEqual(rsRenderPlanData(planLoaded, data), first,
+    'repeated Plan renders of the same object are identical');
+  const spendLoaded = loadPlanSpend();
+  const spendFirst = rsRenderPlanSpendData(spendLoaded, data);
+  assert.deepEqual(rsRenderPlanSpendData(spendLoaded, data), spendFirst,
+    'repeated Plan Spend renders of the same object are identical');
+  // Selected-month change on the used instance: the render must be
+  // exactly what a fresh instance produces for that month over the
+  // same qualified object — Forecast semantics decide the figures,
+  // and no stale remaining-need state may survive the change.
+  const monthSame = rsRenderPlanData(planLoaded, data, '2026-10');
+  const monthFresh = rsRenderPlanData(loadPlan(), data, '2026-10');
+  assert.deepEqual(monthSame, monthFresh,
+    'month render on the used instance matches a fresh instance at that month');
+  assert.deepEqual(rsRenderPlanData(planLoaded, data, '2026-10'), monthFresh,
+    'repeated month renders are identical');
+  assert.ok(monthFresh['major-plans-list'].innerHTML.includes('$35.00'),
+    'the relieved remaining is the published need in the changed month');
+  assert.deepEqual(await stack.ctl.outcome(RS_CONTEXT, { operationId: op(1) }), receipt,
+    'the original receipt is unchanged');
+});
