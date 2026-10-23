@@ -2381,5 +2381,62 @@ for (const carried of [false, true]) {
     'Family 2 unnamed cash omission: source identity normalization does not drop an unknown live-balance repayment');
 }
 
+// ---------------------------------------------------------------------------
+// ATLAS-075 (additive): a malformed bill.amountSchedule fails closed through
+// this same scheduledAmountState issue/unavailable pattern. An invalid
+// schedule makes that bill's in-window occurrences unknown (no regular
+// fallback); an unknown term amount makes only its own occurrences unknown.
+// Synthetic fixtures only. Existing ATLAS-077 checks above are unchanged (M07).
+{
+  const W075 = ['2027-01-01', '2027-04-30'];
+  const bill075 = schedule => ({ id: 'sched', label: 'Synthetic Schedule', amount: 20, day: 10,
+    frequency: 'monthly', confidence: 'confirmed', amountSchedule: schedule });
+  const plan075 = bill => ({ windowDays: 91, opening: { asOf: W075[0] }, commitments: [], obligations: [],
+    income: [], bills: [bill], budget: { basis: 'ytd', categories: [] } });
+  const probe075 = schedule => {
+    const plan = plan075(bill075(schedule));
+    const state = F.scheduledAmountState(plan, ...W075);
+    const events = F.expandEvents(plan, ...W075).filter(e => e.id === 'sched');
+    return { state, events, dates: state.unknowns.map(u => u.date), reasons: [...new Set(state.unknowns.map(u => u.reason))] };
+  };
+  const ALL = ['2027-01-10', '2027-02-10', '2027-03-10', '2027-04-10'];
+  const invalidAll = (r) => r.state.status === 'unavailable' && JSON.stringify(r.dates) === JSON.stringify(ALL)
+    && r.reasons.length === 1 && r.reasons[0] === 'amount-schedule-invalid' && r.events.length === 0;
+  const t = (from, until, amount, extra) => Object.assign({ from, until, amount }, extra || {});
+  const m01 = probe075([t('2027-01-01', '2027-03-01', 5), t('2027-02-01', '2027-04-01', 6)]);
+  ok(invalidAll(m01), 'M01 ATLAS-075 overlapping terms: every in-window occurrence is unknown, no regular fallback, totals withheld',
+    JSON.stringify({ status: m01.state.status, dates: m01.dates, reasons: m01.reasons, events: m01.events.length }));
+  const m02 = [probe075([t('2027-02-01', '2027-02-01', 5)]), probe075([t('2027-03-01', '2027-02-01', 5)])];
+  ok(m02.every(invalidAll), 'M02 ATLAS-075 from >= until: schedule invalid',
+    JSON.stringify(m02.map(r => [r.state.status, r.reasons])));
+  const m03 = [probe075([t('2027-02-30', '2027-03-10', 5)]), probe075([t('2027/02/01', '2027-03-01', 5)]),
+    probe075([t('2027-02-01', 20270301, 5)])];
+  ok(m03.every(invalidAll), 'M03 ATLAS-075 non-calendar or non-ISO dates: schedule invalid',
+    JSON.stringify(m03.map(r => [r.state.status, r.reasons])));
+  const many = Array.from({ length: 25 }, (_, i) => t(`2030-01-${String(i + 1).padStart(2, '0')}`, `2030-01-${String(i + 2).padStart(2, '0')}`, 1));
+  const m04 = [probe075({}), probe075([]), probe075(null), probe075(many),
+    probe075([t('2027-02-01', '2027-03-01', 5, { note: 'x' })]), probe075(['2027-02-01'])];
+  ok(m04.every(invalidAll), 'M04 ATLAS-075 non-array, empty, null, >24 terms, unknown key or non-object term: schedule invalid',
+    JSON.stringify(m04.map(r => [r.state.status, r.reasons])));
+  const m05 = ['1,900', NaN, true, [5], -1, null, ''].map(amount => probe075([t('2027-02-01', '2027-03-01', amount)]));
+  ok(m05.every(r => r.state.status === 'unavailable' && JSON.stringify(r.dates) === JSON.stringify(['2027-02-10'])
+      && r.reasons[0] === 'scheduled-amount-unknown'
+      && JSON.stringify(r.events.map(e => [e.date, e.amount])) === JSON.stringify([['2027-01-10', -20], ['2027-03-10', -20], ['2027-04-10', -20]])),
+    'M05 ATLAS-075 unknown or negative term amount: only that term\u2019s occurrence is unknown; no regular fallback; others known',
+    JSON.stringify(m05.map(r => [r.state.status, r.dates, r.events.length])));
+  const badRegular = bill075([t('2027-02-01', '2027-04-01', 5)]);
+  badRegular.amount = '1,900';
+  const m06plan = plan075(badRegular);
+  const m06state = F.scheduledAmountState(m06plan, ...W075);
+  const m06events = F.expandEvents(m06plan, ...W075).filter(e => e.id === 'sched').map(e => [e.date, e.amount]);
+  ok(JSON.stringify(m06state.unknowns.map(u => u.date)) === JSON.stringify(['2027-01-10', '2027-04-10'])
+    && JSON.stringify(m06events) === JSON.stringify([['2027-02-10', -5], ['2027-03-10', -5]]),
+    'M06 ATLAS-075 malformed regular + valid term: in-term occurrences known, out-of-term unknown',
+    JSON.stringify({ unknowns: m06state.unknowns.map(u => u.date), m06events }));
+  const m08 = [null, '', 'Confirmed', 'high', 1].map(confidence => probe075([t('2027-02-01', '2027-03-01', 5, { confidence })]));
+  ok(m08.every(invalidAll), 'M08 ATLAS-075 invalid term confidence (null, \'\', \'Confirmed\', \'high\', 1): schedule invalid, never promotes trust',
+    JSON.stringify(m08.map(r => [r.state.status, r.reasons])));
+}
+
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All ATLAS-077 malformed-amount checks passed'));
 process.exit(failures === 0 ? 0 : 1);

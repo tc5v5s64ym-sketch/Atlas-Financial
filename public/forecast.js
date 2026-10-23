@@ -2110,14 +2110,18 @@
     const represented = representedKeySet(plan, opts, start);
     for (const b of plan.bills || []) {
       if (!b || !billIsHouseholdObligation(b) || b.needsDate) continue;
-      if (scheduledAmountValue(b.amount) != null) continue;
+      const scheduled = billHasAmountSchedule(b);
+      if (!scheduled && scheduledAmountValue(b.amount) != null) continue;
       for (const date of outflowDates(b, start, end)) {
         if (Array.isArray(b.noPaymentRequiredOn)
           && b.noPaymentRequiredOn.includes(date)) continue;
         if (!opts.keepRepresented && date < start
           && represented.has(b.id + '@' + date)) continue;
+        // ATLAS-075: a scheduled bill is judged per occurrence price.
+        const priced = scheduled ? billOccurrenceAmount(b, date) : null;
+        if (priced && priced.amount != null) continue;
         unknowns.push({ carrier: 'bill', id: b.id || null, date,
-          reason: 'scheduled-amount-unknown' });
+          reason: priced ? priced.reason : 'scheduled-amount-unknown' });
       }
     }
     for (const o of plan.obligations || []) {
@@ -2225,12 +2229,14 @@
         };
         for (const b of plan.bills || []) {
           if (!b || !billIsHouseholdObligation(b) || b.needsDate) continue;
-          if (scheduledAmountValue(b.amount) != null) continue;
+          const scheduled = billHasAmountSchedule(b);
+          if (!scheduled && scheduledAmountValue(b.amount) != null) continue;
           if (billAffectsJointCash(b, plan) === false
             && !isCardPaidBill(b, plan)) continue;
           for (const date of outflowDates(b, from, to)) {
             if (Array.isArray(b.noPaymentRequiredOn)
               && b.noPaymentRequiredOn.includes(date)) continue;
+            if (scheduled && billOccurrenceAmount(b, date).amount != null) continue;
             pushLookback('bill', b.id || null, date);
           }
         }
@@ -2561,7 +2567,9 @@
     if (obligation) return true;
     const bill = (plan.bills || []).find(item => item && item.id === id
       && item.frequency === 'once' && item.date === date
-      && (scheduledAmountValue(item.amount) == null || Number(item.amount) > 0));
+      && (billHasAmountSchedule(item)
+        ? (billOccurrenceAmount(item, date).amount == null || billOccurrenceAmount(item, date).amount > 0)
+        : (scheduledAmountValue(item.amount) == null || Number(item.amount) > 0)));
     return !!(bill && billAffectsJointCash(bill, plan));
   }
 
@@ -2587,7 +2595,9 @@
         .some(occ => occ && occ.date === date);
     }
     const bill = (plan.bills || []).find(item => item && item.id === id
-      && Number(item.amount) > 0);
+      && (billHasAmountSchedule(item)
+        ? billOccurrenceAmount(item, date).amount > 0
+        : Number(item.amount) > 0));
     if (!bill || !billAffectsJointCash(bill, plan)) return false;
     return outflowDates(bill, date, date).some(d => d === date);
   }
@@ -2692,6 +2702,101 @@
     if (!isFinite(n) || n <= 0) return 0;
     return roundCent(n);
   }
+  // ATLAS-075: bounded promotional pricing with automatic restoration.
+  // bill.amount stays the REGULAR price. An optional bill.amountSchedule is
+  // 1..24 terms { from, until, amount, confidence? }: `from` INCLUSIVE,
+  // `until` EXCLUSIVE (the first date the regular price applies again).
+  // The ACTUAL occurrence date selects the term; asOf never does. Gaps and
+  // dates on/after `until` take the regular price with no data edit.
+  // Invalid schedules (shape, keys, dates, from >= until, overlap, bad
+  // confidence) fail closed: every occurrence is unknown, never the regular
+  // fallback. A term may only lower confidence ('estimated'); it never
+  // promotes it. Undated (needsDate) bills ignore schedules. Unscheduled
+  // bills take exactly the incumbent path.
+  const AMOUNT_SCHEDULE_MAX_TERMS = 24;
+  const AMOUNT_SCHEDULE_TERM_KEYS = ['from', 'until', 'amount', 'confidence'];
+  function billHasAmountSchedule(bill) {
+    return !!(bill && bill.amountSchedule !== undefined && !bill.needsDate);
+  }
+  function amountScheduleDay(value) {
+    return typeof value === 'string' && ISO_CALENDAR_DATE.test(value) && savingsDate(value);
+  }
+  function billAmountScheduleTerms(bill) {
+    const raw = bill && bill.amountSchedule;
+    if (!Array.isArray(raw) || raw.length < 1 || raw.length > AMOUNT_SCHEDULE_MAX_TERMS) return null;
+    const terms = [];
+    for (const term of raw) {
+      if (!term || typeof term !== 'object' || Array.isArray(term)
+          || Object.getPrototypeOf(term) !== Object.prototype) return null;
+      if (!Object.keys(term).every(key => AMOUNT_SCHEDULE_TERM_KEYS.includes(key))) return null;
+      if (!Object.hasOwn(term, 'amount')) return null;
+      if (!amountScheduleDay(term.from) || !amountScheduleDay(term.until) || !(term.from < term.until)) return null;
+      if (Object.hasOwn(term, 'confidence')
+          && term.confidence !== 'confirmed' && term.confidence !== 'estimated') return null;
+      terms.push(term);
+    }
+    const sorted = terms.slice().sort((a, b) => a.from < b.from ? -1 : a.from > b.from ? 1 : 0);
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].from < sorted[i - 1].until) return null;
+    }
+    return sorted;
+  }
+  // { invalid } | { term } | { regular } for one occurrence date.
+  function billAmountScheduleSelect(bill, date) {
+    if (!billHasAmountSchedule(bill)) return { regular: true };
+    const terms = billAmountScheduleTerms(bill);
+    if (!terms) return { invalid: true };
+    const day = String(date || '');
+    const term = day ? terms.find(t => t.from <= day && day < t.until) : null;
+    return term ? { term } : { regular: true };
+  }
+  function billOccurrenceInTerm(bill, date) {
+    const sel = billAmountScheduleSelect(bill, date);
+    return !!(sel.invalid || sel.term);
+  }
+  // The selected (pre-credit, pre-no-pay) occurrence price.
+  function billOccurrenceAmount(bill, date) {
+    const confidence = bill ? bill.confidence : undefined;
+    const sel = billAmountScheduleSelect(bill, date);
+    if (sel.invalid) {
+      return { amount: null, source: 'schedule', confidence, reason: 'amount-schedule-invalid' };
+    }
+    if (sel.term) {
+      const v = scheduledAmountValue(sel.term.amount);
+      return {
+        amount: v == null || v < 0 ? null : v,
+        source: 'schedule',
+        confidence: sel.term.confidence === 'estimated' ? 'estimated' : confidence,
+        reason: v == null || v < 0 ? 'scheduled-amount-unknown' : null,
+      };
+    }
+    const v = scheduledAmountValue(bill && bill.amount);
+    return { amount: v, source: 'regular', confidence,
+      reason: v == null ? 'scheduled-amount-unknown' : null };
+  }
+  // Site-specific requirement gate for a scheduled bill: the site's own
+  // knownness test runs on the selected RAW amount, so each incumbent gate
+  // keeps its strictness; an invalid schedule is always unknown.
+  function billOccurrenceRequirementUnknown(bill, date, known) {
+    const sel = billAmountScheduleSelect(bill, date);
+    if (sel.invalid) return true;
+    if (sel.term) {
+      const v = scheduledAmountValue(sel.term.amount);
+      if (v == null || v < 0) return true;
+      return !known(sel.term.amount);
+    }
+    return !known(bill && bill.amount);
+  }
+  // Dependency-specific normalization (roster monthly / budget billMonthly):
+  // unavailable when the schedule is invalid, asOf is unknown, or any
+  // relevant occurrence in [start, lastIncluded] is in a term.
+  function billScheduleBlocksNormalization(bill, start, lastIncluded) {
+    if (!billHasAmountSchedule(bill)) return false;
+    if (!billAmountScheduleTerms(bill)) return true;
+    if (!start || !lastIncluded) return true;
+    return outflowDates(bill, start, lastIncluded).some(date => billOccurrenceInTerm(bill, date));
+  }
+
   function billOccurrenceCashAmount(bill, date) {
     // An owner-confirmed no-pay statement removes only its named modeled
     // occurrence. It is not a payment, bank credit or future credit application.
@@ -2702,7 +2807,10 @@
     // as the named state — a boolean, array or nonfinite amount is
     // unknown (null), never Number()-coerced into a fabricated figure
     // (true -> 1, [475] -> 475, Infinity -> Infinity).
-    const scheduled = scheduledAmountValue(bill && bill.amount);
+    // ATLAS-075: a scheduled bill's selected occurrence price is the source.
+    const scheduled = billHasAmountSchedule(bill)
+      ? billOccurrenceAmount(bill, date).amount
+      : scheduledAmountValue(bill && bill.amount);
     if (scheduled == null || scheduled <= 0) return scheduled;
     const credit = billUtilityAccountCreditAmount(bill);
     if (!(credit > 0) || !date) return scheduled;
@@ -2861,9 +2969,11 @@
         if (cash == null || !(cash > 0)) continue;
         const jointCash = billAffectsJointCash(b, plan);
         const cardPaid = isCardPaidBill(b, plan);
+        const priced = billHasAmountSchedule(b) ? billOccurrenceAmount(b, date) : null;
         events.push({
           date, amount: -cash, kind: 'bill', label: b.label, id: b.id,
-          confidence: b.confidence,
+          confidence: priced ? priced.confidence : b.confidence,
+          ...(priced ? { amountSource: priced.source } : {}),
           householdObligation: true,
           payingAccount: billCashPayingAccount(b, plan),
           ...(fundingAccount ? { fundingAccount, merchantPayingAccount: b.payingAccount,
@@ -3558,6 +3668,20 @@
   // is invented when every in-window occurrence is ineligible.
   function firstEligibleYearlyCardPaidOccurrence(bill, plan, asOf, end) {
     if (!bill || !asOf || !isYearlyCardPaidBill(bill, plan)) return null;
+    if (billHasAmountSchedule(bill)) {
+      // ATLAS-075: requirement knowledge and need come from each occurrence.
+      const through = end || yearlyCardPaidSearchEnd(bill, asOf);
+      for (const date of outflowDates(bill, asOf, through)) {
+        if (Array.isArray(bill.noPaymentRequiredOn) && bill.noPaymentRequiredOn.includes(date)) continue;
+        const priced = billOccurrenceAmount(bill, date);
+        const occurrenceNeed = savingsCents(priced.amount) == null ? null : priced.amount;
+        if (occurrenceNeed === 0) continue;
+        const cashNeed = occurrenceNeed == null ? null : billOccurrenceCashAmount(bill, date);
+        if (cashNeed === 0) continue;
+        return { date, need: cashNeed, confidence: priced.confidence };
+      }
+      return null;
+    }
     const need = savingsCents(bill.amount) == null ? null : bill.amount;
     if (need === 0) return null;
     if (bill.needsDate) return { date: null, need };
@@ -3601,7 +3725,7 @@
         amountMax: null,
         bounds: { floor: need, ceiling: need, flexibility: 'required' },
         flexibility: 'required',
-        confidence: b.confidence || null,
+        confidence: (Object.hasOwn(selected, 'confidence') ? selected.confidence : b.confidence) || null,
         adjustable: false,
         priority: null,
         index: index++,
@@ -10369,10 +10493,14 @@
         if (!billIsHouseholdObligation(bill) || bill.needsDate) continue;
         for (const date of outflowDates(bill, cycle.start, cycle.end)) {
           if (settled(bill.id, date) || bill.noPaymentRequiredOn?.includes(date)) continue;
-          if (finite(bill.amount) && billOccurrenceCashAmount(bill, date) === 0) continue;
+          // ATLAS-075: a scheduled bill is judged on this occurrence's price.
+          const unknownHere = billHasAmountSchedule(bill)
+            ? billOccurrenceRequirementUnknown(bill, date, value => finite(value) && value >= 0)
+            : !finite(bill.amount) || bill.amount < 0;
+          if (!unknownHere && billOccurrenceCashAmount(bill, date) === 0) continue;
           if (!billsCashScope({ ...bill, payingAccount: billCashPayingAccount(bill, plan),
             cardPaid: isCardPaidBill(bill, plan) })) continue;
-          if (!finite(bill.amount) || bill.amount < 0) issue('remaining-cash-unknown', 'A remaining bill amount is unknown.');
+          if (unknownHere) issue('remaining-cash-unknown', 'A remaining bill amount is unknown.');
         }
       }
       for (const obligation of plan.obligations || []) {
@@ -11318,7 +11446,10 @@
     // Read the same native expenses from today's opening so only earned
     // reserve backing offsets them; keepRepresented is deliberately absent.
     const annualSavingsBills = (plan.bills || []).filter(b => isSavingsFundedPaydayBill(b, plan));
-    const annualSavingsUnknown = annualSavingsBills.some(b => b.needsDate || savingsCents(b.amount) == null);
+    const annualSavingsUnknown = annualSavingsBills.some(b => b.needsDate || (billHasAmountSchedule(b)
+      ? outflowDates(b, asOf, coveringSpan(windows).end)
+        .some(date => billOccurrenceRequirementUnknown(b, date, value => savingsCents(value) != null))
+      : savingsCents(b.amount) == null));
     const annualSavingsEvents = annualSavingsBills.length
       ? expandEvents(plan, asOf, coveringSpan(windows).end, { ...opts, keepRepresented: false })
         .filter(e => isSavingsFundedPaydayBillEvent(e, plan)) : [];
@@ -11677,11 +11808,16 @@
           : !(row.planned != null && Number.isFinite(Number(row.planned)))
             && !(row.amount != null && Number.isFinite(Number(row.amount)))))
         || (plan.bills || []).some(b => b && !(opts.disabled || []).includes(b.id)
-          && (b.amount == null || savingsCents(b.amount) == null)
           && !(b.jointCash === false && !b.cardPaid)
           && !isSavingsFundedPaydayBill(b, plan)
-          && (role === 'active' ? outflowDates(b, window.start, window.end)
-            : occurrences(b, window.start, window.end)).length > 0)
+          && (billHasAmountSchedule(b)
+            // ATLAS-075: only an in-window occurrence whose price is unknown.
+            ? (role === 'active' ? outflowDates(b, window.start, window.end)
+              : occurrences(b, window.start, window.end))
+              .some(date => billOccurrenceRequirementUnknown(b, date, value => value != null && savingsCents(value) != null))
+            : (b.amount == null || savingsCents(b.amount) == null)
+              && (role === 'active' ? outflowDates(b, window.start, window.end)
+                : occurrences(b, window.start, window.end)).length > 0))
         || scheduledLoadUnknowns.some(u => u.date >= window.start && u.date <= window.end));
       const periodBillLoad = planUnavailable || billLoadUnknown
         ? null
@@ -16077,9 +16213,26 @@
       datedByCategory[cat].total += amount;
       datedByCategory[cat].items.push({ label, amount, kind });
     };
+    // ATLAS-075: a scheduled bill's billMonthly is a regular-price
+    // normalization. It is refused (unknown, never averaged) when the
+    // schedule is invalid, asOf is unknown, or any occurrence in the
+    // window [asOf, asOf + windowDays) is promotional.
+    const scheduleAsOf = opts.asOf || opts.start || null;
+    const scheduleLastIncluded = scheduleAsOf
+      ? addDays(scheduleAsOf, (plan.windowDays || 91) - 1) : null;
+    const billMonthlyRefused = b => billHasAmountSchedule(b)
+      && billScheduleBlocksNormalization(b, scheduleAsOf, scheduleLastIncluded);
     for (const b of plan.bills || []) {
       if (b.needsDate) continue;
       if (!billAffectsJointCash(b, plan) && !isCardPaidBill(b, plan)) continue;
+      if (b.budgetCategory && billMonthlyRefused(b)) {
+        addDated(b.budgetCategory, 0, b.label, 'bill');
+        const acc = datedByCategory[b.budgetCategory];
+        acc.items[acc.items.length - 1] = { label: b.label, amount: null, kind: 'bill',
+          reason: 'amount-schedule-unsupported' };
+        acc.unknown = true;
+        continue;
+      }
       addDated(b.budgetCategory, billMonthly(b), b.label, 'bill');
     }
     // A dated commitment is NOT automatically a draw against the recurring
@@ -16160,15 +16313,21 @@
       // reserves them on the planning day instead of a daily smear.
       // This is not a spending-intent target and not a second bill engine.
       const undatedCurrent = c.currentMonthly != null ? Number(c.currentMonthly) : null;
+      let cardPaidRefused = false;
       const cardPaidMonthly = ((plan && plan.bills) || []).reduce((sum, b) => {
         if (!b || b.needsDate || b.budgetCategory !== c.id) return sum;
         if (!isCardPaidBill(b, plan)) return sum;
+        if (billMonthlyRefused(b)) { cardPaidRefused = true; return sum; }
         return sum + billMonthly(b);
       }, 0);
+      // ATLAS-075: a refused card-paid scheduled bill keeps the regime
+      // (so gross withholds via the unknown dated total) without a
+      // fabricated current figure or a historical-source mislabel.
       const current = undatedCurrent != null ? undatedCurrent
+        : cardPaidRefused ? null
         : cardPaidMonthly > 0 ? cardPaidMonthly
         : null;
-      const regime = current != null;
+      const regime = current != null || (undatedCurrent == null && cardPaidRefused);
       // A dated aggregate containing an unknown item is itself unknown:
       // it publishes null, and the figures that consume it (the regime
       // gross that adds it, the planned remainder that nets it off)
@@ -18316,11 +18475,23 @@
     const roster = ((plan && plan.bills) || []).filter(bill =>
       bill && includeBill(plan, bill));
     const rows = roster.map(bill => {
-      const amount = bill.amount != null && isFinite(Number(bill.amount))
+      let amount = bill.amount != null && isFinite(Number(bill.amount))
         ? roundCent(Number(bill.amount)) : null;
       const frequency = BILL_FREQUENCY_LABEL[bill.frequency] ? bill.frequency : null;
-      const monthlyEquivalent = billMonthlyEquivalent(bill);
       const nextDate = householdBillNextDate(bill, asOf, horizon.end);
+      // ATLAS-075: a scheduled bill shows its next occurrence's selected
+      // price; its monthly equivalent is unavailable while any occurrence
+      // through the horizon is promotional (no invented averaging).
+      const scheduled = billHasAmountSchedule(bill);
+      const priced = scheduled
+        ? (nextDate ? billOccurrenceAmount(bill, nextDate)
+          : billAmountScheduleTerms(bill) ? billOccurrenceAmount(bill, null)
+            : { amount: null, source: 'schedule', confidence: bill.confidence })
+        : null;
+      if (priced) amount = priced.amount == null ? null : roundCent(Number(priced.amount));
+      const monthlyEquivalent = scheduled
+        && billScheduleBlocksNormalization(bill, asOf, asOf ? horizon.end : null)
+        ? null : billMonthlyEquivalent(bill);
       let cadenceNote = null;
       if (bill.frequency === 'once') {
         cadenceNote = 'Recurring cadence is not on the plan.';
@@ -18336,9 +18507,10 @@
         recurringCadenceKnown: billRecurringCadenceKnown(bill),
         nextDate,
         monthlyEquivalent,
-        confidence: bill.confidence || null,
+        confidence: (priced ? priced.confidence : bill.confidence) || null,
         cadenceNote,
         budgetCategory: bill.budgetCategory || null,
+        ...(priced ? { amountSource: priced.source } : {}),
       };
     });
     rows.sort((a, b) => {
@@ -21339,7 +21511,7 @@
       const selected = firstEligibleYearlyCardPaidOccurrence(bill,plan,day,end);
       if (!selected || selected.need === 0) continue;
       append({id:bill.id,label:bill.label,date:selected.date,need:selected.need,
-        confidence:bill.confidence,source:'yearly-card-paid-bill'});
+        confidence:Object.hasOwn(selected,'confidence')?selected.confidence:bill.confidence,source:'yearly-card-paid-bill'});
     }
     for (const category of plan.budget?.categories || []) {
       if (category.class !== 'reserve' || disabled.has(category.id) || competing.has(category.id)
@@ -22068,7 +22240,12 @@
     if (!periods.every(p => savingsCents(p.incomeTotal, true) != null && savingsCents(p.periodBillLoad) != null
       && savingsCents(p.budgetHold) != null && p.householdBudget.every(r => (p.start > day || savingsCents(r.spent, true) != null)
         && savingsCents(r.hold) != null))) return unknown('Native Budget deductions or household spending are unavailable.');
-    if ((plan.bills || []).some(b => b.amount == null || savingsCents(b.amount) == null)) return unknown('A required operating bill amount is unavailable.');
+    if ((plan.bills || []).some(b => billHasAmountSchedule(b)
+      // ATLAS-075: a scheduled bill blocks only on an unknown occurrence
+      // price inside the supported funding timeline.
+      ? !billAmountScheduleTerms(b) || outflowDates(b, cycle.start, bound.through)
+        .some(date => billOccurrenceRequirementUnknown(b, date, value => value != null && savingsCents(value) != null))
+      : b.amount == null || savingsCents(b.amount) == null)) return unknown('A required operating bill amount is unavailable.');
     if ((plan.obligations || []).some(o => o.amount == null || savingsCents(o.amount) == null)
         || (plan.commitments || []).some(c => !commitmentSettledBy(c, day) && !(opts.disabled || []).includes(c.id)
           && c.flexibility !== 'optional' && savingsCents(c.amount) == null
@@ -24505,6 +24682,7 @@
     payoffDebts, payoffModel, hypotheticalExtraPayment, hypotheticalExtraPaymentComparison,
     paymentForMonths, startingCashAmount, postedHouseholdChequingCash, resolveFundingSources, resolveActions, EPSILON, STEP,
     householdBills, householdSubscriptions, billIsSubscription,
+    billOccurrenceAmount,
     visaPaymentReconciliation, visaPaymentPublication, validateCardPaymentDecision };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
