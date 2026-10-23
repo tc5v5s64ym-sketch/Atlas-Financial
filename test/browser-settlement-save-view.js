@@ -60,7 +60,8 @@ async function preview(page) {
   await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).waitFor();
   assert.match(await dialog.locator('[data-settlement-assignment]').innerText(), /\$25\.00 CAD.*2026-10-03.*Invented first club cost.*Preview expires/);
   const stored = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY);
-  assert.deepEqual(Object.keys(stored).sort(), ['operationId', 'phase']); assert.equal(stored.phase, 'preview');
+  assert.deepEqual(Object.keys(stored).sort(), ['generation', 'operationId', 'phase']); assert.equal(stored.phase, 'preview');
+  assert.match(stored.generation, /^generation-[a-f0-9]{32}$/);
   return dialog;
 }
 async function facts(page) {
@@ -98,11 +99,12 @@ async function reconciliationBoot(page) {
 function observeMarkerMutations() {
   const key = 'atlas-settlement-pending-v1';
   let locked = false;
+  window.__markerLockHeld = false;
   window.__markerMutations = [];
   const request = navigator.locks.request.bind(navigator.locks);
   navigator.locks.request = (name, options, callback) => request(name, options, async lock => {
-    if (name === key && options.mode === 'exclusive') locked = true;
-    try { return await callback(lock); } finally { locked = false; }
+    if (name === key && options.mode === 'exclusive') { locked = true; window.__markerLockHeld = true; }
+    try { return await callback(lock); } finally { locked = false; window.__markerLockHeld = false; }
   });
   for (const method of ['setItem', 'removeItem']) {
     const original = Storage.prototype[method];
@@ -116,6 +118,7 @@ function observeMarkerMutations() {
   fs.mkdirSync(out, { recursive: true });
   const browser = await chromium.launch({ headless: true,
     executablePath: process.env.CHROME_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' });
+  const browserVersion = browser.version();
   try {
     const run = async (name, action, active = true, width = 390, options = {}) => {
       if (process.env.ATLAS_SETTLEMENT_BROWSER_CASE && name !== process.env.ATLAS_SETTLEMENT_BROWSER_CASE) return;
@@ -215,7 +218,8 @@ function observeMarkerMutations() {
     await run('readable malformed markers never request preactivation exception even when sealed', async (w, fixture) => {
       const { page } = fixture; const traffic = bootTraffic(page);
       for (const value of ['{', 'x'.repeat(161), JSON.stringify({ operationId: 'invalid', phase: 'preview' }),
-        JSON.stringify({ operationId: 'operation-' + 'a'.repeat(32), phase: 'dispatched', extra: true })]) {
+        JSON.stringify({ operationId: 'operation-' + 'a'.repeat(32), phase: 'dispatched', extra: true }),
+        ...[null, {}, 'invalid'].map(generation => JSON.stringify({ operationId: 'operation-' + 'a'.repeat(32), phase: 'dispatched', generation }))]) {
         await page.evaluate(({ KEY, value }) => localStorage.setItem(KEY, value), { KEY, value });
         await page.reload(); await reconciliationBoot(page);
         assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), value);
@@ -278,6 +282,7 @@ function observeMarkerMutations() {
       const { page, context, requests } = fixture;
       const dialog = await preview(page);
       const operationId = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)).operationId, KEY);
+      const generation = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)).generation, KEY);
       const second = await context.newPage(); second.setDefaultTimeout(15000);
       const secondRequests = [];
       second.on('pageerror', error => fixture.errors.push(error.message));
@@ -309,7 +314,7 @@ function observeMarkerMutations() {
       });
       try {
         const navigation = second.goto(w.origin + '/');
-        assert.deepEqual(await bootRead, { operationId, phase: 'preview' });
+        assert.deepEqual(await bootRead, { operationId, phase: 'preview', generation });
         await page.route('**/settlement/confirm', async route => { await route.fetch(); return route.abort(); });
         await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
         await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
@@ -322,7 +327,7 @@ function observeMarkerMutations() {
         fixture.details = { realSharedContext: true, pausedBootPhase: 'preview',
           responseDroppedAfterCommit: true, secondRequests, retainedDispatched: marker !== null };
         assert.ok(marker, 'B must not erase A\'s now-dispatched marker using its stale preview read');
-        assert.deepEqual(JSON.parse(marker), { operationId, phase: 'dispatched' });
+        assert.deepEqual(JSON.parse(marker), { operationId, phase: 'dispatched', generation });
         assert.equal(secondRequests.filter(path => path === '/data.json').length, 0, 'B cannot fall through to ordinary data');
         assert.equal(secondRequests.filter(path => path === '/settlement/outcome').length, 1);
         assert.equal(secondRequests.filter(path => path === '/settlement/publication').length, 1);
@@ -581,22 +586,206 @@ function observeMarkerMutations() {
       });
     }
     let previewClock = Date.now();
-    await run('deterministically expired preview refuses real confirm and keeps dispatched uncertainty', async (w, { page, requests }) => {
+    await run('deterministically expired preview returns bound no-effect proof and permits explicit reload', async (w, { page, requests }) => {
       const dialog = await preview(page);
+      const marker = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY);
       previewClock += require('../scripts/planned-obligation-settlement-contract').TTL_MS;
       const response = page.waitForResponse(r => r.url().endsWith('/settlement/confirm'));
       await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
-      assert.deepEqual(await (await response).json(), { status: 'rejected', reason: 'preview-expired' });
-      await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+      const ack = await (await response).json();
+      assert.equal(ack.status, 'not-applied'); assert.equal(ack.operationId, marker.operationId);
+      assert.equal(ack.generation, marker.generation); assert.match(ack.previewToken, /^[a-f0-9]{64}$/);
+      await dialog.getByText('Not saved.', { exact: false }).waitFor();
       assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
-      const marker = await page.evaluate(KEY => localStorage.getItem(KEY), KEY);
-      assert.equal(JSON.parse(marker).phase, 'dispatched');
-      await page.reload();
-      await page.getByText('Assignment outcome needs reconciliation. Figures remain unavailable.', { exact: false }).waitFor();
-      assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), marker);
-      assert.equal(await page.evaluate(() => App.data), null);
+      assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), null);
+      assert.equal(requests.filter(x => x.path === '/settlement/outcome').length, 0);
+      await Promise.all([page.waitForEvent('load'), dialog.getByRole('button', { name: 'Reload current view', exact: true }).click()]);
+      await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+      assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 });
       assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 1);
     }, true, 390, { now: () => previewClock });
+    for (const refusal of ['selection-change', 'admission-refused']) {
+      await run('received terminal proof for ' + refusal + ' clears only its marker', async (w, { page, requests }) => {
+        await page.evaluate(observeMarkerMutations);
+        await page.evaluate(() => {
+          const original = window.fetch;
+          window.__networkWhileMarkerLocked = false;
+          window.fetch = (...args) => { window.__networkWhileMarkerLocked ||= window.__markerLockHeld; return original(...args); };
+        });
+        const dialog = await preview(page);
+        if (refusal === 'selection-change') w.acquisition.packet.observationAsOf = '2026-10-06';
+        else w.hooks.admission = async () => { w.cell.revision++; };
+        await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+        await dialog.getByText('Not saved.', { exact: false }).waitFor();
+        assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), null);
+        assert.equal(await page.evaluate(() => window.__networkWhileMarkerLocked), false);
+        assert.ok((await page.evaluate(() => window.__markerMutations)).every(m => m.locked));
+        assert.equal(w.calls.journal, 0); assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 1);
+      });
+    }
+    for (const fault of ['wrong-operation', 'wrong-generation', 'wrong-token', 'extra-field', 'lost-reply', 'cleanup-storage', 'cleanup-lock']) {
+      let clock = Date.now();
+      await run('terminal proof ' + fault + ' preserves uncertainty without replay', async (w, { page, requests }) => {
+        const dialog = await preview(page); clock += require('../scripts/planned-obligation-settlement-contract').TTL_MS;
+        await page.route('**/settlement/confirm', async route => {
+          const response = await route.fetch(); const ack = await response.json(); assert.equal(ack.status, 'not-applied');
+          if (fault === 'lost-reply') return route.abort('failed');
+          if (fault === 'wrong-operation') ack.operationId = 'operation-' + 'f'.repeat(32);
+          if (fault === 'wrong-generation') ack.generation = 'generation-' + 'f'.repeat(32);
+          if (fault === 'wrong-token') ack.previewToken = 'f'.repeat(64);
+          if (fault === 'extra-field') ack.untrusted = true;
+          if (fault === 'cleanup-storage') await page.evaluate(() => { Storage.prototype.removeItem = () => { throw new Error('synthetic cleanup refusal'); }; });
+          if (fault === 'cleanup-lock') await page.evaluate(() => { navigator.locks.request = () => Promise.reject(new Error('synthetic lock refusal')); });
+          return route.fulfill({ response, json: ack });
+        });
+        await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+        await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+        const marker = await page.evaluate(KEY => localStorage.getItem(KEY), KEY);
+        assert.equal(JSON.parse(marker).phase, 'dispatched');
+        await page.reload(); await reconciliationBoot(page);
+        assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), marker);
+        assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 1);
+        assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
+      }, true, 390, { now: () => clock });
+    }
+    let restartClock = Date.now();
+    await run('delayed terminal ack cannot clear same-operation replacement after controller restart', async (w, fixture) => {
+      const { page, requests } = fixture; const dialog = await preview(page);
+      const first = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY);
+      restartClock += require('../scripts/planned-obligation-settlement-contract').TTL_MS;
+      let reached, release; const seen = new Promise(r => { reached = r; }), gate = new Promise(r => { release = r; });
+      let confirms = 0;
+      await page.route('**/settlement/confirm', async route => {
+        const response = await route.fetch();
+        if (++confirms === 1) {
+          assert.equal((await response.json()).status, 'not-applied'); reached(); await gate;
+          await route.fulfill({ response });
+        } else { assert.equal((await response.json()).status, 'committed'); await route.abort('failed'); }
+      });
+      try {
+        await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click(); await seen;
+        w.recreate();
+        // Deliberate lifecycle fault: reuse the old operation via real routes,
+        // then install that new generation under the real origin-wide lock.
+        // The supported UI itself always mints a fresh operationId.
+        const next = await page.evaluate(async operationId => {
+          const post = async (path, body) => (await fetch('/settlement/' + path, { method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Atlas-Settlement': 'same-origin' }, body: JSON.stringify(body) })).json();
+          const c = await post('selections', {});
+          return post('prepare', { operationId, assignedCents: 2500,
+            selection: { transaction: c.transactions[0].handle, commitment: c.commitments[0].handle } });
+        }, first.operationId);
+        assert.equal(next.status, 'prepared'); assert.notEqual(next.generation, first.generation);
+        const replacement = { operationId: next.operationId, phase: 'dispatched', generation: next.generation };
+        await page.evaluate(async ({ KEY, replacement, next }) => {
+          await navigator.locks.request(KEY, { mode: 'exclusive' }, () => localStorage.setItem(KEY, JSON.stringify(replacement)));
+          await fetch('/settlement/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json',
+            'X-Atlas-Settlement': 'same-origin' }, body: JSON.stringify({ operationId: next.operationId,
+            previewToken: next.previewToken, generation: next.generation, confirmed: true }) }).catch(() => {});
+        }, { KEY, replacement, next });
+        assert.equal(w.calls.commit, 1); release();
+        await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+        assert.deepEqual(await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY), replacement);
+        await page.reload();
+        await page.waitForFunction(KEY => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified'
+          && localStorage.getItem(KEY) === null, KEY);
+        assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 });
+        assert.equal(w.calls.commit, 1); assert.equal(requests.filter(r => r.path === '/settlement/confirm').length, 2);
+        fixture.details = { realRestart: true, deliberatelyReusedOperation: true, distinctGeneration: true, oldAckRetainedReplacement: true };
+      } finally { release(); }
+    }, true, 390, { now: () => restartClock });
+    for (const interruption of ['legacy-marker', 'timeout', 'tab-close-before-cleanup']) {
+      let clock = Date.now();
+      await run('terminal proof ' + interruption + ' retains receipt-only recovery fence', async (w, fixture) => {
+        const { page, context, requests } = fixture; const dialog = await preview(page);
+        clock += require('../scripts/planned-obligation-settlement-contract').TTL_MS;
+        if (interruption === 'timeout') await page.clock.install();
+        let reached, release; const seen = new Promise(r => { reached = r; }), gate = new Promise(r => { release = r; });
+        await page.route('**/settlement/confirm', async route => {
+          const response = await route.fetch(); assert.equal((await response.json()).status, 'not-applied');
+          reached(); await gate;
+          await route.fulfill({ response }).catch(() => {}); // request may already be aborted/closed by this explicit fault.
+        });
+        try {
+          await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click(); await seen;
+          let marker = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY);
+          if (interruption === 'legacy-marker') {
+            delete marker.generation;
+            await page.evaluate(async ({ KEY, marker }) => navigator.locks.request(KEY, { mode: 'exclusive' },
+              () => localStorage.setItem(KEY, JSON.stringify(marker))), { KEY, marker }); release();
+            await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+          } else if (interruption === 'timeout') {
+            await page.clock.fastForward(20001);
+            await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor(); release();
+          } else {
+            await page.close(); release();
+            const second = await context.newPage(); second.setDefaultTimeout(15000);
+            second.on('pageerror', error => fixture.errors.push(error.message));
+            await second.goto(w.origin + '/'); await reconciliationBoot(second);
+            assert.deepEqual(await second.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY), marker);
+            await second.close(); return;
+          }
+          assert.deepEqual(await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY), marker);
+          await page.reload(); await reconciliationBoot(page);
+          assert.deepEqual(await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY), marker);
+          assert.equal(requests.filter(r => r.path === '/settlement/confirm').length, 1);
+          assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
+        } finally { release(); }
+      }, true, 390, { now: () => clock });
+    }
+    await run('legacy dispatched marker still recovers an original committed receipt', async (w, { page }) => {
+      const dialog = await preview(page);
+      await page.route('**/settlement/confirm', async route => { await route.fetch(); await route.abort('failed'); });
+      await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+      await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+      await page.evaluate(async KEY => navigator.locks.request(KEY, { mode: 'exclusive' }, () => {
+        const marker = JSON.parse(localStorage.getItem(KEY)); delete marker.generation;
+        localStorage.setItem(KEY, JSON.stringify(marker));
+      }), KEY);
+      await page.reload();
+      await page.waitForFunction(KEY => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified'
+        && localStorage.getItem(KEY) === null, KEY);
+      assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 }); assert.equal(w.calls.commit, 1);
+    });
+    await run('dispatch cannot advance a replaced generation of the same operation', async (w, { page, requests }) => {
+      const dialog = await preview(page);
+      const marker = await page.evaluate(async KEY => navigator.locks.request(KEY, { mode: 'exclusive' }, () => {
+        const marker = JSON.parse(localStorage.getItem(KEY)); marker.generation = 'generation-' + 'f'.repeat(32);
+        localStorage.setItem(KEY, JSON.stringify(marker)); return marker;
+      }), KEY);
+      await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+      await dialog.getByText('Confirmation was not sent:', { exact: false }).waitFor();
+      assert.deepEqual(await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY), marker);
+      assert.equal(requests.filter(r => r.path === '/settlement/confirm').length, 0); assert.equal(w.calls.commit, 0);
+    });
+    await run('stale preview abandonment cannot erase same-operation replacement generation', async (w, fixture) => {
+      const { page, context } = fixture; await preview(page);
+      const first = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY);
+      const second = await context.newPage(); second.setDefaultTimeout(15000);
+      second.on('pageerror', error => fixture.errors.push(error.message));
+      let reached, release; const seen = new Promise(r => { reached = r; }), gate = new Promise(r => { release = r; });
+      await second.exposeBinding('__pauseGenerationBoot', async () => { reached(); await gate; });
+      await second.route('**/app.js', async route => {
+        const response = await route.fetch(), source = await response.text();
+        const anchor = 'try { marker = parsePending(raw); } catch';
+        assert.equal(source.split(anchor).length, 2);
+        await route.fulfill({ response, body: source.replace(anchor,
+          'try { marker = parsePending(raw); await window.__pauseGenerationBoot(); } catch') });
+      });
+      try {
+        const navigation = second.goto(w.origin + '/'); await seen;
+        // Deliberate shared-storage replacement, under the real marker lock.
+        const replacement = { ...first, generation: 'generation-' + 'f'.repeat(32) };
+        await page.evaluate(async ({ KEY, replacement }) => navigator.locks.request(KEY, { mode: 'exclusive' },
+          () => localStorage.setItem(KEY, JSON.stringify(replacement))), { KEY, replacement });
+        release(); await navigation; await reconciliationBoot(second);
+        assert.deepEqual(await second.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY), replacement);
+        assert.equal(w.calls.commit, 0);
+        await second.unroute('**/app.js'); await second.reload();
+        await second.waitForFunction(KEY => typeof App !== 'undefined' && App.data !== null && localStorage.getItem(KEY) === null, KEY);
+        fixture.details = { staleGenerationRetained: true, replacementFaultInjected: true };
+      } finally { release(); await second.close(); }
+    });
     for (const width of [390, 1440]) {
       await run('direct pointer Accounts & evidence and original source lifecycle ' + width, async (w, fixture) => {
         const { page } = fixture;
@@ -670,12 +859,13 @@ function observeMarkerMutations() {
   } finally { await browser.close(); }
   assert.ok(results.length, 'at least one browser case must run');
   fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ synthetic: true,
+    browserVersion, nodeVersion: process.version,
     head: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'],
       { cwd: path.resolve(__dirname, '..'), encoding: 'utf8' }).trim(),
     repositorySources: Object.fromEntries(['server.js', 'public/app.js', 'public/plan.js', 'public/budget-blend.js',
-      'scripts/settlement-evidence-http.js', 'scripts/settlement-evidence-resolver.js',
+      'scripts/settlement-evidence-http.js', 'scripts/settlement-evidence-confirmation.js', 'scripts/settlement-evidence-resolver.js',
       'scripts/settlement-evidence-serving.js', 'test/test-settlement-evidence-http.js',
-      'test/browser-settlement-save-view.js'].map(file => [file,
+      'test/test-settlement-evidence-confirmation.js', 'test/browser-settlement-save-view.js'].map(file => [file,
       require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(__dirname, '..', file))).digest('hex')])),
     actualHttpAndBrowser: true, results }, null, 2) + '\n');
   console.log('Proof: ' + out);

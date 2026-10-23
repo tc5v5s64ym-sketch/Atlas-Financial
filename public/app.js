@@ -285,11 +285,12 @@ const fmtMonths = m => {
 // from CSS variables at render time, so a theme change means a re-render.
 const THEME_KEY = 'hfd-theme';
 
-// Only a correlation id and bounded phase cross a restart. The HttpOnly
+// Only operation/generation correlation and bounded phase cross a restart. The HttpOnly
 // signed cookie remains inaccessible here. A preview token is memory only.
 const SettlementSave = (() => {
   const KEY = 'atlas-settlement-pending-v1';
   const OP = /^operation-[a-f0-9]{32}$/;
+  const GENERATION = /^generation-[a-f0-9]{32}$/;
   let bootPublication = null;
   const record = value => value && typeof value === 'object' && !Array.isArray(value);
   const canLock = () => typeof globalThis.navigator?.locks?.request === 'function';
@@ -303,7 +304,9 @@ const SettlementSave = (() => {
     if (raw === null) return null;
     if (typeof raw !== 'string' || raw.length > 160) throw new Error('settlement-reconciliation');
     const value = JSON.parse(raw);
-    if (!record(value) || Object.keys(value).length !== 2 || !OP.test(value.operationId)
+    if (!record(value) || Object.keys(value).length !== (Object.hasOwn(value, 'generation') ? 3 : 2)
+      || !OP.test(value.operationId)
+      || Object.hasOwn(value, 'generation') && !GENERATION.test(value.generation)
       || !['preview', 'dispatched'].includes(value.phase)) throw new Error('settlement-reconciliation');
     return value;
   }
@@ -324,17 +327,34 @@ const SettlementSave = (() => {
         || value.bootClassification !== 'preactivation-only') throw new Error('settlement-reconciliation');
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   }
-  function persist(operationId, phase) {
+  function persist(operationId, phase, generation) {
     return mutateMarker(() => {
       const previous = pending();
+      if (!GENERATION.test(generation)) throw new Error('settlement-reconciliation');
       // A prepared response cannot replace any existing operation or roll a
       // dispatched marker back to preview. Only its own live preview advances.
       if (phase === 'preview' ? previous !== null
-        : phase !== 'dispatched' || previous?.operationId !== operationId || previous.phase !== 'preview')
+        : phase !== 'dispatched' || previous?.operationId !== operationId || previous.generation !== generation || previous.phase !== 'preview')
         throw new Error('settlement-reconciliation');
-      const raw = JSON.stringify({ operationId, phase });
+      const raw = JSON.stringify({ operationId, phase, generation });
       localStorage.setItem(KEY, raw);
       if (localStorage.getItem(KEY) !== raw) throw new Error('settlement-persistence');
+    });
+  }
+  async function acknowledgeNoEffect(outcome, operationId, generation, previewToken) {
+    // Correlation is not authority. Only the controller's postauthorized exact
+    // generation proof can reach cleanup; no reason-string interpretation.
+    if (!record(outcome) || Object.keys(outcome).length !== 4 || outcome.status !== 'not-applied'
+      || outcome.operationId !== operationId || outcome.generation !== generation
+      || outcome.previewToken !== previewToken || !GENERATION.test(generation)) return false;
+    return mutateMarker(() => {
+      const current = pending();
+      // Legacy two-field dispatched markers are receipt-recovery-only.
+      if (current?.operationId !== operationId || current.generation !== generation
+        || current.phase !== 'dispatched') return false;
+      localStorage.removeItem(KEY);
+      if (localStorage.getItem(KEY) !== null) throw new Error('settlement-persistence');
+      return true;
     });
   }
   async function post(path, body, signal) {
@@ -371,9 +391,10 @@ const SettlementSave = (() => {
     // CURRENT preview under the same lock that guards confirm dispatch.
     if (marker?.phase === 'preview') {
       const operationId = marker.operationId;
+      const generation = marker.generation;
       marker = await mutateMarker(() => {
         const current = pending();
-        if (current?.operationId !== operationId || current.phase !== 'preview') return current;
+        if (current?.operationId !== operationId || current.generation !== generation || current.phase !== 'preview') return current;
         localStorage.removeItem(KEY);
         return null;
       });
@@ -394,16 +415,17 @@ const SettlementSave = (() => {
       || view.publication === 'unavailable' && Object.hasOwn(view.data, 'settlementEvidence')) {
       throw new Error('settlement-reconciliation');
     }
-    bootPublication = { operationId: marker.operationId, status: view.publication };
+    bootPublication = { operationId: marker.operationId, generation: marker.generation, status: view.publication };
     return view.data;
   }
   async function initialized() {
     // Called only AFTER DATA installation, once-hooks and render complete.
     if (bootPublication?.status === 'included') {
       const operationId = bootPublication.operationId;
+      const generation = bootPublication.generation;
       await mutateMarker(() => {
         const marker = pending();
-        if (marker?.operationId === operationId && marker.phase === 'dispatched') localStorage.removeItem(KEY);
+        if (marker?.operationId === operationId && marker.generation === generation && marker.phase === 'dispatched') localStorage.removeItem(KEY);
       });
     }
     if (bootPublication?.status === 'unavailable') {
@@ -473,20 +495,26 @@ const SettlementSave = (() => {
                   selection: { transaction: payment.value, commitment: goal.value }, assignedCents });
                 if (preview.status !== 'prepared' || preview.operationId !== operationId
                   || !/^[a-f0-9]{64}$/.test(preview.previewToken) || preview.assignedCents !== assignedCents
+                  || !GENERATION.test(preview.generation)
                   || preview.currency !== 'cad' || !Number.isSafeInteger(preview.expiresAt)
                   || typeof preview.date !== 'string' || !record(preview.labels)) throw new Error('preview');
-                await persist(operationId, 'preview');
+                await persist(operationId, 'preview', preview.generation);
                 text('Assign ' + money2(preview.assignedCents / 100) + ' ' + preview.currency.toUpperCase()
                   + ' from ' + preview.labels.payment + ' (' + preview.date + ') to ' + preview.labels.goal
                   + '. Preview expires ' + new Date(preview.expiresAt).toISOString() + '. ');
                 button('Confirm assignment', async event => {
                   event.currentTarget.disabled = true;
                   // Failure to persist or verify the marker PREVENTS dispatch.
-                  try { await persist(operationId, 'dispatched'); }
+                  try { await persist(operationId, 'dispatched', preview.generation); }
                   catch { text('Confirmation was not sent: pending state could not be saved. Reload to continue.'); return; }
                   try {
-                    const outcome = await post('confirm', { operationId, previewToken: preview.previewToken, confirmed: true });
+                    const outcome = await post('confirm', { operationId, previewToken: preview.previewToken,
+                      generation: preview.generation, confirmed: true });
                     if (outcome.status === 'committed' && outcome.operationId === operationId) { location.reload(); return; }
+                    if (await acknowledgeNoEffect(outcome, operationId, preview.generation, preview.previewToken)) {
+                      text('Not saved. No assignment was recorded. Reload to continue. ');
+                      button('Reload current view', () => location.reload()); return;
+                    }
                   } catch { /* A possibly dispatched request is unresolved. */ }
                   recover();
                 });
