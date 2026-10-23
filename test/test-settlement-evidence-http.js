@@ -11,7 +11,8 @@ const { createSettlementEvidenceStore } = require('../scripts/settlement-evidenc
 const Forecast = require('../public/forecast');
 const R = require('../scripts/settlement-evidence-resolver');
 const householdId = 'household-' + 'a'.repeat(32);
-const env = { SITE_PASSWORD: 'synthetic-only-http-password', SESSION_SECRET: 'synthetic-only-http-signature-secret' };
+const syntheticCredential = purpose => ['synthetic-only-http', purpose, crypto.randomBytes(24).toString('hex')].join('-');
+const env = { SITE_PASSWORD: syntheticCredential('password'), SESSION_SECRET: syntheticCredential('signature-secret') };
 const op = n => 'operation-' + n.toString(16).padStart(32, '0');
 const clone = value => structuredClone(value);
 function acquisitionFor(base) {

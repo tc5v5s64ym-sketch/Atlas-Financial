@@ -18,7 +18,9 @@ function browser(initial){
   addEventListener(name,fn){this.listeners[name]=fn;}
  }
  const wrap=new Element(),document={body:new Element(),documentElement:new Element(),getElementById:()=>null,querySelectorAll:()=>[],querySelector:selector=>selector==='.wrap'?wrap:null,createElement:()=>new Element()};
- const context={document,console,AbortController,addEventListener(){},location:{href:''},matchMedia:()=>({addEventListener(){}}),setTimeout:(fn,ms)=>{const id=++sequence;timers.set(id,{fn,ms,at:now+ms});return id;},clearTimeout:id=>timers.delete(id),fetch:(_url,options)=>{
+ const context={document,console,AbortController,addEventListener(){},location:{href:''},matchMedia:()=>({addEventListener(){}}),
+ localStorage:{getItem(key){if(key==='atlas-settlement-pending-v1')return null;throw Error('synthetic non-marker storage unavailable');},setItem(){throw Error('storage write forbidden');},removeItem(){throw Error('storage removal forbidden');}},
+ setTimeout:(fn,ms)=>{const id=++sequence;timers.set(id,{fn,ms,at:now+ms});return id;},clearTimeout:id=>timers.delete(id),fetch:(_url,options)=>{
   eq(options.credentials,'same-origin','session credentials preserved');
   if(mode==='pending')return new Promise((_resolve,reject)=>options.signal.addEventListener('abort',()=>{const error=new Error('aborted');error.name='AbortError';reject(error);},{once:true}));
   if(mode==='late')return new Promise(resolve=>{resolveLate=()=>resolve({status:200,ok:true,json:()=>Promise.resolve({meta:{asOf:'2038-06-06'},plan:{}})});});

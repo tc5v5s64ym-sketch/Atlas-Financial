@@ -547,7 +547,10 @@ function bootPage(storedKnobs, payload, periodsOverride) {
     },
     // The knob store the page really reads its weekly override from.
     localStorage: {
-      getItem: () => (storedKnobs ? JSON.stringify(storedKnobs) : null),
+      getItem: key => {
+        if (key === 'atlas-settlement-pending-v1') return null;
+        return storedKnobs ? JSON.stringify(storedKnobs) : null;
+      },
       setItem() {}, removeItem() {},
     },
     addEventListener() {}, matchMedia: () => ({ addEventListener() {} }),
