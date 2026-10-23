@@ -70,6 +70,7 @@
 const {
   loadSettlementEvidence, loadReceiptBoundPublication,
 } = require('./settlement-evidence-loader');
+const { bindSnapshot } = require('./settlement-evidence-resolver');
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -205,4 +206,22 @@ function createSettlementEvidenceServing(dependency) {
   });
 }
 
-module.exports = { createSettlementEvidenceServing };
+// The save journey must publish the exact evidence whose receipt was checked.
+// Snapshot the COMPLETE base before any reader suspends; never attach again.
+async function receiptBoundView(serving, served, receipt, actorId) {
+  const rest = bindSnapshot(stripServed(served));
+  if (!isRecord(rest.meta) || typeof rest.meta.asOf !== 'string' || !isRecord(rest.plan)
+    || !isRecord(rest.plan.defaults) || !isRecord(rest.plan.startingCash)
+    || !['income', 'bills', 'obligations', 'commitments'].every(k => Array.isArray(rest.plan[k]))
+    || !Array.isArray(rest.debts)) throw new TypeError('complete settlement base required');
+  const outcome = await serving.receiptBoundPublication(receipt, actorId);
+  if (outcome.status === 'included') {
+    return { status: 'included', data: projectOnto(rest,
+      { status: 'qualified', evidence: outcome.evidence }) };
+  }
+  const reason = outcome.reason === 'receipt-not-included' ? 'document-changed'
+    : outcome.reason === 'receipt-invalid' ? 'invalid-configuration' : outcome.reason;
+  return { status: 'unavailable', data: projectOnto(rest, { status: 'unavailable', reason }) };
+}
+
+module.exports = { createSettlementEvidenceServing, receiptBoundView };

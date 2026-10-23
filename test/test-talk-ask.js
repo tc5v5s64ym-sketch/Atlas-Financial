@@ -413,8 +413,11 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       && /buildCurrentAssistantPacket/.test(serverSrc)
       && /TalkGemini\.ask/.test(serverSrc),
     'POST /talk/ask uses the incumbent packet builder then TalkGemini');
-  ok(/process\.env\.ATLAS_TALK_GEMINI_API_KEY/.test(serverSrc),
-    'server reads ATLAS_TALK_GEMINI_API_KEY from process.env only');
+  ok(/const environment = options\.env \|\| process\.env;/.test(serverSrc)
+      && /const TALK_GEMINI_KEY = environment\.ATLAS_TALK_GEMINI_API_KEY \|\| '';/.test(serverSrc)
+      && /TalkGemini\.capability\(process\.env\)/.test(serverSrc)
+      && /TalkGemini\.ask\(\{[\s\S]*?env: process\.env,/.test(serverSrc),
+    'Talk key validation defaults to process.env and actual capability/provider configuration remains process.env only');
   ok(!/console\.\w+\([^)]*TALK_GEMINI_KEY/.test(serverSrc)
       && !/console\.\w+\([^)]*readKey\(/.test(moduleSrc),
     'server and Talk Gemini module do not log the key value');

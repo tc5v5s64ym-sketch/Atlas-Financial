@@ -499,6 +499,29 @@ function validDateString(value) {
   return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
 }
 
+// Shared by catalogue and resolution. The catalogue is provisional; only the
+// unchanged controller may admit a selection through Forecast.
+function selectionEvidence(entry, map, asOf) {
+  const mappings = map.mappings.filter(candidate => plainRecord(candidate)
+    && candidate.providerAccountId != null
+    && String(candidate.providerAccountId) === entry.providerAccountId);
+  if (mappings.length !== 1) return null;
+  const mapping = mappings[0];
+  if (!plainRecord(mapping.canonical) || typeof mapping.canonical.id !== 'string') return null;
+  const accountId = mapping.canonical.id, row = entry.row;
+  if (!IDENTIFIER_PATTERN.test(accountId)
+    || (row.atlasAccountId != null && String(row.atlasAccountId) !== accountId)
+    || row.pending !== false || row.isIncome === true || row.currency !== 'cad'
+    || typeof row.amount !== 'number' || !Number.isFinite(row.amount) || row.amount <= 0) return null;
+  const centsFloat = row.amount * 100, cents = Math.round(centsFloat);
+  if (!Number.isSafeInteger(cents) || cents <= 0 || Math.abs(centsFloat - cents) >= 1e-7
+    || !validDateString(row.date) || row.date > asOf) return null;
+  return { accountId, currency: 'cad', direction: 'debit', date: row.date, cents, posted: true };
+}
+function boundedLabel(value, fallback) {
+  return (typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').trim().slice(0, 80) : '') || fallback;
+}
+
 function createSettlementEvidenceResolver(deps) {
   if (!plainRecord(deps)) throw new TypeError('settlement-evidence-resolver: dependencies required');
   const { householdId, acquire } = deps;
@@ -512,14 +535,15 @@ function createSettlementEvidenceResolver(deps) {
   async function resolveSelectionCore(input) {
     let classifyError = null;
     try {
-      if (!plainRecord(input) || !plainRecord(input.authority) || !plainRecord(input.selection)) return null;
+      if (!plainRecord(input) || !plainRecord(input.authority)) return null;
       const { authority, selection, classify } = input;
       if (authority.householdId !== householdId) return null;
-      if (typeof classify !== 'function') return null;
-      const presentedSelection = selection.transaction;
-      const presentedChoice = selection.commitment;
-      if (typeof presentedSelection !== 'string' || !SELECTION_PATTERN.test(presentedSelection)) return null;
-      if (typeof presentedChoice !== 'string' || !CHOICE_PATTERN.test(presentedChoice)) return null;
+      const catalogue = input.catalogue === true;
+      if (!catalogue && (!plainRecord(selection) || typeof classify !== 'function')) return null;
+      const presentedSelection = selection?.transaction;
+      const presentedChoice = selection?.commitment;
+      if (!catalogue && (typeof presentedSelection !== 'string' || !SELECTION_PATTERN.test(presentedSelection))) return null;
+      if (!catalogue && (typeof presentedChoice !== 'string' || !CHOICE_PATTERN.test(presentedChoice))) return null;
 
       const raw = await acquire();
       if (!plainRecord(raw)) return null;
@@ -638,6 +662,30 @@ function createSettlementEvidenceResolver(deps) {
       const packetDigest = computePacketDigest(packet);
       const accountMapDigest = computeAccountMapDigest(map);
 
+      if (catalogue) {
+        const transactions = [], commitments = [];
+        const seenTransactions = new Set(), seenCommitments = new Set();
+        for (const entry of resolvable.values()) {
+          const evidence = selectionEvidence(entry, map, asOf);
+          if (!evidence) continue;
+          const handle = deriveSelectionHandle(instanceDigest, { householdId,
+            providerAccountId: entry.providerAccountId, transactionId: entry.transactionId });
+          if (seenTransactions.has(handle)) return null;
+          seenTransactions.add(handle);
+          transactions.push({ handle, label: boundedLabel(entry.row.displayedPayee, 'Recorded payment'),
+            date: evidence.date, currency: evidence.currency, cents: evidence.cents });
+        }
+        for (const [goalId, row] of goals) {
+          if (duplicateGoals.has(goalId)) continue;
+          const handle = deriveChoiceHandle(planDigest, goalId);
+          if (seenCommitments.has(handle)) return null;
+          seenCommitments.add(handle);
+          commitments.push({ handle, label: boundedLabel(row.label, 'Planned cost') });
+        }
+        if (transactions.length > 200 || commitments.length > 200) return null;
+        return { transactions, commitments };
+      }
+
       // Identification: current-derivation match (the only identification
       // there is — see the header note). An ambiguous handle in current
       // content (two tuples or two goals deriving it) refuses outright
@@ -686,24 +734,8 @@ function createSettlementEvidenceResolver(deps) {
 
       // Evidence: the posted CAD debit the joined row proves, under the
       // canonical account the map assigns to the tuple's provider account.
-      const mapping = map.mappings.find(candidate => plainRecord(candidate)
-        && candidate.providerAccountId != null
-        && String(candidate.providerAccountId) === entry.providerAccountId);
-      if (!mapping || !plainRecord(mapping.canonical) || typeof mapping.canonical.id !== 'string') return null;
-      const accountId = mapping.canonical.id;
-      if (!IDENTIFIER_PATTERN.test(accountId)) return null;
-      if (row.atlasAccountId != null && String(row.atlasAccountId) !== accountId) return null;
-      if (row.pending !== false) return null;
-      if (row.isIncome === true) return null;
-      if (row.currency !== 'cad') return null;
-      if (typeof row.amount !== 'number' || !Number.isFinite(row.amount) || row.amount <= 0) return null;
-      const centsFloat = row.amount * 100;
-      const cents = Math.round(centsFloat);
-      if (!Number.isSafeInteger(cents) || cents <= 0 || Math.abs(centsFloat - cents) >= 1e-7) return null;
-      if (!validDateString(row.date) || row.date > asOf) return null;
-      const evidence = {
-        accountId, currency: 'cad', direction: 'debit', date: row.date, cents, posted: true,
-      };
+      const evidence = selectionEvidence(entry, map, asOf);
+      if (!evidence) return null;
 
       const identity = {
         householdId, source: PROVIDER,
@@ -766,7 +798,8 @@ function createSettlementEvidenceResolver(deps) {
     return { selection: resolved.selection, witness: resolved.witness };
   }
 
-  return Object.freeze({ resolveSelection, resolvePairedSelection });
+  return Object.freeze({ resolveSelection, resolvePairedSelection,
+    catalogue: authority => resolveSelectionCore({ authority, catalogue: true }) });
 }
 
 module.exports = {

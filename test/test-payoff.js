@@ -1018,6 +1018,9 @@ function renderPage() {
   };
   const sandbox = {
     document: doc,
+    // Empty readable pending store; other storage stays unavailable as before.
+    localStorage: { getItem(key) { if (key === 'atlas-settlement-pending-v1') return null; throw Error('synthetic non-marker storage unavailable'); },
+      setItem() { throw Error('storage write forbidden'); }, removeItem() { throw Error('storage removal forbidden'); } },
     addEventListener() {},
     matchMedia: () => ({ addEventListener() {} }),
     getComputedStyle: () => ({ getPropertyValue: () => '' }),

@@ -24,6 +24,9 @@ async function boot(testCase) {
     querySelectorAll: () => [], createElement: () => new Element(),
     querySelector: selector => selector === '.wrap' ? wrap : selector === '.site-head-inner' ? head : null };
   const context = { document, console, AbortController, Intl, addEventListener() {}, location: { href: '' },
+    // No pending operation. Other storage retains the old unavailable behavior.
+    localStorage: { getItem(key) { if (key === 'atlas-settlement-pending-v1') return null; throw Error('synthetic non-marker storage unavailable'); },
+      setItem() { throw Error('storage write forbidden'); }, removeItem() { throw Error('storage removal forbidden'); } },
     matchMedia: () => ({ addEventListener() {} }), setTimeout, clearTimeout,
     fetch: async () => ({ status: 200, ok: true, headers: { get: name => testCase.headers[name] || null }, json: async () => input }) };
   vm.createContext(context); vm.runInContext(source + '\nglobalThis.app = App;', context);

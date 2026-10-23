@@ -131,8 +131,14 @@ if (!threads.isMainThread && process.env.ATLAS_COALESCING_TEST_WORKER_MODE) {
         if (name === './scripts/assistant-oauth.js') return { readConfig: () => ({ configured: false }) };
         return requireFromServer(name);
       } });
-    // Execute the actual deployed bootstrap/writer wiring, not a copied wrapper.
-    new vm.Script(source.slice(0, source.indexOf('if (!PASSWORD')) + '\nmodule.exports = lunchMoneyAssistant;', { filename }).runInContext(context);
+    // Execute the actual construction and writer wiring, not a copied wrapper.
+    // The production factory now owns this prefix. End the probe at the same
+    // pre-listen boundary, return its actual adapter, and invoke that factory.
+    const boundary = source.indexOf('if (!PASSWORD');
+    const construction = source.indexOf('function createApplication(options = {}) {');
+    assert.ok(construction >= 0 && construction < boundary && boundary > 0);
+    new vm.Script(source.slice(0, boundary)
+      + '\nreturn lunchMoneyAssistant;\n}\nmodule.exports = createApplication();', { filename }).runInContext(context);
     return exported.exports;
   }
   async function pair(mock, env, secondCanonical, secondEnv, label) {

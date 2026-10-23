@@ -48,7 +48,11 @@ async function boot(options = {}) {
     addEventListener() {}, matchMedia: () => ({ addEventListener() {} }),
     isSecureContext: options.secure !== false,
     location: { href: '', reload() { operations.push('reload'); } },
-    localStorage: { getItem(key) { storage.push(key); assert.equal(key, 'hfd-theme'); return null; }, setItem() { throw Error('storage write forbidden'); } },
+    localStorage: { getItem(key) {
+      storage.push(key);
+      if (key === 'atlas-settlement-pending-v1') return null; // explicitly empty, readable pending store
+      assert.equal(key, 'hfd-theme'); return null;
+    }, setItem() { throw Error('storage write forbidden'); }, removeItem() { throw Error('storage removal forbidden'); } },
     Forecast: new Proxy({}, { get() { hooks.forecast++; throw Error('Forecast access forbidden'); } }),
     fetch: async (url, init) => {
       requests.push({ url, credentials: init.credentials });

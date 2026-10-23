@@ -2092,7 +2092,7 @@
     title.append(tileIcon('goals'), name);
     card.querySelector('h3')?.before(title);
     card.querySelector('h3')?.before(face);
-    card.querySelectorAll(':scope > ul, :scope > .budget-surface-link, :scope > .budget-goal-notice, :scope > .budget-surface-eyebrow, :scope > [data-budget-funding-savings], :scope > h3').forEach(node => {
+    card.querySelectorAll(':scope > ul, :scope > .budget-surface-link:not([data-budget-funding-inventory]), :scope > .budget-goal-notice, :scope > .budget-surface-eyebrow, :scope > [data-budget-funding-savings], :scope > h3').forEach(node => {
       node.classList.add('blend-goals-source');
     });
   }
