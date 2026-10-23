@@ -81,8 +81,8 @@ async function complete(page, dialog) {
   const browser = await chromium.launch({ headless: true,
     executablePath: process.env.CHROME_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' });
   try {
-    const run = async (name, action, active = true, width = 390) => {
-      const w = await startWorld(active); let fixture;
+    const run = async (name, action, active = true, width = 390, options = {}) => {
+      const w = await startWorld(active, options); let fixture;
       try {
         fixture = await openPage(browser, w, width);
         await action(w, fixture);
@@ -90,6 +90,15 @@ async function complete(page, dialog) {
         assert.deepEqual(fixture.errors, [], 'zero page errors');
         results.push({ name, width, status: 'PASS', commits: w.calls.commit, journalWrites: w.calls.journal,
           requests: fixture.requests }); console.log('PASS ' + name);
+      } catch (error) {
+        // Independent cases still execute, but any failure makes the command
+        // fail. Preserve the actual trace instead of manufacturing a green run.
+        const screenshot = 'failure-' + results.length + '.png';
+        if (fixture && !fixture.page.isClosed()) await fixture.page.screenshot({ path: path.join(out, screenshot) }).catch(() => {});
+        results.push({ name, width, status: 'FAIL', failure: error.message.slice(0, 6000),
+          screenshot, details: fixture?.details, commits: w.calls.commit, journalWrites: w.calls.journal,
+          requests: fixture?.requests || [] });
+        console.error('FAIL ' + name + ': ' + error.message.split('\n')[0]);
       } finally { await fixture?.context.close(); await w.close(); }
     };
     await run('default inactive controls and zero storage', async (w, { page }) => {
@@ -244,14 +253,100 @@ async function complete(page, dialog) {
       assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 });
       assert.deepEqual(await coverage(), before); assert.equal(w.calls.commit, 1);
     });
+    await run('pending boot actual mounted HTTP401 keeps marker and never loads ordinary data or once-hooks', async (w, { page, requests }) => {
+      const dialog = await preview(page);
+      await page.route('**/settlement/confirm', async route => { await route.fetch(); return route.abort(); });
+      await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+      await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+      const marker = await page.evaluate(KEY => localStorage.getItem(KEY), KEY);
+      // Deliberate request fault: the upstream mounted outcome route receives
+      // an invalid cookie and actually returns 401. No fabricated data/body.
+      await page.route('**/settlement/outcome', async route => {
+        const response = await route.fetch({ headers: { ...route.request().headers(), cookie: 'hfd_session=synthetic-invalid-cookie' } });
+        assert.equal(response.status(), 401);
+        return route.fulfill({ response });
+      });
+      let ordinary = 0; page.on('request', r => { if (new URL(r.url()).pathname === '/data.json') ordinary++; });
+      const unauthorized = page.waitForResponse(r => r.url().endsWith('/settlement/outcome') && r.status() === 401);
+      await page.reload(); await unauthorized;
+      await page.getByText('Assignment outcome needs reconciliation. Figures remain unavailable.', { exact: false }).waitFor();
+      assert.equal(await page.evaluate(() => App.data), null);
+      assert.equal(await page.evaluate(() => window.__settlementOnce || 0), 0);
+      assert.equal(ordinary, 0); assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), marker);
+      assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 1); assert.equal(w.calls.commit, 1);
+    });
+    for (const dismissal of ['close button', 'Escape cancellation']) {
+      await run(dismissal + ' during dispatched confirm preserves marker and cannot confirm twice', async (w, { page, requests }) => {
+        const dialog = await preview(page);
+        let reached, release;
+        const entered = new Promise(resolve => { reached = resolve; });
+        const gate = new Promise(resolve => { release = resolve; });
+        await page.route('**/settlement/confirm', async route => {
+          const response = await route.fetch(); // real application commits once
+          reached(); await gate; // deliberately hold only its response
+          return route.fulfill({ response });
+        });
+        try {
+          await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+          await entered;
+          const marker = await page.evaluate(KEY => localStorage.getItem(KEY), KEY);
+          assert.equal(JSON.parse(marker).phase, 'dispatched'); assert.equal(w.calls.commit, 1);
+          if (dismissal === 'close button') await dialog.locator('[data-budget-detail-close]').click();
+          else await page.keyboard.press('Escape');
+          await dialog.waitFor({ state: 'hidden' });
+          assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), marker);
+          const reopened = await sheet(page);
+          assert.equal(await reopened.getByRole('button', { name: 'Confirm assignment', exact: true }).isEnabled(), false);
+          assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 1);
+          const loaded = page.waitForEvent('load'); release(); await loaded;
+          await page.waitForFunction(() => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified');
+          assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 });
+          assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 1);
+        } finally { release(); }
+      });
+    }
+    let previewClock = Date.now();
+    await run('deterministically expired preview refuses real confirm and keeps dispatched uncertainty', async (w, { page, requests }) => {
+      const dialog = await preview(page);
+      previewClock += require('../scripts/planned-obligation-settlement-contract').TTL_MS;
+      const response = page.waitForResponse(r => r.url().endsWith('/settlement/confirm'));
+      await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+      assert.deepEqual(await (await response).json(), { status: 'rejected', reason: 'preview-expired' });
+      await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+      assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
+      const marker = await page.evaluate(KEY => localStorage.getItem(KEY), KEY);
+      assert.equal(JSON.parse(marker).phase, 'dispatched');
+      await page.reload();
+      await page.getByText('Assignment outcome needs reconciliation. Figures remain unavailable.', { exact: false }).waitFor();
+      assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), marker);
+      assert.equal(await page.evaluate(() => App.data), null);
+      assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 1);
+    }, true, 390, { now: () => previewClock });
+    for (const width of [390, 1440]) {
+      await run('direct pointer Accounts & evidence entry ' + width, async (_w, fixture) => {
+        const { page } = fixture;
+        const opener = page.locator('[data-budget-savings-goals] [data-budget-funding-inventory]');
+        await opener.waitFor({ state: 'attached' });
+        fixture.details = await opener.evaluate(node => {
+          const rect = node.getBoundingClientRect(), style = getComputedStyle(node);
+          return { openerClass: node.className, width: rect.width, height: rect.height,
+            display: style.display, overflow: style.overflow, maxHeight: style.maxHeight };
+        });
+        await opener.click({ timeout: 5000 }); // ordinary pointer action; no force/evaluate dispatch
+        const dialog = page.locator('[data-budget-detail-sheet]'); await dialog.waitFor({ state: 'visible' });
+        await dialog.getByRole('button', { name: 'Assign a recorded payment', exact: true }).waitFor();
+      }, true, width);
+    }
   } finally { await browser.close(); }
   fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ synthetic: true,
     head: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'],
       { cwd: path.resolve(__dirname, '..'), encoding: 'utf8' }).trim(),
     repositorySources: Object.fromEntries(['server.js', 'public/app.js', 'public/plan.js',
       'scripts/settlement-evidence-http.js', 'scripts/settlement-evidence-resolver.js',
-      'scripts/settlement-evidence-serving.js'].map(file => [file,
+      'scripts/settlement-evidence-serving.js', 'test/test-settlement-evidence-http.js',
+      'test/browser-settlement-save-view.js'].map(file => [file,
       require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(__dirname, '..', file))).digest('hex')])),
     actualHttpAndBrowser: true, results }, null, 2) + '\n');
   console.log('Proof: ' + out);
+  if (results.some(result => result.status !== 'PASS')) process.exitCode = 1;
 })().catch(error => { console.error(error); process.exitCode = 1; });

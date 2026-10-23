@@ -25,7 +25,10 @@ function acquisitionFor(base) {
     join: [{ localId: 'synthetic-row', providerAccountId: 'SYNTHETIC-ACCOUNT', transactionId: 'SYNTHETIC-TRANSACTION' }],
     map: { mappings: [{ providerAccountId: 'SYNTHETIC-ACCOUNT', canonical: { id: 'chequing-a', collection: 'cash' } }] } };
 }
-async function startWorld(active = true) {
+async function startWorld(active = true, options = {}) {
+  // Test-only clock injection exercises the unchanged controller/store TTL.
+  // The application's signed-cookie expiry continues to use its real clock.
+  const now = options.now || Date.now;
   const base = require('./fixtures/savings-daily-consumer-data')();
   base.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'commitment', id: 'near' }];
   const w = { base, cell: { revision: 1, domain: 'synthetic-domain' }, authorized: true,
@@ -57,7 +60,7 @@ async function startWorld(active = true) {
   }, async get(revision, digest) { const entry = d.backups.get(digest); return entry?.revision === revision ? Buffer.from(entry.bytes) : null; },
   async list() { return [...d.backups.values()].map(({ bytes, ...entry }) => entry); } };
   w.store = createSettlementEvidenceStore({ householdId, documentStore, journalStore, pinStore, backupStore,
-    quarantine: { async put() { throw new Error('synthetic quarantine forbidden'); } }, lock, now: Date.now });
+    quarantine: { async put() { throw new Error('synthetic quarantine forbidden'); } }, lock, now });
   if (active) assert.equal((await w.store.bootstrap()).status, 'bootstrapped');
   const server = w.server = http.createServer();
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -72,7 +75,7 @@ async function startWorld(active = true) {
       return current.contextRevision === captured.contextRevision && current.domain === captured.domain;
     } };
   };
-  w.dependency = { householdId, origin: w.origin, now: Date.now, contextReader: w.contextReader,
+  w.dependency = { householdId, origin: w.origin, now, contextReader: w.contextReader,
     async authorize(context) {
       if (w.hooks.authorize) await w.hooks.authorize(context);
       if (!w.authorized) throw new Error('synthetic revoked');
@@ -358,4 +361,43 @@ if (require.main === module) {
     const code = await new Promise(resolve => smoke.on('exit', resolve));
     assert.equal(code, 0, output); assert.match(output, /ALL CHECKS PASSED/);
   });
+  test('deterministic preview expiry refuses mounted confirm with zero write attempts', async t => {
+    let clock = Date.now();
+    const w = await startWorld(true, { now: () => clock }); t.after(w.close);
+    const p = await w.prepare(); assert.equal(p.status, 'prepared');
+    assert.ok(p.expiresAt > clock);
+    clock = p.expiresAt;
+    assert.deepEqual(await w.confirm(p), { status: 'rejected', reason: 'preview-expired' });
+    assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
+    assert.equal((await w.post('outcome', { operationId: p.operationId })).status, 'unknown');
+  });
+  for (const kind of ['cookie', 'authorization']) {
+    test(kind + ' expiry during awaited publication returns no unauthorized view', async t => {
+      const w = await startWorld(); t.after(w.close);
+      const p = await w.prepare(); assert.equal((await w.confirm(p)).status, 'committed');
+      let reached, release;
+      const entered = new Promise(resolve => { reached = resolve; });
+      const gate = new Promise(resolve => { release = resolve; });
+      let policyClock = 1;
+      const policyExpiry = 2;
+      if (kind === 'authorization') w.hooks.authorize = async () => {
+        if (policyClock >= policyExpiry) throw new Error('synthetic authorization expired');
+      };
+      w.hooks.pin = async () => { reached(); await gate; };
+      const originalNow = Date.now;
+      try {
+        const pending = w.raw('publication', { operationId: p.operationId });
+        await entered;
+        if (kind === 'cookie') {
+          const payload = JSON.parse(Buffer.from(w.cookie.slice('hfd_session='.length).split('.')[0], 'base64url'));
+          Date.now = () => payload.exp + 1;
+        } else policyClock = policyExpiry;
+        release();
+        const response = await pending;
+        assert.equal(response.status, 503);
+        assert.deepEqual(await response.json(), { status: 'unavailable' }, 'no data, receipt or successful acknowledgement leaves the expired authority');
+        assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 1);
+      } finally { Date.now = originalNow; release(); }
+    });
+  }
 }
