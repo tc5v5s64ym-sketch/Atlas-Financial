@@ -60,7 +60,9 @@ function createFakePg() {
     const listeners = { error: [], end: [] };
     const c = {
       pid: ++pidSeq, alive: true, inTxn: false, pending: [], txnOp: null, pidOverride: null, queries: 0,
+      retired: 0,
       on(ev, fn) { (listeners[ev] ||= []).push(fn); },
+      retire() { c.retired++; kill(c); },
       emit(ev) { for (const fn of listeners[ev] || []) fn(new Error('fake session ' + ev)); },
       async query(text, values) {
         assert.equal(typeof text, 'string');
@@ -263,8 +265,10 @@ test('module: no driver, env, network or DDL; construction validates identifiers
   }
   for (const scope of ['', 'Synthetic', "x'--", 'a/b', 'a'.repeat(129)]) assert.throws(mk({ client, schema: SCHEMA, scope }), /scope is invalid/);
   assert.throws(mk({ client: { query() {} }, schema: SCHEMA, scope: SCOPE }), /dedicated session client/);
+  assert.throws(mk({ client: { query() {}, on() {} }, schema: SCHEMA, scope: SCOPE }), /retire/);
   assert.throws(mk(null), /options are required/);
   P.createSettlementEvidencePostgresAdapter({ client, schema: SCHEMA, scope: SCOPE });
+  assert.throws(mk({ client, schema: SCHEMA, scope: SCOPE }), /already owned/); // exclusive lifetime ownership
   eq(pg.log.length, 0); // construction issues no SQL
   assert.ok(Object.isFrozen(P.RELATION_CONTRACT) && P.RELATION_CONTRACT.relations.quarantine.grants === 'SELECT, INSERT');
 });
@@ -415,10 +419,8 @@ test('A10 commitTemp lost COMMIT: absent -> R4, landed -> R5 (R1 while head unre
     assert.ok(!b.pg.t().doc_staged.has(SCOPE), 'landed: promotion and consumption together');
     const f1 = fresh(b); b.pg.faults.push({ match: t => /^SELECT bytes FROM "[a-z_]+"\.doc_head/.test(t), mode: 'reject' });
     const ru = await rec(f1.store); eq([ru.row, ru.reason], ['R1', 'document-unreadable']);
-    // f1 is now LOST while its (still-alive) session holds the advisory lock: a fresh
-    // session is refused until the CALLER terminates the lost session (design rule).
-    assert.ok(await throws(() => fresh(b).store.reconcile()));
-    b.pg.kill(f1.client);
+    // f1 is LOST: it retired its own exact session (server-side release), no substitute.
+    eq(f1.client.retired, 1);
     const rr = await rec(fresh(b).store); eq([rr.row, rr.disposition], ['R5', 'promoted']); }
   { const b = await booted(); const p = await prep(b.store, 1); b.pg.faults.push({ match: b.pg.commitOf('doc.commitTemp'), mode: 'lost-ack-landed' });
     await b.store.commit(p);
@@ -481,7 +483,7 @@ test('A12 session loss invalidates the holder and every captured capability; no 
   // Backend swap (pid changed under the client) is refused inside the txn and rolled back.
   { const b = await booted(); let r;
     await b.adapter.lock.withLock(async () => { b.client.pidOverride = 999999; r = await throws(() => b.adapter.journalStore.clear()); b.client.pidOverride = null; });
-    assert.ok(r); const i = b.pg.log.map(l => l.text).lastIndexOf('ROLLBACK'); assert.ok(i > 0); }
+    assert.ok(r); eq(b.client.retired, 1, 'swapped backend: session retired, never reused'); }
   // Refuse, not queue: same adapter and a second session.
   { const b = await booted(); const other = fresh(b); let release; const gate = new Promise(r => { release = r; });
     const held = b.adapter.lock.withLock(() => gate);
@@ -553,4 +555,66 @@ test('A15 no household/actor id, key material or row bytes in adapter errors, no
   const pgErrors = thrown.filter(m => /settlement-postgres-adapter/.test(m));
   assert.ok(pgErrors.length > 10, 'adapter errors were collected: ' + pgErrors.length);
   assert.ok(!/"schema"|operations|baseBytes|\{"/.test(thrown.join('\n')));
+});
+
+test('review conditions: deliberate suspension during transaction and unlock awaits', async () => {
+  // (2)(4) Holder settles while its started transaction is paused mid-statement:
+  // invalidated before unlock, the txn aborts at its next check, unlock queues after it.
+  { const b = await booted(); let release; const gate = new Promise(r => { release = r; }); let detached;
+    b.pg.hooks.push({ match: t => t === 'BEGIN', fn: () => gate });
+    const run = b.adapter.lock.withLock(async () => { detached = b.adapter.journalStore.write({ v: 1 }); detached.catch(() => {}); });
+    await new Promise(r => setImmediate(r));
+    release(); await run;
+    assert.ok(await throws(() => detached));
+    const texts = b.pg.log.map(l => l.text.split(' ')[0] + (l.text.includes('unlock') ? ':unlock' : ''));
+    const i = texts.lastIndexOf('INSERT');
+    const k = texts.lastIndexOf('BEGIN');
+    eq(texts.slice(k), ['BEGIN', 'ROLLBACK', 'SELECT:unlock']); // paused at BEGIN, holder settled, aborted, then unlock
+    assert.ok(i < k, 'the write statement was never dispatched');
+    assert.ok(!b.pg.t().journal.has(SCOPE)); eq(b.client.retired, 0); }
+  // (2)(3) Stale queued work (enqueued behind a paused unlocked read) refuses at dequeue after its holder settles.
+  { const b = await booted(); let release; const gate = new Promise(r => { release = r; });
+    b.pg.hooks.push({ match: t => /^SELECT bytes FROM "[a-z_]+"\.doc_head/.test(t), fn: () => gate });
+    const rd = b.adapter.documentStore.read(); let queued;
+    const run = b.adapter.lock.withLock(async () => { queued = b.adapter.journalStore.clear(); queued.catch(() => {}); });
+    await new Promise(r => setImmediate(r)); release(); await rd;
+    await run.catch(() => {});
+    assert.ok(await throws(() => queued));
+    eq(b.pg.log.filter(l => /DELETE FROM "[a-z_]+"\.journal/.test(l.text)).length, 0); }
+  // (4)(5) Paused unlock: stale mutation and overlapping withLock both refused; no re-acquire.
+  { const b = await booted(); let release; const gate = new Promise(r => { release = r; }); let detached;
+    b.pg.hooks.push({ match: t => /pg_advisory_unlock/.test(t), fn: () => gate });
+    const run = b.adapter.lock.withLock(async () => { detached = (async () => { await Promise.resolve(); await new Promise(r => setImmediate(r)); return throws(() => b.adapter.journalStore.clear()); })(); });
+    await new Promise(r => setImmediate(r));
+    assert.ok(await throws(() => b.adapter.lock.withLock(async () => 1)), 'overlap during unlock refused');
+    const tries = b.pg.log.filter(l => /pg_try_advisory_lock/.test(l.text)).length;
+    release(); await run; assert.ok(await detached);
+    eq(b.pg.log.filter(l => /pg_try_advisory_lock/.test(l.text)).length, tries); }
+  // (5) Nested withLock inside the holder is refused (advisory locks are reentrant).
+  { const b = await booted(); let nested;
+    await b.adapter.lock.withLock(async () => { nested = await throws(() => b.adapter.lock.withLock(async () => 1)); });
+    assert.ok(nested); }
+  // (6) false / malformed / lost unlock acknowledgement retires that exact session; no substitute.
+  for (const mode of ['false', 'malformed', 'lost']) {
+    const b = await booted(); const n = b.pg.clients.length;
+    b.pg.hooks.push({ match: t => /pg_advisory_unlock/.test(t), fn: async c => {
+      if (mode === 'false') b.pg.advisory.clear();
+      if (mode === 'malformed') b.pg.faults.unshift({ match: () => false, mode: null });
+    } });
+    if (mode === 'malformed') {
+      const orig = b.client.query; b.client.query = async (t, v) => (/pg_advisory_unlock/.test(t) ? (await orig(t, v), { rows: [{ unlocked: 'yes' }] }) : orig(t, v));
+    }
+    if (mode === 'lost') b.pg.faults.push({ match: t => /pg_advisory_unlock/.test(t), mode: 'reject' });
+    await b.adapter.lock.withLock(async () => 1);
+    eq(b.client.retired, 1, mode); eq(b.pg.clients.length, n, 'no cleanup connection');
+    assert.ok(await throws(() => b.adapter.documentStore.read()));
+  }
+  // (1) pid swap mid-transaction retires the session (pid is only a swap check).
+  { const b = await booted(); let r;
+    await b.adapter.lock.withLock(async () => { b.client.pidOverride = 999999; r = await throws(() => b.adapter.journalStore.clear()); });
+    assert.ok(r); eq(b.client.retired, 1); }
+  // Expected conditional conflict is a successful SQL outcome: try-lock false refuses without retiring.
+  { const b = await booted(); const o = fresh(b); let inner;
+    await b.adapter.lock.withLock(async () => { inner = await throws(() => o.adapter.lock.withLock(async () => 1)); });
+    assert.ok(inner); eq(o.client.retired, 0); eq(await o.adapter.lock.withLock(async () => 3), 3); }
 });
