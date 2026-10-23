@@ -22247,9 +22247,14 @@
         && savingsCents(r.hold) != null))) return unknown('Native Budget deductions or household spending are unavailable.');
     if ((plan.bills || []).some(b => billHasAmountSchedule(b)
       // ATLAS-075: a scheduled bill blocks only on an unknown occurrence
-      // price inside the supported funding timeline.
-      ? !billAmountScheduleTerms(b) || outflowDates(b, cycle.start, bound.through)
-        .some(date => billOccurrenceRequirementUnknown(b, date, value => value != null && savingsCents(value) != null))
+      // price inside the supported funding timeline. noPaymentRequiredOn
+      // keeps precedence inside billOccurrenceRequirementUnknown, so a
+      // waived occurrence of a malformed schedule is a known zero while a
+      // non-waived one stays unknown. A malformed schedule with no
+      // resolvable occurrence in the timeline stays unavailable.
+      ? ((dates) => (!dates.length && !billAmountScheduleTerms(b))
+        || dates.some(date => billOccurrenceRequirementUnknown(b, date, value => value != null && savingsCents(value) != null)))(
+        outflowDates(b, cycle.start, bound.through))
       : b.amount == null || savingsCents(b.amount) == null)) return unknown('A required operating bill amount is unavailable.');
     if ((plan.obligations || []).some(o => o.amount == null || savingsCents(o.amount) == null)
         || (plan.commitments || []).some(c => !commitmentSettledBy(c, day) && !(opts.disabled || []).includes(c.id)

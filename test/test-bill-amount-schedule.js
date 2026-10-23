@@ -517,5 +517,47 @@ function loadPage(script) {
     J({ candidate: sav(s35d), knownTermControl: sav(s35dCtl) }));
 }
 
+// S36 (Atlas HOLD at 92efcfb5, residual C7): the daily-funding consumer must
+// apply noPaymentRequiredOn precedence before the schedule-validity check.
+// Atlas's fixture: a once bill dated 2026-10-15, amount 20, that sole date
+// waived, with overlapping (malformed) terms Oct1-Oct20 amount 5 and
+// Oct10-Nov1 amount 6. Driven through Forecast.recommend on the S32 ledger.
+// Guards: the same malformed schedule NOT waived stays unavailable, and a
+// malformed schedule whose occurrence timing is missing stays unavailable.
+{
+  const { ledger } = require('./fixtures/chronological-savings-data');
+  const { advance } = require('./fixtures/savings-daily-allocation-contract');
+  const base = () => {
+    const i = advance(ledger(), '2026-10-10');
+    i.plan.income[0].anchor = '2026-08-14';
+    i.plan.opening.paydaySnapshot = { periodStart: '2026-10-09', asOf: '2026-10-09', opening: 80 };
+    i.plan.opening.representedEvents = [];
+    i.opts.currentPeriodActuals.coverageStart = '2026-10-09';
+    i.opts.currentPeriodActuals.savingsFetchCoverage.startDate = '2026-10-09';
+    i.plan.bills = [{ id: 'annual', label: 'Invented annual premium', amount: 17.29,
+      frequency: 'yearly', month: 10, day: 25, firstDue: '2026-10-25', jointCash: false, confidence: 'estimated',
+      noPaymentRequiredOn: ['2026-10-25'] }];
+    i.plan.savingsEarmarks.pools[1].goalRefs = [{ kind: 'yearly-bill', id: 'annual' }];
+    return i;
+  };
+  const run = i => F.recommend(i.plan, i.asOf, { ...i.opts, debts: i.debts || [], weeklyVariable: 0 });
+  const sav = a => { const t = a.savingsFunding && a.savingsFunding.timeline; return { status: t && t.status, reason: t && t.reason || null }; };
+  const mk = f => { const i = base(); f(i); return run(i); };
+  const OVERLAP = [{ from: '2026-10-01', until: '2026-10-20', amount: 5 }, { from: '2026-10-10', until: '2026-11-01', amount: 6 }];
+  const once = extra => Object.assign({ id: 'once-promo', label: 'Invented once promo', frequency: 'once',
+    date: '2026-10-15', amount: 20, confidence: 'confirmed' }, extra);
+  const ctl = mk(i => i.plan.bills.push(once({ noPaymentRequiredOn: ['2026-10-15'] })));
+  const s36 = mk(i => i.plan.bills.push(once({ noPaymentRequiredOn: ['2026-10-15'], amountSchedule: OVERLAP })));
+  ok(ctl.savingsFunding && sav(ctl).status === 'ready' && J(sav(s36)) === J(sav(ctl)),
+    'S36 daily-funding-malformed-waived: an entirely waived once bill with a malformed (overlapping) schedule keeps daily funding ready (known-zero control parity)',
+    J({ control: sav(ctl), candidate: sav(s36) }));
+  const s36g = mk(i => i.plan.bills.push(once({ amountSchedule: OVERLAP })));
+  ok(sav(s36g).status === 'unavailable',
+    'S36g guard: the same malformed schedule without the waiver keeps daily funding unavailable', J(sav(s36g)));
+  const s36t = mk(i => { const b = once({ amountSchedule: OVERLAP }); delete b.date; i.plan.bills.push(b); });
+  ok(sav(s36t).status === 'unavailable',
+    'S36t guard: a malformed schedule on a bill with no resolvable occurrence timing stays unavailable (missing timing not hidden)', J(sav(s36t)));
+}
+
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All ATLAS-075 bill amount schedule checks passed'));
 process.exit(failures === 0 ? 0 : 1);
