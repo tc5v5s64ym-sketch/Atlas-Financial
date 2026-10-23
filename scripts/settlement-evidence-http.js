@@ -15,7 +15,9 @@ const shape = (x, keys) => record(x) && Object.keys(x).length === keys.length
   && keys.every(k => Object.hasOwn(x, k));
 const fail = res => res.status(503).json({ status: 'unavailable' });
 
-function mountSettlementHttp(app, sessionActor, dependency) {
+function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = false) {
+  if (typeof preactivationOnly !== 'boolean' || preactivationOnly && dependency !== undefined)
+    throw new TypeError('sealed preactivation rejects settlement dependencies');
   const router = express.Router({ caseSensitive: true, strict: true });
   let active = false, controller, resolver, serving, authorize, readBase, origin, now;
   const catalogues = new Map();
@@ -56,11 +58,17 @@ function mountSettlementHttp(app, sessionActor, dependency) {
     next();
   });
   router.get('/capability', async (req, res) => {
-    if (!active) return res.json({ status: 'inactive' });
+    // Fetch Metadata is browser-controlled. The custom header also requires a
+    // CORS preflight across origins; this router never grants CORS. No Host
+    // header supplies authority or a configured Origin here.
+    const sameOrigin = req.get('Sec-Fetch-Site') === 'same-origin'
+      && req.get('X-Atlas-Settlement') === 'same-origin';
+    const bootClassification = preactivationOnly && sameOrigin ? 'preactivation-only' : 'recovery-required';
+    if (!active) return res.json({ status: 'inactive', bootClassification });
     try {
       await authorize(req.settlementContext);
       if (sessionActor(req) !== req.settlementContext.actorId) throw new Error('expired');
-      return res.json({ status: 'active' });
+      return res.json({ status: 'active', bootClassification: 'recovery-required' });
     }
     catch { return res.status(403).json({ status: 'unauthorized' }); }
   });

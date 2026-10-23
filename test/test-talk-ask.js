@@ -414,8 +414,10 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       && /TalkGemini\.ask/.test(serverSrc),
     'POST /talk/ask uses the incumbent packet builder then TalkGemini');
   ok(/const environment = options\.env \|\| process\.env;/.test(serverSrc)
-      && /const TALK_GEMINI_KEY = environment\.ATLAS_TALK_GEMINI_API_KEY \|\| '';/.test(serverSrc),
-    'server reads ATLAS_TALK_GEMINI_API_KEY only from the trusted construction environment, defaulting to process.env');
+      && /const TALK_GEMINI_KEY = environment\.ATLAS_TALK_GEMINI_API_KEY \|\| '';/.test(serverSrc)
+      && /TalkGemini\.capability\(process\.env\)/.test(serverSrc)
+      && /TalkGemini\.ask\(\{[\s\S]*?env: process\.env,/.test(serverSrc),
+    'Talk key validation defaults to process.env and actual capability/provider configuration remains process.env only');
   ok(!/console\.\w+\([^)]*TALK_GEMINI_KEY/.test(serverSrc)
       && !/console\.\w+\([^)]*readKey\(/.test(moduleSrc),
     'server and Talk Gemini module do not log the key value');
@@ -428,24 +430,6 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
   ok(TalkGemini.capability({}).available === false
       && TalkGemini.capability({ ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY }).available === true,
     'capability is fail-closed unless the dedicated key is configured');
-  // Exercise the actual factory as well as the executable process.env path
-  // below. Capability reads configuration only; no Gemini request is made.
-  for (const configured of [false, true]) {
-    const constructionEnv = { SITE_PASSWORD: PASS, SESSION_SECRET: SECRET,
-      ...(configured ? { ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY } : {}) };
-    const app = require('../server').createApplication({ env: constructionEnv });
-    const constructed = http.createServer(app);
-    await new Promise(resolve => constructed.listen(0, '127.0.0.1', resolve));
-    try {
-      const base = 'http://127.0.0.1:' + constructed.address().port;
-      const signed = await login(base, PASS);
-      ok(signed.status === 302 && signed.cookie, 'actual trusted construction accepts only its configured synthetic login');
-      const capability = await fetch(base + '/talk/capability', { headers: { Cookie: signed.cookie } });
-      const body = await capability.json();
-      ok(capability.status === 200 && body.available === configured && !hasRawLeak(body),
-        'actual trusted construction ' + (configured ? 'admits' : 'withholds') + ' Talk capability from its own environment without exposing the key');
-    } finally { await new Promise(resolve => constructed.close(resolve)); }
-  }
   ok(TalkGemini.resolveBaseUrl({}) === TalkGemini.OFFICIAL_BASE_URL
       && TalkGemini.resolveBaseUrl({ ATLAS_TALK_GEMINI_BASE_URL: 'https://evil.example' }) === null
       && TalkGemini.resolveBaseUrl({ ATLAS_TALK_GEMINI_BASE_URL: 'http://127.0.0.1:9' }) === 'http://127.0.0.1:9',

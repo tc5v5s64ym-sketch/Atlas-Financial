@@ -48,11 +48,13 @@ const TalkSession = require('./scripts/talk-session.js');
 const TalkStream = require('./scripts/talk-stream.js');
 const TalkWhy = require('./scripts/talk-why.js');
 
-// Trusted construction is available for explicitly injected synthetic proofs.
-// Executable startup calls this with no options: settlement stays inactive.
+const PREACTIVATION_BOOT = Symbol('sealed-preactivation-boot');
+// General construction is history-unknown even without settlement dependencies.
 function createApplication(options = {}) {
 const environment = options.env || process.env;
 const baseSource = options.baseSource;
+const preactivationOnly = options[PREACTIVATION_BOOT] === true;
+if (preactivationOnly && Object.hasOwn(options, 'settlement')) throw new TypeError('sealed preactivation rejects settlement dependencies');
 
 const PASSWORD = environment.SITE_PASSWORD;
 const SECRET = environment.SESSION_SECRET;
@@ -327,7 +329,7 @@ app.post('/logout', (req, res) => {
 // literal string "ok" and reads nothing, so this widens no data surface.
 app.get('/healthz', (_req, res) => res.type('text/plain').send('ok'));
 
-require('./scripts/settlement-evidence-http').mountSettlementHttp(app, sessionActor, options.settlement);
+require('./scripts/settlement-evidence-http').mountSettlementHttp(app, sessionActor, options.settlement, preactivationOnly);
 
 // OAuth protected-resource discovery is public metadata. It contains no token,
 // credential, or household data. The authorization server itself is external;
@@ -840,10 +842,21 @@ app.use((_req, res) => res.status(404).type('text/plain').send('Not found'));
 return app;
 }
 
-module.exports = { createApplication };
+// Trusted assertion for THIS never-activated release, not durable origin history.
+// No later activation may occur until authority outside rollbackable binaries
+// (or a permanently separate origin) prevents reissuing this after activation.
+function createPreactivationApplication(options = {}) {
+  if (!options || Object.getPrototypeOf(options) !== Object.prototype
+    || Reflect.ownKeys(options).some(key => !['env', 'baseSource'].includes(key))) {
+    throw new TypeError('sealed preactivation rejects settlement dependencies');
+  }
+  return createApplication({ ...options, [PREACTIVATION_BOOT]: true });
+}
+
+module.exports = { createApplication, createPreactivationApplication };
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
-  createApplication().listen(PORT, () => {
+  createPreactivationApplication().listen(PORT, () => {
     console.log(`Household finance dashboard listening on ${PORT}`);
   });
 }

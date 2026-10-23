@@ -76,6 +76,25 @@ async function complete(page, dialog) {
   await page.waitForFunction(() => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified');
   await page.waitForFunction(KEY => localStorage.getItem(KEY) === null, KEY);
 }
+async function refuseStorageReads(context) {
+  await context.addInitScript(() => {
+    Storage.prototype.getItem = function () { throw new DOMException('synthetic storage read refusal', 'SecurityError'); };
+  });
+}
+function bootTraffic(page) {
+  const traffic = { ordinary: 0, classification: 0 };
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (path === '/data.json') traffic.ordinary++;
+    if (path === '/settlement/capability' && request.headers()['x-atlas-settlement'] === 'same-origin') traffic.classification++;
+  });
+  return traffic;
+}
+async function reconciliationBoot(page) {
+  await page.getByText('Assignment outcome needs reconciliation. Figures remain unavailable.', { exact: false }).waitFor();
+  assert.equal(await page.evaluate(() => App.data), null);
+  assert.equal(await page.evaluate(() => window.__settlementOnce || 0), 0);
+}
 function observeMarkerMutations() {
   const key = 'atlas-settlement-pending-v1';
   let locked = false;
@@ -125,6 +144,97 @@ function observeMarkerMutations() {
       assert.equal(await dialog.getByRole('button', { name: 'Assign a recorded payment' }).count(), 0);
       assert.equal(w.calls.storage, 0); assert.equal(w.calls.acquire, 0);
     }, false);
+    await run('raw storage refusal boots ordinary data only with real sealed preactivation attestation', async (w, fixture) => {
+      const { page, context } = fixture;
+      await refuseStorageReads(context); const traffic = bootTraffic(page);
+      const classified = page.waitForResponse(response => response.url().endsWith('/settlement/capability')
+        && response.request().headers()['x-atlas-settlement'] === 'same-origin');
+      await page.reload();
+      assert.deepEqual(await (await classified).json(), { status: 'inactive', bootClassification: 'preactivation-only' });
+      await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null && window.__settlementOnce === 1);
+      const dialog = await sheet(page);
+      assert.equal(await dialog.getByRole('button', { name: 'Assign a recorded payment', exact: true }).count(), 0);
+      assert.deepEqual(traffic, { ordinary: 1, classification: 1 });
+      assert.deepEqual(w.calls, { storage: 0, journal: 0, commit: 0, acquire: 0, base: 0 });
+      fixture.details = { traffic, once: 1, trustedDeploymentAssertionOnly: true };
+    }, false, 390, { preactivationOnly: true });
+    for (const active of [false, true]) {
+      await run('raw storage refusal with ' + (active ? 'active' : 'history-unknown inactive') + ' construction stays fenced', async (w, fixture) => {
+        const { page, context } = fixture;
+        const before = { ...w.calls };
+        await refuseStorageReads(context); const traffic = bootTraffic(page);
+        await page.reload(); await reconciliationBoot(page);
+        assert.deepEqual(traffic, { ordinary: 0, classification: 1 });
+        assert.deepEqual(w.calls, before);
+        fixture.details = { traffic, once: 0, active };
+      }, active);
+    }
+    for (const failure of ['unauthorized', 'unavailable', 'malformed-json', 'unknown-classification', 'extra-field', 'network']) {
+      await run('raw storage refusal with ' + failure + ' classification never initializes figures', async (w, fixture) => {
+        const { page, context } = fixture;
+        await refuseStorageReads(context); const traffic = bootTraffic(page);
+        await page.route('**/settlement/capability', async route => {
+          if (route.request().headers()['x-atlas-settlement'] !== 'same-origin') return route.continue();
+          if (failure === 'unauthorized') {
+            const response = await route.fetch({ headers: { ...route.request().headers(), Cookie: 'hfd_session=synthetic-invalid' } });
+            assert.equal(response.status(), 401); return route.fulfill({ response });
+          }
+          if (failure === 'network') return route.abort();
+          return route.fulfill({ status: failure === 'unavailable' ? 503 : 200, contentType: 'application/json',
+            body: failure === 'malformed-json' ? '{' : JSON.stringify(failure === 'extra-field'
+              ? { status: 'inactive', bootClassification: 'preactivation-only', extra: true }
+              : { status: 'inactive', bootClassification: 'unknown' }) });
+        });
+        await page.reload(); await reconciliationBoot(page);
+        assert.deepEqual(traffic, { ordinary: 0, classification: 1 });
+        assert.equal(w.calls.storage, 0); assert.equal(w.calls.commit, 0);
+        fixture.details = { traffic, failure, deliberateClassificationFault: true };
+      }, false, 390, { preactivationOnly: true });
+    }
+    await run('raw storage refusal with timed-out classification stays fenced under deterministic browser clock', async (w, fixture) => {
+      const { page, context } = fixture;
+      await refuseStorageReads(context); const traffic = bootTraffic(page);
+      await page.clock.install();
+      let received, release;
+      const seen = new Promise(resolve => { received = resolve; });
+      const held = new Promise(resolve => { release = resolve; });
+      await page.route('**/settlement/capability', async route => {
+        if (route.request().headers()['x-atlas-settlement'] !== 'same-origin') return route.continue();
+        const response = await route.fetch(); received(); await held;
+        await route.fulfill({ response }).catch(() => {});
+      });
+      try {
+        const navigation = page.reload({ waitUntil: 'domcontentloaded' });
+        await seen; await page.clock.fastForward(20001); await navigation;
+        await reconciliationBoot(page);
+        assert.deepEqual(traffic, { ordinary: 0, classification: 1 });
+        assert.equal(w.calls.storage, 0); assert.equal(w.calls.commit, 0);
+        fixture.details = { traffic, heldActualClassificationReply: true, advancedMs: 20001 };
+      } finally { release(); }
+    }, false, 390, { preactivationOnly: true });
+    await run('readable malformed markers never request preactivation exception even when sealed', async (w, fixture) => {
+      const { page } = fixture; const traffic = bootTraffic(page);
+      for (const value of ['{', 'x'.repeat(161), JSON.stringify({ operationId: 'invalid', phase: 'preview' }),
+        JSON.stringify({ operationId: 'operation-' + 'a'.repeat(32), phase: 'dispatched', extra: true })]) {
+        await page.evaluate(({ KEY, value }) => localStorage.setItem(KEY, value), { KEY, value });
+        await page.reload(); await reconciliationBoot(page);
+        assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), value);
+      }
+      assert.deepEqual(traffic, { ordinary: 0, classification: 0 });
+      assert.equal(w.calls.storage, 0); assert.equal(w.calls.commit, 0);
+      fixture.details = { traffic, readableMalformedCases: 4 };
+    }, false, 390, { preactivationOnly: true });
+    await run('readable dispatched marker never bypasses recovery even when sealed', async (w, fixture) => {
+      const { page, requests } = fixture; const traffic = bootTraffic(page);
+      const marker = { operationId: 'operation-' + 'a'.repeat(32), phase: 'dispatched' };
+      await page.evaluate(({ KEY, marker }) => localStorage.setItem(KEY, JSON.stringify(marker)), { KEY, marker });
+      await page.reload(); await reconciliationBoot(page);
+      assert.deepEqual(await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY), marker);
+      assert.deepEqual(traffic, { ordinary: 0, classification: 0 });
+      assert.equal(requests.filter(request => request.path === '/settlement/outcome').length, 1);
+      assert.equal(requests.filter(request => request.path === '/settlement/confirm').length, 0);
+      assert.equal(w.calls.storage, 0); fixture.details = { traffic, retainedDispatched: true };
+    }, false, 390, { preactivationOnly: true });
     await run('real Savings sheet preview, confirm, full reload and independent 60/25/35', async (w, { page, requests }) => {
       const dialog = await preview(page); assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
       // The sheet moves the original source, including this live form.
@@ -186,12 +296,12 @@ function observeMarkerMutations() {
       });
       await second.route('**/app.js', async route => {
         const response = await route.fetch(), source = await response.text();
-        const anchor = 'try { marker = pending(); } catch';
+        const anchor = 'try { marker = parsePending(raw); } catch';
         assert.equal(source.split(anchor).length, 2, 'one initial marker-read observation point');
         // Deliberate scheduling only: pause B after its real shared-storage
         // read. A still uses the actual script and actual mounted confirm.
         await route.fulfill({ response, body: source.replace(anchor,
-          'try { marker = pending(); await window.__settlementBootPause(marker); } catch') });
+          'try { marker = parsePending(raw); await window.__settlementBootPause(marker); } catch') });
       });
       await second.route('**/plan.js', async route => {
         const response = await route.fetch();
@@ -299,6 +409,28 @@ function observeMarkerMutations() {
       assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 1);
       assert.equal(await page.evaluate(() => window.__settlementOnce), 1);
     });
+    await run('active lost response then disabled composition retains uncertainty and recovers without new confirm', async (w, fixture) => {
+      const { page, requests } = fixture;
+      const dialog = await preview(page);
+      await page.route('**/settlement/confirm', async route => { await route.fetch(); return route.abort(); });
+      await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+      await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+      const marker = await page.evaluate(KEY => localStorage.getItem(KEY), KEY);
+      const document = Buffer.from(w.durable.doc), before = { ...w.calls };
+      w.recreate('disabled'); const traffic = bootTraffic(page);
+      await page.reload(); await reconciliationBoot(page);
+      assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), marker);
+      assert.deepEqual(traffic, { ordinary: 0, classification: 0 });
+      assert.deepEqual(w.calls, before); assert.ok(w.durable.doc.equals(document));
+      assert.equal(requests.filter(request => request.path === '/settlement/confirm').length, 1);
+      w.recreate('active'); await page.unroute('**/settlement/confirm'); await page.reload();
+      await page.waitForFunction(KEY => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified'
+        && localStorage.getItem(KEY) === null, KEY);
+      assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 });
+      assert.equal(w.calls.commit, 1); assert.ok(w.durable.doc.equals(document));
+      assert.equal(requests.filter(request => request.path === '/settlement/confirm').length, 1);
+      fixture.details = { traffic, disabledRetainedUncertainty: true, sameReceipt: true };
+    });
     await run('saved view unavailable boots withheld object and recovers by whole reload', async (w, { page }) => {
       const dialog = await preview(page);
       w.readFailure = true;
@@ -328,6 +460,7 @@ function observeMarkerMutations() {
     });
     await run('persistence failure prevents confirm dispatch', async (w, { page, requests }) => {
       const dialog = await preview(page);
+      const traffic = bootTraffic(page);
       await page.evaluate(KEY => {
         const original = Storage.prototype.setItem;
         Storage.prototype.setItem = function(key, value) {
@@ -339,8 +472,10 @@ function observeMarkerMutations() {
       await dialog.getByText('Confirmation was not sent:', { exact: false }).waitFor();
       assert.equal(w.calls.commit, 0);
       assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 0);
+      assert.equal(traffic.classification, 0, 'persistence failure cannot request the boot exception');
       await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
       assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), null);
+      assert.equal(traffic.classification, 0);
     });
     await run('new signed login cannot recover an old session receipt or clear uncertainty', async (w, { page, requests }) => {
       const dialog = await preview(page);

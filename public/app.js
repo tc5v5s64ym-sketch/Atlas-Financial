@@ -299,14 +299,30 @@ const SettlementSave = (() => {
     if (!canLock()) return Promise.reject(new Error('settlement-persistence'));
     return navigator.locks.request(KEY, { mode: 'exclusive' }, action);
   }
-  function pending() {
-    const raw = localStorage.getItem(KEY);
+  function parsePending(raw) {
     if (raw === null) return null;
-    if (raw.length > 160) throw new Error('settlement-reconciliation');
+    if (typeof raw !== 'string' || raw.length > 160) throw new Error('settlement-reconciliation');
     const value = JSON.parse(raw);
     if (!record(value) || Object.keys(value).length !== 2 || !OP.test(value.operationId)
       || !['preview', 'dispatched'].includes(value.phase)) throw new Error('settlement-reconciliation');
     return value;
+  }
+  const pending = () => parsePending(localStorage.getItem(KEY));
+  async function attestPreactivation(signal) {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    const timer = setTimeout(abort, 20000);
+    try {
+      const response = await fetch('/settlement/capability', { credentials: 'same-origin', cache: 'no-store',
+        redirect: 'error', headers: { 'X-Atlas-Settlement': 'same-origin' }, signal: controller.signal });
+      if (controller.signal.aborted || response.status !== 200 || response.redirected !== false
+        || new URL(response.url).origin !== location.origin) throw new Error('settlement-reconciliation');
+      const value = await response.json();
+      if (controller.signal.aborted || !record(value) || Object.keys(value).length !== 2 || value.status !== 'inactive'
+        || value.bootClassification !== 'preactivation-only') throw new Error('settlement-reconciliation');
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   }
   function persist(operationId, phase) {
     return mutateMarker(() => {
@@ -339,8 +355,18 @@ const SettlementSave = (() => {
   }
   async function initialData(ordinary, signal) {
     bootPublication = null;
+    let raw;
+    // Only the actual storage access may use the preactivation exception.
+    // Readable malformed/dispatched markers and later reconciliation failures
+    // never fall back through this branch.
+    try { raw = localStorage.getItem(KEY); }
+    catch {
+      try { await attestPreactivation(signal); }
+      catch { throw new Error('settlement-reconciliation'); }
+      return ordinary();
+    }
     let marker;
-    try { marker = pending(); } catch { throw new Error('settlement-reconciliation'); }
+    try { marker = parsePending(raw); } catch { throw new Error('settlement-reconciliation'); }
     // The optimistic read may already be stale. Inspect and abandon only the
     // CURRENT preview under the same lock that guards confirm dispatch.
     if (marker?.phase === 'preview') {

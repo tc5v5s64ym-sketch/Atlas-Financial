@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const crypto = require('node:crypto');
-const { createApplication } = require('../server');
+const { createApplication, createPreactivationApplication } = require('../server');
 const { createSettlementEvidenceStore } = require('../scripts/settlement-evidence-store');
 const Forecast = require('../public/forecast');
 const R = require('../scripts/settlement-evidence-resolver');
@@ -107,9 +107,13 @@ async function startWorld(active = true, options = {}) {
   const syntheticBaseServing = require('../scripts/settlement-evidence-serving')
     .createSettlementEvidenceServing({ householdId,
       readDocument: w.dependency.readDocument, readPin: w.dependency.readPin });
-  w.recreate = () => {
-    const app = createApplication({ env, baseSource: async () => active ? syntheticBaseServing.attach(w.base) : w.base,
-      ...(active ? { settlement: w.dependency } : {}) });
+  let mode = options.preactivationOnly ? 'preactivation-only' : active ? 'active' : 'disabled';
+  w.recreate = (next = mode) => {
+    assert.ok(['active', 'disabled', 'preactivation-only'].includes(next)); mode = next;
+    const enabled = mode === 'active';
+    const construct = mode === 'preactivation-only' ? createPreactivationApplication : createApplication;
+    const app = construct({ env, baseSource: async () => enabled ? syntheticBaseServing.attach(w.base) : w.base,
+      ...(enabled ? { settlement: w.dependency } : {}) });
     server.removeAllListeners('request'); server.on('request', app); w.app = app;
   };
   w.recreate();
@@ -145,10 +149,42 @@ if (require.main === module) {
   test('default actual application is inactive and touches zero settlement storage', async t => {
     const w = await startWorld(false); t.after(w.close);
     const response = await fetch(w.origin + '/settlement/capability', { headers: { Cookie: w.cookie } });
-    assert.deepEqual(await response.json(), { status: 'inactive' });
+    assert.deepEqual(await response.json(), { status: 'inactive', bootClassification: 'recovery-required' });
     assert.equal((await w.raw('selections', {})).status, 503);
     const data = await fetch(w.origin + '/data.json', { headers: { Cookie: w.cookie } });
     assert.deepEqual(await data.json(), w.base);
+    assert.deepEqual(w.calls, { storage: 0, journal: 0, commit: 0, acquire: 0, base: 0 });
+  });
+  test('default, active and disabled constructions never attest preactivation history', async t => {
+    const headers = { 'X-Atlas-Settlement': 'same-origin', 'Sec-Fetch-Site': 'same-origin' };
+    const w = await startWorld(false); t.after(w.close);
+    for (const mode of ['disabled', 'active', 'disabled']) {
+      w.recreate(mode);
+      const response = await fetch(w.origin + '/settlement/capability', { headers: { Cookie: w.cookie, ...headers } });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).bootClassification, 'recovery-required');
+    }
+    assert.equal(w.calls.storage, 0); assert.equal(w.calls.acquire, 0); assert.equal(w.calls.commit, 0);
+  });
+  test('sealed preactivation rejects every supplied settlement dependency and only attests authenticated same-origin reads', async t => {
+    const w = await startWorld(false, { preactivationOnly: true }); t.after(w.close);
+    for (const value of [undefined, null, false, {}, w.dependency]) {
+      assert.throws(() => createPreactivationApplication({ env, settlement: value }), /sealed preactivation/);
+    }
+    for (const [key, value] of Object.entries(w.dependency)) {
+      assert.throws(() => createPreactivationApplication({ env, [key]: value }), /sealed preactivation/);
+    }
+    const headers = { Cookie: w.cookie, 'X-Atlas-Settlement': 'same-origin', 'Sec-Fetch-Site': 'same-origin' };
+    const response = await fetch(w.origin + '/settlement/capability', { headers });
+    assert.deepEqual(await response.json(), { status: 'inactive', bootClassification: 'preactivation-only' });
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('access-control-allow-origin'), null);
+    for (const override of [{ 'X-Atlas-Settlement': '' }, { 'Sec-Fetch-Site': 'cross-site' }, { 'Sec-Fetch-Site': '' }]) {
+      const denied = await fetch(w.origin + '/settlement/capability', { headers: { ...headers, ...override } });
+      assert.equal((await denied.json()).bootClassification, 'recovery-required');
+    }
+    assert.equal((await fetch(w.origin + '/settlement/capability', { headers: { ...headers, Cookie: '' } })).status, 401);
+    assert.equal((await w.raw('confirm', { operationId: op(1), previewToken: 'a'.repeat(64), confirmed: true })).status, 503);
     assert.deepEqual(w.calls, { storage: 0, journal: 0, commit: 0, acquire: 0, base: 0 });
   });
   test('signed login, authorization, strict origin and exact bounded JSON guards', async t => {
@@ -361,6 +397,14 @@ if (require.main === module) {
     let output = ''; smoke.stdout.on('data', value => { output += value; }); smoke.stderr.on('data', value => { output += value; });
     const code = await new Promise(resolve => smoke.on('exit', resolve));
     assert.equal(code, 0, output); assert.match(output, /ALL CHECKS PASSED/);
+    const signed = await fetch(base + '/login', { method: 'POST', redirect: 'manual',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ password: env.SITE_PASSWORD }) });
+    const capability = await fetch(base + '/settlement/capability', { headers: {
+      Cookie: signed.headers.get('set-cookie').split(';')[0],
+      'X-Atlas-Settlement': 'same-origin', 'Sec-Fetch-Site': 'same-origin' } });
+    assert.deepEqual(await capability.json(), { status: 'inactive', bootClassification: 'preactivation-only' });
+    assert.equal(capability.headers.get('cache-control'), 'no-store');
   });
   test('deterministic preview expiry refuses mounted confirm with zero write attempts', async t => {
     let clock = Date.now();
