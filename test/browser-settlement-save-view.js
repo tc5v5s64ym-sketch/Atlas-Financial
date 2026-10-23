@@ -623,6 +623,35 @@ function observeMarkerMutations() {
         assert.equal(w.calls.journal, 0); assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 1);
       });
     }
+    let storeExpiryClock = Date.now();
+    await run('real store expiry after controller check releases only proven no-effect generation', async (w, fixture) => {
+      const { page, requests } = fixture; const dialog = await preview(page);
+      const before = Buffer.from(w.durable.doc), pin = JSON.stringify(w.durable.pin);
+      storeExpiryClock += require('../scripts/planned-obligation-settlement-contract').TTL_MS - 1;
+      w.hooks.admission = async () => { storeExpiryClock++; };
+      const response = page.waitForResponse(r => r.url().endsWith('/settlement/confirm'));
+      await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+      const ack = await (await response).json();
+      assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 0);
+      assert.ok(w.durable.doc.equals(before)); assert.equal(JSON.stringify(w.durable.pin), pin);
+      fixture.details = { responseStatus: ack.status, responseReason: ack.reason, commitInvocations: 1,
+        journalWrites: 0, durableBytesUnchanged: true };
+      if (ack.status !== 'not-applied') {
+        await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+        const marker = await page.evaluate(KEY => localStorage.getItem(KEY), KEY);
+        await page.reload(); await reconciliationBoot(page);
+        assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), marker);
+        fixture.details.reload = { data: null, markerRetained: true, onceHooks: 0 };
+      }
+      assert.equal(ack.status, 'not-applied', 'exact real-store prejournal expiry must provide terminal proof');
+      await dialog.getByText('Not saved.', { exact: false }).waitFor();
+      assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), null);
+      await Promise.all([page.waitForEvent('load'), dialog.getByRole('button', { name: 'Reload current view', exact: true }).click()]);
+      await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+      assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 });
+      assert.equal(requests.filter(r => r.path === '/settlement/confirm').length, 1);
+      fixture.details.reload = { dataInstalled: true, markerRemoved: true };
+    }, true, 390, { now: () => storeExpiryClock });
     for (const fault of ['wrong-operation', 'wrong-generation', 'wrong-token', 'extra-field', 'lost-reply', 'cleanup-storage', 'cleanup-lock']) {
       let clock = Date.now();
       await run('terminal proof ' + fault + ' preserves uncertainty without replay', async (w, { page, requests }) => {

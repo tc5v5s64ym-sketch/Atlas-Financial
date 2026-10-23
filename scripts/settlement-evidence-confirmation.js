@@ -304,19 +304,20 @@ function createSettlementEvidenceConfirmation(deps) {
     retire(operationId, entry);
     return rejected(reason);
   }
-  async function terminalNoEffect(context, authority, request, entry, reason, admissionRefused = false) {
+  async function terminalNoEffect(context, authority, request, entry, reason, prejournalRefused = false) {
     // Legacy clients have no persisted generation. Keep their existing
     // conservative receipt-only recovery; a reason string is never proof.
     if (!Object.hasOwn(request, 'generation')) {
-      if (admissionRefused) uncertainOperation = null;
-      return terminal(request.operationId, entry, reason, admissionRefused);
+      if (prejournalRefused) uncertainOperation = null;
+      return terminal(request.operationId, entry, reason, prejournalRefused);
     }
     await sameAuthority(context, authority);
     if (previews.get(request.operationId) !== entry || request.previewToken !== entry.previewToken
       || request.generation !== entry.generation || terminalOperations.size >= MAX_TERMINAL_OPERATIONS)
       return unknown(request.operationId);
-    if (admissionRefused) {
-      // The sole store invocation has returned the trusted prejournal refusal
+    if (prejournalRefused) {
+      // The sole store invocation has returned an exact trusted prejournal
+      // admission/expiry refusal
       // and was reauthorized. Its invocation remains excluded until finally.
       if (!entry.attempted || !writeInFlight || uncertainOperation !== request.operationId)
         return unknown(request.operationId);
@@ -326,7 +327,7 @@ function createSettlementEvidenceConfirmation(deps) {
     // the exact-entry check before it can enter a future commit.
     terminalOperations.add(request.operationId);
     retire(request.operationId, entry);
-    if (admissionRefused) uncertainOperation = null;
+    if (prejournalRefused) uncertainOperation = null;
     return Object.freeze({ status: 'not-applied', operationId: request.operationId,
       generation: entry.generation, previewToken: entry.previewToken });
   }
@@ -589,7 +590,12 @@ function createSettlementEvidenceConfirmation(deps) {
         return await terminalNoEffect(ownedContext, authority, request, retained, 'admission-refused', true);
       }
       if (result.status === 'rejected' && result.reason === 'preview-expired') {
-        uncertainOperation = null; return terminal(request.operationId, retained, 'preview-expired', true);
+        // The real store validates expiry before its journal write. Time can
+        // cross the boundary after the controller's final read-only check.
+        // Only the exact trusted fenced result is negative proof.
+        if (Object.hasOwn(request, 'generation') && (!fenced || !shape(result, ['status', 'reason'])))
+          return unknown(request.operationId);
+        return await terminalNoEffect(ownedContext, authority, request, retained, 'preview-expired', true);
       }
       if (result.status === 'rejected' && result.reason === 'recovery-required') {
         uncertainOperation = null; return terminal(request.operationId, retained, 'recovery-required', true);

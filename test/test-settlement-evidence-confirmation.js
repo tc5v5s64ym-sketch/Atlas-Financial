@@ -64,7 +64,8 @@ test('terminal proof controller retirement prevents a suspended confirm from lat
 });
 test('terminal proof controller never upgrades ambiguous store conflicts or uncertainty into negative proof', async t => {
   for (const result of [{ status: 'conflict' }, { status: 'rejected', reason: 'recovery-required' }, { status: 'unknown' },
-    { status: 'rejected', reason: 'admission-refused', untrusted: true }]) {
+    { status: 'rejected', reason: 'admission-refused', untrusted: true },
+    { status: 'rejected', reason: 'preview-expired', untrusted: true }]) {
     const a = await terminalWorld(t);
     const controller = a.create({ commitAdmitted: async () => result });
     const p = await controller.prepare(a.ctx, { operationId: op(1), selection: await a.w.selection(), assignedCents: 2500 });

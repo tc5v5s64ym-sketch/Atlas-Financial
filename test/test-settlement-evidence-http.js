@@ -150,6 +150,32 @@ if (require.main === module) {
     operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true, ...overrides });
   const negative = p => ({ status: 'not-applied', operationId: p.operationId,
     previewToken: p.previewToken, generation: p.generation });
+  test('terminal proof: real store expiry after final controller check is prejournal no-effect', async t => {
+    let clock = Date.now(); const w = await startWorld(true, { now: () => clock }); t.after(w.close);
+    const p = await w.prepare(); clock = p.expiresAt - 1;
+    const before = Buffer.from(w.durable.doc), pin = JSON.stringify(w.durable.pin);
+    w.hooks.admission = async () => { clock = p.expiresAt; };
+    const ack = await correlatedConfirm(w, p);
+    assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 0);
+    assert.ok(w.durable.doc.equals(before)); assert.equal(JSON.stringify(w.durable.pin), pin);
+    console.log(JSON.stringify({ type: 'store-expiry-boundary', status: ack.status, reason: ack.reason,
+      commitInvocations: w.calls.commit, journalWrites: w.calls.journal, durableBytesUnchanged: true }));
+    assert.equal(ack.status, 'not-applied');
+    assert.equal(require('node:util').isDeepStrictEqual(ack, negative(p)), true, 'exact generation-bound negative acknowledgement');
+    assert.equal((await w.prepare()).status, 'unavailable', 'terminal operation is not recycled in this controller');
+  });
+  test('terminal proof: real store expiry still requires transport postauthorization', async t => {
+    let clock = Date.now(); const w = await startWorld(true, { now: () => clock }); t.after(w.close);
+    const p = await w.prepare(); clock = p.expiresAt - 1;
+    const before = Buffer.from(w.durable.doc);
+    w.hooks.admission = async () => { clock = p.expiresAt; };
+    let calls = 0; w.hooks.authorize = async () => { if (++calls === 7) w.authorized = false; };
+    const r = await w.raw('confirm', { operationId: p.operationId, previewToken: p.previewToken,
+      generation: p.generation, confirmed: true });
+    assert.equal(r.status, 503); assert.deepEqual(await r.json(), { status: 'unavailable' });
+    assert.equal(calls, 7); assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 0);
+    assert.ok(w.durable.doc.equals(before));
+  });
   test('terminal proof: expiry binds exact generation; same-ID reuse refuses until controller restart', async t => {
     let clock = Date.now(); const w = await startWorld(true, { now: () => clock }); t.after(w.close);
     const p = await w.prepare(); assert.match(p.generation, /^generation-[a-f0-9]{32}$/);
