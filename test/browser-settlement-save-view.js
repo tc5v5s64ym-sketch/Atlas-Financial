@@ -76,12 +76,30 @@ async function complete(page, dialog) {
   await page.waitForFunction(() => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified');
   await page.waitForFunction(KEY => localStorage.getItem(KEY) === null, KEY);
 }
+function observeMarkerMutations() {
+  const key = 'atlas-settlement-pending-v1';
+  let locked = false;
+  window.__markerMutations = [];
+  const request = navigator.locks.request.bind(navigator.locks);
+  navigator.locks.request = (name, options, callback) => request(name, options, async lock => {
+    if (name === key && options.mode === 'exclusive') locked = true;
+    try { return await callback(lock); } finally { locked = false; }
+  });
+  for (const method of ['setItem', 'removeItem']) {
+    const original = Storage.prototype[method];
+    Storage.prototype[method] = function (name, ...args) {
+      if (name === key) window.__markerMutations.push({ method, locked });
+      return original.call(this, name, ...args);
+    };
+  }
+}
 (async () => {
   fs.mkdirSync(out, { recursive: true });
   const browser = await chromium.launch({ headless: true,
     executablePath: process.env.CHROME_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' });
   try {
     const run = async (name, action, active = true, width = 390, options = {}) => {
+      if (process.env.ATLAS_SETTLEMENT_BROWSER_CASE && name !== process.env.ATLAS_SETTLEMENT_BROWSER_CASE) return;
       const w = await startWorld(active, options); let fixture;
       try {
         fixture = await openPage(browser, w, width);
@@ -145,6 +163,128 @@ async function complete(page, dialog) {
       assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), null);
       assert.equal(requests.filter(x => x.path === '/settlement/outcome').length, 0);
       await preview(page); assert.equal(w.calls.commit, 0);
+    });
+    await run('two-tab stale preview boot cannot erase a dispatched reconciliation marker', async (w, fixture) => {
+      const { page, context, requests } = fixture;
+      const dialog = await preview(page);
+      const operationId = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)).operationId, KEY);
+      const second = await context.newPage(); second.setDefaultTimeout(15000);
+      const secondRequests = [];
+      second.on('pageerror', error => fixture.errors.push(error.message));
+      second.on('request', request => secondRequests.push(new URL(request.url()).pathname));
+      let releaseBoot, readBoot;
+      const bootGate = new Promise(resolve => { releaseBoot = resolve; });
+      const bootRead = new Promise(resolve => { readBoot = resolve; });
+      await second.exposeBinding('__settlementBootPause', async (_, marker) => {
+        readBoot(marker); await bootGate;
+      });
+      await second.route('**/*', route => {
+        if (new URL(route.request().url()).origin !== w.origin) {
+          fixture.external.push(new URL(route.request().url()).origin); return route.abort();
+        }
+        return route.continue();
+      });
+      await second.route('**/app.js', async route => {
+        const response = await route.fetch(), source = await response.text();
+        const anchor = 'try { marker = pending(); } catch';
+        assert.equal(source.split(anchor).length, 2, 'one initial marker-read observation point');
+        // Deliberate scheduling only: pause B after its real shared-storage
+        // read. A still uses the actual script and actual mounted confirm.
+        await route.fulfill({ response, body: source.replace(anchor,
+          'try { marker = pending(); await window.__settlementBootPause(marker); } catch') });
+      });
+      await second.route('**/plan.js', async route => {
+        const response = await route.fetch();
+        await route.fulfill({ response, body: 'App.once(() => { window.__settlementOnce = (window.__settlementOnce || 0) + 1; });\n' + await response.text() });
+      });
+      try {
+        const navigation = second.goto(w.origin + '/');
+        assert.deepEqual(await bootRead, { operationId, phase: 'preview' });
+        await page.route('**/settlement/confirm', async route => { await route.fetch(); return route.abort(); });
+        await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+        await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+        assert.equal(w.calls.commit, 1);
+        const receiptDocument = Buffer.from(w.durable.doc);
+        assert.equal(await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)).phase, KEY), 'dispatched');
+        w.readFailure = true; releaseBoot(); await navigation;
+        await second.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+        const marker = await second.evaluate(KEY => localStorage.getItem(KEY), KEY);
+        fixture.details = { realSharedContext: true, pausedBootPhase: 'preview',
+          responseDroppedAfterCommit: true, secondRequests, retainedDispatched: marker !== null };
+        assert.ok(marker, 'B must not erase A\'s now-dispatched marker using its stale preview read');
+        assert.deepEqual(JSON.parse(marker), { operationId, phase: 'dispatched' });
+        assert.equal(secondRequests.filter(path => path === '/data.json').length, 0, 'B cannot fall through to ordinary data');
+        assert.equal(secondRequests.filter(path => path === '/settlement/outcome').length, 1);
+        assert.equal(secondRequests.filter(path => path === '/settlement/publication').length, 1);
+        await second.locator('[data-settlement-recovery]').waitFor();
+        assert.equal(await second.evaluate(() => App.data.settlementEvidenceStatus.status), 'unavailable');
+        assert.equal(await second.evaluate(() => window.__settlementOnce), 1);
+        w.readFailure = false; await page.reload();
+        await page.waitForFunction(() => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified');
+        await page.waitForFunction(KEY => localStorage.getItem(KEY) === null, KEY);
+        assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 });
+        assert.equal(w.calls.commit, 1); assert.ok(w.durable.doc.equals(receiptDocument));
+        assert.equal(requests.filter(request => request.path === '/settlement/confirm').length, 1);
+      } finally { releaseBoot(); await second.close(); }
+    });
+    await run('all marker mutations are locked and a stale prepared tab cannot overwrite dispatch', async (w, fixture) => {
+      const { page, context, requests } = fixture;
+      await context.addInitScript(observeMarkerMutations);
+      await page.evaluate(observeMarkerMutations);
+      const second = await context.newPage(); second.setDefaultTimeout(15000);
+      second.on('pageerror', error => fixture.errors.push(error.message));
+      await second.route('**/*', route => {
+        if (new URL(route.request().url()).origin !== w.origin) {
+          fixture.external.push(new URL(route.request().url()).origin); return route.abort();
+        }
+        return route.continue();
+      });
+      let releasePrepare, prepared;
+      const gate = new Promise(resolve => { releasePrepare = resolve; });
+      const seen = new Promise(resolve => { prepared = resolve; });
+      await second.route('**/settlement/prepare', async route => {
+        const response = await route.fetch(); prepared(); await gate;
+        await route.fulfill({ response });
+      });
+      try {
+        await second.goto(w.origin + '/');
+        await second.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+        const otherDialog = await sheet(second);
+        await otherDialog.getByRole('button', { name: 'Assign a recorded payment', exact: true }).click();
+        await otherDialog.getByLabel('Amount to assign (CAD)', { exact: true }).fill('25.00');
+        await otherDialog.getByRole('button', { name: 'Preview assignment', exact: true }).click();
+        await seen;
+        const dialog = await preview(page);
+        await page.route('**/settlement/confirm', async route => { await route.fetch(); return route.abort(); });
+        await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+        await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+        const dispatched = await page.evaluate(KEY => localStorage.getItem(KEY), KEY);
+        releasePrepare();
+        await otherDialog.getByText('Preview unavailable. No confirmation was sent.', { exact: false }).waitFor();
+        assert.equal(await second.evaluate(KEY => localStorage.getItem(KEY), KEY), dispatched);
+        assert.equal(await otherDialog.getByRole('button', { name: 'Confirm assignment', exact: true }).count(), 0);
+        const before = await page.evaluate(() => window.__markerMutations);
+        assert.deepEqual(before, [{ method: 'setItem', locked: true }, { method: 'setItem', locked: true }]);
+        assert.deepEqual(await second.evaluate(() => window.__markerMutations), []);
+        await page.reload();
+        await page.waitForFunction(KEY => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified'
+          && localStorage.getItem(KEY) === null, KEY);
+        const after = await page.evaluate(() => window.__markerMutations);
+        assert.deepEqual(after, [{ method: 'removeItem', locked: true }]);
+        assert.equal(w.calls.commit, 1);
+        assert.equal(requests.filter(request => request.path === '/settlement/confirm').length, 1);
+        fixture.details = { before, after, stalePreparedResponseRefused: true, sharedContext: true };
+      } finally { releasePrepare(); await second.close(); }
+    });
+    await run('missing cross-tab lock support refuses active controls without dispatch', async (w, { page, context, requests }) => {
+      await context.addInitScript(() => Object.defineProperty(navigator, 'locks', { value: undefined, configurable: true }));
+      await page.reload();
+      await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+      const dialog = await sheet(page);
+      await dialog.getByText('Assignment controls unavailable.', { exact: true }).waitFor();
+      assert.equal(await dialog.getByRole('button', { name: 'Assign a recorded payment', exact: true }).count(), 0);
+      assert.equal(requests.filter(request => ['/settlement/prepare', '/settlement/confirm'].includes(request.path)).length, 0);
+      assert.equal(w.calls.commit, 0);
     });
     await run('lost commit response, recreated controller, same original receipt, no second commit', async (w, { page, requests }) => {
       const dialog = await preview(page);
@@ -393,6 +533,7 @@ async function complete(page, dialog) {
       }, true, width);
     }
   } finally { await browser.close(); }
+  assert.ok(results.length, 'at least one browser case must run');
   fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ synthetic: true,
     head: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'],
       { cwd: path.resolve(__dirname, '..'), encoding: 'utf8' }).trim(),

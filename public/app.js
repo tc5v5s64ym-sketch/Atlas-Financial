@@ -292,6 +292,13 @@ const SettlementSave = (() => {
   const OP = /^operation-[a-f0-9]{32}$/;
   let bootPublication = null;
   const record = value => value && typeof value === 'object' && !Array.isArray(value);
+  const canLock = () => typeof globalThis.navigator?.locks?.request === 'function';
+  function mutateMarker(action) {
+    // localStorage has no compare-and-swap. Every writer/remover must use the
+    // same origin-wide lock, including boot cleanup in a different tab.
+    if (!canLock()) return Promise.reject(new Error('settlement-persistence'));
+    return navigator.locks.request(KEY, { mode: 'exclusive' }, action);
+  }
   function pending() {
     const raw = localStorage.getItem(KEY);
     if (raw === null) return null;
@@ -302,13 +309,17 @@ const SettlementSave = (() => {
     return value;
   }
   function persist(operationId, phase) {
-    const previous = pending();
-    if (previous && previous.operationId !== operationId
-      || phase === 'dispatched' && (previous?.operationId !== operationId || previous.phase !== 'preview'))
-      throw new Error('settlement-reconciliation');
-    const raw = JSON.stringify({ operationId, phase });
-    localStorage.setItem(KEY, raw);
-    if (localStorage.getItem(KEY) !== raw) throw new Error('settlement-persistence');
+    return mutateMarker(() => {
+      const previous = pending();
+      // A prepared response cannot replace any existing operation or roll a
+      // dispatched marker back to preview. Only its own live preview advances.
+      if (phase === 'preview' ? previous !== null
+        : phase !== 'dispatched' || previous?.operationId !== operationId || previous.phase !== 'preview')
+        throw new Error('settlement-reconciliation');
+      const raw = JSON.stringify({ operationId, phase });
+      localStorage.setItem(KEY, raw);
+      if (localStorage.getItem(KEY) !== raw) throw new Error('settlement-persistence');
+    });
   }
   async function post(path, body, signal) {
     const timeout = new AbortController();
@@ -330,13 +341,19 @@ const SettlementSave = (() => {
     bootPublication = null;
     let marker;
     try { marker = pending(); } catch { throw new Error('settlement-reconciliation'); }
-    // This phase is written before confirm is even enabled. No dispatch can
-    // have happened without a durable transition to dispatched.
+    // The optimistic read may already be stale. Inspect and abandon only the
+    // CURRENT preview under the same lock that guards confirm dispatch.
     if (marker?.phase === 'preview') {
-      localStorage.removeItem(KEY);
-      marker = null;
+      const operationId = marker.operationId;
+      marker = await mutateMarker(() => {
+        const current = pending();
+        if (current?.operationId !== operationId || current.phase !== 'preview') return current;
+        localStorage.removeItem(KEY);
+        return null;
+      });
     }
     if (!marker) return ordinary();
+    if (marker.phase !== 'dispatched') throw new Error('settlement-reconciliation');
     const outcome = await post('outcome', { operationId: marker.operationId }, signal);
     if (outcome.status !== 'committed' || outcome.operationId !== marker.operationId)
       throw new Error('settlement-reconciliation');
@@ -354,11 +371,14 @@ const SettlementSave = (() => {
     bootPublication = { operationId: marker.operationId, status: view.publication };
     return view.data;
   }
-  function initialized() {
+  async function initialized() {
     // Called only AFTER DATA installation, once-hooks and render complete.
     if (bootPublication?.status === 'included') {
-      const marker = pending();
-      if (marker?.operationId === bootPublication.operationId) localStorage.removeItem(KEY);
+      const operationId = bootPublication.operationId;
+      await mutateMarker(() => {
+        const marker = pending();
+        if (marker?.operationId === operationId && marker.phase === 'dispatched') localStorage.removeItem(KEY);
+      });
     }
     if (bootPublication?.status === 'unavailable') {
       const message = document.createElement('p');
@@ -386,6 +406,7 @@ const SettlementSave = (() => {
     fetch('/settlement/capability', { credentials: 'same-origin', cache: 'no-store' })
       .then(r => r.ok ? r.json() : null).then(capability => {
         if (capability?.status !== 'active') return;
+        if (!canLock()) { text('Assignment controls unavailable.'); return; }
         if (pending()) { recover(); return; }
         button('Assign a recorded payment', async event => {
           event.currentTarget.disabled = true;
@@ -428,14 +449,14 @@ const SettlementSave = (() => {
                   || !/^[a-f0-9]{64}$/.test(preview.previewToken) || preview.assignedCents !== assignedCents
                   || preview.currency !== 'cad' || !Number.isSafeInteger(preview.expiresAt)
                   || typeof preview.date !== 'string' || !record(preview.labels)) throw new Error('preview');
-                persist(operationId, 'preview');
+                await persist(operationId, 'preview');
                 text('Assign ' + money2(preview.assignedCents / 100) + ' ' + preview.currency.toUpperCase()
                   + ' from ' + preview.labels.payment + ' (' + preview.date + ') to ' + preview.labels.goal
                   + '. Preview expires ' + new Date(preview.expiresAt).toISOString() + '. ');
                 button('Confirm assignment', async event => {
                   event.currentTarget.disabled = true;
                   // Failure to persist or verify the marker PREVENTS dispatch.
-                  try { persist(operationId, 'dispatched'); }
+                  try { await persist(operationId, 'dispatched'); }
                   catch { text('Confirmation was not sent: pending state could not be saved. Reload to continue.'); return; }
                   try {
                     const outcome = await post('confirm', { operationId, previewToken: preview.previewToken, confirmed: true });
@@ -918,7 +939,7 @@ const App = (() => {
           })
           .catch(() => null)
         : Promise.resolve(null));
-      Promise.all(wants).then(([d, p, h]) => {
+      Promise.all(wants).then(async ([d, p, h]) => {
         if (controller.signal.aborted) throw new Error('load cancelled');
         // Existing once-wired views capture their initial inputs. A successful
         // forced check rebuilds every view; the next boot replays its evidence.
@@ -931,7 +952,7 @@ const App = (() => {
         }
         for (const fn of onceHooks) fn(DATA, PERIODS, HISTORY);
         rerender();
-        SettlementSave.initialized();
+        await SettlementSave.initialized();
         checkStatus.textContent = formatObservationCheck(check, d.refreshTrust);
         refresh.disabled = false;
         restoreShell();
