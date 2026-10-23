@@ -1438,7 +1438,10 @@ test('invocation: an accessor call getter never fires — the body rejection cla
 // --- Receipt-bound qualified publication read --------------------------------
 // The private opt-in capability: a caller that already holds an
 // authorized original committed receipt — the store's immutable-prefix
-// receipt {status, operationId, actorId, revision, digest} — plus the
+// receipt {status, operationId, actorId, revision, digest}, or the
+// deliberate four-field public projection of it ({status, operationId,
+// revision, digest}) that the confirmation controller's confirm /
+// outcome receipts and the store's outcome return — plus the
 // trusted original actor identity supplied alongside it (never derived
 // from a browser-supplied lookup) can establish whether the SAME
 // qualified, pinned, stable snapshot this loader verifies includes
@@ -1663,6 +1666,157 @@ test('receipt-bound: async readers include identically, and a frozen receipt is 
     readDocument: async () => doc1, receipt, actorId,
   }));
   assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
+// --- Four-field public receipts (controller / outcome projections) -------
+// The confirmation controller's confirm and outcome receipts and the
+// store's outcome projection are the deliberate four-field public
+// shape {status, operationId, revision, digest} — no embedded actor.
+// The binding accepts that shape on the strength of the separately
+// supplied trusted actor alone: the trusted actor is the authority,
+// compared directly with the validated recorded operation's actor.
+// An embedded actorId, when the property is present at all, must be
+// well-formed and consistent with the recorded operation — and is
+// never itself an authority source: it cannot substitute for the
+// trusted actor, and its absence cannot refuse an authentic receipt.
+const receipt4Of = (bytes, operationId) => {
+  const { actorId: _embedded, ...four } = receiptOf(bytes, operationId);
+  return four;
+};
+
+test('receipt-bound: a four-field public receipt is included on the trusted actor alone', async () => {
+  const receipt = receipt4Of(doc1, op(1));
+  assert.deepEqual(Object.keys(receipt).sort(), ['digest', 'operationId', 'revision', 'status'],
+    'the public projection carries exactly four fields — no embedded actor');
+  assert.ok(!Object.hasOwn(receipt, 'actorId'),
+    'the embedded actor property is absent, not present-but-undefined');
+  const evidence = expectIncluded(await L.loadReceiptBoundPublication(receiptArgs(doc1, receipt)));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
+test('receipt-bound: a four-field receipt survives later revisions and retraction like the five-field one', async () => {
+  const receipt = receipt4Of(doc1, op(1));
+  const later = expectIncluded(await L.loadReceiptBoundPublication(receiptArgs(doc2, receipt)));
+  assert.deepEqual(later, C.effectiveEvidence(stateOf(doc2)),
+    'the publication is the pinned rev-2 snapshot, not the receipt revision');
+  const retracted = expectIncluded(await L.loadReceiptBoundPublication(receiptArgs(docRetracted, receipt)));
+  assert.deepEqual(retracted, C.effectiveEvidence(stateOf(docRetracted)));
+  assert.deepEqual(retracted.commitments, [],
+    'the retracted link is absent from the publication while the receipt stays included');
+});
+
+test('receipt-bound: a four-field receipt with a wrong, missing or malformed trusted actor never includes', async () => {
+  const receipt = receipt4Of(doc1, op(1));
+  // A well-formed trusted actor that is not the recorded operation's
+  // actor: the binding is well-formed, but the validated history
+  // does not carry the operation for this actor — no actor-free
+  // fallback exists on this path.
+  expectReceiptUnavailable(
+    await L.loadReceiptBoundPublication(receiptArgs(doc1, receipt, otherActor)),
+    'receipt-not-included');
+  // A missing trusted identity is a malformed binding, not an
+  // invitation to judge the receipt on anything embedded in it.
+  expectReceiptUnavailable(await L.loadReceiptBoundPublication({
+    config: { householdId, pin: pinOf(doc1) }, readDocument: reader(doc1), receipt,
+  }), 'receipt-invalid');
+  expectReceiptUnavailable(
+    await L.loadReceiptBoundPublication(receiptArgs(doc1, receipt, 'not-a-session')),
+    'receipt-invalid');
+});
+
+test('receipt-bound: a present embedded actor must be valid — undefined, null or conflicting never include', async () => {
+  const full = receiptOf(doc1, op(1));
+  let docReads = 0; let pinReads = 0;
+  const args = receipt => ({
+    config: { householdId },
+    readPin: () => { pinReads += 1; return pinOf(doc1); },
+    readDocument: () => { docReads += 1; return doc1; },
+    receipt, actorId,
+  });
+  // Present-but-undefined and present-null are malformed bindings,
+  // NOT the absent embedded actor of a four-field receipt: presence
+  // is judged by the property itself, never by its value.
+  for (const embedded of [undefined, null]) {
+    const receipt = { ...full, actorId: embedded };
+    assert.ok(Object.hasOwn(receipt, 'actorId'), 'the embedded property is present');
+    expectReceiptUnavailable(await L.loadReceiptBoundPublication(args(receipt)), 'receipt-invalid');
+  }
+  assert.equal(pinReads, 0, 'a malformed binding is refused before the pin read');
+  assert.equal(docReads, 0, 'a malformed binding is refused before any document read');
+  // A well-formed embedded actor that contradicts the recorded
+  // operation is not an authentic receipt for it — even with the
+  // correct trusted actor supplied alongside.
+  expectReceiptUnavailable(
+    await L.loadReceiptBoundPublication(receiptArgs(doc1, { ...full, actorId: otherActor })),
+    'receipt-not-included');
+});
+
+test('receipt-bound: mutation during acquisition cannot move the frozen actor presence, in either direction', async () => {
+  // (a) A five-field receipt whose embedded actor is REMOVED — or
+  // replaced — while the read is in flight is still judged on the
+  // presence and value frozen at call time.
+  for (const mutate of [
+    r => { delete r.actorId; },
+    r => { r.actorId = otherActor; },
+  ]) {
+    const receipt = receiptOf(doc1, op(1));
+    let calls = 0;
+    const mutatingReader = () => { calls += 1; if (calls === 1) mutate(receipt); return doc1; };
+    const evidence = expectIncluded(await L.loadReceiptBoundPublication({
+      config: { householdId, pin: pinOf(doc1) }, readDocument: mutatingReader,
+      receipt, actorId,
+    }));
+    assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  }
+  // (b) A four-field receipt that GAINS an embedded actor while the
+  // read is in flight — malformed or conflicting — is still judged
+  // on the frozen absence: the late property is invisible.
+  for (const late of ['not-a-session', otherActor]) {
+    const receipt = receipt4Of(doc1, op(1));
+    let calls = 0;
+    const mutatingReader = () => {
+      calls += 1;
+      if (calls === 1) receipt.actorId = late;
+      return doc1;
+    };
+    const evidence = expectIncluded(await L.loadReceiptBoundPublication({
+      config: { householdId, pin: pinOf(doc1) }, readDocument: mutatingReader,
+      receipt, actorId,
+    }));
+    assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+    assert.equal(receipt.actorId, late, 'the late property really landed on the caller object');
+  }
+});
+
+test('receipt-bound: an embedded actor getter is captured once — a throwing one refuses, an unstable one cannot swap', async () => {
+  const base = receiptOf(doc1, op(1));
+  const throwing = { ...base };
+  Object.defineProperty(throwing, 'actorId', {
+    enumerable: true, get() { throw new Error('hostile getter'); },
+  });
+  expectReceiptUnavailable(
+    await L.loadReceiptBoundPublication(receiptArgs(doc1, throwing)), 'receipt-invalid');
+  let reads = 0;
+  const unstable = { ...base };
+  Object.defineProperty(unstable, 'actorId', {
+    enumerable: true,
+    get() { reads += 1; return reads === 1 ? base.actorId : otherActor; },
+  });
+  const evidence = expectIncluded(await L.loadReceiptBoundPublication(receiptArgs(doc1, unstable)));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+  assert.equal(reads, 1, 'the embedded actor is read exactly once, into the frozen binding');
+});
+
+test('receipt-bound: a four-field receipt over corrupt or divergent state keeps the loader reasons', async () => {
+  const receipt = receipt4Of(doc1, op(1));
+  expectReceiptUnavailable(await L.loadReceiptBoundPublication({
+    config: { householdId, pin: pinOf(docFork) }, readDocument: reader(doc1), receipt, actorId,
+  }), 'digest-mismatch');
+  let calls = 0;
+  const shifting = () => { calls += 1; return calls === 1 ? doc1 : doc2; };
+  expectReceiptUnavailable(await L.loadReceiptBoundPublication({
+    config: { householdId, pin: pinOf(doc1) }, readDocument: shifting, receipt, actorId,
+  }), 'document-changed');
 });
 
 // --- Reason coverage ------------------------------------------------------------
