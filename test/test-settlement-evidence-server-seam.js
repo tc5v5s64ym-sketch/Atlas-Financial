@@ -1450,3 +1450,83 @@ test('receipt-bound: attach output is untouched by the capability over the durab
   assert.ok(!JSON.stringify(after).includes(receipt.digest),
     'the receipt prefix digest never reaches served output');
 });
+
+/* ---------------- 9c. receipt-bound: controller-issued receipts
+ * The composition the store-direct pins above cannot express: the
+ * receipts the REAL confirmation controller issues — and the store's
+ * outcome projection — are the deliberate four-field public shape
+ * {status, operationId, revision, digest}, with no embedded actor.
+ * The loader's binding accepts them on the separately trusted actor
+ * alone, compared against the validated recorded operation. Every
+ * receipt below is one the controller or the store itself returned
+ * from its public flow over the durable fixture — unchanged, never
+ * enriched with an actor the issuer did not project. */
+
+test('receipt-bound: a real controller confirm receipt is included, with no second commit', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const f = await makeControllerFixture();
+  const { receipt } = await confirmThroughController(f.controllerFor(f.store), 1, 2500);
+  assert.deepEqual(Object.keys(receipt).sort(), ['digest', 'operationId', 'revision', 'status'],
+    'the controller receipt is exactly the four-field public shape');
+  assert.ok(!Object.hasOwn(receipt, 'actorId'), 'no embedded actor is projected');
+  const docBefore = fs.readFileSync(f.documentFile);
+  const treeBefore = treeHash(f.dir);
+  const serving = f.servingFor(f.adapters);
+  const outcome = await serving.receiptBoundPublication(receipt, actorId);
+  assert.equal(outcome.status, 'included');
+  assert.deepEqual(Object.keys(outcome).sort(), ['evidence', 'status']);
+  const attached = await serving.attach(linkedServed());
+  assert.deepEqual(outcome.evidence, attached.settlementEvidence,
+    'the inclusion publication is the same qualified snapshot attach publishes');
+  assert.ok(fs.readFileSync(f.documentFile).equals(docBefore), 'the read performed no commit');
+  assert.equal(treeHash(f.dir), treeBefore, 'the read left every durable byte untouched');
+});
+
+test('receipt-bound: controller outcome receipts include — including from a recreated controller', async () => {
+  const f = await makeControllerFixture();
+  const ctl = f.controllerFor(f.store);
+  const { receipt } = await confirmThroughController(ctl, 1, 2500);
+  const serving = f.servingFor(f.adapters);
+  const viaOutcome = await ctl.outcome(ctlContext, { operationId: op(1) });
+  assert.deepEqual(viaOutcome, receipt, 'outcome returns the original four-field receipt');
+  const first = await serving.receiptBoundPublication(viaOutcome, actorId);
+  assert.equal(first.status, 'included');
+  // A recreated controller over fresh adapters recovers the same
+  // durable outcome, and that receipt includes identically.
+  const adapters2 = f.openAdapters();
+  const ctl2 = f.controllerFor(f.openStore(adapters2));
+  const recovered = await ctl2.outcome(ctlContext, { operationId: op(1) });
+  assert.deepEqual(recovered, receipt, 'the recreated controller reads the original durable receipt');
+  const second = await f.servingFor(adapters2).receiptBoundPublication(recovered, actorId);
+  assert.equal(second.status, 'included');
+  assert.deepEqual(second.evidence, first.evidence,
+    'the recovered outcome publishes the same snapshot as the original receipt');
+});
+
+test('receipt-bound: a direct store.outcome receipt is included', async () => {
+  const { createSettlementEvidenceServing } = servingModule();
+  const fixture = await makeStoreFixture([]);
+  await commitCapturingReceipt(fixture, 1, linkCmd({}));
+  const outcomeReceipt = await fixture.store.outcome({ actorId, operationId: op(1) });
+  assert.equal(outcomeReceipt.status, 'committed');
+  assert.deepEqual(Object.keys(outcomeReceipt).sort(), ['digest', 'operationId', 'revision', 'status'],
+    'the store outcome projection is exactly the four-field public shape');
+  assert.ok(!Object.hasOwn(outcomeReceipt, 'actorId'), 'no embedded actor is projected');
+  const serving = createSettlementEvidenceServing(fixtureDependency(fixture));
+  const outcome = await serving.receiptBoundPublication(outcomeReceipt, actorId);
+  assert.equal(outcome.status, 'included');
+  const parsed = JSON.parse(fs.readFileSync(fixture.documentFile).toString('utf8'));
+  assert.deepEqual(outcome.evidence, C.effectiveEvidence({
+    householdId: parsed.householdId, revision: parsed.revision, operations: parsed.operations,
+  }), 'the publication is the pinned document’s own effective evidence');
+});
+
+test('receipt-bound: a controller receipt with a wrong or missing trusted actor never includes', async () => {
+  const f = await makeControllerFixture();
+  const { receipt } = await confirmThroughController(f.controllerFor(f.store), 1, 2500);
+  const serving = f.servingFor(f.adapters);
+  assert.deepEqual(await serving.receiptBoundPublication(receipt, 'session-' + 'e'.repeat(64)),
+    { status: 'unavailable', reason: 'receipt-not-included' });
+  assert.deepEqual(await serving.receiptBoundPublication(receipt, undefined),
+    { status: 'unavailable', reason: 'receipt-invalid' });
+});

@@ -357,18 +357,27 @@ async function loadSettlementEvidence(input) {
 // holds an authorized original committed receipt — the store's
 // immutable-prefix receipt {status, operationId, actorId, revision,
 // digest} (receiptForOperation over prefixDigest in
-// settlement-evidence-store.js) — together with the trusted original
+// settlement-evidence-store.js), or the deliberate four-field public
+// projection of it ({status, operationId, revision, digest}) that the
+// confirmation controller's confirm / outcome receipts and the
+// store's outcome return — together with the trusted original
 // actor identity supplied alongside it. That identity is an input to
 // this read, never derived from a browser-supplied lookup or from any
-// served data.
+// served data. It is also the sole actor authority for this read:
+// inclusion compares it directly against the validated recorded
+// operation's actor. An embedded receipt actorId, when the property
+// is present at all, must be well-formed and consistent with the
+// recorded operation, but it never authorizes anything by itself —
+// and its absence (the public projections) refuses nothing.
 //
 // The read runs the ONE acquisition above and judges the receipt
 // against the same validated snapshot that produced the publication:
 // the recorded operation is found in the snapshot's validated history
 // (never in the active-link projection — a later valid retraction
 // appends to the history and must not erase the historical
-// acknowledgement), actor continuity is required against both the
-// receipt and the supplied identity, the revision must be the
+// acknowledgement), actor continuity is required against the
+// supplied trusted identity (and against the receipt's embedded
+// actor when one is present), the revision must be the
 // operation's original committed revision, and the digest must equal
 // the contract digest of the immutable prefix ending at that revision
 // — the store's receipt definition, recomputed with the contract's own
@@ -394,26 +403,44 @@ const ACTOR_ID_RE = /^session-[a-f0-9]{64}$/;
 // not be able to swap the binding being judged. Only the load-bearing
 // fields are read, by direct property access, mirroring the pin
 // snapshot; a malformed binding is receipt-invalid and no read is made.
+//
+// The embedded actor is presence-aware. Its PRESENCE is frozen here
+// alongside its value (captured with a single read, so a getter can
+// neither throw twice nor swap its answer): the four-field public
+// projections carry no actorId property at all and are judged on the
+// trusted actor alone, while a property that is present — including
+// present-undefined or present-null — is a claim the binding must
+// validate, never a value-equality test against undefined. Presence
+// is judged by the property itself (Object.hasOwn), never by value.
 function snapshotReceiptBinding(input) {
   if (!isRecord(input)) return null;
-  let status; let operationId; let receiptActorId; let revision; let digest; let actorId;
+  let status; let operationId; let receiptActorId; let embeddedPresent;
+  let revision; let digest; let actorId;
   try {
     const receipt = input.receipt;
     if (!isRecord(receipt)) return null;
     status = receipt.status;
     operationId = receipt.operationId;
     receiptActorId = receipt.actorId;
+    embeddedPresent = Object.hasOwn(receipt, 'actorId');
     revision = receipt.revision;
     digest = receipt.digest;
     actorId = input.actorId;
   } catch { return null; }
   if (status !== 'committed') return null;
   if (typeof operationId !== 'string' || !OPERATION_ID_RE.test(operationId)) return null;
-  if (typeof receiptActorId !== 'string' || !ACTOR_ID_RE.test(receiptActorId)) return null;
+  // A present embedded actor must be a well-formed actor identity;
+  // an absent one is the legitimate public-projection shape.
+  if (embeddedPresent
+    && (typeof receiptActorId !== 'string' || !ACTOR_ID_RE.test(receiptActorId))) return null;
+  // The trusted actor is mandatory: no actor-free fallback exists.
   if (typeof actorId !== 'string' || !ACTOR_ID_RE.test(actorId)) return null;
   if (!Number.isSafeInteger(revision) || revision < 1) return null;
   if (!hashValid(digest)) return null;
-  return Object.freeze({ operationId, receiptActorId, actorId, revision, digest });
+  return Object.freeze({
+    operationId, embeddedPresent, receiptActorId: embeddedPresent ? receiptActorId : null,
+    actorId, revision, digest,
+  });
 }
 
 // Judge the frozen binding against the one validated snapshot. The
@@ -422,12 +449,18 @@ function snapshotReceiptBinding(input) {
 // history; the prefix digest reuses the contract digest unchanged.
 function receiptIncluded(doc, binding) {
   try {
-    if (binding.actorId !== binding.receiptActorId) return false;
     if (!doc || !Array.isArray(doc.operations)) return false;
     const recorded = doc.operations.find(entry => isRecord(entry)
       && entry.operationId === binding.operationId);
     if (!recorded) return false;
-    if (recorded.actorId !== binding.receiptActorId) return false;
+    // Actor continuity is judged against the separately trusted
+    // actor alone: it must be the recorded operation's actor. An
+    // embedded actor, when one was presented, must agree with the
+    // recorded operation too — a receipt naming another actor is
+    // not an authentic receipt for this operation — but agreement
+    // there never substitutes for the trusted actor's own match.
+    if (recorded.actorId !== binding.actorId) return false;
+    if (binding.embeddedPresent && recorded.actorId !== binding.receiptActorId) return false;
     if (recorded.revision !== binding.revision) return false;
     const prefixDigest = C.digest({
       schema: C.SCHEMA, householdId: doc.householdId, revision: binding.revision,

@@ -5,7 +5,9 @@
 // every document below is built through the real Phase 1 contract flow
 // and every receipt through the store's immutable-prefix receipt
 // definition restated over the contract digest (the same oracle the
-// loader suite uses).
+// loader suite uses) — five-field, or four-field with the embedded
+// actor dropped, matching the public projections the confirmation
+// controller and the store's outcome actually return.
 //
 // The receipt-bound capability is a private opt-in method on the
 // serving object, available only when the serving is constructed with
@@ -158,6 +160,47 @@ test('receipt-bound: a later retraction keeps the original receipt included', as
     await serving.receiptBoundPublication(receiptOf(doc1, op(1)), actorId));
   assert.deepEqual(evidence, C.effectiveEvidence(stateOf(docRetracted)));
   assert.deepEqual(evidence.commitments, []);
+});
+
+// --- Four-field public receipts through the seam -----------------------------
+// The public receipt projections (controller confirm / outcome, store
+// outcome) carry no embedded actor; the trusted actor presented
+// alongside is the authority, exactly as at the loader. Dropping the
+// oracle receipt's embedded actor reproduces that shape faithfully.
+const receipt4Of = (bytes, operationId) => {
+  const { actorId: _embedded, ...four } = receiptOf(bytes, operationId);
+  return four;
+};
+
+test('receipt-bound: a four-field public receipt is included through the serving', async () => {
+  const serving = servingOver(doc1);
+  const receipt = receipt4Of(doc1, op(1));
+  assert.deepEqual(Object.keys(receipt).sort(), ['digest', 'operationId', 'revision', 'status'],
+    'the public projection carries exactly four fields — no embedded actor');
+  assert.ok(!Object.hasOwn(receipt, 'actorId'),
+    'the embedded actor property is absent, not present-but-undefined');
+  const evidence = expectIncluded(await serving.receiptBoundPublication(receipt, actorId));
+  assert.deepEqual(evidence, C.effectiveEvidence(stateOf(doc1)));
+});
+
+test('receipt-bound: four-field refusals and present-embedded discipline mirror the loader', async () => {
+  const serving = servingOver(doc1);
+  const receipt = receipt4Of(doc1, op(1));
+  // A wrong trusted actor: the validated history does not carry the
+  // operation for this actor.
+  expectUnavailable(await serving.receiptBoundPublication(receipt, otherActor),
+    'receipt-not-included');
+  // A missing trusted actor is a malformed binding, never an
+  // actor-free fallback.
+  expectUnavailable(await serving.receiptBoundPublication(receipt, undefined), 'receipt-invalid');
+  const full = receiptOf(doc1, op(1));
+  // A present-but-undefined embedded actor is malformed, not absent.
+  expectUnavailable(await serving.receiptBoundPublication({ ...full, actorId: undefined }, actorId),
+    'receipt-invalid');
+  // A present embedded actor contradicting the recorded operation
+  // never includes, even with the correct trusted actor alongside.
+  expectUnavailable(await serving.receiptBoundPublication({ ...full, actorId: otherActor }, actorId),
+    'receipt-not-included');
 });
 
 // --- Non-inclusion through the seam ------------------------------------------
