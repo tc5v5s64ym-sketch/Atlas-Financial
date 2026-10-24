@@ -8292,7 +8292,7 @@ function renderPlan(d, periods, history) {
   // left the tile describing a simulation that was not the one it showed.
   const capQualifier = !diagnosticsVisible ? '' : !gap
     ? 'under the expected scenario'
-    : ifCovered?.applies
+    : ifCovered && ifCovered.applies
       ? `from ${fmtDateLong(advice.effectiveFrom)}, with only `
         + `${money(ifCovered.fundable)} of the ${money(ifCovered.gapAmount)} gap fundable. `
         + `Cover the whole gap and it becomes ${money(ifCovered.weekly)}/week`
@@ -8318,7 +8318,7 @@ function renderPlan(d, periods, history) {
               ? `${capQualifier}. Food and fuel come out of this first.`
               : `≈ ${money(capMonthly)} a month. Food and fuel come out of this first.` }
       : { lab: 'Weekly household cap', val: 'unavailable', tone: 'alert',
-          note: [capView.settingLine, capView.reason, ifCovered?.applies ? capQualifier : '']
+          note: [capView.settingLine, capView.reason, ifCovered && ifCovered.applies ? capQualifier : '']
             .filter(Boolean).join(' ') }),
     { lab: 'Essential variable need', val: planUnavailable || !cap
       ? 'unavailable'
@@ -8353,7 +8353,7 @@ function renderPlan(d, periods, history) {
       ? `<span class="cap-amt">${money(weekly)}</span><span class="cap-per">/ week</span>
        <span class="cap-qual">${capQualifier}</span>`
       : `<span class="cap-amt">unavailable</span>
-       <span class="cap-qual">${[capView.settingLine, capView.reason, ifCovered?.applies ? capQualifier : '']
+       <span class="cap-qual">${[capView.settingLine, capView.reason, ifCovered && ifCovered.applies ? capQualifier : '']
          .filter(Boolean).join(' ')}</span>`;
     // Every amount here arrives per week from the engine. The page adds the
     // dollar sign and the /wk label and divides nothing.
