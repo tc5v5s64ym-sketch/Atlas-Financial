@@ -30,6 +30,27 @@
 // contextual identity, undefined is a contract violation, and commit
 // outcomes carry exact settlement semantics. Each blocker has a named
 // regression test below.
+// The second head was BLOCKED again (source-only review): a ticket
+// copied and relabelled to another actor could spend the original
+// actor's reservation (the transport checked only the nonce); caller
+// inputs could be mutated during a suspended read, changing validated
+// values or retargeting the commit; and a seal answer naming a different
+// operation surfaced as already-sealed. Repairs: the transport binds the
+// reservation's own recorded identity (operation + actor + nonce)
+// atomically, caller inputs are snapshotted before any await, and seal
+// answers are bound to the requested operation in every branch.
+// AMENDED EXPECTATION (C3 disposition): admission over malformed or
+// unknown persistence is `unknown`, never an actionable ticket — a
+// read-integrity gate qualifies state before the atomic reservation,
+// which remains the fence.
+// AMENDED EXPECTATION (C7 disposition): the reservation-versus-seal
+// refusal is an intentional exclusion change from the original contract.
+// An abandoned or crashed reservation HOLDs its operation fail-closed;
+// this protocol provides no expiry, TTL, automatic retry or third-party
+// release, and never silently releases an unknown in-flight reservation.
+// A qualified recovery lifecycle for abandoned reservations needs a
+// wider dependency contract and is a KNOWN LIMIT of this foundation,
+// pinned behaviourally below (the hold) rather than hidden.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
@@ -111,6 +132,12 @@ function makeFence(state) {
     async commitReservation(operationId, nonce, record) {
       const held = state.reservations.get(operationId);
       if (!held || held.nonce !== nonce) return { committed: false, reason: 'reservation-lost' };
+      // The reservation's OWN recorded identity is authoritative — a
+      // caller-presented ticket relabelled to another actor, or a record
+      // naming another actor, cannot spend this reservation.
+      if (held.operationId !== operationId || held.actorId !== record.actorId) {
+        return { committed: false, reason: 'identity-mismatch' };
+      }
       if (state.seals.has(operationId)) return { committed: false, reason: 'sealed' };
       state.reservations.delete(operationId);
       state.committed.set(operationId, record);
@@ -346,11 +373,13 @@ test('undefined reads are contract violations, never absence (both boundaries)',
     const base = makeFence(state);
     let commitCalls = 0;
     let sealCalls = 0;
+    let reserveCalls = 0;
     const violating = createTerminalCertificateProtocol({
       fence: {
         ...base,
         async [boundary]() { return undefined; },
         async seal(...args) { sealCalls++; return base.seal(...args); },
+        async reserveAdmission(...args) { reserveCalls++; return base.reserveAdmission(...args); },
         async commitReservation(...args) { commitCalls++; return base.commitReservation(...args); },
       },
     });
@@ -359,6 +388,12 @@ test('undefined reads are contract violations, never absence (both boundaries)',
       UNKNOWN_FOR(operationId),
       `${boundary}: undefined must not read as an empty surface`,
     );
+    assert.deepEqual(
+      await violating.beginAdmission(operationId, actorB),
+      UNKNOWN_FOR(operationId),
+      `${boundary}: admission over unqualified persistence is unknown, never an actionable ticket (C3)`,
+    );
+    assert.equal(reserveCalls, 0, `${boundary}: no reservation is attempted over a violated read`);
     assert.deepEqual(await violating.admissionState(operationId), UNKNOWN_FOR(operationId), boundary);
     assert.deepEqual(await violating.sealNegative(claimFor(operationId)), UNKNOWN_FOR(operationId), boundary);
     assert.equal(sealCalls, 0, `${boundary}: no seal transition over a violated read`);
@@ -585,6 +620,157 @@ test('competing admissions: exactly one reservation wins; release frees the oper
     { status: 'refused', operationId, reason: 'reservation-lost' },
     'a consumed or released reservation cannot be released twice',
   );
+});
+
+test('a relabelled ticket cannot spend another actor\u2019s reservation (actor-relabelling repair)', async () => {
+  const state = makeTransportState();
+  const protocol = makeProtocol(state);
+  const operationId = op(31);
+  const begun = await protocol.beginAdmission(operationId, actorA);
+  assert.equal(begun.status, 'admitted');
+  // Copy A's issued ticket, relabel the actor to B, and supply B's own
+  // committed record: every caller-presented claim is consistent, so only
+  // the transport's recorded reservation identity can refuse it — and it
+  // must, because the reservation belongs to A.
+  const relabelled = { ...begun.ticket, actorId: actorB };
+  assert.deepEqual(
+    await protocol.commitAdmission(relabelled, committedRecordFor(operationId, actorB)),
+    { status: 'refused', operationId, reason: 'identity-mismatch' },
+  );
+  assert.equal(state.committed.size, 0, 'nothing landed under the relabelled ticket');
+  // The refusal does not consume A's reservation: A's own commit, with
+  // A's own record, still lands.
+  const committed = await protocol.commitAdmission(begun.ticket, committedRecordFor(operationId, actorA));
+  assert.equal(committed.status, 'committed');
+  assert.deepEqual(state.committed.get(operationId), committedRecordFor(operationId, actorA));
+});
+
+test('caller inputs are snapshotted before any await (mutation-across-await repair)', async () => {
+  // (a) Mutating the outcome during the suspended integrity read —
+  // changing a validated revision and adding a forbidden field — changes
+  // nothing: the persisted record is exactly the validated snapshot.
+  const state = makeTransportState();
+  const base = makeFence(state);
+  const operationId = op(32);
+  const outcome = committedRecordFor(operationId, actorA);
+  let armed = false;
+  const mutating = createTerminalCertificateProtocol({
+    fence: {
+      ...base,
+      async readCommitted(id) {
+        const value = await base.readCommitted(id);
+        if (armed) {
+          outcome.revision = 999;
+          outcome.smuggled = 'forbidden-field';
+        }
+        return value;
+      },
+    },
+  });
+  const begun = await mutating.beginAdmission(operationId, actorA);
+  assert.equal(begun.status, 'admitted');
+  armed = true; // the attack lands during commitAdmission's suspended read
+  const committed = await mutating.commitAdmission(begun.ticket, outcome);
+  assert.equal(committed.status, 'committed');
+  assert.deepEqual(
+    state.committed.get(operationId),
+    committedRecordFor(operationId, actorA),
+    'the stored record is the validated snapshot — revision unchanged, no smuggled field persisted',
+  );
+  assert.deepEqual(
+    Object.keys(state.committed.get(operationId)).sort(),
+    ['actorId', 'documentDigest', 'operationId', 'revision', 'status'],
+  );
+
+  // (b) Retargeting the ticket during the suspended read — pointing it
+  // at a second live reservation — cannot move the commit: dispatch uses
+  // the snapshot, so the commit lands on the ORIGINAL operation only,
+  // and the second reservation is untouched and still usable.
+  const state2 = makeTransportState();
+  const base2 = makeFence(state2);
+  const op1 = op(33);
+  const op2 = op(34);
+  const setup = createTerminalCertificateProtocol({ fence: base2 });
+  const begun1 = await setup.beginAdmission(op1, actorA);
+  const begun2 = await setup.beginAdmission(op2, actorA);
+  assert.equal(begun1.status, 'admitted');
+  assert.equal(begun2.status, 'admitted');
+  const mutableTicket = { ...begun1.ticket };
+  const retargeting = createTerminalCertificateProtocol({
+    fence: {
+      ...base2,
+      async readSeal(id) {
+        const value = await base2.readSeal(id);
+        mutableTicket.operationId = op2;
+        mutableTicket.nonce = begun2.ticket.nonce;
+        return value;
+      },
+    },
+  });
+  const landed = await retargeting.commitAdmission(mutableTicket, committedRecordFor(op1, actorA));
+  assert.equal(landed.status, 'committed');
+  assert.equal(landed.operationId, op1, 'the commit is reported for the snapshotted operation');
+  assert.deepEqual(state2.committed.get(op1), committedRecordFor(op1, actorA));
+  assert.equal(state2.committed.has(op2), false, 'nothing landed on the retargeted operation');
+  const second = await setup.commitAdmission(begun2.ticket, committedRecordFor(op2, actorA));
+  assert.equal(second.status, 'committed', 'the second reservation was never spent or disturbed');
+});
+
+test('a seal answer naming a different operation is unknown, never already-sealed (context-hole repair)', async () => {
+  const opA = op(35);
+  const opB = op(36);
+  const recordA = { schema: TERMINAL_CERTIFICATE_SCHEMA, ...claimFor(opA) };
+  for (const answer of [
+    { sealed: false, existing: recordA },
+    { sealed: true, record: recordA },
+  ]) {
+    const state = makeTransportState();
+    const base = makeFence(state);
+    const protocol = createTerminalCertificateProtocol({
+      fence: { ...base, async seal() { return answer; } },
+    });
+    assert.deepEqual(
+      await protocol.sealNegative(claimFor(opB)),
+      UNKNOWN_FOR(opB),
+      'contextual identity binds in EVERY seal branch — a valid record for A is not a decision about B',
+    );
+    assert.equal(state.seals.size, 0);
+  }
+});
+
+test('an abandoned reservation holds the operation fail-closed (intentional C7 hold)', async () => {
+  const state = makeTransportState();
+  const p1 = makeProtocol(state);
+  const p2 = makeProtocol(state);
+  const operationId = op(37);
+  const begun = await p1.beginAdmission(operationId, actorA);
+  assert.equal(begun.status, 'admitted');
+  // The holder never commits or releases (crash/abandonment). The hold
+  // is fail-closed and indefinite WITHIN this protocol: no expiry, no
+  // third-party release, no silent takeover — by design (C7). A
+  // qualified recovery lifecycle needs a wider contract and is a known
+  // limit of this foundation, not a behaviour hidden here.
+  assert.deepEqual(
+    await p2.sealNegative(claimFor(operationId)),
+    { status: 'refused', operationId, reason: 'admission-reserved' },
+  );
+  assert.deepEqual(
+    await p2.beginAdmission(operationId, actorB),
+    { status: 'refused', operationId, reason: 'operation-reserved' },
+  );
+  assert.deepEqual(
+    await p2.releaseAdmission({ operationId, actorId: actorB, nonce: 'not-the-holders-nonce' }),
+    { status: 'refused', operationId, reason: 'reservation-lost' },
+    'nobody but the reservation holder can release the hold',
+  );
+  assert.deepEqual(
+    await p2.sealNegative(claimFor(operationId)),
+    { status: 'refused', operationId, reason: 'admission-reserved' },
+    'the hold persists after the failed takeover attempts',
+  );
+  // Only the holder's own release ends the hold.
+  assert.deepEqual(await p1.releaseAdmission(begun.ticket), { status: 'released', operationId });
+  assert.equal((await p2.sealNegative(claimFor(operationId))).status, 'certified');
 });
 
 test('only a validated committed outcome surfaces as committed (false-committed repair)', async () => {

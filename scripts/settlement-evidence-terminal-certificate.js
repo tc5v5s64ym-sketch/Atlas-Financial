@@ -44,10 +44,16 @@
 //   transport, and a reservation attempted after a seal is refused too —
 //   the two tracks exclude each other atomically, not by re-reading.
 // - `commitReservation(operationId, nonce, committedRecord)` atomically
-//   lands the commit iff the caller still holds the live reservation
-//   (nonce match) and no seal exists: it consumes the reservation, stores
-//   the committed record and returns `{committed:true, operationId}`;
-//   otherwise `{committed:false, reason}` with reason `'sealed'` or
+//   lands the commit iff the caller still holds the live reservation and
+//   no seal exists. The RESERVATION'S OWN RECORDED IDENTITY is
+//   authoritative for that check — operation, actor and nonce as stored
+//   by `reserveAdmission`, never the caller-presented ticket's claims:
+//   a ticket copied and relabelled to another actor must not spend the
+//   original actor's reservation. On an identity mismatch it returns
+//   `{committed:false, reason:'identity-mismatch'}`; on success it
+//   consumes the reservation, stores the committed record and returns
+//   `{committed:true, operationId}`; other failures return
+//   `{committed:false, reason}` with reason `'sealed'` or
 //   `'reservation-lost'`. The commit landing is this transport transition
 //   — the protocol deliberately accepts NO caller callback that performs
 //   a write elsewhere, because a write outside the transport cannot be
@@ -88,6 +94,29 @@
 //   actor may surface as `committed`. A supplied `unknown` propagates as
 //   `unknown`; any other supplied outcome propagates as a refusal.
 //   Promise resolution alone is never commitment.
+// - Admission is never labelled usable over unqualified persistence:
+//   when the stored state is malformed, unreadable or divergent,
+//   admission resolves to `unknown` and no actionable ticket is issued.
+//   A read-integrity gate qualifies the state first; the atomic
+//   reservation remains the fence that decides exclusion.
+// - Caller-owned inputs are snapshotted and validated BEFORE any await,
+//   and dispatch uses only the owned snapshot values: ticket and outcome
+//   objects are flat, so the snapshot is a frozen shallow copy taken at
+//   entry. Mutating the caller's objects during a suspended read cannot
+//   alter a validated revision, smuggle in a field, or retarget a commit
+//   to another reservation.
+// - KNOWN LIMIT — abandoned reservations (intentional, fail-closed): the
+//   reservation-versus-seal refusal is an intentional exclusion. An
+//   admission reservation whose holder crashes or abandons it HOLDs its
+//   operation: seals are refused (`admission-reserved`) and further
+//   admissions are refused (`operation-reserved`) until the holder
+//   itself releases or commits. This protocol deliberately provides NO
+//   expiry, TTL, automatic retry, or third-party release, and it must
+//   never silently expire or release an unknown in-flight reservation.
+//   A qualified recovery lifecycle for abandoned reservations —
+//   operator identity, authorisation scope, audit record — requires a
+//   WIDER dependency contract than this foundation defines and is NOT
+//   provided here; that gap is a stated limit, not a hidden behaviour.
 // - The recovery read is actor-private (any other actor receives
 //   `unknown`) and generation-exact when a generation is supplied, and
 //   returns exactly the three-field recovery shape
@@ -294,6 +323,10 @@ function createTerminalCertificateProtocol(dependencies) {
       return unknown(operationId);
     } else {
       if (!isCertificateRecord(outcome.existing)) return unknown(operationId);
+      // Contextual binding in EVERY branch: an answer naming a different
+      // operation is divergent persistence, never a decision about this
+      // one — it must not surface as already-sealed here.
+      if (outcome.existing.operationId !== record.operationId) return unknown(operationId);
       if (!isSameDecision(outcome.existing, record)) {
         return { status: 'refused', operationId: record.operationId, reason: 'already-sealed' };
       }
@@ -349,6 +382,13 @@ function createTerminalCertificateProtocol(dependencies) {
     if (!OPERATION_ID_PATTERN.test(operationId) || !ACTOR_ID_PATTERN.test(actorId)) {
       return unknown(operationId);
     }
+    // Admission is never labelled usable over unqualified persistence:
+    // divergent reads resolve to unknown and no ticket is issued. This
+    // gate qualifies state only — the fence below remains the atomic
+    // reservation that decides exclusion, so the gate reintroduces no
+    // read-then-act race.
+    const gate = await readTerminalState(operationId);
+    if (!gate.ok) return unknown(operationId);
     // Admission is the atomic reservation itself, never a state read: the
     // transport decides, in one transition, whether this admission holds
     // the operation against every seal, commit and competing admission.
@@ -374,7 +414,10 @@ function createTerminalCertificateProtocol(dependencies) {
     return unknown(operationId);
   }
 
-  async function releaseAdmission(ticket) {
+  async function releaseAdmission(ticketInput) {
+    // Snapshot the caller-owned input before any await; only the owned
+    // snapshot is validated and dispatched on.
+    const ticket = isPlainObject(ticketInput) ? Object.freeze({ ...ticketInput }) : ticketInput;
     const operationId = isPlainObject(ticket) ? ticket.operationId : undefined;
     if (!connected || !isValidTicket(ticket)) return unknown(operationId);
     let outcome;
@@ -390,7 +433,17 @@ function createTerminalCertificateProtocol(dependencies) {
     return { status: 'refused', operationId: ticket.operationId, reason: 'reservation-lost' };
   }
 
-  async function commitAdmission(ticket, committedOutcome) {
+  async function commitAdmission(ticketInput, outcomeInput) {
+    // Snapshot BOTH caller-owned inputs before any await and validate /
+    // dispatch only on the owned snapshots: both shapes are flat, so a
+    // frozen shallow copy is the whole value. Mutating the caller's
+    // objects during the suspended integrity read below cannot change a
+    // validated field, smuggle in a new one, or retarget this commit to
+    // another operation or reservation.
+    const ticket = isPlainObject(ticketInput) ? Object.freeze({ ...ticketInput }) : ticketInput;
+    const committedOutcome = isPlainObject(outcomeInput)
+      ? Object.freeze({ ...outcomeInput })
+      : outcomeInput;
     const operationId = isPlainObject(ticket) ? ticket.operationId : undefined;
     if (!connected || !isValidTicket(ticket)) return unknown(operationId);
     // Exact settlement semantics for the supplied outcome, decided before
@@ -441,6 +494,13 @@ function createTerminalCertificateProtocol(dependencies) {
     }
     if (outcome.reason === 'reservation-lost') {
       return { status: 'refused', operationId: ticket.operationId, reason: 'reservation-lost' };
+    }
+    if (outcome.reason === 'identity-mismatch') {
+      // The transport's recorded reservation identity is authoritative:
+      // the presented ticket was copied/relabelled, or the record names
+      // another actor. The reservation itself is NOT consumed by this
+      // refusal — its real holder can still land or release it.
+      return { status: 'refused', operationId: ticket.operationId, reason: 'identity-mismatch' };
     }
     return unknown(ticket.operationId);
   }
