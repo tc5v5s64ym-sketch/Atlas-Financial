@@ -100,26 +100,26 @@ async function startWorld(active = true, options = {}) {
       if (w.hooks.pin) await w.hooks.pin();
       return pinStore.read();
     } };
-  // Explicit synthetic COMPLETE base source. It uses the incumbent ordinary
-  // read seam over these same durable-memory readers. The application does not
-  // opt ordinary /data.json, Talk or assistant into settlement as a side effect
-  // of mounting assignment routes; real production base composition stays gated.
-  const syntheticBaseServing = require('../scripts/settlement-evidence-serving')
-    .createSettlementEvidenceServing({ householdId,
-      readDocument: w.dependency.readDocument, readPin: w.dependency.readPin });
+  // RAW synthetic complete base only. The actual application constructor must
+  // compose authorized ordinary browser settlement reads; this fixture must
+  // never attach settlement evidence on its behalf.
+  const constructionEnv = { ...env, ...options.env };
   let mode = options.preactivationOnly ? 'preactivation-only' : active ? 'active' : 'disabled';
   w.recreate = (next = mode) => {
     assert.ok(['active', 'disabled', 'preactivation-only'].includes(next)); mode = next;
     const enabled = mode === 'active';
     const construct = mode === 'preactivation-only' ? createPreactivationApplication : createApplication;
-    const app = construct({ env, baseSource: async () => enabled ? syntheticBaseServing.attach(w.base) : w.base,
+    const app = construct({ env: constructionEnv, baseSource: async () => {
+      if (w.hooks.rawBase) await w.hooks.rawBase();
+      return w.base;
+    },
       ...(enabled ? { settlement: w.dependency } : {}) });
     server.removeAllListeners('request'); server.on('request', app); w.app = app;
   };
   w.recreate();
   w.login = async () => {
     const response = await fetch(w.origin + '/login', { method: 'POST', redirect: 'manual',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ password: env.SITE_PASSWORD }) });
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ password: constructionEnv.SITE_PASSWORD }) });
     assert.equal(response.status, 302);
     assert.match(response.headers.get('set-cookie'), /HttpOnly; SameSite=Lax/);
     return response.headers.get('set-cookie').split(';')[0];
@@ -165,6 +165,106 @@ if (require.main === module) {
     operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true, ...overrides });
   const negative = p => ({ status: 'not-applied', operationId: p.operationId,
     previewToken: p.previewToken, generation: p.generation });
+  const ordinary = (w, cookie = w.cookie) => fetch(w.origin + '/data.json', { headers: { Cookie: cookie } });
+  const costFacts = data => {
+    const row = Forecast.savingsInventory(data.plan, data.meta.asOf,
+      { settlementEvidence: data.settlementEvidence }).pools[0].plannedGoals[0];
+    return { original: row.target, paid: row.linkedPaid, remaining: row.remaining };
+  };
+  test('raw constructor ordinary browser reads retain assignment withdrawal and separate relink', async t => {
+    const w = await startWorld(); t.after(w.close);
+    assert.equal(w.base.settlementEvidenceStatus, undefined, 'fixture base is raw');
+    const p = await w.prepare(), receipt = await w.confirm(p);
+    assert.equal((await w.post('publication', { operationId: p.operationId })).publication, 'included');
+    let response = await ordinary(w); assert.equal(response.status, 200);
+    let data = await response.json();
+    assert.equal(data.settlementEvidenceStatus?.status, 'qualified');
+    assert.deepEqual(costFacts(data), { original: 60, paid: 25, remaining: 35 }); assert.equal(w.calls.commit, 1);
+    assert.equal((await ordinary(w)).headers.get('cache-control'), 'no-store, max-age=0', 'incumbent browser cache policy is preserved');
+    assert.equal((await w.confirm(await withdrawal(w))).status, 'committed');
+    data = await (await ordinary(w)).json();
+    assert.deepEqual(costFacts(data), { original: 60, paid: 0, remaining: 60 }); assert.equal(w.calls.commit, 2);
+    assert.equal((await w.confirm(await w.prepare(12))).status, 'committed');
+    data = await (await ordinary(w)).json();
+    assert.deepEqual(costFacts(data), { original: 60, paid: 25, remaining: 35 }); assert.equal(w.calls.commit, 3);
+    assert.deepEqual(await w.post('outcome', { operationId: p.operationId }), receipt);
+    assert.deepEqual(JSON.parse(w.durable.doc).operations.map(o => o.command.kind), ['link', 'retract', 'link']);
+  });
+  test('ordinary browser reader failure withholds stale evidence and recovers without writing', async t => {
+    const w = await startWorld(); t.after(w.close); await w.confirm(await w.prepare());
+    const before = Buffer.from(w.durable.doc), pin = JSON.stringify(w.durable.pin);
+    w.base.settlementEvidence = { hostile: true }; w.base.settlementEvidenceStatus = { status: 'qualified' };
+    w.readFailure = true;
+    const response = await ordinary(w); assert.equal(response.status, 200);
+    const unavailable = await response.json();
+    assert.equal(unavailable.settlementEvidenceStatus.status, 'unavailable');
+    assert.equal(unavailable.settlementEvidence, undefined); assert.ok(!JSON.stringify(unavailable).includes('SYNTHETIC-PRIVATE'));
+    w.readFailure = false;
+    const recovered = await (await ordinary(w)).json(); assert.equal(recovered.settlementEvidenceStatus.status, 'qualified');
+    assert.deepEqual(costFacts(recovered), { original: 60, paid: 25, remaining: 35 });
+    const label = w.base.plan.commitments[0].label;
+    w.hooks.document = async () => { w.base.plan.commitments[0].label = 'Changed during storage acquisition'; };
+    assert.equal((await (await ordinary(w)).json()).plan.commitments[0].label, label, 'complete base owned before storage awaits');
+    assert.ok(w.durable.doc.equals(before)); assert.equal(JSON.stringify(w.durable.pin), pin); assert.equal(w.calls.commit, 1);
+  });
+  test('ordinary browser policy authorizes before base/storage acquisition and rechecks after read', async t => {
+    const w = await startWorld(); t.after(w.close); await w.confirm(await w.prepare());
+    let bases = 0; w.hooks.rawBase = async () => { bases++; };
+    const reads = w.calls.storage; w.authorized = false;
+    let response = await ordinary(w); assert.equal(response.status, 503);
+    assert.equal(bases, 0); assert.equal(w.calls.storage, reads); assert.deepEqual(await response.json(), { error: 'data unavailable' });
+    w.authorized = true; w.hooks.document = async () => { w.authorized = false; };
+    response = await ordinary(w); assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: 'data unavailable' }); assert.equal(w.calls.commit, 1);
+    w.authorized = true; delete w.hooks.document;
+    w.hooks.rawBase = async () => { w.authorized = false; };
+    const beforeStorage = w.calls.storage;
+    response = await ordinary(w); assert.equal(response.status, 503);
+    assert.equal(w.calls.storage, beforeStorage, 'revocation during base read prevents settlement acquisition');
+  });
+  test('ordinary browser rejects legacy/tampered/expired authority and expiry during acquisition', async t => {
+    const w = await startWorld(); t.after(w.close); await w.confirm(await w.prepare());
+    const signed = payload => { const b = Buffer.from(JSON.stringify(payload)).toString('base64url');
+      return 'hfd_session=' + b + '.' + crypto.createHmac('sha256', env.SESSION_SECRET).update(b).digest('base64url'); };
+    const reads = w.calls.storage;
+    for (const cookie of ['', w.cookie + 'tampered', signed({ exp: Date.now() + 60000 }),
+      signed({ exp: Date.now() - 1, sid: '1'.repeat(64) })]) assert.equal((await ordinary(w, cookie)).status, 401);
+    assert.equal(w.calls.storage, reads);
+    const actualNow = Date.now, expiresAt = actualNow() + 60000; t.after(() => { Date.now = actualNow; });
+    w.hooks.document = async () => { Date.now = () => expiresAt + 1; };
+    const response = await ordinary(w, signed({ exp: expiresAt, sid: '1'.repeat(64) }));
+    assert.equal(response.status, 401); assert.deepEqual(await response.json(), { error: 'not authenticated' });
+  });
+  test('ordinary browser household projection is cross-login but private receipt remains actor-bound', async t => {
+    const w = await startWorld(); t.after(w.close); const p = await w.prepare(), receipt = await w.confirm(p);
+    const originalActor = JSON.parse(w.durable.doc).operations[0].actorId; w.cookie = await w.login();
+    const data = await (await ordinary(w)).json(); assert.equal(data.settlementEvidenceStatus?.status, 'qualified');
+    assert.deepEqual(costFacts(data), { original: 60, paid: 25, remaining: 35 });
+    assert.ok(!JSON.stringify(data).includes(originalActor)); assert.ok(!JSON.stringify(data).includes(receipt.digest));
+    assert.equal(data.receipt, undefined); assert.equal((await w.post('outcome', { operationId: p.operationId })).status, 'unknown');
+    assert.equal(w.calls.commit, 1);
+  });
+  test('ordinary browser compositions isolate two active reader sets and an inactive application', async t => {
+    const a = await startWorld(), b = await startWorld(), inactive = await startWorld(false);
+    t.after(async () => { await a.close(); await b.close(); await inactive.close(); });
+    await a.confirm(await a.prepare());
+    assert.deepEqual(costFacts(await (await ordinary(a)).json()), { original: 60, paid: 25, remaining: 35 });
+    const reads = a.calls.storage;
+    assert.deepEqual(costFacts(await (await ordinary(b)).json()), { original: 60, paid: 0, remaining: 60 });
+    assert.equal(a.calls.storage, reads); assert.equal(b.calls.commit, 0);
+    assert.deepEqual(await (await ordinary(inactive)).json(), inactive.base); assert.equal(inactive.calls.storage, 0);
+  });
+  test('ordinary browser opt-in leaves assistant MCP and Talk off settlement readers', async t => {
+    const bearer = syntheticCredential('assistant'); const w = await startWorld(true, { env: { ATLAS_ASSISTANT_TOKEN: bearer } }); t.after(w.close);
+    const receipt = await w.confirm(await w.prepare()); const reads = w.calls.storage;
+    const assistant = await fetch(w.origin + '/assistant/current', { headers: { Authorization: 'Bearer ' + bearer } });
+    assert.equal(assistant.status, 200); assert.ok(!JSON.stringify(await assistant.json()).includes(receipt.digest));
+    const talk = await fetch(w.origin + '/talk/context', { headers: { Cookie: w.cookie } }); assert.equal(talk.status, 200); await talk.json();
+    const mcp = await fetch(w.origin + '/assistant/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: w.cookie },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }) });
+    assert.ok([401, 503].includes(mcp.status)); assert.equal(w.calls.storage, reads, 'only browser data may opt into these readers');
+    assert.equal(w.calls.commit, 1);
+  });
   test('terminal proof: real store expiry after final controller check is prejournal no-effect', async t => {
     let clock = Date.now(); const w = await startWorld(true, { now: () => clock }); t.after(w.close);
     const p = await w.prepare(); clock = p.expiresAt - 1;

@@ -151,6 +151,36 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
   router.use((_req, res) => res.status(404).json({ status: 'unavailable' }));
   router.use((_err, _req, res, _next) => res.status(400).json({ status: 'invalid-request' }));
   app.use('/settlement', router);
+  // Private application-local capability, used only by the browser data route.
+  // It reuses this composition's policy/readers without opting the shared
+  // assistant/MCP/Talk acquisition path into household settlement publication.
+  return Object.freeze({
+    active,
+    async browserData(req, readBrowserBase, publish) {
+      if (!active) return publish(await readBrowserBase());
+      const actorId = sessionActor(req), context = Object.freeze({ actorId });
+      const refuse = (status = 503) => {
+        const error = new Error('settlement browser unavailable');
+        error.code = 'settlement-browser-unavailable'; error.status = status; throw error;
+      };
+      const reauthorize = async (after = () => {}) => {
+        if (!actorId || sessionActor(req) !== actorId) refuse(401);
+        try { await authorize(context); } catch { refuse(); }
+        if (sessionActor(req) !== actorId) refuse(401);
+        return after();
+      };
+      await reauthorize(); // Before raw-base or settlement acquisition.
+      const base = await readBrowserBase();
+      await reauthorize(); // Base acquisition may have suspended/revoked access.
+      // Own the complete base before reader awaits. The existing serving seam
+      // strips old settlement fields and withholds failed reads, never falls
+      // back to stale/unconfigured evidence, and never reads private receipts.
+      const data = await serving.attach(structuredClone(base));
+      // Publish synchronously in the final authority continuation: no extra
+      // await/microtask boundary may separate the identity check and response.
+      return reauthorize(() => publish(data));
+    },
+  });
 }
 
 module.exports = { mountSettlementHttp };

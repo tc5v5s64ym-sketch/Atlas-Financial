@@ -283,6 +283,66 @@ function rendererReversalEvidence(withReversal) {
       assert.equal(requests.filter(request => request.path === '/settlement/confirm').length, 0);
       assert.equal(w.calls.storage, 0); fixture.details = { traffic, retainedDispatched: true };
     }, false, 390, { preactivationOnly: true });
+    for (const width of [390, 1440]) {
+      await run('raw constructor ordinary reload preserves assignment withdrawal and separate relink ' + width, async (w, fixture) => {
+        const { page, requests } = fixture;
+        assert.equal(w.base.settlementEvidenceStatus, undefined, 'raw base has no fixture attachment');
+        const reload = async expected => {
+          assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), null);
+          const recoveryPosts = requests.filter(r => ['/settlement/outcome', '/settlement/publication'].includes(r.path)).length;
+          await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+          const status = await page.evaluate(() => App.data.settlementEvidenceStatus?.status || 'absent');
+          fixture.details = { synthetic: true, ordinaryStatus: status, commits: w.calls.commit, rawBase: true };
+          assert.equal(status, 'qualified'); assert.deepEqual(await facts(page), expected);
+          assert.equal(requests.filter(r => ['/settlement/outcome', '/settlement/publication'].includes(r.path)).length, recoveryPosts,
+            'ordinary reload does not recover an old receipt');
+        };
+        await complete(page, await preview(page));
+        await reload({ original: 60, paid: 25, remaining: 35 }); assert.equal(w.calls.commit, 1);
+        await completeWithdrawal(page, await withdrawalPreview(page));
+        await reload({ original: 60, paid: 0, remaining: 60 }); assert.equal(w.calls.commit, 2);
+        await complete(page, await preview(page));
+        await reload({ original: 60, paid: 25, remaining: 35 }); assert.equal(w.calls.commit, 3);
+      }, true, width);
+    }
+    await run('ordinary read failure withholds stale browser figures then recovers without a write', async (w, { page }) => {
+      await complete(page, await preview(page));
+      w.base.settlementEvidence = { hostile: true }; w.base.settlementEvidenceStatus = { status: 'qualified' }; w.readFailure = true;
+      await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+      assert.equal(await page.evaluate(() => App.data.settlementEvidenceStatus.status), 'unavailable');
+      assert.equal(await page.evaluate(() => App.data.settlementEvidence), undefined);
+      await page.locator('[data-settlement-evidence="unavailable"][data-settlement-reason="pin-unavailable"]:visible').first().waitFor();
+      assert.equal(await page.locator('[data-budget-savings-goals]').count(), 0,
+        'the incumbent renderer withholds the dependent Savings panel');
+      assert.doesNotMatch(await page.locator('body').innerText(), /\$25(?:\.00)?\b|\$35(?:\.00)?\b/);
+      assert.equal(await page.evaluate(() => window.__settlementOnce), 1, 'complete withheld base initializes consumers once');
+      assert.equal(w.calls.commit, 1); w.readFailure = false;
+      await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified');
+      assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 }); assert.equal(w.calls.commit, 1);
+    });
+    await run('ordinary policy refusal never installs browser DATA or once-hooks', async (w, { page }) => {
+      await complete(page, await preview(page)); const reads = w.calls.storage; w.authorized = false;
+      await page.reload(); await page.getByText('Current data could not be loaded. Figures remain unavailable.', { exact: false }).waitFor();
+      assert.equal(await page.evaluate(() => App.data), null); assert.equal(await page.evaluate(() => window.__settlementOnce || 0), 0);
+      assert.equal(w.calls.storage, reads); assert.equal(w.calls.commit, 1); w.authorized = true;
+      await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified');
+      assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 }); assert.equal(w.calls.commit, 1);
+    });
+    await run('ordinary cross-login browser projection does not recover another login receipt', async (w, { page, context, requests }) => {
+      await complete(page, await preview(page)); const original = JSON.parse(w.durable.doc).operations[0];
+      const receipt = await w.store.outcome({ actorId: original.actorId, operationId: original.operationId });
+      const posts = requests.filter(r => ['/settlement/outcome', '/settlement/publication'].includes(r.path)).length;
+      await context.clearCookies(); await page.goto(w.origin + '/login');
+      await page.getByLabel('Password', { exact: true }).fill(env.SITE_PASSWORD);
+      await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+      await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+      assert.equal(await page.evaluate(() => App.data.settlementEvidenceStatus?.status), 'qualified');
+      assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 });
+      const data = await page.evaluate(() => JSON.stringify(App.data));
+      assert.ok(!data.includes(receipt.digest) && !data.includes(original.actorId));
+      assert.equal(requests.filter(r => ['/settlement/outcome', '/settlement/publication'].includes(r.path)).length, posts);
+      assert.equal(w.calls.commit, 1);
+    });
     await run('real Savings sheet preview, confirm, full reload and independent 60/25/35', async (w, { page, requests }) => {
       const dialog = await preview(page); assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
       // The sheet moves the original source, including this live form.
