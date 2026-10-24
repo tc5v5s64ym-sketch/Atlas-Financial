@@ -5,7 +5,9 @@
 // The adapter runs real parameterized SQL through an injected dedicated
 // session client. Here that client is an in-process, SQL-interpreting
 // FAKE over in-memory tables with scripted faults (rejection, session
-// end, lost COMMIT acknowledgement landed/absent, backend pid swap). It
+// end, lost COMMIT acknowledgement landed/absent, backend pid swap,
+// scripted result envelopes; results carry node-postgres-style command
+// tags). It
 // is NOT PostgreSQL: nothing here qualifies real SQL semantics, real
 // durability, TLS, real advisory locking, pooling, or any provider.
 // Pin and backup stay separately injected: the UNCHANGED object adapter
@@ -101,7 +103,9 @@ function createFakePg() {
   }
   const rowsOf = row => (row === undefined ? [] : row.__dupe ? [row, row] : [row]);
   function dispatch(c, text, v) {
-    const ok = (rows = [], rowCount = rows.length) => ({ rows, rowCount });
+    // Command tags model node-postgres result.command (completion tag verb).
+    const tag = /^WITH\b/.test(text) ? 'INSERT' : text.split(' ')[0];
+    const ok = (rows = [], rowCount = rows.length) => ({ command: tag, rows, rowCount });
     if (text === 'BEGIN') { assert.ok(!c.inTxn); c.inTxn = true; c.pending = []; c.txnOp = null; return ok(); }
     if (text === 'COMMIT') { assert.ok(c.inTxn); for (const fn of c.pending) fn(); c.pending = []; c.inTxn = false; return ok(); }
     if (text === 'ROLLBACK') { c.pending = []; c.inTxn = false; return ok(); }
@@ -617,4 +621,98 @@ test('review conditions: deliberate suspension during transaction and unlock awa
   { const b = await booted(); const o = fresh(b); let inner;
     await b.adapter.lock.withLock(async () => { inner = await throws(() => o.adapter.lock.withLock(async () => 1)); });
     assert.ok(inner); eq(o.client.retired, 0); eq(await o.adapter.lock.withLock(async () => 3), 3); }
+});
+
+// --- Systems BLOCK repairs (813dbfc4) -------------------------------------
+// Replace the resolved envelope of the first matching statement (the fake
+// still executes it, so effects may land) with a scripted envelope.
+function envelope(b, match, env) {
+  const orig = b.client.query; let used = false;
+  b.client.query = async (t, v) => {
+    const r = await orig(t, v);
+    if (!used && match(t)) { used = true; return typeof env === 'function' ? env(r) : env; }
+    return r;
+  };
+}
+const MALFORMED = [undefined, null, {}, { rows: 'x' }, 42];
+
+test('P1 malformed resolved envelopes at BEGIN, mutation, COMMIT, ROLLBACK and unlock retire that exact session', async () => {
+  const stages = {
+    BEGIN: t => t === 'BEGIN',
+    mutation: t => /INTO "[a-z_]+"\.journal/.test(t),
+    COMMIT: t => t === 'COMMIT',
+  };
+  for (const [stage, match] of Object.entries(stages)) {
+    for (const env of MALFORMED) {
+      const b = await booted(); const n = b.pg.clients.length; envelope(b, match, env); let r;
+      await b.adapter.lock.withLock(async () => { r = await throws(() => b.adapter.journalStore.write({ v: 1 })); }).catch(() => {});
+      assert.ok(r, stage + ' throws'); eq(b.client.retired, 1, stage + ' retired ' + JSON.stringify(env));
+      eq(b.pg.clients.length, n, 'no substitute session');
+      const q0 = b.client.queries; assert.ok(await throws(() => b.adapter.documentStore.read())); eq(b.client.queries, q0);
+      if (stage !== 'COMMIT') assert.ok(!b.pg.t().journal.has(SCOPE), stage + ': nothing durable');
+    }
+  }
+  // ROLLBACK: a definite refusal (nothing staged) whose ROLLBACK envelope is malformed.
+  for (const env of MALFORMED) {
+    const b = await booted(); envelope(b, t => t === 'ROLLBACK', env); let r;
+    await b.adapter.lock.withLock(async () => { r = await throws(() => b.adapter.documentStore.commitTemp()); }).catch(() => {});
+    assert.ok(r); eq(b.client.retired, 1, 'ROLLBACK retired ' + JSON.stringify(env));
+    assert.ok(await throws(() => b.adapter.documentStore.read()));
+  }
+  // unlock: malformed envelopes (not merely a false/malformed row) retire.
+  for (const env of MALFORMED) {
+    const b = await booted(); envelope(b, t => /pg_advisory_unlock/.test(t), env);
+    await b.adapter.lock.withLock(async () => 1).catch(() => {});
+    eq(b.client.retired, 1, 'unlock retired ' + JSON.stringify(env));
+    assert.ok(await throws(() => b.adapter.lock.withLock(async () => 1)));
+  }
+  // Mid-transaction failure: no COMMIT is dispatched and the open transaction is never reused.
+  { const b = await booted(); envelope(b, t => /INTO "[a-z_]+"\.journal/.test(t), {});
+    const c0 = b.pg.log.filter(l => l.text === 'COMMIT').length;
+    await b.adapter.lock.withLock(async () => { await throws(() => b.adapter.journalStore.write({ v: 1 })); }).catch(() => {});
+    eq(b.pg.log.filter(l => l.text === 'COMMIT').length, c0); eq(b.client.inTxn, false); eq(b.client.alive, false); }
+});
+
+test('P1 COMMIT is durable only on an affirmative COMMIT completion tag', async () => {
+  const bad = { ROLLBACK: r => ({ ...r, command: 'ROLLBACK' }), missing: r => ({ rows: r.rows, rowCount: r.rowCount }),
+    lower: r => ({ ...r, command: 'commit' }), number: r => ({ ...r, command: 1 }), other: r => ({ ...r, command: 'SELECT' }) };
+  for (const [name, env] of Object.entries(bad)) {
+    const b = await booted(); envelope(b, t => t === 'COMMIT', env); let acked = false;
+    await b.adapter.lock.withLock(async () => { await b.adapter.journalStore.write({ v: 1 }).then(() => { acked = true; }, () => {}); }).catch(() => {});
+    eq(acked, false, name + ' never acknowledged'); eq(b.client.retired, 1, name + ' retired');
+  }
+  // Store level: a ROLLBACK completion of the journal COMMIT is outcome-unknown, never saved.
+  { const b = await booted(); const p = await prep(b.store, 1);
+    envelope(b, t => t === 'COMMIT', r => ({ ...r, command: 'ROLLBACK' }));
+    const r = await rec2(b.store.commit(p)); assert.notEqual(r.status, 'committed'); eq(r.status, 'unknown'); }
+  // Affirmative tag still acknowledges.
+  { const b = await booted(); let ok; await b.adapter.lock.withLock(async () => { await b.adapter.journalStore.write({ v: 2 }); ok = JSON.parse(await b.adapter.journalStore.read()); });
+    eq(ok, { v: 2 }); eq(b.client.retired, 0); }
+});
+
+test('P2 validated inputs are snapshotted before the queue: immediate and queue-suspended caller mutation', async () => {
+  for (const when of ['immediate', 'suspended']) {
+    const b = await booted(); let release = () => {}; const gate = new Promise(r => { release = r; });
+    if (when === 'suspended') b.pg.hooks.push({ match: t => /^SELECT bytes FROM "[a-z_]+"\.doc_head/.test(t), fn: () => gate });
+    const doc = Buffer.from('doc-original'); const rec0 = { v: 'original', nested: { a: 1 } }; const qb = Buffer.from('q-original');
+    let head, journal;
+    await b.adapter.lock.withLock(async () => {
+      const rd = when === 'suspended' ? b.adapter.documentStore.read() : null;
+      const ws = [b.adapter.documentStore.writeTemp(doc), b.adapter.journalStore.write(rec0), b.adapter.quarantine.put('snap', qb)];
+      doc.fill(0x7a); rec0.v = 'mutated'; rec0.nested.a = 2; rec0.extra = true; qb.fill(0x7a);
+      if (when === 'suspended') { await new Promise(r => setImmediate(r)); doc.write('late'); rec0.late = 1; qb.write('late'); release(); await rd; }
+      await Promise.all(ws);
+      journal = JSON.parse(await b.adapter.journalStore.read());
+    });
+    head = b.pg.t().doc_staged.get(SCOPE).bytes.toString();
+    eq(head, 'doc-original', when); eq(journal, { v: 'original', nested: { a: 1 } }, when);
+    eq(b.pg.t().quarantine.at(-1).bytes.toString(), 'q-original', when);
+  }
+  // Holder checks still apply at execution: a snapshotted write queued by a settled holder is refused.
+  { const b = await booted(); let release; const gate = new Promise(r => { release = r; }); let queued;
+    b.pg.hooks.push({ match: t => /^SELECT bytes FROM "[a-z_]+"\.doc_head/.test(t), fn: () => gate });
+    const rd = b.adapter.documentStore.read();
+    const run = b.adapter.lock.withLock(async () => { queued = b.adapter.journalStore.write({ v: 3 }); queued.catch(() => {}); });
+    await new Promise(r => setImmediate(r)); release(); await rd; await run.catch(() => {});
+    assert.ok(await throws(() => queued)); assert.ok(!b.pg.t().journal.has(SCOPE)); }
 });

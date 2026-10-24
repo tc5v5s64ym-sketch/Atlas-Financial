@@ -55,7 +55,14 @@
 //     resumed old callback carries its old holder and is refused; it can
 //     never borrow a later holder's session. Advisory auto-release on
 //     disconnect is not relied on for invalidation.
-//   - Durable acknowledgement only after COMMIT resolves. Any failure
+//   - Any unexpected protocol/result failure (malformed resolved
+//     envelope, non-refusal error mid-transaction, missing/wrong
+//     transaction command tag, malformed unlock envelope) is session loss:
+//     the exact session is retired, never rolled back and reused.
+//   - Validated write inputs are snapshotted at call time, before the
+//     queue; holder checks still run at dequeue and during execution.
+//   - Durable acknowledgement only after COMMIT resolves with an
+//     affirmative COMMIT command tag. Any failure
 //     throws an "outcome unknown" error — never null, false or a silent
 //     no-effect.
 //
@@ -159,7 +166,24 @@ function createSettlementEvidencePostgresAdapter(options) {
       fail('session query failed; outcome unknown; adapter is permanently invalid');
     }
     check(!lost, 'session lost; outcome unknown; adapter is permanently invalid');
-    check(res && Array.isArray(res.rows), 'malformed query result');
+    // A malformed resolved envelope is an unexpected protocol failure:
+    // retire this exact session before failing.
+    if (!(isRecord(res) && Array.isArray(res.rows))) {
+      markLost();
+      fail('malformed query result; outcome unknown; adapter is permanently invalid');
+    }
+    return res;
+  }
+  // Transaction-control statements must complete with their own affirmative
+  // command tag (node-postgres result.command). PostgreSQL can complete an
+  // unsuccessful COMMIT as ROLLBACK; that, or a missing/malformed tag, is
+  // never a durable acknowledgement.
+  async function control(verb) {
+    const res = await raw(verb, []);
+    if (res.command !== verb) {
+      markLost();
+      fail(verb + ' completion not affirmed; outcome unknown; adapter is permanently invalid');
+    }
     return res;
   }
 
@@ -184,11 +208,13 @@ function createSettlementEvidencePostgresAdapter(options) {
   // session; any query failure leaves the adapter LOST and retired.
   function mutate(validate, body) {
     const holder = capability();
+    // Snapshot validated inputs at call time, BEFORE the queue boundary:
+    // later caller mutation of buffers or records cannot change what persists.
+    const args = validate();
     return serial(async () => {
       const fence = () => { if (!isLive(holder)) refuse('lock holder settled; mutation refused'); };
       if (!isLive(holder)) fail('lock holder settled; queued mutation refused');
-      const args = validate();
-      await raw('BEGIN', []);
+      try { await control('BEGIN'); } catch (e) { if (!lost) markLost(); throw e; }
       let refusal = null;
       let result;
       try {
@@ -202,14 +228,18 @@ function createSettlementEvidencePostgresAdapter(options) {
         result = await body(args, fence);
         fence();
       } catch (e) {
-        if (lost || !e || !e.refusal) throw e;
+        // Anything but a definite refusal leaves the transaction state
+        // unproven: retire the exact session (never ROLLBACK and reuse it).
+        if (lost || !e || !e.refusal) { if (!lost) markLost(); throw e; }
         refusal = e.message;
       }
       if (refusal !== null) {
-        await raw('ROLLBACK', []);
+        try { await control('ROLLBACK'); } catch (e) { if (!lost) markLost(); throw e; }
         fail(refusal.replace(/^settlement-postgres-adapter: /, ''));
       }
-      await raw('COMMIT', []); // once dispatched, the outcome may stay uncertain
+      // Once dispatched, the outcome may stay uncertain; durable only on an
+      // affirmative COMMIT completion tag.
+      try { await control('COMMIT'); } catch (e) { if (!lost) markLost(); throw e; }
       return result;
     });
   }
@@ -361,7 +391,7 @@ function createSettlementEvidencePostgresAdapter(options) {
                 const r = await raw('SELECT pg_advisory_unlock($1, $2) AS unlocked', lockKeys);
                 if (!(r.rows.length === 1 && r.rows[0].unlocked === true)) markLost(); // retire: release unproven
               });
-            } catch { /* LOST and retired by raw() */ }
+            } catch { if (!lost) markLost(); /* any unlock failure: release unproven, retire */ }
           }
         }
       } finally {
