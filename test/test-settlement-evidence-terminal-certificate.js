@@ -7,16 +7,29 @@
 //
 // INJECTED TRANSPORT ASSUMPTION — STATED EXPLICITLY: the tests in this
 // suite MODEL an atomic compare-and-seal transport. The in-memory fence
-// below performs its check-and-set without an intervening await, which
-// makes the seal atomic inside this single-threaded test process and lets
-// several protocol instances share one modelled transport state. That is
-// a MODELLED guarantee only. The foundation module alone does NOT fence
-// the incumbent settlement store or confirmation controller — no
-// production admission path consults it, so the cross-controller failure
-// executed as acceptance case B3A-27c remains possible in the shipped
-// composition until a later integration wires this protocol into
-// admission — and nothing in this suite qualifies production durability,
-// a real durable transport, storage, or activation.
+// below performs every transition (seal, admission reservation, commit
+// landing, release) as a check-and-set without an intervening await,
+// which makes those transitions atomic inside this single-threaded test
+// process and lets several protocol instances share one modelled
+// transport state. That is a MODELLED guarantee only. The foundation
+// module alone does NOT fence the incumbent settlement store or
+// confirmation controller — no production admission path consults it, so
+// the cross-controller failure executed as acceptance case B3A-27c
+// remains possible in the shipped composition until a later integration
+// wires this protocol into admission — and nothing in this suite
+// qualifies production durability, a real durable transport, storage, or
+// activation.
+//
+// Repair history: the first head of this slice was BLOCKED in Systems
+// Review for an admission/seal race (a suspended commit callback landing
+// after a seal), a wrong-operation proof, undefined reads treated as
+// absence, and unresolved callback outcomes wrapped as committed. The
+// contract therefore changed: admission is an atomic transport
+// reservation, the commit landing is a transport transition keyed by the
+// reservation nonce (no caller write callback exists), reads validate
+// contextual identity, undefined is a contract violation, and commit
+// outcomes carry exact settlement semantics. Each blocker has a named
+// regression test below.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
@@ -48,28 +61,66 @@ function claimFor(operationId, overrides = {}) {
   };
 }
 
+function committedRecordFor(operationId, actorId = actorA, overrides = {}) {
+  return {
+    status: 'committed',
+    operationId,
+    actorId,
+    revision: 4,
+    documentDigest: digest('a'),
+    ...overrides,
+  };
+}
+
 // One modelled transport state. Several fences (and therefore several
 // protocol instances, including "restarted" and "second controller"
 // instances) can be facades over the same state, exactly as the protocol
 // contract assumes a shared durable transport beneath them.
 function makeTransportState() {
-  return { seals: new Map(), committed: new Map() };
+  return { seals: new Map(), committed: new Map(), reservations: new Map() };
 }
 
 function makeFence(state) {
   return {
     atomicSeal: true,
-    // Modelled atomic compare-and-seal: the check-and-set below completes
-    // without an intervening await, which is what makes it atomic in this
-    // model. A production transport would have to provide the same
-    // transition atomically at the durable layer; this model does not
+    // Modelled atomic transitions: each check-and-set below completes
+    // without an intervening await, which is what makes it atomic in
+    // this model. A production transport would have to provide the same
+    // transitions atomically at the durable layer; this model does not
     // provide or qualify one.
     async seal(operationId, record) {
       if (state.seals.has(operationId)) {
         return { sealed: false, existing: state.seals.get(operationId) };
       }
+      if (state.committed.has(operationId)) {
+        return { sealed: false, existing: null, blocked: 'committed' };
+      }
+      if (state.reservations.has(operationId)) {
+        return { sealed: false, existing: null, blocked: 'admission-reserved' };
+      }
       state.seals.set(operationId, record);
       return { sealed: true, record };
+    },
+    async reserveAdmission(operationId, reservation) {
+      if (state.seals.has(operationId)) return { reserved: false, reason: 'sealed' };
+      if (state.committed.has(operationId)) return { reserved: false, reason: 'committed' };
+      if (state.reservations.has(operationId)) return { reserved: false, reason: 'reserved' };
+      state.reservations.set(operationId, reservation);
+      return { reserved: true };
+    },
+    async commitReservation(operationId, nonce, record) {
+      const held = state.reservations.get(operationId);
+      if (!held || held.nonce !== nonce) return { committed: false, reason: 'reservation-lost' };
+      if (state.seals.has(operationId)) return { committed: false, reason: 'sealed' };
+      state.reservations.delete(operationId);
+      state.committed.set(operationId, record);
+      return { committed: true, operationId };
+    },
+    async releaseAdmission(operationId, nonce) {
+      const held = state.reservations.get(operationId);
+      if (!held || held.nonce !== nonce) return { released: false };
+      state.reservations.delete(operationId);
+      return { released: true };
     },
     async readSeal(operationId) {
       return state.seals.has(operationId) ? state.seals.get(operationId) : null;
@@ -89,18 +140,19 @@ const UNKNOWN_FOR = operationId => ({ status: 'unknown', operationId });
 test('no-dependency and non-honouring constructions are inert', async () => {
   const state = makeTransportState();
   const good = makeFence(state);
+  const without = key => Object.fromEntries(Object.entries(good).filter(([k]) => k !== key));
   const constructions = [
     () => createTerminalCertificateProtocol(),
     () => createTerminalCertificateProtocol({}),
     () => createTerminalCertificateProtocol({ fence: null }),
     () => createTerminalCertificateProtocol({ fence: { atomicSeal: true } }),
-    () => createTerminalCertificateProtocol({
-      fence: { seal: good.seal, readSeal: good.readSeal, readCommitted: good.readCommitted },
-    }),
     () => createTerminalCertificateProtocol({ fence: { ...good, atomicSeal: false } }),
-    () => createTerminalCertificateProtocol({
-      fence: { atomicSeal: true, seal: good.seal, readSeal: good.readSeal },
-    }),
+    () => createTerminalCertificateProtocol({ fence: without('seal') }),
+    () => createTerminalCertificateProtocol({ fence: without('reserveAdmission') }),
+    () => createTerminalCertificateProtocol({ fence: without('commitReservation') }),
+    () => createTerminalCertificateProtocol({ fence: without('releaseAdmission') }),
+    () => createTerminalCertificateProtocol({ fence: without('readSeal') }),
+    () => createTerminalCertificateProtocol({ fence: without('readCommitted') }),
   ];
   for (const construct of constructions) {
     const protocol = construct();
@@ -110,17 +162,20 @@ test('no-dependency and non-honouring constructions are inert', async () => {
     assert.deepEqual(await protocol.lookupCertificate(operationId, actorA), UNKNOWN_FOR(operationId));
     assert.deepEqual(await protocol.admissionState(operationId), UNKNOWN_FOR(operationId));
     assert.deepEqual(await protocol.beginAdmission(operationId, actorA), UNKNOWN_FOR(operationId));
-    let commits = 0;
     assert.deepEqual(
       await protocol.commitAdmission(
         { operationId, actorId: actorA, nonce: 'n' },
-        async () => { commits++; },
+        committedRecordFor(operationId),
       ),
       UNKNOWN_FOR(operationId),
     );
-    assert.equal(commits, 0, 'an inert protocol never invokes a commit');
+    assert.deepEqual(
+      await protocol.releaseAdmission({ operationId, actorId: actorA, nonce: 'n' }),
+      UNKNOWN_FOR(operationId),
+    );
   }
   assert.equal(state.seals.size, 0, 'an inert protocol seals nothing');
+  assert.equal(state.reservations.size, 0, 'an inert protocol reserves nothing');
 });
 
 test('a landed seal issues the certificate and the actor-private recovery read', async () => {
@@ -253,32 +308,99 @@ test('a seal that fails before landing leaves the operation open and undecided',
   assert.equal(state.seals.size, 0);
 });
 
-test('unreadable persistence resolves to unknown and never invokes a commit', async () => {
+test('unreadable persistence resolves to unknown and never invokes a transition', async () => {
   const state = makeTransportState();
   const protocol = makeProtocol(state);
   const operationId = op(7);
   const begun = await protocol.beginAdmission(operationId, actorA);
   assert.equal(begun.status, 'admitted');
   const base = makeFence(state);
+  let commitCalls = 0;
+  let sealCalls = 0;
   const unreadable = createTerminalCertificateProtocol({
     fence: {
       ...base,
       async readSeal() { throw new Error('synthetic unreadable seal surface'); },
+      async seal(...args) { sealCalls++; return base.seal(...args); },
+      async commitReservation(...args) { commitCalls++; return base.commitReservation(...args); },
     },
   });
   assert.deepEqual(await unreadable.lookupCertificate(operationId, actorA), UNKNOWN_FOR(operationId));
   assert.deepEqual(await unreadable.admissionState(operationId), UNKNOWN_FOR(operationId));
-  assert.deepEqual(await unreadable.beginAdmission(operationId, actorA), UNKNOWN_FOR(operationId));
-  let commits = 0;
+  assert.deepEqual(await unreadable.sealNegative(claimFor(operationId)), UNKNOWN_FOR(operationId));
+  assert.equal(sealCalls, 0, 'the seal transition is never invoked over unreadable state');
   assert.deepEqual(
-    await unreadable.commitAdmission(begun.ticket, async () => { commits++; }),
+    await unreadable.commitAdmission(begun.ticket, committedRecordFor(operationId)),
     UNKNOWN_FOR(operationId),
   );
-  assert.equal(commits, 0, 'unreadable state fails closed before any commit runs');
+  assert.equal(commitCalls, 0, 'the commit transition is never invoked over unreadable state');
+});
+
+test('undefined reads are contract violations, never absence (both boundaries)', async () => {
+  for (const boundary of ['readSeal', 'readCommitted']) {
+    const state = makeTransportState();
+    const good = makeProtocol(state);
+    const operationId = op(8);
+    const begun = await good.beginAdmission(operationId, actorA);
+    assert.equal(begun.status, 'admitted');
+    const base = makeFence(state);
+    let commitCalls = 0;
+    let sealCalls = 0;
+    const violating = createTerminalCertificateProtocol({
+      fence: {
+        ...base,
+        async [boundary]() { return undefined; },
+        async seal(...args) { sealCalls++; return base.seal(...args); },
+        async commitReservation(...args) { commitCalls++; return base.commitReservation(...args); },
+      },
+    });
+    assert.deepEqual(
+      await violating.lookupCertificate(operationId, actorA),
+      UNKNOWN_FOR(operationId),
+      `${boundary}: undefined must not read as an empty surface`,
+    );
+    assert.deepEqual(await violating.admissionState(operationId), UNKNOWN_FOR(operationId), boundary);
+    assert.deepEqual(await violating.sealNegative(claimFor(operationId)), UNKNOWN_FOR(operationId), boundary);
+    assert.equal(sealCalls, 0, `${boundary}: no seal transition over a violated read`);
+    assert.deepEqual(
+      await violating.commitAdmission(begun.ticket, committedRecordFor(operationId)),
+      UNKNOWN_FOR(operationId),
+      `${boundary}: undefined must never let a commit be invoked`,
+    );
+    assert.equal(commitCalls, 0, boundary);
+    // The reservation held through the good protocol is untouched by the
+    // violated reads and can still land through the honouring protocol.
+    assert.equal(
+      (await good.commitAdmission(begun.ticket, committedRecordFor(operationId))).status,
+      'committed',
+    );
+  }
+});
+
+test('a record stored under a different operation key proves nothing (wrong-operation proof)', async () => {
+  const state = makeTransportState();
+  const opA = op(9);
+  const opB = op(10);
+  // A perfectly valid certificate for operation A, stored under key B.
+  state.seals.set(opB, { schema: TERMINAL_CERTIFICATE_SCHEMA, ...claimFor(opA) });
+  const protocol = makeProtocol(state);
+  assert.deepEqual(
+    await protocol.lookupCertificate(opB, actorA),
+    UNKNOWN_FOR(opB),
+    'contextual identity is validated, not just shape: no proof for the requested operation',
+  );
+  assert.deepEqual(await protocol.admissionState(opB), UNKNOWN_FOR(opB));
+  // And the mirror image: a committed record naming A under key B is
+  // divergent for B as well.
+  const state2 = makeTransportState();
+  state2.committed.set(opB, committedRecordFor(opA));
+  const protocol2 = makeProtocol(state2);
+  assert.deepEqual(await protocol2.admissionState(opB), UNKNOWN_FOR(opB));
+  assert.deepEqual(await protocol2.lookupCertificate(opB, actorA), UNKNOWN_FOR(opB));
 });
 
 test('divergent stored records read as unknown, one corruption at a time', async () => {
-  const good = claimFor(op(8));
+  const good = claimFor(op(11));
   const record = { schema: TERMINAL_CERTIFICATE_SCHEMA, ...good };
   const corruptions = {
     'wrong schema': { ...record, schema: 'terminal-certificate-2' },
@@ -292,22 +414,22 @@ test('divergent stored records read as unknown, one corruption at a time', async
   };
   for (const [name, corrupt] of Object.entries(corruptions)) {
     const state = makeTransportState();
-    state.seals.set(op(8), corrupt);
+    state.seals.set(op(11), corrupt);
     const protocol = makeProtocol(state);
     assert.deepEqual(
-      await protocol.lookupCertificate(op(8), actorA),
-      UNKNOWN_FOR(op(8)),
+      await protocol.lookupCertificate(op(11), actorA),
+      UNKNOWN_FOR(op(11)),
       `corruption "${name}" must read unknown, never not-applied`,
     );
-    assert.deepEqual(await protocol.admissionState(op(8)), UNKNOWN_FOR(op(8)), `corruption "${name}"`);
+    assert.deepEqual(await protocol.admissionState(op(11)), UNKNOWN_FOR(op(11)), `corruption "${name}"`);
   }
 });
 
 test('committed and negative coexistence is an explicit conflict refusal, never precedence', async () => {
   // Committed first: the negative seal is refused and nothing is sealed.
   const stateA = makeTransportState();
-  const operationA = op(9);
-  stateA.committed.set(operationA, { status: 'committed', operationId: operationA, revision: 4 });
+  const operationA = op(12);
+  stateA.committed.set(operationA, committedRecordFor(operationA));
   const protocolA = makeProtocol(stateA);
   assert.deepEqual(
     await protocolA.sealNegative(claimFor(operationA)),
@@ -324,10 +446,10 @@ test('committed and negative coexistence is an explicit conflict refusal, never 
   // the impossible pair): the read surfaces the invariant violation
   // instead of silently serving either side.
   const stateB = makeTransportState();
-  const operationB = op(10);
+  const operationB = op(13);
   const protocolB = makeProtocol(stateB);
   assert.equal((await protocolB.sealNegative(claimFor(operationB))).status, 'certified');
-  stateB.committed.set(operationB, { status: 'committed', operationId: operationB, revision: 4 });
+  stateB.committed.set(operationB, committedRecordFor(operationB));
   assert.deepEqual(
     await protocolB.lookupCertificate(operationB, actorA),
     { status: 'conflict', operationId: operationB, reason: 'committed-coexists' },
@@ -343,7 +465,7 @@ test('committed and negative coexistence is an explicit conflict refusal, never 
 test('restart: a fresh protocol instance over the same transport keeps the seal', async () => {
   const state = makeTransportState();
   const before = makeProtocol(state);
-  const operationId = op(11);
+  const operationId = op(14);
   assert.equal((await before.sealNegative(claimFor(operationId))).status, 'certified');
   // A restart is a fresh instance with fresh in-process state over the
   // same modelled transport state — the seal must survive it there.
@@ -357,7 +479,7 @@ test('restart: a fresh protocol instance over the same transport keeps the seal'
     { status: 'refused', operationId, reason: 'operation-sealed' },
     'a sealed operationId is never reusable across a restart',
   );
-  const fresh = op(12);
+  const fresh = op(15);
   assert.equal((await after.beginAdmission(fresh, actorA)).status, 'admitted');
 });
 
@@ -365,7 +487,7 @@ test('cross-controller and cross-actor exclusion with both controllers live', as
   const state = makeTransportState();
   const controller1 = makeProtocol(state);
   const controller2 = makeProtocol(state);
-  const operationId = op(13);
+  const operationId = op(16);
   assert.equal((await controller1.sealNegative(claimFor(operationId))).status, 'certified');
   // The B3A-27c lesson: a second live controller must be fenced by the
   // first controller's seal even though it shares no process state with
@@ -381,46 +503,164 @@ test('cross-controller and cross-actor exclusion with both controllers live', as
     { status: 'refused', operationId, reason: 'already-sealed' },
   );
   assert.deepEqual(await controller2.lookupCertificate(operationId, actorB), UNKNOWN_FOR(operationId));
-  const fresh = op(14);
+  const fresh = op(17);
   const begun = await controller2.beginAdmission(fresh, actorB);
   assert.equal(begun.status, 'admitted', 'a different operationId is never fenced by this seal');
-  let commits = 0;
-  const committed = await controller2.commitAdmission(begun.ticket, async () => { commits++; return 'ok'; });
+  const committed = await controller2.commitAdmission(begun.ticket, committedRecordFor(fresh, actorB));
   assert.equal(committed.status, 'committed');
-  assert.equal(commits, 1);
+  assert.deepEqual(state.committed.get(fresh), committedRecordFor(fresh, actorB));
 });
 
-test('a stale suspended admission cannot commit after the seal lands', async () => {
+test('admission reservation and seal exclude each other atomically (admission/seal race)', async () => {
   const state = makeTransportState();
-  const suspender = makeProtocol(state);
-  const sealer = makeProtocol(state);
-  const operationId = op(15);
-  const begun = await suspender.beginAdmission(operationId, actorA);
+  const p1 = makeProtocol(state);
+  const p2 = makeProtocol(state);
+  const operationId = op(18);
+  // The admission reserves first. While the reservation is live — the
+  // window in which the old design's suspended commit callback could be
+  // overtaken — a seal from another live instance CANNOT land: there is
+  // no caller-code window between an admission check and its commit,
+  // because the commit lands through the same atomic transport.
+  const begun = await p1.beginAdmission(operationId, actorA);
   assert.equal(begun.status, 'admitted');
-  // The admission is now suspended (its caller is away deciding); while
-  // it is suspended, another instance seals the operation terminally.
-  assert.equal((await sealer.sealNegative(claimFor(operationId))).status, 'certified');
-  let commits = 0;
-  const result = await suspender.commitAdmission(begun.ticket, async () => { commits++; });
-  assert.deepEqual(result, { status: 'refused', operationId, reason: 'operation-sealed' });
-  assert.equal(commits, 0, 'the suspended commit is never invoked after the seal');
+  assert.deepEqual(
+    await p2.sealNegative(claimFor(operationId)),
+    { status: 'refused', operationId, reason: 'admission-reserved' },
+    'no certificate is issued while an admission reservation is live',
+  );
+  assert.equal(state.seals.size, 0);
+  const committed = await p1.commitAdmission(begun.ticket, committedRecordFor(operationId));
+  assert.equal(committed.status, 'committed');
+  assert.deepEqual(
+    await p2.sealNegative(claimFor(operationId)),
+    { status: 'conflict', operationId, reason: 'committed-coexists' },
+    'after the commit lands, the negative decision is a conflict, not a seal',
+  );
 
-  // Control: the same suspended shape commits when no seal intervenes.
-  const open = op(16);
-  const begunOpen = await suspender.beginAdmission(open, actorA);
-  let openCommits = 0;
-  const openResult = await suspender.commitAdmission(begunOpen.ticket, async () => {
-    openCommits++;
-    return { revision: 5 };
+  // The mirror race: the seal lands first; admission is refused and even
+  // a fabricated ticket cannot land a commit.
+  const sealedFirst = op(19);
+  assert.equal((await p1.sealNegative(claimFor(sealedFirst))).status, 'certified');
+  assert.deepEqual(
+    await p2.beginAdmission(sealedFirst, actorB),
+    { status: 'refused', operationId: sealedFirst, reason: 'operation-sealed' },
+  );
+  const fabricated = { operationId: sealedFirst, actorId: actorB, nonce: 'forged' };
+  assert.deepEqual(
+    await p2.commitAdmission(fabricated, committedRecordFor(sealedFirst, actorB)),
+    { status: 'refused', operationId: sealedFirst, reason: 'reservation-lost' },
+  );
+  assert.equal(state.committed.has(sealedFirst), false);
+});
+
+test('competing admissions: exactly one reservation wins; release frees the operation', async () => {
+  const state = makeTransportState();
+  const p1 = makeProtocol(state);
+  const p2 = makeProtocol(state);
+  const operationId = op(20);
+  const [first, second] = await Promise.all([
+    p1.beginAdmission(operationId, actorA),
+    p2.beginAdmission(operationId, actorB),
+  ]);
+  const admitted = [first, second].filter(r => r.status === 'admitted');
+  const refused = [first, second].filter(r => r.status === 'refused');
+  assert.equal(admitted.length, 1, 'exactly one competing admission reserves the operation');
+  assert.equal(refused.length, 1);
+  assert.deepEqual(refused[0], { status: 'refused', operationId, reason: 'operation-reserved' });
+  const winner = admitted[0].ticket.actorId === actorA ? p1 : p2;
+  const winnerTicket = admitted[0].ticket;
+  // Release: the reservation clears, the released ticket can no longer
+  // commit, and the operation can then be sealed.
+  assert.deepEqual(
+    await winner.releaseAdmission(winnerTicket),
+    { status: 'released', operationId },
+  );
+  assert.deepEqual(
+    await winner.commitAdmission(winnerTicket, committedRecordFor(operationId, winnerTicket.actorId)),
+    { status: 'refused', operationId, reason: 'reservation-lost' },
+  );
+  assert.equal((await p1.sealNegative(claimFor(operationId))).status, 'certified');
+  assert.deepEqual(
+    await winner.releaseAdmission(winnerTicket),
+    { status: 'refused', operationId, reason: 'reservation-lost' },
+    'a consumed or released reservation cannot be released twice',
+  );
+});
+
+test('only a validated committed outcome surfaces as committed (false-committed repair)', async () => {
+  const state = makeTransportState();
+  const protocol = makeProtocol(state);
+  const operationId = op(21);
+  // Supplied outcomes propagate as themselves and never reach the
+  // transport: unknown stays unknown, any refusal stays a refusal, and a
+  // malformed committed claim is ambiguous — none is wrapped as committed.
+  const begun = await protocol.beginAdmission(operationId, actorA);
+  assert.equal(begun.status, 'admitted');
+  assert.deepEqual(
+    await protocol.commitAdmission(begun.ticket, { status: 'unknown', operationId }),
+    UNKNOWN_FOR(operationId),
+  );
+  assert.deepEqual(
+    await protocol.commitAdmission(begun.ticket, { status: 'refused', reason: 'no' }),
+    { status: 'refused', operationId, reason: 'not-committed' },
+  );
+  assert.deepEqual(
+    await protocol.commitAdmission(begun.ticket, {
+      status: 'not-applied', operationId, generation: generationA,
+    }),
+    { status: 'refused', operationId, reason: 'not-committed' },
+  );
+  assert.deepEqual(
+    await protocol.commitAdmission(begun.ticket, committedRecordFor(op(22))),
+    UNKNOWN_FOR(operationId),
+    'a committed claim for a different operation is not this reservation\u2019s commit',
+  );
+  assert.deepEqual(
+    await protocol.commitAdmission(begun.ticket, committedRecordFor(operationId, actorB)),
+    UNKNOWN_FOR(operationId),
+    'a committed claim by a different actor is not this reservation\u2019s commit',
+  );
+  assert.deepEqual(
+    await protocol.commitAdmission(begun.ticket, committedRecordFor(operationId, actorA, { revision: -1 })),
+    UNKNOWN_FOR(operationId),
+  );
+  assert.deepEqual(
+    await protocol.commitAdmission(begun.ticket, committedRecordFor(operationId, actorA, { extra: 1 })),
+    UNKNOWN_FOR(operationId),
+  );
+  assert.equal(state.committed.size, 0, 'none of the refused or malformed outcomes landed');
+  // The reservation is still live (none of the above consumed it), and a
+  // strictly validated committed record lands exactly once.
+  const committed = await protocol.commitAdmission(begun.ticket, committedRecordFor(operationId));
+  assert.equal(committed.status, 'committed');
+  assert.deepEqual(committed.record, committedRecordFor(operationId));
+  assert.deepEqual(state.committed.get(operationId), committedRecordFor(operationId));
+  assert.deepEqual(
+    await protocol.commitAdmission(begun.ticket, committedRecordFor(operationId)),
+    { status: 'refused', operationId, reason: 'reservation-lost' },
+    'a consumed reservation can never land a second commit',
+  );
+  // A malformed transport answer is ambiguous, never commitment.
+  const state2 = makeTransportState();
+  const base2 = makeFence(state2);
+  const weird = createTerminalCertificateProtocol({
+    fence: {
+      ...base2,
+      async commitReservation() { return { committed: 'yes' }; },
+    },
   });
-  assert.deepEqual(openResult, { status: 'committed', operationId: open, result: { revision: 5 } });
-  assert.equal(openCommits, 1);
+  const begun2 = await weird.beginAdmission(op(23), actorA);
+  assert.equal(begun2.status, 'admitted');
+  assert.deepEqual(
+    await weird.commitAdmission(begun2.ticket, committedRecordFor(op(23))),
+    UNKNOWN_FOR(op(23)),
+  );
 });
 
 test('failed post-seal authorization suppresses the response without undoing the seal', async () => {
   const state = makeTransportState();
   const protocol = makeProtocol(state);
-  const operationId = op(17);
+  const operationId = op(24);
   const suppressed = await protocol.sealNegative(claimFor(operationId), {
     authorize: async () => false,
   });
@@ -436,7 +676,7 @@ test('failed post-seal authorization suppresses the response without undoing the
   );
   assert.deepEqual(await protocol.admissionState(operationId), { status: 'sealed', operationId });
 
-  const throwing = op(18);
+  const throwing = op(25);
   assert.deepEqual(
     await protocol.sealNegative(claimFor(throwing), {
       authorize: async () => { throw new Error('synthetic authorization failure'); },
@@ -445,7 +685,7 @@ test('failed post-seal authorization suppresses the response without undoing the
   );
   assert.equal((await protocol.admissionState(throwing)).status, 'sealed');
 
-  const allowed = op(19);
+  const allowed = op(26);
   let seenByAuthorize = null;
   const certified = await protocol.sealNegative(claimFor(allowed), {
     authorize: async record => { seenByAuthorize = record; return true; },
@@ -458,17 +698,17 @@ test('failed post-seal authorization suppresses the response without undoing the
 test('unknown never falls through to a negative', async () => {
   const state = makeTransportState();
   const protocol = makeProtocol(state);
-  const neverPrepared = op(20);
+  const neverPrepared = op(27);
   assert.deepEqual(await protocol.lookupCertificate(neverPrepared, actorA), UNKNOWN_FOR(neverPrepared));
-  const preparedOnly = op(21);
+  const preparedOnly = op(28);
   assert.equal((await protocol.beginAdmission(preparedOnly, actorA)).status, 'admitted');
   assert.deepEqual(
     await protocol.lookupCertificate(preparedOnly, actorA),
     UNKNOWN_FOR(preparedOnly),
-    'an operation that was only prepared has no certificate — absence of a receipt is not a negative',
+    'an operation that was only reserved has no certificate — absence of a receipt is not a negative',
   );
-  const committedOnly = op(22);
-  state.committed.set(committedOnly, { status: 'committed', operationId: committedOnly, revision: 1 });
+  const committedOnly = op(29);
+  state.committed.set(committedOnly, committedRecordFor(committedOnly));
   assert.deepEqual(
     await protocol.lookupCertificate(committedOnly, actorA),
     UNKNOWN_FOR(committedOnly),
@@ -479,7 +719,7 @@ test('unknown never falls through to a negative', async () => {
 test('malformed claims fail closed and seal nothing', async () => {
   const state = makeTransportState();
   const protocol = makeProtocol(state);
-  const operationId = op(23);
+  const operationId = op(30);
   const variants = [
     claimFor('not-an-operation'),
     claimFor(operationId, { actorId: 'actor-a' }),

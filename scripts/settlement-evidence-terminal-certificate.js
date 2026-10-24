@@ -18,30 +18,53 @@
 // second live controller over the same store ignores another controller's
 // process-local terminal decision and commits the operation anyway.
 // Actor/generation keying is therefore NOT a fence. The fence here is the
-// injected transport's atomic seal, operation-wide across actors,
-// generations and controllers.
+// injected transport's atomic state transitions, operation-wide across
+// actors, generations and controllers.
 //
-// Fencing dependency contract (ONE injected dependency, `fence`):
+// Fencing dependency contract (ONE injected dependency, `fence`). Every
+// transition below must be atomic AT THE TRANSPORT (a durable
+// compare-and-set, a unique constraint, a conditional write): a
+// read-then-write composed by a caller, a stored response record, or a
+// process-local Set does NOT satisfy this contract.
 // - `atomicSeal` must be exactly `true`: the transport's declaration that
-//   `seal` below is an atomic compare-and-seal at the transport itself.
-// - `seal(operationId, record)` atomically transitions the operation from
-//   UNSEALED to SEALED exactly once and returns `{sealed:true, record}`
-//   for the winning claim or `{sealed:false, existing}` when a seal
-//   already exists. The atomicity must live in the transport (a durable
-//   compare-and-set, a unique constraint, a conditional write); a
-//   read-then-write composed by a caller, a stored response record, or a
-//   process-local Set does NOT satisfy this contract.
-// - `readSeal(operationId)` returns the sealed record or `null`.
-// - `readCommitted(operationId)` returns the operation's committed record
-//   or `null`; it is how the protocol detects the invariant violation of a
-//   committed record and a negative certificate coexisting.
-// A dependency that cannot honour this contract — missing methods, or
-// `atomicSeal` not exactly `true` — is refused at construction: the
-// resulting protocol is inert and every operation resolves to `unknown`.
-// This module cannot verify a transport's atomicity beyond that declared
-// contract and the result discipline below; test transports MODEL the
-// atomic guarantee (see the suite header) and no production durability is
-// claimed or qualified here.
+//   all of these transitions are atomic compare-and-transitions.
+// - `seal(operationId, record)` atomically transitions UNSEALED → SEALED
+//   exactly once, and only while no admission reservation is live and no
+//   committed record exists. Returns `{sealed:true, record}` for the
+//   winning claim, `{sealed:false, existing}` when a seal already exists,
+//   or `{sealed:false, existing:null, blocked}` with blocked
+//   `'admission-reserved'` or `'committed'` when another terminal track
+//   currently holds the operation.
+// - `reserveAdmission(operationId, reservation)` atomically reserves the
+//   operation for one admission iff it is unsealed, uncommitted and
+//   unreserved: `{reserved:true}`, else `{reserved:false, reason}` with
+//   reason `'sealed'`, `'committed'` or `'reserved'`. Admission NEVER
+//   proceeds from a state read; the reservation IS the admission, so a
+//   seal attempted while a reservation is live is refused by the
+//   transport, and a reservation attempted after a seal is refused too —
+//   the two tracks exclude each other atomically, not by re-reading.
+// - `commitReservation(operationId, nonce, committedRecord)` atomically
+//   lands the commit iff the caller still holds the live reservation
+//   (nonce match) and no seal exists: it consumes the reservation, stores
+//   the committed record and returns `{committed:true, operationId}`;
+//   otherwise `{committed:false, reason}` with reason `'sealed'` or
+//   `'reservation-lost'`. The commit landing is this transport transition
+//   — the protocol deliberately accepts NO caller callback that performs
+//   a write elsewhere, because a write outside the transport cannot be
+//   fenced against the seal.
+// - `releaseAdmission(operationId, nonce)` atomically clears a live
+//   reservation held under that nonce: `{released:true|false}`.
+// - `readSeal(operationId)` / `readCommitted(operationId)` return the
+//   stored record or explicit `null`. `undefined` is a contract
+//   violation, never absence: any undefined, malformed, unreadable or
+//   identity-mismatched read makes the operation's state divergent and
+//   every dependent operation resolves to `unknown`.
+// A dependency missing any method, or with `atomicSeal` not exactly
+// `true`, is refused at construction: the protocol is inert and every
+// operation resolves to `unknown`. This module cannot verify a
+// transport's atomicity beyond that declared contract and the result
+// discipline below; test transports MODEL the atomic guarantee (see the
+// suite header) and no production durability is claimed or qualified here.
 //
 // Protocol semantics (frozen):
 // - States: UNSEALED → SEALED-NEGATIVE, irreversible. A certificate is
@@ -58,7 +81,13 @@
 // - Sealed operationIds are never reusable, including across a restart
 //   (modelled by a fresh protocol instance over the same transport state)
 //   and including committed operationIds: admission stays closed for both
-//   terminal outcomes.
+//   terminal outcomes, and a consumed reservation can never land twice.
+// - Commit outcomes have exact settlement semantics: only a strictly
+//   validated `{status:'committed', operationId, actorId, revision,
+//   documentDigest}` record bound to the reservation's own operation and
+//   actor may surface as `committed`. A supplied `unknown` propagates as
+//   `unknown`; any other supplied outcome propagates as a refusal.
+//   Promise resolution alone is never commitment.
 // - The recovery read is actor-private (any other actor receives
 //   `unknown`) and generation-exact when a generation is supplied, and
 //   returns exactly the three-field recovery shape
@@ -93,6 +122,7 @@ const RECORD_KEYS = [
   'confirmationDigest',
   'decidedAt',
 ];
+const COMMITTED_KEYS = ['status', 'operationId', 'actorId', 'revision', 'documentDigest'];
 
 function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -150,6 +180,17 @@ function isSameDecision(a, b) {
   return RECORD_KEYS.every(key => key === 'decidedAt' || a[key] === b[key]);
 }
 
+function isCommittedRecord(value, operationId, actorId) {
+  return isPlainObject(value)
+    && hasExactKeys(value, COMMITTED_KEYS)
+    && value.status === 'committed'
+    && value.operationId === operationId
+    && value.actorId === actorId
+    && Number.isInteger(value.revision)
+    && value.revision >= 0
+    && DIGEST_PATTERN.test(value.documentDigest);
+}
+
 function frozenCopy(record) {
   return Object.freeze({ ...record });
 }
@@ -162,8 +203,19 @@ function honourableFence(fence) {
   return isPlainObject(fence)
     && fence.atomicSeal === true
     && typeof fence.seal === 'function'
+    && typeof fence.reserveAdmission === 'function'
+    && typeof fence.commitReservation === 'function'
+    && typeof fence.releaseAdmission === 'function'
     && typeof fence.readSeal === 'function'
     && typeof fence.readCommitted === 'function';
+}
+
+function isValidTicket(ticket) {
+  return isPlainObject(ticket)
+    && OPERATION_ID_PATTERN.test(ticket.operationId)
+    && ACTOR_ID_PATTERN.test(ticket.actorId)
+    && typeof ticket.nonce === 'string'
+    && ticket.nonce.length > 0;
 }
 
 function createTerminalCertificateProtocol(dependencies) {
@@ -171,9 +223,12 @@ function createTerminalCertificateProtocol(dependencies) {
   const fence = honourableFence(deps.fence) ? deps.fence : null;
   const connected = fence !== null;
 
-  // Reads both terminal surfaces once. Any throw, or any value that is
-  // neither null nor an object, is divergent persistence → null sentinel
-  // result `{ok:false}` and every caller resolves to unknown.
+  // Reads both terminal surfaces once and validates CONTEXTUAL identity,
+  // not just shape: a record is only evidence about the operation it was
+  // read for when its own operationId names that same operation. Any
+  // throw, any undefined (absence must be explicit null), any malformed
+  // value, or any identity mismatch is divergent persistence → `{ok:false}`
+  // and every caller resolves to unknown.
   async function readTerminalState(operationId) {
     let seal;
     let committed;
@@ -183,9 +238,17 @@ function createTerminalCertificateProtocol(dependencies) {
     } catch {
       return { ok: false };
     }
-    if (seal !== null && seal !== undefined && !isPlainObject(seal)) return { ok: false };
-    if (committed !== null && committed !== undefined && !isPlainObject(committed)) return { ok: false };
-    return { ok: true, seal: seal ?? null, committed: committed ?? null };
+    if (seal === undefined || committed === undefined) return { ok: false };
+    if (seal !== null) {
+      if (!isCertificateRecord(seal)) return { ok: false };
+      if (seal.operationId !== operationId) return { ok: false };
+    }
+    if (committed !== null) {
+      if (!isPlainObject(committed)) return { ok: false };
+      if (Object.prototype.hasOwnProperty.call(committed, 'operationId')
+        && committed.operationId !== operationId) return { ok: false };
+    }
+    return { ok: true, seal, committed };
   }
 
   async function sealNegative(claim, options) {
@@ -219,6 +282,16 @@ function createTerminalCertificateProtocol(dependencies) {
         return unknown(operationId);
       }
       issued = outcome.record;
+    } else if (outcome.existing === null || outcome.existing === undefined) {
+      // Not sealed and no prior seal: only an explicit blocked marker is a
+      // well-formed transport answer; anything else is divergent.
+      if (outcome.blocked === 'admission-reserved') {
+        return { status: 'refused', operationId: record.operationId, reason: 'admission-reserved' };
+      }
+      if (outcome.blocked === 'committed') {
+        return { status: 'conflict', operationId: record.operationId, reason: 'committed-coexists' };
+      }
+      return unknown(operationId);
     } else {
       if (!isCertificateRecord(outcome.existing)) return unknown(operationId);
       if (!isSameDecision(outcome.existing, record)) {
@@ -249,7 +322,6 @@ function createTerminalCertificateProtocol(dependencies) {
     }
     const state = await readTerminalState(operationId);
     if (!state.ok) return unknown(operationId);
-    if (state.seal !== null && !isCertificateRecord(state.seal)) return unknown(operationId);
     if (!state.seal) return unknown(operationId);
     // Actor-private: a wrong actor learns nothing, not even that a seal or
     // a conflict exists for this operation.
@@ -268,7 +340,6 @@ function createTerminalCertificateProtocol(dependencies) {
     if (!connected || !OPERATION_ID_PATTERN.test(operationId)) return unknown(operationId);
     const state = await readTerminalState(operationId);
     if (!state.ok) return unknown(operationId);
-    if (state.seal !== null && !isCertificateRecord(state.seal)) return unknown(operationId);
     if (state.seal || state.committed) return { status: 'sealed', operationId };
     return { status: 'open', operationId };
   }
@@ -278,47 +349,100 @@ function createTerminalCertificateProtocol(dependencies) {
     if (!OPERATION_ID_PATTERN.test(operationId) || !ACTOR_ID_PATTERN.test(actorId)) {
       return unknown(operationId);
     }
-    const state = await admissionState(operationId);
-    if (state.status === 'sealed') {
-      return { status: 'refused', operationId, reason: 'operation-sealed' };
-    }
-    if (state.status !== 'open') return unknown(operationId);
-    const ticket = Object.freeze({
+    // Admission is the atomic reservation itself, never a state read: the
+    // transport decides, in one transition, whether this admission holds
+    // the operation against every seal, commit and competing admission.
+    const reservation = Object.freeze({
       operationId,
       actorId,
       nonce: crypto.randomBytes(16).toString('hex'),
     });
-    return { status: 'admitted', operationId, ticket };
-  }
-
-  async function commitAdmission(ticket, commit) {
-    const operationId = isPlainObject(ticket) ? ticket.operationId : undefined;
-    if (!connected || typeof commit !== 'function') return unknown(operationId);
-    if (!isPlainObject(ticket)
-      || !OPERATION_ID_PATTERN.test(ticket.operationId)
-      || !ACTOR_ID_PATTERN.test(ticket.actorId)
-      || typeof ticket.nonce !== 'string'
-      || ticket.nonce.length === 0) {
+    let outcome;
+    try {
+      outcome = await fence.reserveAdmission(operationId, reservation);
+    } catch {
       return unknown(operationId);
     }
-    // The stale-suspension fence: admission state is re-read at the moment
-    // of commit, never trusted from when the ticket was issued. A seal
-    // that landed while this admission was suspended refuses the commit
-    // and the commit function is never invoked.
-    const state = await admissionState(ticket.operationId);
-    if (state.status === 'sealed') {
-      return { status: 'refused', operationId: ticket.operationId, reason: 'operation-sealed' };
+    if (!isPlainObject(outcome) || typeof outcome.reserved !== 'boolean') return unknown(operationId);
+    if (outcome.reserved) return { status: 'admitted', operationId, ticket: reservation };
+    if (outcome.reason === 'sealed' || outcome.reason === 'committed') {
+      return { status: 'refused', operationId, reason: 'operation-sealed' };
     }
-    if (state.status !== 'open') return unknown(ticket.operationId);
-    let result;
+    if (outcome.reason === 'reserved') {
+      return { status: 'refused', operationId, reason: 'operation-reserved' };
+    }
+    return unknown(operationId);
+  }
+
+  async function releaseAdmission(ticket) {
+    const operationId = isPlainObject(ticket) ? ticket.operationId : undefined;
+    if (!connected || !isValidTicket(ticket)) return unknown(operationId);
+    let outcome;
     try {
-      result = await commit();
+      outcome = await fence.releaseAdmission(ticket.operationId, ticket.nonce);
     } catch {
-      // A commit whose outcome could not be observed is ambiguous, exactly
-      // like the shipped discipline: unknown, never not-applied.
       return unknown(ticket.operationId);
     }
-    return { status: 'committed', operationId: ticket.operationId, result };
+    if (!isPlainObject(outcome) || typeof outcome.released !== 'boolean') {
+      return unknown(ticket.operationId);
+    }
+    if (outcome.released) return { status: 'released', operationId: ticket.operationId };
+    return { status: 'refused', operationId: ticket.operationId, reason: 'reservation-lost' };
+  }
+
+  async function commitAdmission(ticket, committedOutcome) {
+    const operationId = isPlainObject(ticket) ? ticket.operationId : undefined;
+    if (!connected || !isValidTicket(ticket)) return unknown(operationId);
+    // Exact settlement semantics for the supplied outcome, decided before
+    // any transport call: unknown propagates as unknown; a committed
+    // claim must be the strict record shape bound to THIS reservation's
+    // operation and actor; every other outcome propagates as a refusal.
+    // Nothing is wrapped as committed on the strength of being supplied.
+    if (!isPlainObject(committedOutcome)) return unknown(ticket.operationId);
+    if (committedOutcome.status === 'unknown') return unknown(ticket.operationId);
+    if (committedOutcome.status !== 'committed') {
+      return { status: 'refused', operationId: ticket.operationId, reason: 'not-committed' };
+    }
+    if (!isCommittedRecord(committedOutcome, ticket.operationId, ticket.actorId)) {
+      return unknown(ticket.operationId);
+    }
+    // Read integrity gate: divergent persistence (undefined, malformed,
+    // identity-mismatched) resolves to unknown and the commit transition
+    // is never invoked. This read is a fail-closed gate only — the fence
+    // itself is the atomic transition below, which re-decides exclusion
+    // at landing time.
+    const state = await readTerminalState(ticket.operationId);
+    if (!state.ok) return unknown(ticket.operationId);
+    let outcome;
+    try {
+      outcome = await fence.commitReservation(
+        ticket.operationId,
+        ticket.nonce,
+        frozenCopy(committedOutcome),
+      );
+    } catch {
+      // The transition may have landed; the ambiguity resolves by reading
+      // state, never by assuming commitment or non-commitment.
+      return unknown(ticket.operationId);
+    }
+    if (!isPlainObject(outcome) || typeof outcome.committed !== 'boolean') {
+      return unknown(ticket.operationId);
+    }
+    if (outcome.committed) {
+      if (outcome.operationId !== ticket.operationId) return unknown(ticket.operationId);
+      return {
+        status: 'committed',
+        operationId: ticket.operationId,
+        record: frozenCopy(committedOutcome),
+      };
+    }
+    if (outcome.reason === 'sealed') {
+      return { status: 'refused', operationId: ticket.operationId, reason: 'operation-sealed' };
+    }
+    if (outcome.reason === 'reservation-lost') {
+      return { status: 'refused', operationId: ticket.operationId, reason: 'reservation-lost' };
+    }
+    return unknown(ticket.operationId);
   }
 
   return Object.freeze({
@@ -327,6 +451,7 @@ function createTerminalCertificateProtocol(dependencies) {
     lookupCertificate,
     admissionState,
     beginAdmission,
+    releaseAdmission,
     commitAdmission,
   });
 }
