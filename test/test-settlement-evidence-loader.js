@@ -90,6 +90,53 @@ const doc2 = docWith([linkCmd({}),
 const docFork = docWith([linkCmd({ assignedCents: 2000 })]);
 const happyArgs = () => ({ config: { householdId, pin: pinOf(doc1) }, readDocument: reader(doc1) });
 
+// Withdrawal is a private read of the SAME qualified acquisition, never a
+// public projection augmented by a later independent pin read.
+test('withdrawal reader owns targets/stamp/context and performs one qualified acquisition', async () => {
+  let pins = 0, documents = 0;
+  const context = { domain: 'synthetic-withdrawal', contextRevision: 1 };
+  const r = L.createWithdrawalTargetReader({ householdId,
+    readPin: () => { pins++; return pinOf(doc1); },
+    readDocument: () => { documents++; return doc1; }, contextReader: () => context });
+  const result = await r.acquire();
+  assert.equal(result.status, 'qualified');
+  assert.deepEqual(result.stamp, { revision: 1, documentDigest: pinOf(doc1).digest });
+  assert.equal(result.targets[0].operationId, op(1));
+  assert.deepEqual({ pins, documents }, { pins: 1, documents: 2 });
+  assert.ok(Object.isFrozen(result.targets[0]) && Object.isFrozen(result.stamp));
+  assert.equal(result.witness(), true);
+  context.contextRevision = 2; context.domain = 'other-domain';
+  assert.equal(result.witness(), false);
+  context.domain = 'synthetic-withdrawal'; context.contextRevision = 3;
+  assert.equal(result.witness(), false, 'A-B-A cannot revive the captured witness');
+  assert.equal(result.contextStamp.contextRevision, 1);
+  assert.ok(!JSON.stringify(result).includes(actorId), 'no original actor or receipt');
+});
+test('withdrawal reader refuses malformed/async/accessor context and changes during acquisition', async () => {
+  for (const contextReader of [() => ({ domain: 'x', contextRevision: 0 }),
+    async () => ({ domain: 'x', contextRevision: 1 }),
+    () => ({ get domain() { throw new Error('must not invoke'); }, contextRevision: 1 })]) {
+    const r = L.createWithdrawalTargetReader({ householdId, readPin: reader(pinOf(doc1)),
+      readDocument: reader(doc1), contextReader });
+    assert.equal((await r.acquire()).status, 'unavailable');
+  }
+  let revision = 1;
+  const r = L.createWithdrawalTargetReader({ householdId,
+    contextReader: () => ({ domain: 'x', contextRevision: revision }),
+    readPin: () => { revision++; return pinOf(doc1); }, readDocument: reader(doc1) });
+  assert.equal((await r.acquire()).status, 'unavailable');
+});
+test('withdrawal reader latches an observed revision regression across fresh acquisitions', async () => {
+  let revision = 4;
+  const r = L.createWithdrawalTargetReader({ householdId, readPin: reader(pinOf(doc1)),
+    readDocument: reader(doc1), contextReader: () => ({ domain: 'synthetic-domain', contextRevision: revision }) });
+  const first = await r.acquire(); assert.equal(first.status, 'qualified');
+  revision = 3; assert.equal(first.witness(), false);
+  revision = 5;
+  assert.equal((await r.acquire()).status, 'unavailable', 'later advance cannot erase an observed rollback');
+  assert.equal(first.witness(), false);
+});
+
 // --- Unconfigured: deliberate absence of any configuration ----------------
 test('unconfigured: wholly absent configuration is its own outcome', async () => {
   for (const args of [undefined, null, {}, { config: null }, { config: undefined }, { config: {} }]) {

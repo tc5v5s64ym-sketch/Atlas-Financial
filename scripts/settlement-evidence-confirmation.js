@@ -259,13 +259,16 @@ function receipt(result, authority, operationId) {
 function createSettlementEvidenceConfirmation(deps) {
   if (!record(deps)) throw new TypeError('settlement-confirmation: dependencies required');
   const { householdId, authorize, resolveSelection, resolvePairedSelection, commitAdmitted,
-    store, now, registerRecovery } = deps;
+    store, now, registerRecovery, withdrawalReader, withdrawalLabels } = deps;
   // Write admission fencing is selected whole at construction: a paired
   // resolver capability AND the store's admission capability, or neither.
   // Exactly one (or a non-function value) is a partial setup and refuses:
   // a fenced controller never falls back to commitWithoutRecovery, and an
   // unfenced controller never touches the admission capability.
   const fenced = typeof resolvePairedSelection === 'function' && typeof commitAdmitted === 'function';
+  if (withdrawalReader !== undefined && (typeof withdrawalReader !== 'function' || !fenced)
+    || withdrawalLabels !== undefined && typeof withdrawalLabels !== 'function')
+    throw new TypeError('withdrawal requires fenced trusted acquisition');
   if (!matches(HOUSEHOLD, householdId) || typeof authorize !== 'function'
     || typeof resolveSelection !== 'function' || typeof now !== 'function'
     || (registerRecovery !== undefined && typeof registerRecovery !== 'function')
@@ -281,6 +284,7 @@ function createSettlementEvidenceConfirmation(deps) {
   // are fenced in the browser by the separate random generation discriminator.
   const terminalOperations = new Set();
   const MAX_TERMINAL_OPERATIONS = 1000;
+  const withdrawalCatalogues = new Map();
   let writeInFlight = false, uncertainOperation = null;
   function tick() { const value = now(); if (!positive(value)) fail(); return value; }
   function retire(operationId, expected) {
@@ -403,6 +407,109 @@ function createSettlementEvidenceConfirmation(deps) {
   }
   async function sameAuthority(context, original) {
     if (!isDeepStrictEqual(await authorityFor(context), original)) fail();
+  }
+  async function readWithdrawal(context, authority) {
+    const raw = await withdrawalReader();
+    if (!shape(raw, ['status', 'stamp', 'contextStamp', 'targets', 'witness'])) fail();
+    const fields = Object.getOwnPropertyDescriptors(raw);
+    if (!Object.values(fields).every(d => d.enumerable && Object.hasOwn(d, 'value'))
+      || fields.status.value !== 'qualified') fail();
+    const descriptor = fields.witness;
+    if (!descriptor || !Object.hasOwn(descriptor, 'value') || typeof descriptor.value !== 'function'
+      || Object.prototype.toString.call(descriptor.value) === '[object AsyncFunction]') fail();
+    const owned = snapshot({ stamp: fields.stamp.value, contextStamp: fields.contextStamp.value, targets: fields.targets.value });
+    if (!shape(owned.stamp, ['revision', 'documentDigest']) || !Number.isSafeInteger(owned.stamp.revision)
+      || owned.stamp.revision < 0 || !matches(HASH, owned.stamp.documentDigest)
+      || !shape(owned.contextStamp, ['domain', 'contextRevision']) || !privateToken(owned.contextStamp.domain)
+      || !positive(owned.contextStamp.contextRevision) || !Array.isArray(owned.targets)
+      || owned.targets.length > MAX_PREVIEWS) fail();
+    const seen = new Set();
+    for (const target of owned.targets) {
+      if (!shape(target, ['goalId', 'operationId', 'txRef', 'assignedCents', 'effectiveDate', 'asOf', 'evidenceDigest', 'reversals'])
+        || !matches(OPERATION, target.operationId) || seen.has(target.operationId)
+        || !positive(target.assignedCents) || !date(target.effectiveDate) || !Array.isArray(target.reversals)) fail();
+      seen.add(target.operationId);
+    }
+    await sameAuthority(context, authority);
+    return { ...owned, witness: descriptor.value };
+  }
+  function handleEntry(authority, handle) {
+    const c = withdrawalCatalogues.get(authority.actorId);
+    if (!c || c.expiresAt <= tick() || !isDeepStrictEqual(c.authority, authority)) fail();
+    const entry = c.entries.get(handle);
+    if (!entry) fail();
+    return entry;
+  }
+  function withdrawalMatches(acquired, retained) {
+    const target = acquired.targets.find(t => t.operationId === retained.target.operationId);
+    return target && isDeepStrictEqual(target, retained.target)
+      && isDeepStrictEqual(acquired.stamp, retained.stamp)
+      && isDeepStrictEqual(acquired.contextStamp, retained.contextStamp);
+  }
+  async function assignments(context, input) {
+    try {
+      const ownedContext = snapshot(context), request = snapshot(input);
+      if (!shape(request, [])) return unavailable('invalid-request');
+      const authority = await authorityFor(ownedContext);
+      const acquired = await readWithdrawal(ownedContext, authority);
+      let labels = [];
+      if (withdrawalLabels) {
+        try { labels = snapshot(await withdrawalLabels()); } catch { labels = []; }
+        await sameAuthority(ownedContext, authority);
+      }
+      for (const [actor, c] of withdrawalCatalogues) if (c.expiresAt <= tick()) withdrawalCatalogues.delete(actor);
+      if (!withdrawalCatalogues.has(authority.actorId) && withdrawalCatalogues.size >= MAX_PREVIEWS) fail();
+      const entries = new Map(), rows = [];
+      for (const target of acquired.targets) {
+        const handle = 'assignment-' + crypto.randomBytes(16).toString('hex');
+        const candidates = Array.isArray(labels) ? labels.filter(l => l?.goalId === target.goalId) : [];
+        const label = candidates.length === 1 && typeof candidates[0].label === 'string'
+          ? candidates[0].label.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 100) || 'Recorded planned cost'
+          : 'Recorded planned cost';
+        entries.set(handle, snapshot({ target, stamp: acquired.stamp, contextStamp: acquired.contextStamp, label }));
+        rows.push({ handle, label, assignedCents: target.assignedCents, currency: 'cad', date: target.effectiveDate,
+          reversals: target.reversals.map(r => ({ cents: r.cents, date: r.date })) });
+      }
+      withdrawalCatalogues.set(authority.actorId, { authority, entries, expiresAt: tick() + C.TTL_MS });
+      return snapshot({ status: 'available', assignments: rows });
+    } catch { return unavailable('assignments-unavailable'); }
+  }
+  async function prepareWithdrawal(context, input) {
+    let request, reservation;
+    try {
+      const ownedContext = snapshot(context); request = snapshot(input);
+      if (!shape(request, ['operationId', 'assignmentHandle']) || !matches(OPERATION, request.operationId)
+        || !matches(/^assignment-[a-f0-9]{32}$/, request.assignmentHandle)) return unavailable('invalid-request');
+      sweepExpired();
+      if (uncertainOperation) return unavailable('outcome-unresolved');
+      if (terminalOperations.has(request.operationId) || terminalOperations.size >= MAX_TERMINAL_OPERATIONS)
+        return unavailable('preview-unavailable');
+      if (previews.has(request.operationId) || preparing.has(request.operationId)
+        || previews.size + preparing.size >= MAX_PREVIEWS) return unavailable('preview-unavailable');
+      reservation = {}; preparing.set(request.operationId, reservation);
+      const authority = await authorityFor(ownedContext);
+      const retained = handleEntry(authority, request.assignmentHandle);
+      const acquired = await readWithdrawal(ownedContext, authority);
+      if (!withdrawalMatches(acquired, retained)) return rejected('assignment-changed');
+      const command = snapshot({ version: 1, kind: 'retract', targetOperationId: retained.target.operationId });
+      const result = snapshot(await store.prepare({ actorId: authority.actorId, operationId: request.operationId, command }));
+      const preview = validPreview(result, authority, request.operationId, command, tick());
+      if (preview.expectedRevision !== acquired.stamp.revision
+        || preview.expectedDocumentDigest !== acquired.stamp.documentDigest) return rejected('store-conflict');
+      await sameAuthority(ownedContext, authority);
+      if (tick() >= preview.expiresAt) return rejected('preview-expired');
+      if (uncertainOperation) return unavailable('outcome-unresolved');
+      if (handleEntry(authority, request.assignmentHandle) !== retained) return rejected('assignment-changed');
+      const previewToken = crypto.randomBytes(32).toString('hex');
+      const generation = 'generation-' + crypto.randomBytes(16).toString('hex');
+      preparing.delete(request.operationId);
+      previews.set(request.operationId, { kind: 'withdrawal', authority, withdrawal: retained, request, preview,
+        confirmationDigest: result.confirmationDigest, previewToken, generation, attempted: false });
+      return snapshot({ status: 'prepared', operationId: request.operationId, previewToken, generation,
+        assignedCents: retained.target.assignedCents, currency: 'cad', date: retained.target.effectiveDate,
+        labels: { goal: retained.label }, expiresAt: preview.expiresAt });
+    } catch { return unavailable('prepare-unavailable'); }
+    finally { if (reservation && preparing.get(request.operationId) === reservation) preparing.delete(request.operationId); }
   }
   async function originalOutcome(context, authority, operationId, expected = previews.get(operationId)) {
     const result = snapshot(await store.outcome({ actorId: authority.actorId, operationId }));
@@ -536,6 +643,15 @@ function createSettlementEvidenceConfirmation(deps) {
       if (tick() >= retained.preview.expiresAt) return await terminalNoEffect(ownedContext, authority, request, retained, 'preview-expired');
       let fresh, admissionWitness = null;
       try {
+        if (retained.kind === 'withdrawal') {
+          // Discovery handles admit prepare only. This generation already
+          // owns its qualified target: catalogue expiry/replacement must not
+          // invalidate it. Fresh acquisition and authority still fence confirm.
+          const acquired = await readWithdrawal(ownedContext, authority);
+          if (!withdrawalMatches(acquired, retained.withdrawal))
+            return await terminalNoEffect(ownedContext, authority, request, retained, 'assignment-changed');
+          admissionWitness = acquired.witness;
+        } else {
         const resolvedCall = await resolveClassified(authority, retained.request.selection);
         fresh = Object.freeze({ ...resolvedCall.selection,
           classification: resolvedCall.projection });
@@ -545,8 +661,9 @@ function createSettlementEvidenceConfirmation(deps) {
         // below into the admission commit. It is not part of the frozen
         // selection, the deep compare, or any persisted shape.
         admissionWitness = resolvedCall.witness;
+        }
       } catch { return retained.attempted ? unknown(request.operationId) : rejected('selection-unavailable'); }
-      if (!isDeepStrictEqual(fresh, retained.selection)) return await terminalNoEffect(ownedContext, authority, request, retained, 'selection-changed');
+      if (retained.kind !== 'withdrawal' && !isDeepStrictEqual(fresh, retained.selection)) return await terminalNoEffect(ownedContext, authority, request, retained, 'selection-changed');
       // Read-only optimization only: another caller can change the store
       // after this probe releases the lock (including during authorization).
       // commitWithoutRecovery owns the atomic no-recovery decision under the
@@ -616,7 +733,7 @@ function createSettlementEvidenceConfirmation(deps) {
       return await originalOutcome(ownedContext, authority, request.operationId) || unknown(request.operationId);
     } catch { return unavailable('outcome-unavailable'); }
   }
-  return Object.freeze({ prepare, confirm, outcome });
+  return Object.freeze({ prepare, confirm, outcome, ...(withdrawalReader ? { assignments, prepareWithdrawal } : {}) });
 }
 
 module.exports = { createSettlementEvidenceConfirmation };

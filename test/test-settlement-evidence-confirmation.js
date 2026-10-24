@@ -83,6 +83,88 @@ test('terminal proof controller requires exact token/generation and fresh author
   assert.notEqual((await a.controller.confirm(a.ctx, input)).status, 'not-applied');
   assert.equal(a.w.calls.commit, 0); assert.equal(a.w.calls.journal, 0);
 });
+// New withdrawal controller tests use the existing durable-MEMORY HTTP
+// fixture, never a file adapter, provider or production authority.
+async function withdrawalWorld(t, extra = {}) {
+  const w = await require('./test-settlement-evidence-http').startWorld(true,
+    extra.now ? { now: extra.now } : {}); t.after(w.close);
+  await w.confirm(await w.prepare());
+  const ctx = { actorId: JSON.parse(w.durable.doc).operations[0].actorId };
+  const resolver = require('../scripts/settlement-evidence-resolver').createSettlementEvidenceResolver({
+    householdId, acquire: () => w.syntheticAcquire(w.contextReader) });
+  const reader = L.createWithdrawalTargetReader({ householdId, contextReader: w.contextReader,
+    readPin: w.dependency.readPin, readDocument: w.dependency.readDocument });
+  const controller = createSettlementEvidenceConfirmation({ householdId,
+    authorize: w.dependency.authorize, resolveSelection: resolver.resolveSelection,
+    resolvePairedSelection: resolver.resolvePairedSelection, commitAdmitted: w.dependency.commitAdmitted,
+    store: w.store, now: Date.now, withdrawalReader: reader.acquire, ...extra });
+  return { w, ctx, controller, reader };
+}
+test('withdrawal controller rejects a later store.prepare stamp instead of rebasing an acquired target', async t => {
+  const { w, ctx, controller } = await withdrawalWorld(t);
+  const c = await controller.assignments(ctx, {}); assert.equal(c.status, 'available');
+  const original = w.store.prepare;
+  w.store.prepare = async input => {
+    const doc = JSON.parse(w.durable.doc), first = doc.operations[0];
+    const other = await original({ actorId: ctx.actorId, operationId: op(30),
+      command: { ...first.command, goalId: 'commitment:sibling', assignedCents: 1 } });
+    await w.store.commitWithoutRecovery({ actorId: ctx.actorId, preview: other.preview, confirmationDigest: other.confirmationDigest });
+    return original(input);
+  };
+  const result = await controller.prepareWithdrawal(ctx, { operationId: op(10), assignmentHandle: c.assignments[0].handle });
+  assert.deepEqual(result, { status: 'rejected', reason: 'store-conflict' });
+  assert.equal(JSON.parse(w.durable.doc).operations.length, 2, 'only explicit competing sibling wrote');
+});
+test('withdrawal controller shares uncertainty with links and never clears another actor operation', async t => {
+  const { w, ctx, controller } = await withdrawalWorld(t);
+  const c = await controller.assignments(ctx, {});
+  const p = await controller.prepareWithdrawal(ctx, { operationId: op(10), assignmentHandle: c.assignments[0].handle });
+  w.hooks.admission = async () => { throw new Error('synthetic ambiguous commit transport'); };
+  const confirm = { operationId: p.operationId, previewToken: p.previewToken, confirmed: true };
+  assert.equal((await controller.confirm(ctx, confirm)).status, 'unknown');
+  const other = { actorId: otherActor };
+  assert.equal((await controller.outcome(other, { operationId: p.operationId })).status, 'unknown');
+  const choices = await w.selection();
+  assert.deepEqual(await controller.prepare(ctx, { operationId: op(11), selection: choices, assignedCents: 1 }),
+    { status: 'unavailable', reason: 'outcome-unresolved' });
+  assert.deepEqual(await controller.prepareWithdrawal(other, { operationId: op(12), assignmentHandle: c.assignments[0].handle }),
+    { status: 'unavailable', reason: 'outcome-unresolved' });
+  assert.equal(w.calls.commit, 2, 'one attempted withdrawal; neither outcome nor blocked work retries it');
+});
+test('withdrawal suspended confirm cannot write after exact terminal retirement despite catalogue replacement', async t => {
+  let acquire, calls = 0, clock = Date.now();
+  const seen = deferred(), gate = deferred();
+  const { w, ctx, controller, reader } = await withdrawalWorld(t, { now: () => clock,
+    withdrawalReader: async () => {
+      const result = await acquire();
+      if (++calls === 3) { seen.resolve(); await gate.promise; }
+      return result;
+    } });
+  acquire = reader.acquire;
+  const c = await controller.assignments(ctx, {});
+  const p = await controller.prepareWithdrawal(ctx, { operationId: op(10), assignmentHandle: c.assignments[0].handle });
+  const input = { operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true };
+  const paused = controller.confirm(ctx, input); await seen.promise;
+  try {
+    const replacement = await controller.assignments(ctx, {});
+    assert.notEqual(replacement.assignments[0].handle, c.assignments[0].handle);
+    clock = p.expiresAt;
+    assert.deepEqual(await controller.confirm(ctx, input), { status: 'not-applied', operationId: p.operationId,
+      previewToken: p.previewToken, generation: p.generation });
+    clock = Date.now(); gate.resolve();
+    assert.notEqual((await paused).status, 'committed');
+    assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 1, 'only original assignment exists');
+  } finally { gate.resolve(); }
+});
+test('withdrawal controller refuses malformed or async witness envelopes without a commit', async t => {
+  for (const witness of [null, async () => true, 'true']) {
+    const { w, ctx, controller } = await withdrawalWorld(t, { withdrawalReader: async () => ({
+      status: 'qualified', stamp: { revision: 1, documentDigest: 'a'.repeat(64) },
+      contextStamp: { domain: 'synthetic-domain', contextRevision: 1 }, targets: [], witness }) });
+    assert.equal((await controller.assignments(ctx, {})).status, 'unavailable');
+    assert.equal(w.calls.commit, 1);
+  }
+});
 function deferred() {
   let resolve;
   const promise = new Promise(r => { resolve = r; });

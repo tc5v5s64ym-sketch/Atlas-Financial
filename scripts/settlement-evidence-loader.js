@@ -352,6 +352,65 @@ async function loadSettlementEvidence(input) {
   return Object.freeze({ status: 'qualified', evidence: acquired.evidence });
 }
 
+// Private construction capability for whole-assignment withdrawal. Public
+// evidence/receipt projections above and below retain their exact contracts.
+// The trusted context reader must be synchronous and advance a never-reused
+// revision on authority/domain changes, including revoke/restore and A-B-A.
+// This cannot detect an unobserved rollback that violates that assumption;
+// it is not durable origin history or provider-freshness qualification.
+function createWithdrawalTargetReader(deps) {
+  if (!isRecord(deps) || !householdIdValid(deps.householdId)
+    || ['readDocument', 'readPin', 'contextReader'].some(k => typeof deps[k] !== 'function'))
+    throw new TypeError('withdrawal reader requires trusted dependencies');
+  const { householdId, readDocument, readPin, contextReader } = deps;
+  let highWater = 0, regressed = false;
+  const freeze = value => {
+    if (value && typeof value === 'object') {
+      Object.values(value).forEach(freeze); Object.freeze(value);
+    }
+    return value;
+  };
+  function context() {
+    if (regressed || Object.prototype.toString.call(contextReader) === '[object AsyncFunction]') throw new Error('context');
+    const raw = contextReader();
+    if (!isRecord(raw)) throw new Error('context');
+    const d = Object.getOwnPropertyDescriptors(raw);
+    if (Reflect.ownKeys(d).length !== 2 || !['domain', 'contextRevision'].every(k =>
+      d[k]?.enumerable && Object.hasOwn(d[k], 'value'))) throw new Error('context');
+    const domain = d.domain.value, contextRevision = d.contextRevision.value;
+    if (typeof domain !== 'string' || !domain.length || domain.length > 128
+      || !Number.isSafeInteger(contextRevision) || contextRevision <= 0) throw new Error('context');
+    if (contextRevision < highWater) { regressed = true; throw new Error('context'); }
+    highWater = contextRevision;
+    return Object.freeze({ domain, contextRevision });
+  }
+  async function acquireTargets() {
+    try {
+      const captured = context();
+      let valid = true;
+      const witness = () => {
+        if (!valid) return false;
+        try {
+          const current = context();
+          valid = current.domain === captured.domain && current.contextRevision === captured.contextRevision;
+        } catch { valid = false; }
+        return valid;
+      };
+      const acquired = await acquireQualified({ config: { householdId }, readDocument, readPin });
+      if (acquired.outcome) return acquired.outcome;
+      if (!witness()) return unavailable('document-changed');
+      // doc was compared to the independently acquired pin in THIS load.
+      // Never acquire a later pin to stamp an older target projection.
+      const stamp = Object.freeze({ revision: acquired.doc.revision, documentDigest: acquired.doc.digest });
+      const targets = acquired.evidence.commitments.flatMap(row => row.links.map(link =>
+        ({ goalId: row.goalId, ...link })));
+      return Object.freeze({ status: 'qualified', stamp, contextStamp: captured,
+        targets: freeze(targets), witness });
+    } catch { return unavailable('invalid-configuration'); }
+  }
+  return Object.freeze({ acquire: acquireTargets });
+}
+
 // --- Receipt-bound qualified publication read -----------------------------
 // A private opt-in capability for an internal caller that already
 // holds an authorized original committed receipt — the store's
@@ -488,5 +547,5 @@ async function loadReceiptBoundPublication(input) {
 }
 
 module.exports = {
-  loadSettlementEvidence, loadReceiptBoundPublication, REASONS, RECEIPT_REASONS,
+  loadSettlementEvidence, loadReceiptBoundPublication, createWithdrawalTargetReader, REASONS, RECEIPT_REASONS,
 };

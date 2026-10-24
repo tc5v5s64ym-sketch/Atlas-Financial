@@ -6,6 +6,7 @@ const express = require('express');
 const { createSettlementEvidenceConfirmation } = require('./settlement-evidence-confirmation');
 const { createSettlementEvidenceResolver } = require('./settlement-evidence-resolver');
 const { createSettlementEvidenceServing, receiptBoundView } = require('./settlement-evidence-serving');
+const { createWithdrawalTargetReader } = require('./settlement-evidence-loader');
 const OP = /^operation-[a-f0-9]{32}$/;
 const HANDLE = /^selection-[a-f0-9]{32}$/;
 const CHOICE = /^choice-[a-f0-9]{32}$/;
@@ -40,10 +41,20 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     };
     resolver = createSettlementEvidenceResolver({ householdId,
       acquire: () => acquire(contextReader) });
+    const withdrawalReader = createWithdrawalTargetReader({ householdId,
+      readDocument: d.readDocument, readPin: d.readPin, contextReader });
     // Exactly one controller for this application lifetime, including all routes.
     controller = createSettlementEvidenceConfirmation({ householdId: d.householdId, authorize,
       resolveSelection: resolver.resolveSelection, resolvePairedSelection: resolver.resolvePairedSelection,
-      store: d.store, commitAdmitted: d.commitAdmitted, now });
+      store: d.store, commitAdmitted: d.commitAdmitted, now,
+      withdrawalReader: withdrawalReader.acquire,
+      // Names are presentation only. Missing/failed current base labels use
+      // the controller's bounded fallback; they never qualify ledger targets.
+      withdrawalLabels: async () => {
+        const base = await readBase();
+        return Array.isArray(base?.plan?.commitments) ? base.plan.commitments.map(row =>
+          ({ goalId: 'commitment:' + row.id, label: typeof row.label === 'string' ? row.label : '' })) : [];
+      } });
     serving = createSettlementEvidenceServing({ householdId: d.householdId,
       readDocument: d.readDocument, readPin: d.readPin });
     active = true;
@@ -118,6 +129,10 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     return result.status === 'prepared' ? { ...result, labels: { payment: payment.label, goal: goal.label } } : result;
   });
   const operation = body => shape(body, ['operationId']) && OP.test(body.operationId);
+  post('/assignments', body => shape(body, []), context => controller.assignments(context, {}));
+  post('/prepare-withdrawal', body => shape(body, ['operationId', 'assignmentHandle'])
+    && OP.test(body.operationId) && /^assignment-[a-f0-9]{32}$/.test(body.assignmentHandle),
+  (context, _authority, body) => controller.prepareWithdrawal(context, body));
   post('/confirm', body => (shape(body, ['operationId', 'previewToken', 'confirmed'])
     || shape(body, ['operationId', 'previewToken', 'generation', 'confirmed'])
       && /^generation-[a-f0-9]{32}$/.test(body.generation))
