@@ -644,9 +644,11 @@ function createSettlementEvidenceConfirmation(deps) {
       let fresh, admissionWitness = null;
       try {
         if (retained.kind === 'withdrawal') {
-          const entry = handleEntry(authority, retained.request.assignmentHandle);
+          // Discovery handles admit prepare only. This generation already
+          // owns its qualified target: catalogue expiry/replacement must not
+          // invalidate it. Fresh acquisition and authority still fence confirm.
           const acquired = await readWithdrawal(ownedContext, authority);
-          if (entry !== retained.withdrawal || !withdrawalMatches(acquired, retained.withdrawal))
+          if (!withdrawalMatches(acquired, retained.withdrawal))
             return await terminalNoEffect(ownedContext, authority, request, retained, 'assignment-changed');
           admissionWitness = acquired.witness;
         } else {

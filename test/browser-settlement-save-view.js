@@ -77,7 +77,7 @@ async function complete(page, dialog) {
   await page.waitForFunction(() => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified');
   await page.waitForFunction(KEY => localStorage.getItem(KEY) === null, KEY);
 }
-async function withdrawalPreview(page) {
+async function withdrawalPreview(page, afterDiscovery = () => {}) {
   const dialog = await sheet(page);
   await dialog.getByRole('button', { name: 'Withdraw an assignment', exact: true }).click();
   // Catalogue order is not target identity: a sibling can sort before this
@@ -87,6 +87,7 @@ async function withdrawalPreview(page) {
   await target.first().waitFor({ state: 'attached' });
   assert.equal(await target.count(), 1);
   await assignments.selectOption(await target.getAttribute('value'));
+  await afterDiscovery();
   await dialog.getByRole('button', { name: 'Preview withdrawal', exact: true }).click();
   await dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).waitFor();
   assert.match(await dialog.locator('[data-settlement-assignment]').innerText(), /Withdraw.*\$25\.00 CAD.*does not move money.*Preview expires/);
@@ -187,6 +188,7 @@ function rendererReversalEvidence(withReversal) {
       const dialog = await sheet(page);
       await page.waitForResponse(r => r.url().endsWith('/settlement/capability')).catch(() => {});
       assert.equal(await dialog.getByRole('button', { name: 'Assign a recorded payment' }).count(), 0);
+      assert.equal(await dialog.getByRole('button', { name: 'Withdraw an assignment' }).count(), 0);
       assert.equal(w.calls.storage, 0); assert.equal(w.calls.acquire, 0);
     }, false);
     await run('raw storage refusal boots ordinary data only with real sealed preactivation attestation', async (w, fixture) => {
@@ -1051,6 +1053,53 @@ function rendererReversalEvidence(withReversal) {
         assert.deepEqual(JSON.parse(w.durable.doc).operations.map(o => o.command.kind), ['link', 'retract', 'link']);
       }, true, width);
     }
+    let discoveryClock = Date.now();
+    for (const change of ['expiry', 'replacement']) {
+      discoveryClock = Date.now();
+      await run('prepared withdrawal survives discovery catalogue ' + change + ' through real browser reload', async (w, fixture) => {
+        const { page } = fixture;
+        await complete(page, await preview(page)); const t0 = discoveryClock;
+        const prepared = page.waitForResponse(r => r.url().endsWith('/settlement/prepare-withdrawal'));
+        const dialog = await withdrawalPreview(page, () => { discoveryClock += 60000; });
+        const expiresAt = (await (await prepared).json()).expiresAt;
+        if (change === 'expiry') discoveryClock = t0 + require('../scripts/planned-obligation-settlement-contract').TTL_MS + 1000;
+        else assert.equal(await page.evaluate(async () => {
+          const response = await fetch('/settlement/assignments', { method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Atlas-Settlement': 'same-origin' }, body: '{}' });
+          return (await response.json()).status;
+        }), 'available');
+        assert.ok(discoveryClock < expiresAt, 'preview remains valid beyond discovery lifetime');
+        const before = Buffer.from(w.durable.doc);
+        const response = page.waitForResponse(r => r.url().endsWith('/settlement/confirm'));
+        await dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).click();
+        assert.equal((await response).status(), 200);
+        // Successful confirmation navigates immediately. Observe the installed
+        // view/marker instead of racing response.json against that navigation.
+        await page.waitForFunction(KEY => localStorage.getItem(KEY) === null
+          || document.body.innerText.includes('Assignment outcome needs reconciliation.'), KEY);
+        const result = await page.evaluate(KEY => localStorage.getItem(KEY) === null
+          ? 'committed-view' : 'reconciliation-required', KEY);
+        fixture.details = { synthetic: true, discoveryChange: change, bootOutcome: result, previewValidAtConfirm: true };
+        if (result !== 'committed-view') {
+          await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+          const marker = await page.evaluate(KEY => localStorage.getItem(KEY), KEY);
+          assert.equal(JSON.parse(marker).phase, 'dispatched');
+          assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 1); assert.ok(w.durable.doc.equals(before));
+          await page.reload(); await reconciliationBoot(page);
+          assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), marker);
+          Object.assign(fixture.details, { dispatchedMarkerRetained: true, durableUnchanged: true,
+            reloadData: null, reloadOnceHooks: 0, commitInvocations: w.calls.commit, journalWrites: w.calls.journal });
+        }
+        assert.equal(result, 'committed-view');
+        await page.waitForFunction(KEY => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified'
+          && localStorage.getItem(KEY) === null, KEY);
+        assert.equal(w.calls.commit, 2); assert.equal(w.calls.journal, 2);
+        assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 });
+        await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+        assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 });
+        assert.equal(w.calls.commit, 2, 'ordinary reload never replays');
+      }, true, 390, { now: () => discoveryClock });
+    }
     await run('withdrawal lost committed response reload never resends or automatically relinks', async (w, { page }) => {
       await complete(page, await preview(page)); const dialog = await withdrawalPreview(page);
       let dropped = false;
@@ -1067,6 +1116,22 @@ function rendererReversalEvidence(withReversal) {
       assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 });
       assert.equal(w.calls.commit, 2);
       assert.deepEqual(JSON.parse(w.durable.doc).operations.map(o => o.command.kind), ['link', 'retract']);
+    });
+    await run('withdrawal lost unknown response preserves dispatched marker and blocks ordinary reload', async (w, { page, requests }) => {
+      await complete(page, await preview(page)); const dialog = await withdrawalPreview(page);
+      const before = Buffer.from(w.durable.doc);
+      w.hooks.admission = async () => { throw new Error('synthetic ambiguous commit transport'); };
+      await page.route('**/settlement/confirm', async route => {
+        const response = await route.fetch(); assert.equal((await response.json()).status, 'unknown');
+        await route.abort('failed');
+      });
+      await dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).click();
+      await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+      const marker = await page.evaluate(KEY => localStorage.getItem(KEY), KEY); assert.equal(JSON.parse(marker).phase, 'dispatched');
+      await page.reload(); await reconciliationBoot(page);
+      assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), marker);
+      assert.equal(w.calls.commit, 2); assert.equal(w.calls.journal, 1); assert.ok(w.durable.doc.equals(before));
+      assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 2);
     });
     await run('withdrawal remains available without current provider row or goal and preview dismissal is read-only', async (w, { page }) => {
       await complete(page, await preview(page));

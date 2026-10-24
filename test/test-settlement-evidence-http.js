@@ -329,6 +329,38 @@ if (require.main === module) {
     const denied = await w.raw('assignments', {}); assert.equal(denied.status, 503);
     assert.deepEqual(await denied.json(), { status: 'unavailable' }); assert.equal(w.calls.commit, 1);
   });
+  for (const change of ['expiry', 'replacement']) {
+    test('prepared withdrawal survives discovery catalogue ' + change, async t => {
+      const t0 = Date.now(); let clock = t0;
+      const w = await startWorld(true, { now: () => clock }); t.after(w.close);
+      await w.confirm(await w.prepare());
+      const c = await w.post('assignments', {}), handle = c.assignments[0].handle;
+      clock = t0 + 60000;
+      const p = await w.post('prepare-withdrawal', { operationId: op(10), assignmentHandle: handle });
+      assert.equal(p.status, 'prepared');
+      if (change === 'expiry') clock = t0 + require('../scripts/planned-obligation-settlement-contract').TTL_MS + 1000;
+      else assert.notEqual((await w.post('assignments', {})).assignments[0].handle, handle);
+      assert.ok(clock < p.expiresAt, 'prepared preview is still valid');
+      assert.notEqual((await w.post('prepare-withdrawal', { operationId: op(11), assignmentHandle: handle })).status,
+        'prepared', 'expired/replaced discovery handle cannot admit another prepare');
+      const ownerCookie = w.cookie; w.cookie = await w.login();
+      assert.equal((await correlatedConfirm(w, p)).status, 'unknown', 'another authorized login cannot consume this preview');
+      assert.equal(w.calls.commit, 1); w.cookie = ownerCookie;
+      const before = Buffer.from(w.durable.doc);
+      const result = await correlatedConfirm(w, p);
+      if (result.status !== 'committed') {
+        const outcome = await w.post('outcome', { operationId: p.operationId });
+        console.log(JSON.stringify({ synthetic: true, discoveryChange: change, confirm: result.status,
+          reason: result.reason, outcome: outcome.status, commitInvocations: w.calls.commit,
+          journalWrites: w.calls.journal, durableUnchanged: w.durable.doc.equals(before) }));
+      }
+      assert.equal(result.status, 'committed'); assert.equal(result.operationId, p.operationId);
+      assert.equal(w.calls.commit, 2); assert.equal(w.calls.journal, 2);
+      assert.deepEqual(await correlatedConfirm(w, p), result, 'repeat returns original own receipt');
+      assert.equal(w.calls.commit, 2);
+      const view = await w.post('publication', { operationId: p.operationId }); assert.equal(view.publication, 'included');
+    });
+  }
   test('withdrawal expiry at controller and real-store boundaries retains exact generation terminal proof', async t => {
     for (const boundary of ['controller', 'store']) {
       let clock = Date.now(); const w = await startWorld(true, { now: () => clock }); t.after(w.close);
@@ -367,6 +399,7 @@ if (require.main === module) {
     const response = await fetch(w.origin + '/settlement/capability', { headers: { Cookie: w.cookie } });
     assert.deepEqual(await response.json(), { status: 'inactive', bootClassification: 'recovery-required' });
     assert.equal((await w.raw('selections', {})).status, 503);
+    assert.equal((await w.raw('assignments', {})).status, 503);
     const data = await fetch(w.origin + '/data.json', { headers: { Cookie: w.cookie } });
     assert.deepEqual(await data.json(), w.base);
     assert.deepEqual(w.calls, { storage: 0, journal: 0, commit: 0, acquire: 0, base: 0 });

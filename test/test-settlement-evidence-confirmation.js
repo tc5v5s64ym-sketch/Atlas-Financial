@@ -86,7 +86,8 @@ test('terminal proof controller requires exact token/generation and fresh author
 // New withdrawal controller tests use the existing durable-MEMORY HTTP
 // fixture, never a file adapter, provider or production authority.
 async function withdrawalWorld(t, extra = {}) {
-  const w = await require('./test-settlement-evidence-http').startWorld(); t.after(w.close);
+  const w = await require('./test-settlement-evidence-http').startWorld(true,
+    extra.now ? { now: extra.now } : {}); t.after(w.close);
   await w.confirm(await w.prepare());
   const ctx = { actorId: JSON.parse(w.durable.doc).operations[0].actorId };
   const resolver = require('../scripts/settlement-evidence-resolver').createSettlementEvidenceResolver({
@@ -129,6 +130,31 @@ test('withdrawal controller shares uncertainty with links and never clears anoth
   assert.deepEqual(await controller.prepareWithdrawal(other, { operationId: op(12), assignmentHandle: c.assignments[0].handle }),
     { status: 'unavailable', reason: 'outcome-unresolved' });
   assert.equal(w.calls.commit, 2, 'one attempted withdrawal; neither outcome nor blocked work retries it');
+});
+test('withdrawal suspended confirm cannot write after exact terminal retirement despite catalogue replacement', async t => {
+  let acquire, calls = 0, clock = Date.now();
+  const seen = deferred(), gate = deferred();
+  const { w, ctx, controller, reader } = await withdrawalWorld(t, { now: () => clock,
+    withdrawalReader: async () => {
+      const result = await acquire();
+      if (++calls === 3) { seen.resolve(); await gate.promise; }
+      return result;
+    } });
+  acquire = reader.acquire;
+  const c = await controller.assignments(ctx, {});
+  const p = await controller.prepareWithdrawal(ctx, { operationId: op(10), assignmentHandle: c.assignments[0].handle });
+  const input = { operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true };
+  const paused = controller.confirm(ctx, input); await seen.promise;
+  try {
+    const replacement = await controller.assignments(ctx, {});
+    assert.notEqual(replacement.assignments[0].handle, c.assignments[0].handle);
+    clock = p.expiresAt;
+    assert.deepEqual(await controller.confirm(ctx, input), { status: 'not-applied', operationId: p.operationId,
+      previewToken: p.previewToken, generation: p.generation });
+    clock = Date.now(); gate.resolve();
+    assert.notEqual((await paused).status, 'committed');
+    assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 1, 'only original assignment exists');
+  } finally { gate.resolve(); }
 });
 test('withdrawal controller refuses malformed or async witness envelopes without a commit', async t => {
   for (const witness of [null, async () => true, 'true']) {
