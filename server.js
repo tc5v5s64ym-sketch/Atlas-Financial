@@ -31,9 +31,9 @@ const LivePlan = require('./scripts/live-plan.js');
 const ServerLiveRefresh = require('./scripts/server-live-refresh.js');
 const SettlementEvidenceServing = require('./scripts/settlement-evidence-serving.js');
 // Default-inactive: constructed with NO dependency, so attach() returns
-// the served object unchanged and no settlement fields are served. A
-// future storage slice injects the loader dependency here; nothing in
-// this construction reads configuration, storage or credentials.
+// the served object unchanged and adds no settlement fields.
+// Browser-only opt-in composition is separate and application-local; this
+// shared consumer path never reads settlement configuration or storage.
 const settlementEvidenceServing = SettlementEvidenceServing.createSettlementEvidenceServing();
 const Assistant = require('./scripts/assistant-packet.js');
 const RunningBuild = require('./scripts/running-build.js');
@@ -189,7 +189,7 @@ function authed(req) {
 // FOUNDATION - NOT COMPLETION: available only from this signed login, never
 // from a caller-supplied actor or an expiry-only legacy cookie. This is not
 // person identity, settlement authorization, or permission to read old receipts.
-// No settlement consumer is connected in this prerequisite.
+// Every settlement consumer additionally requires the trusted household policy.
 function sessionActor(req) {
   let token;
   try { token = readCookie(req, 'hfd_session'); } catch { return null; }
@@ -329,7 +329,7 @@ app.post('/logout', (req, res) => {
 // literal string "ok" and reads nothing, so this widens no data surface.
 app.get('/healthz', (_req, res) => res.type('text/plain').send('ok'));
 
-require('./scripts/settlement-evidence-http').mountSettlementHttp(app, sessionActor, options.settlement, preactivationOnly);
+const settlementHttp = require('./scripts/settlement-evidence-http').mountSettlementHttp(app, sessionActor, options.settlement, preactivationOnly);
 
 // OAuth protected-resource discovery is public metadata. It contains no token,
 // credential, or household data. The authorization server itself is external;
@@ -470,18 +470,22 @@ app.get('/data.json', async (req, res) => {
     // fixture|live) may replace posted/pending for today's live plan only.
     // Production read-only Lunch Money uses live mode plus owner-supplied
     // secrets. Default without that flag remains the canonical file.
-    const served = await servedAtlasData(req, res, {
+    await settlementHttp.browserData(req, () => servedAtlasData(req, res, {
       preferObservation: true, forceRefresh: req.query.refresh === 'force',
       onCheck(check) {
         res.set('X-Atlas-Observation-Source', check.source);
         res.set('X-Atlas-Observation-Qualified', check.qualified ? 'true' : 'false');
         if (check.checkedAt) res.set('X-Atlas-Observation-Checked-At', check.checkedAt);
       },
-    });
-    if (!res.destroyed) res.json(served);
+    }), served => { if (!res.destroyed) res.json(served); });
   } catch (err) {
-    if (err.code !== 'live-refresh-cancelled') console.error('data.json could not be read:', err.code || 'data unavailable');
-    if (!res.destroyed) res.status(err.code?.startsWith('live-refresh-') ? 503 : 500).json({ error: 'data unavailable' });
+    if (err.code === 'settlement-browser-unavailable') {
+      if (!res.destroyed) res.status(err.status === 401 ? 401 : 503)
+        .json({ error: err.status === 401 ? 'not authenticated' : 'data unavailable' });
+    } else {
+      if (err.code !== 'live-refresh-cancelled') console.error('data.json could not be read:', err.code || 'data unavailable');
+      if (!res.destroyed) res.status(err.code?.startsWith('live-refresh-') ? 503 : 500).json({ error: 'data unavailable' });
+    }
   }
 });
 

@@ -302,6 +302,15 @@ test('server wiring: the shared return point passes through the bridge, construc
     'the production serving is constructed with NO dependency (default-inactive)');
   const attachSites = source.match(/\.attach\(/g) || [];
   assert.equal(attachSites.length, 1, 'exactly one attach call site');
+  assert.equal((source.match(/settlementHttp\.browserData\(/g) || []).length, 1,
+    'the opted-in browser capability has one consumer');
+  const dataRoute = source.slice(source.indexOf("app.get('/data.json'"), source.indexOf('// Talk context -'));
+  assert.ok(dataRoute.includes('settlementHttp.browserData(req, () => servedAtlasData(req, res,'),
+    'only browser data wraps the incumbent raw-base path in the authorized capability');
+  const packetStart = source.indexOf('async function buildCurrentAssistantPacket');
+  const packet = source.slice(packetStart, source.indexOf('\n}', packetStart));
+  assert.ok(packet.includes('servedAtlasData(req, res,') && !packet.includes('browserData'),
+    'the shared assistant/MCP/Talk packet never opts into browser settlement reads');
   const fnStart = source.indexOf('async function servedAtlasData');
   const fnEnd = source.indexOf('\n}', fnStart);
   const body = source.slice(fnStart, fnEnd);
@@ -327,8 +336,19 @@ test('server wiring: the shared return point passes through the bridge, construc
     .filter(line => line.includes('servedAtlasData(') && !line.includes('function servedAtlasData'));
   assert.equal(callLines.length, 3, 'three servedAtlasData consumers');
   for (const line of callLines) {
-    assert.ok(line.includes('await servedAtlasData('),
-      'consumer awaits servedAtlasData: ' + line.trim());
+    if (line.includes('settlementHttp.browserData(')) {
+      assert.ok(line.includes('await settlementHttp.browserData(req, () => servedAtlasData('),
+        'the browser awaits the capability that owns its asynchronous base read');
+      const httpSource = fs.readFileSync(path.join(ROOT, 'scripts/settlement-evidence-http.js'), 'utf8');
+      assert.ok(httpSource.includes('const base = await readBrowserBase();')
+        && httpSource.includes('publish(await readBrowserBase())'), 'active and inactive capability paths await the raw base');
+      assert.ok(httpSource.includes('await serving.attach(structuredClone(base))')
+        && httpSource.includes('return reauthorize(() => publish(data))'),
+      'the browser awaits settlement publication and publishes inside final authority continuation');
+    } else {
+      assert.ok(line.includes('await servedAtlasData('),
+        'consumer awaits servedAtlasData: ' + line.trim());
+    }
   }
 });
 
