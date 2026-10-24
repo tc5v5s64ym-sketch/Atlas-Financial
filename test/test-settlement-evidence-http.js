@@ -48,7 +48,10 @@ async function startWorld(active = true, options = {}) {
     async discardTemp() { d.staged = null; },
   };
   const journalStore = { read: read('journal', () => d.journal && Buffer.from(d.journal)),
-    async write(value) { w.calls.journal++; d.journal = Buffer.from(JSON.stringify(value)); },
+    async write(value) {
+      w.calls.journal++; d.journal = Buffer.from(JSON.stringify(value));
+      if (w.hooks.journalWrite) await w.hooks.journalWrite();
+    },
     async clear() { d.journal = null; } };
   const pinStore = { read: read('pin', () => d.pin && clone(d.pin)),
     async advance(expected, next) {
@@ -159,12 +162,136 @@ async function withdrawal(w, n = 10) {
 module.exports.syntheticRecord = syntheticRecord;
 module.exports.withdrawal = withdrawal;
 
+// Deterministic synthetic competitor, using the real store/contract. It never
+// fabricates a successful prepare, journal or receipt. Shared by HTTP/browser
+// and selected controller proofs; no runtime seam or production writer added.
+async function appendCompetingRecord(w, input, options = {}, prepare = w.store.prepare) {
+  const doc = JSON.parse(w.durable.doc);
+  const source = input.command.kind === 'retract'
+    ? doc.operations.find(o => o.operationId === input.command.targetOperationId).command : input.command;
+  const actorId = 'session-' + 'e'.repeat(64);
+  const operationId = options.sameId ? input.operationId : options.competingOperationId || op(900);
+  const command = { ...source, goalId: 'commitment:' + w.base.plan.commitments[1].id, assignedCents: 100 };
+  const p = await prepare({ actorId, operationId, command }); assert.ok(p.preview);
+  if (options.journal) w.hooks.journalWrite = async () => { throw new Error('synthetic lost journal acknowledgement'); };
+  let receipt;
+  try { receipt = await w.store.commitWithoutRecovery({ actorId, preview: p.preview, confirmationDigest: p.confirmationDigest }); }
+  finally { if (options.journal) delete w.hooks.journalWrite; }
+  assert.equal(receipt.status, options.journal ? 'unknown' : 'committed');
+  return { actorId, operationId, receipt, doc: Buffer.from(w.durable.doc), pin: JSON.stringify(w.durable.pin),
+    journal: w.durable.journal && Buffer.from(w.durable.journal), journalWrites: w.calls.journal };
+}
+function armProbeCompetition(w, operationId, options = {}) {
+  const prepare = w.store.prepare; let armed = true;
+  const control = { probeEntered: false, successfulProbe: false };
+  w.store.prepare = async input => {
+    const target = armed && input.operationId === operationId;
+    if (target) {
+      armed = false; control.probeEntered = true;
+      control.competing = await appendCompetingRecord(w, input, options, prepare);
+    }
+    const result = await prepare(input);
+    if (target) control.successfulProbe = !!result.preview;
+    return result;
+  };
+  return control;
+}
+module.exports.appendCompetingRecord = appendCompetingRecord;
+module.exports.armProbeCompetition = armProbeCompetition;
+
 if (require.main === module) {
   const test = require('node:test');
   const correlatedConfirm = (w, p, overrides = {}) => w.post('confirm', {
     operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true, ...overrides });
   const negative = p => ({ status: 'not-applied', operationId: p.operationId,
     previewToken: p.previewToken, generation: p.generation });
+  test('probe mismatch real link prepares return exact terminal proof without refused-operation writes', async t => {
+    const w = await startWorld(); t.after(w.close);
+    const p = await w.prepare(), control = armProbeCompetition(w, p.operationId);
+    const result = await correlatedConfirm(w, p);
+    console.log(JSON.stringify({ synthetic: true, stage: 'successful-probe-mismatch', status: result.status, reason: result.reason,
+      successfulProbe: control.successfulProbe, refusedCommitInvocations: w.calls.commit,
+      journalWrites: w.calls.journal, competingStateUnchanged: w.durable.doc.equals(control.competing.doc) }));
+    assert.equal(control.successfulProbe, true);
+    assert.equal(require('node:util').isDeepStrictEqual(result, negative(p)), true, 'exact operation/token/generation proof');
+    assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 1);
+    assert.ok(w.durable.doc.equals(control.competing.doc)); assert.equal(JSON.stringify(w.durable.pin), control.competing.pin);
+    assert.equal((await w.post('outcome', { operationId: p.operationId })).status, 'unknown', 'negative proof is not durable absence recovery');
+  });
+  for (const phase of ['early', 'probe']) {
+    test('probe mismatch withdrawal ' + phase + ' window uses exact terminal proof without retracting', async t => {
+      const w = await startWorld(); t.after(w.close); await w.confirm(await w.prepare());
+      const p = await withdrawal(w); let state, control;
+      if (phase === 'early') {
+        const first = JSON.parse(w.durable.doc).operations[0];
+        state = await appendCompetingRecord(w, { operationId: p.operationId, command: first.command });
+      } else control = armProbeCompetition(w, p.operationId);
+      const result = await correlatedConfirm(w, p); state ||= control.competing;
+      assert.equal(require('node:util').isDeepStrictEqual(result, negative(p)), true, 'exact generation proof');
+      if (control) assert.equal(control.successfulProbe, true, 'change landed after qualified target acquisition');
+      assert.equal(w.calls.commit, 1, 'only the original assignment used the controller commit capability');
+      assert.equal(w.calls.journal, 2); assert.ok(w.durable.doc.equals(state.doc));
+      assert.ok(JSON.parse(w.durable.doc).operations.every(o => o.command.kind === 'link'), 'no withdrawal was recorded');
+    });
+  }
+  for (const phase of ['probe', 'post-store']) for (const journal of [false, true]) {
+    test('probe safety ' + phase + ' same-ID ' + (journal ? 'journal' : 'ledger') + ' is never negative proof', async t => {
+      const w = await startWorld(); t.after(w.close); const p = await w.prepare(); let control;
+      if (phase === 'probe') control = armProbeCompetition(w, p.operationId, { sameId: true, journal });
+      else {
+        control = {}; const prepare = w.store.prepare; let incoming;
+        w.store.prepare = async input => { incoming = input; return prepare(input); };
+        w.hooks.admission = async () => {
+          control.competing = await appendCompetingRecord(w, incoming, { sameId: true, journal }, prepare);
+        };
+      }
+      const result = await correlatedConfirm(w, p), state = control.competing;
+      assert.notEqual(result.status, 'not-applied'); assert.notEqual(result.status, 'committed');
+      if (phase === 'probe') assert.equal(control.successfulProbe, false, 'unsafe trace cannot yield a valid fresh preview');
+      else assert.equal(result.reason, 'store-conflict', 'same-ID actor/digest conflict remains generic even with a resident journal');
+      assert.equal(w.calls.commit, phase === 'probe' ? 0 : 1);
+      assert.equal(w.calls.journal, 1); assert.ok(w.durable.doc.equals(state.doc));
+      assert.equal(JSON.stringify(w.durable.pin), state.pin);
+      if (journal) assert.ok(w.durable.journal.equals(state.journal), 'resident journal was not reconciled');
+      assert.notEqual((await w.post('outcome', { operationId: p.operationId })).status, 'committed', 'another actor receipt is private');
+    });
+  }
+  test('probe safety post-store distinct-ID journal remains recovery-required without proof or repair', async t => {
+    const w = await startWorld(); t.after(w.close); const p = await w.prepare();
+    const prepare = w.store.prepare; let incoming, competing;
+    w.store.prepare = async input => { incoming = input; return prepare(input); };
+    w.hooks.admission = async () => { competing = await appendCompetingRecord(w, incoming, { journal: true }, prepare); };
+    const result = await correlatedConfirm(w, p);
+    assert.deepEqual(result, { status: 'rejected', reason: 'recovery-required' });
+    assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 1);
+    assert.ok(w.durable.doc.equals(competing.doc)); assert.ok(w.durable.journal.equals(competing.journal));
+    assert.equal(JSON.stringify(w.durable.pin), competing.pin);
+  });
+  test('probe mismatch legacy and wrong actor cannot obtain terminal proof or consume another preview', async t => {
+    for (const legacy of [true, false]) {
+      const w = await startWorld(); t.after(w.close); const p = await w.prepare();
+      const control = armProbeCompetition(w, p.operationId);
+      if (legacy) {
+        assert.notEqual((await w.confirm(p)).status, 'not-applied');
+        assert.equal(control.successfulProbe, true); assert.equal(w.calls.commit, 0);
+      } else {
+        const owner = w.cookie; w.cookie = await w.login();
+        assert.equal((await correlatedConfirm(w, p)).status, 'unknown');
+        assert.equal(control.probeEntered, false); w.cookie = owner;
+        assert.equal((await correlatedConfirm(w, p)).status, 'not-applied');
+      }
+      assert.equal(w.calls.journal, 1);
+    }
+  });
+  test('probe mismatch transport postauthorization suppresses a retired negative acknowledgement', async t => {
+    const w = await startWorld(); t.after(w.close); const p = await w.prepare(), control = armProbeCompetition(w, p.operationId);
+    let postProbe = 0;
+    w.hooks.authorize = async () => { if (control.successfulProbe && ++postProbe === 2) w.authorized = false; };
+    const response = await w.raw('confirm', { operationId: p.operationId, previewToken: p.previewToken,
+      generation: p.generation, confirmed: true });
+    assert.equal(response.status, 503); assert.deepEqual(await response.json(), { status: 'unavailable' });
+    assert.equal(postProbe, 2); assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 1);
+  });
   const ordinary = (w, cookie = w.cookie) => fetch(w.origin + '/data.json', { headers: { Cookie: cookie } });
   const costFacts = data => {
     const row = Forecast.savingsInventory(data.plan, data.meta.asOf,

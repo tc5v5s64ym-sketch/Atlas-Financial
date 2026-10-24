@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { chromium } = require('playwright');
-const { startWorld, env, syntheticRecord } = require('./test-settlement-evidence-http');
+const { startWorld, env, syntheticRecord, armProbeCompetition, appendCompetingRecord } = require('./test-settlement-evidence-http');
 const KEY = 'atlas-settlement-pending-v1';
 const out = process.env.ATLAS_SETTLEMENT_BROWSER_PROOF || path.join(os.tmpdir(), 'atlas-settlement-browser-proof');
 const results = [];
@@ -708,6 +708,90 @@ function rendererReversalEvidence(withReversal) {
       assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 });
       assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 1);
     }, true, 390, { now: () => previewClock });
+    await run('received probe mismatch proof clears marker and permits ordinary browser reload', async (w, fixture) => {
+      const { page, requests } = fixture, dialog = await preview(page);
+      const marker = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY);
+      const control = armProbeCompetition(w, marker.operationId);
+      const pending = page.waitForResponse(r => r.url().endsWith('/settlement/confirm'));
+      await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+      const response = await pending, result = await response.json(), request = response.request().postDataJSON();
+      const bound = require('node:util').isDeepStrictEqual(result, { status: 'not-applied', operationId: request.operationId,
+        previewToken: request.previewToken, generation: request.generation });
+      fixture.details = { synthetic: true, status: result.status, reason: result.reason, exactProofBound: bound,
+        successfulProbe: control.successfulProbe, refusedCommitInvocations: w.calls.commit, journalWrites: w.calls.journal };
+      if (!bound) {
+        await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+        const dispatched = await page.evaluate(KEY => localStorage.getItem(KEY), KEY); assert.equal(JSON.parse(dispatched).phase, 'dispatched');
+        await page.reload(); await reconciliationBoot(page);
+        assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), dispatched);
+        Object.assign(fixture.details, { markerRetained: true, reloadData: null, reloadOnceHooks: 0 });
+      }
+      assert.equal(bound, true, 'received real successful-probe mismatch must prove exact retained generation');
+      await dialog.getByText('Not saved.', { exact: false }).waitFor();
+      assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), null);
+      await Promise.all([page.waitForEvent('load'), dialog.getByRole('button', { name: 'Reload current view', exact: true }).click()]);
+      await page.waitForFunction(() => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified');
+      assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 });
+      assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 1); assert.ok(w.durable.doc.equals(control.competing.doc));
+      assert.equal(requests.filter(r => r.path === '/settlement/confirm').length, 1);
+    });
+    await run('withdrawal late probe mismatch clears only its proof and retains the original assignment', async (w, { page, requests }) => {
+      await complete(page, await preview(page)); const dialog = await withdrawalPreview(page);
+      const marker = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY);
+      const control = armProbeCompetition(w, marker.operationId);
+      await dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).click();
+      await dialog.getByText('Not saved. No withdrawal was recorded.', { exact: false }).waitFor();
+      assert.equal(control.successfulProbe, true); assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), null);
+      await Promise.all([page.waitForEvent('load'), dialog.getByRole('button', { name: 'Reload current view', exact: true }).click()]);
+      await page.waitForFunction(() => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified');
+      assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 });
+      assert.ok(w.durable.doc.equals(control.competing.doc)); assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 2);
+      assert.equal(requests.filter(r => r.path === '/settlement/confirm').length, 2);
+    });
+    for (const fault of ['lost-reply', 'legacy-marker', 'mismatched-marker', 'postauthorization']) {
+      await run('probe mismatch ' + fault + ' retains unresolved browser marker', async (w, { page, requests }) => {
+        const dialog = await preview(page), marker = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY);
+        const control = armProbeCompetition(w, marker.operationId);
+        if (fault === 'postauthorization') {
+          let calls = 0; w.hooks.authorize = async () => { if (control.successfulProbe && ++calls === 2) w.authorized = false; };
+        } else await page.route('**/settlement/confirm', async route => {
+          const response = await route.fetch(); assert.equal((await response.json()).status, 'not-applied');
+          if (fault === 'lost-reply') return route.abort('failed');
+          await page.evaluate(({ KEY, fault }) => navigator.locks.request(KEY, { mode: 'exclusive' }, () => {
+            const current = JSON.parse(localStorage.getItem(KEY));
+            if (fault === 'legacy-marker') delete current.generation;
+            else current.generation = 'generation-' + 'f'.repeat(32);
+            localStorage.setItem(KEY, JSON.stringify(current));
+          }), { KEY, fault });
+          return route.fulfill({ response });
+        });
+        await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+        await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+        const retained = await page.evaluate(KEY => localStorage.getItem(KEY), KEY); assert.equal(JSON.parse(retained).phase, 'dispatched');
+        await page.reload(); await reconciliationBoot(page);
+        assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), retained);
+        assert.ok(w.durable.doc.equals(control.competing.doc)); assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 1);
+        assert.equal(requests.filter(r => r.path === '/settlement/confirm').length, 1);
+      });
+    }
+    for (const journal of [false, true]) {
+      await run('generic post-store ' + (journal ? 'recovery-required' : 'conflict') + ' retains browser uncertainty', async (w, { page, requests }) => {
+        const dialog = await preview(page), prepare = w.store.prepare; let incoming, competing;
+        w.store.prepare = async input => { incoming = input; return prepare(input); };
+        w.hooks.admission = async () => { competing = await appendCompetingRecord(w, incoming,
+          { sameId: !journal, journal }, prepare); };
+        const response = page.waitForResponse(r => r.url().endsWith('/settlement/confirm'));
+        await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+        assert.deepEqual(await (await response).json(), { status: 'rejected', reason: journal ? 'recovery-required' : 'store-conflict' });
+        await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+        const marker = await page.evaluate(KEY => localStorage.getItem(KEY), KEY); assert.equal(JSON.parse(marker).phase, 'dispatched');
+        await page.reload(); await reconciliationBoot(page);
+        assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), marker);
+        assert.ok(w.durable.doc.equals(competing.doc)); if (journal) assert.ok(w.durable.journal.equals(competing.journal));
+        assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 1);
+        assert.equal(requests.filter(r => r.path === '/settlement/confirm').length, 1);
+      });
+    }
     for (const refusal of ['selection-change', 'admission-refused']) {
       await run('received terminal proof for ' + refusal + ' clears only its marker', async (w, { page, requests }) => {
         await page.evaluate(observeMarkerMutations);
