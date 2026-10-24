@@ -2,7 +2,8 @@
 // Unwired connection ownership for the unchanged local-state adapter.
 // No driver import, environment-secret resolution, store, bootstrap or activation.
 // Client is a trusted injected direct/non-reconnecting pg.Client constructor.
-// Metadata checks are point-in-time preflight, not protection against an admin
+// Catalog preflight targets PostgreSQL 18. Metadata checks are point-in-time,
+// not protection against an admin
 // changing the server afterwards. Production driver/Linux qualification is separate.
 const tls = require('node:tls');
 const net = require('node:net');
@@ -100,8 +101,9 @@ const SCHEMA = `SELECT c.relname AS name,c.relkind AS kind,c.relpersistence AS p
   c.relrowsecurity AS rls,c.relforcerowsecurity AS "forceRls",
   (c.relhasrules OR c.relispartition OR EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t
     WHERE t.tgrelid=c.oid AND NOT t.tgisinternal) OR EXISTS (SELECT 1 FROM pg_catalog.pg_constraint k
-    WHERE k.conrelid=c.oid AND (k.contype<>'p' OR k.condeferrable OR NOT k.convalidated))) AS unsafe,
-  (SELECT count(*)::int FROM pg_catalog.pg_constraint k WHERE k.conrelid=c.oid) AS "constraintCount",
+    WHERE k.conrelid=c.oid AND (k.contype NOT IN ('p','n') OR k.condeferrable
+      OR NOT k.convalidated OR NOT k.conenforced))) AS unsafe,
+  (SELECT count(*)::int FROM pg_catalog.pg_constraint k WHERE k.conrelid=c.oid AND k.contype='p') AS "primaryKeyCount",
   (SELECT jsonb_agg(jsonb_build_object('name',a.attname,'type',pg_catalog.format_type(a.atttypid,a.atttypmod),
     'notNull',a.attnotnull) ORDER BY a.attnum) FROM pg_catalog.pg_attribute a
     WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped) AS columns,
@@ -125,7 +127,7 @@ function schemaMatches(result) {
   for (const t of tables) {
     check(['doc_head','doc_staged','journal','quarantine'].includes(t.name) && !names.has(t.name), 'schema','schema'); names.add(t.name);
     check(t.kind==='r' && t.persistence==='p' && t.rls===false && t.forceRls===false
-      && t.unsafe===false && t.constraintCount===1, 'schema','schema');
+      && t.unsafe===false && t.primaryKeyCount===1, 'schema','schema');
     const cols=t.name==='quarantine'?['scope','name','label','bytes']:['scope','bytes'];
     check(Array.isArray(t.columns) && t.columns.length===cols.length && t.columns.every((c,i)=>
       c.name===cols[i] && c.type===(c.name==='bytes'?'bytea':'text') && c.notNull===(c.name!=='label')),'schema','schema');

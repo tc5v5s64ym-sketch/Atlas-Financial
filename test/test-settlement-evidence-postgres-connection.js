@@ -25,11 +25,38 @@ function metadata() {
       replication:false, bypassRls:false, connectionLimit:1, memberships:0, ownedObjects:0 },
     { connect:true, schemaUsage:true, databaseCreate:false, schemaCreate:false, tables:true, functions:true },
     ['doc_head','doc_staged','journal','quarantine'].map(name => ({ name, kind:'r', persistence:'p',
-      rls:false, forceRls:false, unsafe:false, constraintCount:1,
+      rls:false, forceRls:false, unsafe:false, primaryKeyCount:1,
       columns:(name === 'quarantine' ? ['scope','name','label','bytes'] : ['scope','bytes'])
         .map(n => ({ name:n, type:n === 'bytes' ? 'bytea' : 'text', notNull:n !== 'label' })),
       primaryKey:name === 'quarantine' ? ['scope','name'] : ['scope'] }))
   ];
+}
+// PostgreSQL 18-shaped catalog INPUT, not pre-approved output. Ordinary NOT NULL
+// rows use contype n (PG18 catalog documentation); PK columns are also non-null.
+// This is still an offline model, not a PostgreSQL parser/driver/server execution.
+function catalog18() {
+  return Object.fromEntries(['doc_head','doc_staged','journal','quarantine'].map(name=>{
+    const keys=name==='quarantine'?['scope','name']:['scope'];
+    const required=name==='quarantine'?['scope','name','bytes']:['scope','bytes'];
+    const row=(contype,conkey)=>({contype,conkey,condeferrable:false,convalidated:true,conenforced:true});
+    return [name,[row('p',keys),...required.map(col=>row('n',[col]))]];
+  }));
+}
+function projectConstraints(text, table, constraints) {
+  // Interpret only the specific catalog predicate/count forms exercised by this
+  // regression. Unknown query forms fail instead of manufacturing safe metadata.
+  let allowed;
+  if(/k\.contype\s+NOT IN\s*\('p',\s*'n'\)/.test(text))allowed=new Set(['p','n']);
+  else if(/k\.contype\s*<>\s*'p'/.test(text))allowed=new Set(['p']);
+  else throw Error('unmodelled constraint predicate');
+  const primaryOnly=/count\(\*\)::int FROM pg_catalog\.pg_constraint k WHERE k\.conrelid=c\.oid AND k\.contype='p'\) AS "primaryKeyCount"/.test(text);
+  if(!primaryOnly)assert.match(text,/count\(\*\)::int FROM pg_catalog\.pg_constraint k WHERE k\.conrelid=c\.oid\) AS "constraintCount"/);
+  const result={...table};delete result.constraintCount;delete result.primaryKeyCount;
+  result.unsafe=table.unsafe || constraints.some(k=>!allowed.has(k.contype)||k.condeferrable||!k.convalidated
+    || (/NOT k\.conenforced/.test(text)&&!k.conenforced));
+  result[primaryOnly?'primaryKeyCount':'constraintCount']=constraints.filter(k=>!primaryOnly||k.contype==='p').length;
+  result.primaryKey=constraints.filter(k=>k.contype==='p').flatMap(k=>k.conkey);
+  return result;
 }
 function world(options = {}) {
   const w = { constructed:0, connects:0, ends:0, queries:[], clients:[], rows:metadata(), data:null };
@@ -45,7 +72,13 @@ function world(options = {}) {
     async query(text, values) {
       const index=w.queries.length; w.queries.push({ text, values });
       if (options.query) { const r=await options.query({ text, values, index, client:this, w }); if (r !== undefined) return r; }
-      if (index < 4) return { command:'SELECT', rows:index === 3 ? w.rows[3] : [w.rows[index]] };
+      if (index < 4) {
+        if(index===3 && options.catalog) {
+          w.projected=w.rows[3].map(row=>projectConstraints(text,row,options.catalog[row.name]));
+          return {command:'SELECT',rows:w.projected};
+        }
+        return { command:'SELECT', rows:index === 3 ? w.rows[3] : [w.rows[index]] };
+      }
       if (/pg_try_advisory_lock/.test(text)) return { command:'SELECT', rows:[{ locked:options.locked !== false }] };
       if (/pg_advisory_unlock/.test(text)) return { command:'SELECT', rows:[{ unlocked:true }] };
       if (/pg_backend_pid/.test(text)) return { command:'SELECT', rows:[{ pid:314 }] };
@@ -132,7 +165,7 @@ test('F8 malformed identity, elevated role, effective ACL or schema never qualif
     r=>r[1].superuser=true,r=>r[1].memberships=1,r=>r[1].ownedObjects=1,r=>r[1].connectionLimit=-1,
     r=>r[2].tables=false,r=>r[2].functions=false,r=>r[2].schemaCreate=true,
     r=>r[3].pop(),r=>r[3][0].columns[1].type='text',r=>r[3][0].primaryKey=[],
-    r=>r[3][0].unsafe=true,r=>r[3][0].rls=true,r=>r[3][0].constraintCount=2];
+    r=>r[3][0].unsafe=true,r=>r[3][0].rls=true,r=>r[3][0].primaryKeyCount=2];
   for(const mutate of mutations){const w=world();mutate(w.rows);const e=await w.open().catch(retirement);assert.equal(e.code,'SETTLEMENT_CONNECTION');assert.equal(w.ends,1);}
   for(const rows of [[],[{}],null]){
     const w=world({query:q=>q.index===0?{command:'SELECT',rows}:undefined}); await assert.rejects(w.open());assert.equal(w.ends,1);
@@ -246,4 +279,30 @@ test('F2 a Pool-shaped constructor is refused before its connect can borrow a se
   let connects=0;
   class PoolShape extends EventEmitter {connect(){connects++;}query(){}end(){}}
   const w=world();await assert.rejects(w.open({Client:PoolShape}));assert.equal(connects,0);
+});
+test('F8 PG18 catalog model: required NOT NULL constraints qualify alongside one primary key', async()=>{
+  const catalog=catalog18(),w=world({catalog});
+  assert.equal(catalog.doc_head.length,3);assert.equal(catalog.quarantine.length,4);
+  const owner=await w.open();
+  assert.ok(w.projected.every(row=>row.unsafe===false && row.primaryKeyCount===1));
+  assert.equal(owner.status().state,'ready');assert.equal((await owner.retire()).close,'confirmed');assert.equal(w.ends,1);
+});
+test('F8 PG18 catalog model: unsafe types and invalid constraint attributes retire once', async()=>{
+  for(const kind of ['c','f','u','t','x','z']) {
+    const catalog=catalog18();catalog.doc_head.push({contype:kind,conkey:['bytes'],condeferrable:false,convalidated:true,conenforced:true});
+    const w=world({catalog});const e=await w.open().catch(retirement);
+    assert.equal(e.diagnostic.stage,'schema',kind);assert.equal(w.projected[0].unsafe,true,kind);assert.equal(w.ends,1);
+  }
+  for(const type of ['p','n'])for(const [key,value]of [['condeferrable',true],['convalidated',false],['conenforced',false]]){
+    const catalog=catalog18();catalog.doc_head.find(k=>k.contype===type)[key]=value;
+    const w=world({catalog});const e=await w.open().catch(retirement);
+    assert.equal(e.diagnostic.stage,'schema',type+key);assert.equal(w.ends,1);
+  }
+});
+test('F8 PG18 catalog model: separate PK count and original column/PK/nullability guards remain', async()=>{
+  const changes=[c=>c.doc_head.splice(0,1),c=>c.doc_head.push({...c.doc_head[0]}),c=>c.doc_head[0].conkey=['bytes']];
+  for(const change of changes){const catalog=catalog18();change(catalog);const w=world({catalog});await assert.rejects(w.open());assert.equal(w.ends,1);}
+  for(const change of [rows=>rows[0].columns[1].notNull=false,rows=>rows[0].columns[1].type='text',rows=>rows[3].columns[2].notNull=true]){
+    const w=world({catalog:catalog18()});change(w.rows[3]);await assert.rejects(w.open());assert.equal(w.ends,1);
+  }
 });
