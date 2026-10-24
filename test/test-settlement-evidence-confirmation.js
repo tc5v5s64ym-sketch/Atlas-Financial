@@ -2349,3 +2349,154 @@ test('WA-C9 malformed paired results fail closed before any store call', async t
   assert.equal((await controller.prepare(context, request(1))).status, 'unavailable');
   assert.equal(getterCalls, 0, 'the witness accessor was not invoked');
 });
+
+test('D1 controller negative excludes a second live controller with a valid prepared generation', async () => {
+ const X=require('./test-settlement-evidence-terminal-certificate'),w=X.makeExclusionWorld();
+ let drift=false;
+ const create=(change=false)=>{const store=w.newStore({wrap:true});
+  const resolve=async input=>{const f=classificationFixture();input.classify(f.tx,f.plan,f.opts);const value=resolved();if(change&&drift)value.selectionBinding+='-changed';return value;};
+  return createSettlementEvidenceConfirmation({householdId,store,now:()=>w.time,authorize:async()=>({householdId,actorId}),resolveSelection:resolve});
+ };
+ const a=create(true),b=create(),r=request(1),p=await a.prepare(context,r),q=await b.prepare(context,r);
+ assert.equal(p.status,'prepared');assert.equal(q.status,'prepared');drift=true;
+ assert.equal((await a.confirm(context,{operationId:op(1),previewToken:p.previewToken,generation:p.generation,confirmed:true})).status,'not-applied');
+ const result=await b.confirm(context,{operationId:op(1),previewToken:q.previewToken,generation:q.generation,confirmed:true});
+ assert.notEqual(result.status,'committed','process-local negative must become store-wide exclusion');
+ assert.deepEqual(w.writes,[]);assert.equal(w.records().length,1);
+});
+
+test('D1 native controller terminalizing ownership survives revocation sweep P2 and duplicate confirms',{timeout:5000},async()=>{
+ const w=d1ControllerWorld(),a=w.create(),b=w.create(),p=await a.controller.prepare(context,request(1));
+ const q=await b.controller.prepare(context,request(1)),seen=deferred(),gate=deferred();
+ w.hooks.append=async perform=>{seen.resolve();await gate.promise;return perform();};
+ w.drift=true;
+ const pending=a.controller.confirm(context,d1Confirm(p));await seen.promise;
+ try{
+  assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'unknown');
+  assert.equal((await a.controller.outcome(context,{operationId:op(1)})).status,'unknown');
+  assert.equal((await a.recovery()).status,'blocked');
+  w.time+=C.TTL_MS;
+  assert.equal((await a.controller.prepare(context,request(2))).reason,'outcome-unresolved');
+  w.authorized=false;gate.resolve();assert.equal((await pending).status,'unknown');
+  w.authorized=true;
+  assert.equal((await a.controller.outcome(context,{operationId:op(1)})).status,'unknown');
+  assert.equal((await a.recovery()).status,'blocked');
+  assert.equal((await a.controller.prepare(context,request(3))).reason,'outcome-unresolved');
+  assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'unknown');
+  assert.notEqual((await b.controller.confirm(context,d1Confirm(q))).status,'committed');
+  assert.equal(w.appends,1);assert.equal(w.records().length,1);assert.deepEqual(w.writes,[]);
+ }finally{gate.resolve();}
+});
+test('D1 native controller lost or failed seal acknowledgement never cleans up or retries',async()=>{
+ for(const landed of [false,true]){
+  const w=d1ControllerWorld(),a=w.create(),b=w.create(),p=await a.controller.prepare(context,request(1));
+  const q=await b.controller.prepare(context,request(1));w.drift=true;
+  w.hooks.append=perform=>{if(landed)perform();throw Error('synthetic lost seal acknowledgement');};
+  assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'unknown');
+  assert.equal(w.records().length,landed?1:0);assert.equal(w.appends,1);w.drift=false;
+  assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'unknown');
+  assert.equal((await a.recovery()).status,'blocked');
+  w.time+=C.TTL_MS;assert.equal((await a.controller.prepare(context,request(2))).reason,'outcome-unresolved');
+  w.time-=C.TTL_MS;
+  const r=await b.controller.confirm(context,d1Confirm(q));
+  if(landed)assert.notEqual(r.status,'committed');else assert.equal(r.status,'committed','no landed seal means no durable negative is claimed');
+  assert.equal((await a.controller.outcome(context,{operationId:op(1)})).status,'unknown','even a positive read cannot steal terminalizing ownership');
+  assert.equal((await a.recovery()).status,'blocked');assert.equal(w.appends,1);
+ }
+});
+test('D1 suspended confirmation cannot write after native terminalization even after clock restoration',{timeout:5000},async()=>{
+ const w=d1ControllerWorld(),seen=deferred(),gate=deferred();let hold=false;
+ const a=w.create({resolveHook:async()=>{if(hold){hold=false;seen.resolve();await gate.promise;}}});
+ const p=await a.controller.prepare(context,request(1));hold=true;
+ const pending=a.controller.confirm(context,d1Confirm(p));await seen.promise;
+ try{
+  w.time+=C.TTL_MS;assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'not-applied');
+  w.time-=C.TTL_MS;gate.resolve();assert.notEqual((await pending).status,'committed');
+  assert.equal(w.records().length,1);assert.deepEqual(w.writes,[]);
+ }finally{gate.resolve();}
+});
+test('D1 native controller funnels only proven terminal reasons and keeps postjournal uncertainty',async()=>{
+ for(const mode of ['expiry','selection','admission','store-expiry','journal']){
+  const w=d1ControllerWorld(),a=w.create({fenced:true,commitHook:()=>{if(mode==='store-expiry')w.time+=C.TTL_MS;}});
+  const p=await a.controller.prepare(context,request(1));assert.equal(p.status,'prepared');
+  if(mode==='expiry')w.time+=C.TTL_MS;if(mode==='selection')w.drift=true;if(mode==='admission')w.fresh=false;
+  if(mode==='journal')w.hooks.journal=perform=>{perform();throw Error('synthetic journal lost acknowledgement');};
+  const r=await a.controller.confirm(context,d1Confirm(p));
+  assert.equal(r.status,mode==='journal'?'unknown':'not-applied',mode);
+  assert.equal(w.records().length,mode==='journal'?0:1);
+  if(mode==='journal'){assert.equal((await a.recovery()).status,'blocked');assert.equal(w.appends,0);}
+  else{assert.deepEqual(w.writes,[]);assert.equal((await a.recovery()).status,'idle');
+   assert.equal((await a.controller.outcome(context,{operationId:op(1)})).status,'unknown','no negative outcome/browser integration');}
+ }
+});
+function d1Confirm(p){return {operationId:p.operationId,previewToken:p.previewToken,generation:p.generation,confirmed:true};}
+function d1ControllerWorld(){
+ const X=require('./test-settlement-evidence-terminal-certificate'),w=X.makeExclusionWorld();
+ w.authorized=true;w.drift=false;w.fresh=true;
+ w.create=(options={})=>{
+  const store=w.newStore({wrap:true});let recovery;
+  const resolve=async input=>{
+   const f=classificationFixture();input.classify(f.tx,f.plan,f.opts);
+   if(options.resolveHook)await options.resolveHook();
+   const value=resolved();if(w.drift)value.selectionBinding+='-changed';return value;
+  };
+  const controller=createSettlementEvidenceConfirmation({householdId,store,now:()=>w.time,
+   authorize:async ctx=>{if(!w.authorized)throw Error('synthetic revoked');return {householdId,actorId:ctx.ticket===otherContext.ticket?otherActor:actorId};},
+   resolveSelection:resolve,registerRecovery:cap=>{recovery=cap;},
+   ...(options.fenced?{resolvePairedSelection:async input=>({selection:await resolve(input),witness:()=>w.fresh}),
+    commitAdmitted:async(input,witness)=>{if(options.commitHook)options.commitHook();return store.commitAdmitted(input,witness);}}:{})});
+  return {controller,recovery,store};
+ };return w;
+}
+
+test('D1 Addendum A C7 gated history has no old terminal lifetime quota',{timeout:120000},async()=>{
+ const w=d1ControllerWorld(),a=w.create();
+ for(let n=1;n<=1001;n++){
+  const p=await a.controller.prepare(context,request(n));assert.equal(p.status,'prepared','gated prepare '+n);
+  w.time+=C.TTL_MS;
+  assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'not-applied','gated seal '+n);
+ }
+ assert.equal(w.records().length,1001);assert.equal(w.appends,1001);assert.deepEqual(w.writes,[]);
+ const p=await a.controller.prepare(context,request(2000));assert.equal(p.status,'prepared');
+ w.historyBytes=null;w.time+=C.TTL_MS;
+ assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'unknown','cache can never bypass missing durable authority');
+ assert.equal((await a.recovery()).status,'blocked');
+});
+
+test('D1 late real committed outcome cannot steal a terminalizing entry',{timeout:5000},async()=>{
+ const w=d1ControllerWorld(),a=w.create(),b=w.create(),p=await a.controller.prepare(context,request(1)),q=await b.controller.prepare(context,request(1));
+ assert.equal((await b.controller.confirm(context,d1Confirm(q))).status,'committed');
+ const actual=a.store.outcome,seen=deferred(),gate=deferred();let reads=0;
+ a.store.outcome=async input=>{
+  const n=++reads;
+  if(n===2){w.hooks.pinRead=()=>{throw Error('synthetic transient pin read failure');};
+   try{return await actual(input);}finally{delete w.hooks.pinRead;}}
+  const result=await actual(input);
+  if(n===1){assert.equal(result.status,'committed');seen.resolve();await gate.promise;}return result;
+ };
+ const pending=a.controller.outcome(context,{operationId:op(1)});await seen.promise;
+ try{
+  w.time=p.expiresAt;
+  assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'unknown','commit winner cannot be sealed negative');
+  gate.resolve();assert.equal((await pending).status,'unknown','captured positive cannot clear newer terminalizing ownership');
+  assert.equal((await a.recovery()).status,'blocked');
+  assert.equal((await a.controller.prepare(context,request(2))).reason,'outcome-unresolved');
+  assert.equal(w.records().length,0);assert.equal(w.appends,0);
+  assert.equal((await b.controller.outcome(context,{operationId:op(1)})).status,'committed','real receipt remains authoritative at its unlatched reader');
+ }finally{gate.resolve();}
+});
+test('D1 attempted prejournal terminal uncertainty cannot be cleared by exact-base P2 inspection',async()=>{
+ for(const mode of ['admission','expiry','revocation']){
+  const w=d1ControllerWorld(),a=w.create({fenced:true,commitHook:()=>{if(mode==='expiry')w.time+=C.TTL_MS;}});
+  const p=await a.controller.prepare(context,request(1));if(mode!=='expiry')w.fresh=false;
+  w.hooks.append=perform=>{perform();if(mode==='revocation'){w.authorized=false;return true;}throw Error('synthetic lost terminal acknowledgement');};
+  assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'unknown',mode);w.authorized=true;
+  assert.equal(w.records().length,1);let inspections=0;const inspect=a.store.inspectAttempt;
+  a.store.inspectAttempt=async input=>{inspections++;return inspect(input);};
+  assert.equal((await a.recovery()).status,'blocked');assert.equal(inspections,0,'terminal ownership precedes P2 proof');
+  assert.equal((await a.controller.outcome(context,{operationId:op(1)})).status,'unknown');
+  assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'unknown');
+  w.time+=C.TTL_MS;assert.equal((await a.controller.prepare(context,request(2))).reason,'outcome-unresolved');
+  assert.equal(w.appends,1);assert.deepEqual(w.writes,[]);
+ }
+});

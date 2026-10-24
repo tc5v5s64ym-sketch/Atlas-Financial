@@ -2640,3 +2640,274 @@ test('WA-S9 commitAdmitted snapshots its input at entry like the incumbent capab
   assert.equal(stateOf(world.durable.doc).operations[0].command.assignedCents, 2500,
     'the entry snapshot, not the caller mutation, was committed');
 });
+
+test('D1 seal wins across stores and all three financial commit entry points', async () => {
+ const X=require('./test-settlement-evidence-terminal-certificate');
+ for(const method of ['commit','commitWithoutRecovery','commitAdmitted']){
+  const w=X.makeExclusionWorld(),a=w.newStore(),b=w.newStore({wrap:true}),p=await w.prepare(b);
+  assert.equal((await w.seal(a,p)).status,'certified');
+  assert.notEqual((await b[method](w.input(p),()=>true)).status,'committed');assert.deepEqual(w.writes,[]);
+  assert.equal(w.records().length,1);assert.notEqual((await w.newStore().commit(w.input(p))).status,'committed');
+ }
+});
+const d1X = require('./test-settlement-evidence-terminal-certificate');
+const d1Gate = () => { let resolve; const promise=new Promise(r=>{resolve=r;});return {promise,resolve}; };
+test('D1 canonical domains bind authorities not wrapper objects and reject mixed modes both orders', () => {
+ for(const gated of [true,false]){
+  const w=d1X.makeExclusionWorld();w.newStore({gated});
+  assert.doesNotThrow(()=>w.newStore({gated,wrap:true}));
+  assert.throws(()=>w.newStore({gated:!gated,wrap:true}),/domain|mixed/);
+  // Addendum A: alternate wrappers are bound by the SAME declared tuple.
+  // A different declared namespace hiding physical aliasing is unqualified;
+  // known identical surface references still cannot be rebound.
+  assert.throws(()=>w.newStore({gated,domain:{ledgerNamespace:'ledger-'+'f'.repeat(32)}}),/domain|aliased/);
+  for(const domain of [{serializationAuthority:'authority-'+'f'.repeat(32)},{historyAuthority:'authority-'+'f'.repeat(32)}])
+    assert.throws(()=>w.newStore({gated,wrap:true,domain}),/domain|authority/);
+ }
+ const w=d1X.makeExclusionWorld();S.createSettlementEvidenceStore({householdId,...w.adapters,now:()=>w.time});
+ assert.throws(()=>w.newStore(),/mixed/,'registered local legacy surfaces cannot silently join a gated domain');
+ const v=d1X.makeExclusionWorld();v.newStore();
+ assert.throws(()=>S.createSettlementEvidenceStore({householdId,...v.adapters,now:()=>v.time}),/mixed/);
+});
+test('D1 seal-first race holds shared serialization before competing financial landing',{timeout:5000},async()=>{
+ const w=d1X.makeExclusionWorld(),a=w.newStore(),b=w.newStore({wrap:true}),p=await w.prepare(b),seen=d1Gate(),release=d1Gate();
+ w.hooks.append=async perform=>{seen.resolve();await release.promise;return perform();};
+ const sealing=w.seal(a,p);await seen.promise;
+ let finished=false;const writing=b.commitAdmitted(w.input(p),()=>true).then(r=>{finished=true;return r;});
+ try{await Promise.resolve();assert.equal(finished,false);assert.deepEqual(w.writes,[]);
+  release.resolve();assert.equal((await sealing).status,'certified');assert.notEqual((await writing).status,'committed');
+  assert.deepEqual(w.writes,[]);
+ }finally{release.resolve();}
+});
+test('D1 commit-first race retains lock through pin landing and forbids a later certificate',{timeout:5000},async()=>{
+ const w=d1X.makeExclusionWorld(),a=w.newStore(),b=w.newStore({wrap:true}),p=await w.prepare(b),seen=d1Gate(),release=d1Gate();
+ w.hooks.journal=async perform=>{seen.resolve();await release.promise;return perform();};
+ const writing=b.commitAdmitted(w.input(p),()=>true);await seen.promise;
+ let finished=false;const sealing=w.seal(a,p).then(r=>{finished=true;return r;});
+ try{await Promise.resolve();assert.equal(finished,false);release.resolve();
+  const receipt=await writing;assert.equal(receipt.status,'committed');assert.equal((await sealing).status,'unknown');
+  assert.equal(w.appends,0);assert.equal(w.records().length,0);assert.equal(w.writes.filter(x=>x==='pin').length,1);
+  assert.deepEqual(await a.outcome({actorId:d1X.actorId,operationId:d1X.op(1)}),{status:'committed',operationId:d1X.op(1),revision:receipt.revision,digest:receipt.digest});
+ }finally{release.resolve();}
+});
+test('D1 resident ambiguous journal forbids sealing without reconciliation or mutations',async()=>{
+ const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s);
+ w.hooks.journal=perform=>{perform();throw Error('synthetic lost journal acknowledgement');};
+ assert.equal((await s.commitWithoutRecovery(w.input(p))).status,'unknown');delete w.hooks.journal;
+ const before=w.writes.slice(),bytes=Buffer.from(w.journal);
+ assert.equal((await w.seal(s,p)).status,'unknown');assert.deepEqual(w.writes,before);assert.ok(w.journal.equals(bytes));assert.equal(w.appends,0);
+});
+test('D1 old expired previews seal only against their complete validated immutable prefix',async()=>{
+ const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s),q=await w.prepare(s,2);
+ assert.equal((await s.commitWithoutRecovery(w.input(q))).status,'committed');w.writes.length=0;w.time=p.preview.expiresAt+1;
+ assert.deepEqual(await s.inspectAttempt(w.input(p)),{disposition:'unresolved',ready:true},'P2 absence was not broadened');
+ const bad=JSON.parse(JSON.stringify(p));bad.preview.expectedDocumentDigest='f'.repeat(64);bad.confirmationDigest=C.digest(bad.preview);
+ assert.equal((await w.seal(s,bad)).status,'unknown');assert.equal(w.appends,0);
+ const malformed=JSON.parse(JSON.stringify(p));malformed.preview.extra=true;malformed.confirmationDigest=C.digest(malformed.preview);
+ assert.equal((await w.seal(s,malformed)).status,'unknown');assert.equal(w.appends,0);
+ assert.equal((await w.seal(s,p)).status,'certified');assert.deepEqual(w.writes,[]);
+ assert.deepEqual(await s.inspectAttempt(w.input(p)),{disposition:'unresolved',ready:true});
+});
+test('D1 missing malformed rollback and unreadable history never authorize writes or P2 readiness',async()=>{
+ for(const fault of ['missing','anchor','malformed','throw','rollback']){
+  const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s);
+  if(fault==='rollback'){
+   assert.equal((await w.seal(s,p)).status,'certified');w.historyBytes=d1X.encoded([],householdId,w.domain.ledgerNamespace).historyBytes;
+  }else if(fault==='missing')w.historyBytes=null;
+  else if(fault==='anchor')w.checkpoint=null;
+  else if(fault==='malformed')w.historyBytes=Buffer.from('{}');
+  else w.hooks.historyRead=()=>{throw Error('synthetic unreadable anchor');};
+  const before=w.writes.slice();
+  assert.equal((await s.inspectAttempt(w.input(p))).ready,false);
+  assert.equal((await s.outcome({actorId:d1X.actorId,operationId:d1X.op(1)})).status,'unknown');
+  for(const method of ['commit','commitWithoutRecovery','commitAdmitted'])assert.notEqual((await s[method](w.input(p),()=>true)).status,'committed');
+  assert.equal((await s.reconcile()).disposition,'recovery-blocked');assert.deepEqual(w.writes,before);
+  assert.equal((await w.seal(s,p)).status,'unknown');
+ }
+});
+test('D1 bootstrap needs positively initialized empty history and never auto repairs or resets it',async()=>{
+ for(const fault of ['missing','anchor','nonempty']){
+  const w=d1X.makeExclusionWorld({empty:true}),s=w.newStore();
+  if(fault==='missing')w.historyBytes=null;
+  if(fault==='anchor')w.checkpoint=null;
+  if(fault==='nonempty'){
+   const v=d1X.makeExclusionWorld(),t=v.newStore();await v.seal(t,await v.prepare(t));
+   Object.assign(w,d1X.encoded(v.records().map(r=>({...r,ledgerNamespace:w.domain.ledgerNamespace})),householdId,w.domain.ledgerNamespace));
+  }
+  assert.notEqual((await s.bootstrap()).status,'bootstrapped');assert.deepEqual(w.writes,[]);assert.equal(w.appends,0);
+ }
+ const w=d1X.makeExclusionWorld({empty:true}),s=w.newStore();assert.equal((await s.bootstrap()).status,'bootstrapped');
+ assert.equal(w.records().length,0);assert.equal(w.appends,0);
+});
+test('D1 final expiry and freshness run after every asynchronous terminal qualification',async()=>{
+ for(const mode of ['expiry','freshness']){
+  const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s);let reads=0,witnesses=0,fresh=true;
+  w.hooks.historyRead=perform=>{if(++reads===2){if(mode==='expiry')w.time=p.preview.expiresAt;else fresh=false;}return perform();};
+  const r=await s.commitAdmitted(w.input(p),()=>{witnesses++;return fresh;});
+  assert.equal(r.reason,mode==='expiry'?'preview-expired':'admission-refused');assert.deepEqual(w.writes,[]);
+  assert.equal(witnesses,mode==='expiry'?0:1);
+ }
+});
+test('D1 seal CAS false lost and malformed acknowledgements never retry or manufacture proof',async()=>{
+ for(const mode of ['false','throw-before','throw-after','malformed-after']){
+  const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s);
+  w.hooks.append=perform=>{if(mode==='false')return false;if(mode==='throw-before')throw Error('synthetic before');
+   perform();if(mode==='throw-after')throw Error('synthetic lost seal acknowledgement');return {};};
+  assert.equal((await w.seal(s,p)).status,'unknown');assert.equal(w.appends,1);assert.deepEqual(w.writes,[]);
+  if(mode.endsWith('after')){assert.equal(w.records().length,1);assert.notEqual((await w.newStore({wrap:true}).commit(w.input(p))).status,'committed');}
+  else assert.equal(w.records().length,0);
+ }
+});
+test('D1 R3 R4 R5 and restore cannot mutate across missing history or negative coexistence',async()=>{
+ for(const row of ['R3','R4','R5']){
+  const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s);
+  if(row==='R3')w.hooks.clear=()=>{throw Error('synthetic cleanup refusal');};
+  if(row==='R4')w.hooks.journal=perform=>{perform();throw Error('synthetic journal lost ack');};
+  if(row==='R5')w.hooks.pin=()=>false;
+  await s.commitWithoutRecovery(w.input(p));delete w.hooks.clear;delete w.hooks.journal;delete w.hooks.pin;
+  w.writes.length=0;
+  if(row==='R5'){
+   const v=d1X.makeExclusionWorld(),t=v.newStore();await v.seal(t,await v.prepare(t));
+   Object.assign(w,d1X.encoded(v.records().map(r=>({...r,ledgerNamespace:w.domain.ledgerNamespace})),householdId,w.domain.ledgerNamespace));
+  }else w.historyBytes=null;
+  assert.equal((await s.reconcile()).disposition,'recovery-blocked',row);assert.deepEqual(w.writes,[],row);
+ }
+ for(const missing of [false,true]){
+  const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s);await w.seal(s,p);
+  const history=Buffer.from(w.historyBytes),anchor=JSON.stringify(w.checkpoint);w.doc=null;
+  if(missing)w.historyBytes=null;
+  const result=await s.reconcile();
+  assert.equal(result.disposition,missing?'recovery-blocked':'restored-pinned');
+  if(missing)assert.deepEqual(w.writes,[]);else{
+   assert.ok(w.historyBytes.equals(history));assert.equal(JSON.stringify(w.checkpoint),anchor);
+   w.writes.length=0;assert.notEqual((await w.newStore().commit(w.input(p))).status,'committed');assert.deepEqual(w.writes,[]);
+  }
+ }
+});
+test('D1 committed-negative coexistence cannot hide behind receipts, readiness or restore',async()=>{
+ const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s);
+ const v=d1X.makeExclusionWorld(),t=v.newStore();await v.seal(t,await v.prepare(t));
+ const receipt=await s.commitWithoutRecovery(w.input(p));assert.equal(receipt.status,'committed');
+ Object.assign(w,d1X.encoded(v.records().map(r=>({...r,ledgerNamespace:w.domain.ledgerNamespace})),householdId,w.domain.ledgerNamespace));w.writes.length=0;
+ assert.equal((await s.outcome({actorId:d1X.actorId,operationId:d1X.op(1)})).status,'unknown');
+ assert.equal((await s.inspectAttempt(w.input(p))).ready,false);
+ assert.notEqual((await s.commitWithoutRecovery(w.input(p))).status,'committed');
+ assert.equal((await s.reconcile()).disposition,'recovery-blocked');assert.deepEqual(w.writes,[]);
+ w.doc=null;assert.equal((await s.reconcile()).disposition,'recovery-blocked');assert.deepEqual(w.writes,[]);
+});
+test('D1 unchanged successful financial bytes receipts and pin semantics with optional gate',async()=>{
+ const a=d1X.makeExclusionWorld(),b=d1X.makeExclusionWorld(),x=a.newStore(),y=b.newStore({gated:false});
+ const p=await a.prepare(x),q=await b.prepare(y);
+ const r=await x.commitAdmitted(a.input(p),()=>true),s=await y.commitAdmitted(b.input(q),()=>true);
+ assert.equal(r.status,'committed');assert.deepEqual(r,s);assert.ok(a.doc.equals(b.doc));assert.deepEqual(a.pin,b.pin);
+ assert.equal(a.records().length,0);assert.equal(a.appends,0);assert.deepEqual(a.writes,b.writes);
+});
+test('D1 exclusion is operation-wide across actors and generations but isolates household domains',async()=>{
+ const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s),other=await w.prepare(s,1,d1X.otherActor);
+ await w.seal(s,p);assert.notEqual((await s.commitWithoutRecovery(w.input(other))).status,'committed');
+ assert.equal((await w.seal(s,p,2)).status,'unknown');assert.equal(w.records().length,1);
+ const v=d1X.makeExclusionWorld({householdId:'household-'+'e'.repeat(32),namespace:'ledger-'+'e'.repeat(32)}),t=v.newStore();
+ assert.equal((await t.commitWithoutRecovery(v.input(await v.prepare(t)))).status,'committed');assert.deepEqual(w.writes,[]);
+});
+
+test('D1 withdrawal seals bind the retract preview and preserve the original financial receipt',async()=>{
+ const w=d1X.makeExclusionWorld(),s=w.newStore(),first=await w.prepare(s);
+ const original=await s.commitWithoutRecovery(w.input(first));assert.equal(original.status,'committed');
+ const command={version:1,kind:'retract',targetOperationId:d1X.op(1)};
+ const p=await s.prepare({actorId:d1X.otherActor,operationId:d1X.op(2),command});assert.ok(p.preview);
+ const before=Buffer.from(w.doc),pin=JSON.stringify(w.pin);w.writes.length=0;w.time=p.preview.expiresAt+1;
+ const claim={...w.claim(p,2,'assignment-changed'),kind:'withdrawal'};
+ assert.equal((await s.terminalExclusion.sealNegative(claim)).status,'certified');
+ assert.equal(w.records()[0].kind,'withdrawal');assert.equal(w.records()[0].actorId,d1X.otherActor);
+ assert.notEqual((await w.newStore().commitWithoutRecovery(w.input(p))).status,'committed');
+ assert.ok(w.doc.equals(before));assert.equal(JSON.stringify(w.pin),pin);assert.deepEqual(w.writes,[]);
+ const receipt=await s.outcome({actorId:d1X.actorId,operationId:d1X.op(1)});
+ assert.deepEqual(receipt,{status:'committed',operationId:d1X.op(1),revision:original.revision,digest:original.digest});
+ const fresh=await s.prepare({actorId:d1X.otherActor,operationId:d1X.op(3),command});
+ assert.equal((await s.commitWithoutRecovery(w.input(fresh))).status,'committed','new explicit operation is independent');
+ assert.deepEqual(JSON.parse(w.doc).operations.map(o=>o.command.kind),['link','retract']);
+});
+
+test('D1 Addendum A C1 canonical household namespace rejects conflicting authorities through fresh wrappers',()=>{
+ const w=d1X.makeExclusionWorld();w.newStore({wrap:true});
+ const v=d1X.makeExclusionWorld({namespace:w.domain.ledgerNamespace});
+ assert.throws(()=>v.newStore({wrap:true}),/domain|authority/);
+});
+test('D1 Addendum A C3 sealed-operation journal blocks R4 preserving journal temp and evidence',async()=>{
+ const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s);
+ w.hooks.journal=perform=>{perform();throw Error('synthetic journal acknowledgement lost');};
+ await s.commitWithoutRecovery(w.input(p));delete w.hooks.journal;
+ const v=d1X.makeExclusionWorld(),t=v.newStore();await v.seal(t,await v.prepare(t));
+ const records=v.records().map(r=>({...r,ledgerNamespace:w.domain.ledgerNamespace}));
+ Object.assign(w,d1X.encoded(records,householdId,w.domain.ledgerNamespace));
+ w.temp=Buffer.from('synthetic retained stage');const journal=Buffer.from(w.journal),temp=Buffer.from(w.temp),doc=Buffer.from(w.doc);
+ w.writes.length=0;const report=await s.reconcile();
+ assert.equal(report.row,'R4');assert.equal(report.disposition,'recovery-blocked');
+ assert.deepEqual(w.writes,[]);assert.ok(w.journal.equals(journal));assert.ok(w.temp.equals(temp));assert.ok(w.doc.equals(doc));
+});
+
+test('D1 Addendum A C5 identical explicit reseal returns the stored complete decision without append',async()=>{
+ const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s);
+ const first=await w.seal(s,p);assert.equal(first.status,'certified');
+ const bytes=Buffer.from(w.historyBytes),checkpoint=JSON.stringify(w.checkpoint);w.time+=C.TTL_MS;
+ const second=await w.seal(w.newStore({wrap:true}),p);assert.deepEqual(second,first);
+ assert.equal(w.appends,1);assert.ok(w.historyBytes.equals(bytes));assert.equal(JSON.stringify(w.checkpoint),checkpoint);
+ for(const claim of [{...w.claim(p),generation:d1X.generation(2)},{...w.claim(p),reason:'selection-changed'},
+  {...w.claim(p),actorId:d1X.otherActor},{...w.claim(p),confirmationDigest:'f'.repeat(64)}]){
+   assert.equal((await s.terminalExclusion.sealNegative(claim)).status,'unknown');
+ }
+ assert.equal(w.appends,1);assert.deepEqual(w.writes,[]);
+});
+test('D1 Addendum A C6 history outage blocks unrelated operations and every recovery mutation',async()=>{
+ const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s);await w.seal(s,p);
+ const q=await w.prepare(s,2);assert.ok(q.preview);w.hooks.historyRead=()=>{throw Error('synthetic authority outage');};
+ for(const method of ['commit','commitWithoutRecovery','commitAdmitted']){
+  const result=await s[method](w.input(q),()=>true);
+  assert.ok(['unavailable','unknown','rejected','conflict'].includes(result.status),'no proof, actionable admission or false commitment');
+ }
+ assert.equal((await s.reconcile()).disposition,'recovery-blocked');
+ assert.equal((await s.inspectAttempt(w.input(q))).ready,false);
+ assert.equal((await s.outcome({actorId:d1X.actorId,operationId:d1X.op(2)})).status,'unknown');
+ assert.deepEqual(w.writes,[]);assert.equal(w.appends,1);
+ delete w.hooks.historyRead;
+ assert.equal((await s.commitWithoutRecovery(w.input(q))).status,'committed','fresh read recovery requires no history repair');
+});
+test('D1 Addendum A C3 unrelated R4 remains incumbent explicit reconciliation after qualification',async()=>{
+ const w=d1X.makeExclusionWorld(),s=w.newStore(),p=await w.prepare(s,1),q=await w.prepare(s,2);
+ await w.seal(s,p);
+ w.hooks.journal=perform=>{perform();throw Error('synthetic unlanded journal');};
+ assert.equal((await s.commitWithoutRecovery(w.input(q))).status,'unknown');delete w.hooks.journal;
+ w.writes.length=0;const report=await s.reconcile();
+ assert.equal(report.row,'R4');assert.equal(report.disposition,'not-committed');
+ assert.deepEqual(w.writes,['clear','discard']);assert.equal(w.journal,null);assert.equal(w.records().length,1);
+});
+
+test('D1 Addendum B known storage and lock overlap rejects mixed mode both orders before side effects',()=>{
+ for(const gated of [true,false])for(const shared of ['documentStore','journalStore','pinStore','lock']){
+  const a=d1X.makeExclusionWorld(),b=d1X.makeExclusionWorld();a.newStore({gated});
+  const adapters={...b.adapters,[shared]:a.adapters[shared]};
+  assert.throws(()=>S.createSettlementEvidenceStore({householdId,...adapters,now:()=>b.time,
+   exclusionDomain:b.domain,...(gated?{}:{terminalHistory:b.terminalHistory})}),/mixed|domain/);
+  assert.deepEqual(a.writes,[]);assert.deepEqual(b.writes,[]);assert.equal(a.reads+b.reads,0);
+ }
+ // Undeclared legacy stores still register all known domain-bound identities.
+ for(const shared of ['documentStore','journalStore','pinStore','lock']){
+  const a=d1X.makeExclusionWorld(),b=d1X.makeExclusionWorld();
+  S.createSettlementEvidenceStore({householdId,...a.adapters,now:()=>a.time});
+  assert.throws(()=>S.createSettlementEvidenceStore({householdId,...b.adapters,[shared]:a.adapters[shared],
+    now:()=>b.time,exclusionDomain:b.domain,terminalHistory:b.terminalHistory}),/mixed|domain/);
+ }
+ const a=d1X.makeExclusionWorld(),b=d1X.makeExclusionWorld(),clock=()=>a.time;
+ assert.doesNotThrow(()=>S.createSettlementEvidenceStore({householdId,...a.adapters,now:clock}));
+ assert.doesNotThrow(()=>S.createSettlementEvidenceStore({householdId,...b.adapters,now:clock}),'separate legacy storage sharing only a clock remains valid');
+});
+test('D1 Addendum B declared serialization authority survives alternate lock wrappers and forbids mixed domains',()=>{
+ for(const gated of [true,false]){
+  const a=d1X.makeExclusionWorld(),b=d1X.makeExclusionWorld();a.newStore({gated});
+  const lock={withLock:fn=>a.adapters.lock.withLock(fn)};
+  assert.throws(()=>S.createSettlementEvidenceStore({householdId,...b.adapters,lock,now:()=>b.time,
+   exclusionDomain:{...b.domain,serializationAuthority:a.domain.serializationAuthority},
+   ...(gated?{}:{terminalHistory:b.terminalHistory})}),/mixed|domain|authority/);
+  assert.deepEqual(a.writes,[]);assert.deepEqual(b.writes,[]);assert.equal(a.reads+b.reads,0);
+ }
+});

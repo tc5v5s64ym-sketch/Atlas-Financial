@@ -116,6 +116,7 @@ const { isDeepStrictEqual } = require('node:util');
 const crypto = require('node:crypto');
 const C = require('./planned-obligation-settlement-contract');
 const Forecast = require('../public/forecast.js');
+const TC = require('./settlement-evidence-terminal-certificate');
 
 const HOUSEHOLD = /^household-[a-f0-9]{32}$/;
 const ACTOR = /^session-[a-f0-9]{64}$/;
@@ -278,16 +279,19 @@ function createSettlementEvidenceConfirmation(deps) {
     || !store || ['prepare', 'commitWithoutRecovery', 'outcome'].some(k => typeof store[k] !== 'function')) {
     throw new TypeError('settlement-confirmation: incomplete trusted dependencies');
   }
+  const terminalProtocol = store.terminalExclusion === undefined ? null : TC.createTerminalCertificateProtocol({
+    householdId, ledgerNamespace: store.terminalExclusion.ledgerNamespace, store: store.terminalExclusion });
+  if (terminalProtocol && !terminalProtocol.connected) throw new TypeError('terminal exclusion incomplete');
   const previews = new Map(), preparing = new Map();
-  // Never recycle a terminal-proof operation in this composition. Bounded and
-  // fail-closed, not a durable/global nonreuse claim: restart/other instances
-  // are fenced in the browser by the separate random generation discriminator.
+  // Legacy ungated retirement only. Gated mode derives exclusion from durable
+  // store history on every operation and has NO old lifetime quota/cache bypass.
   const terminalOperations = new Set();
   const MAX_TERMINAL_OPERATIONS = 1000;
   const withdrawalCatalogues = new Map();
   let writeInFlight = false, uncertainOperation = null;
   function tick() { const value = now(); if (!positive(value)) fail(); return value; }
-  function retire(operationId, expected) {
+  function retire(operationId, expected, terminalOwner) {
+    if (expected?.terminalizing && expected.terminalizing !== terminalOwner) return;
     // A delayed result may belong to a reclaimed generation. It must never
     // delete a replacement (including an identical command/operation ID).
     if (expected && previews.get(operationId) === expected) previews.delete(operationId);
@@ -298,13 +302,13 @@ function createSettlementEvidenceConfirmation(deps) {
       // Read-only confirmations may be paused across this sweep. Their final
       // identity/token check prevents them from committing after replacement.
       // Once a write is attempted, TTL alone can no longer establish safety.
-      if (!entry.attempted && time >= entry.preview.expiresAt) retire(operationId, entry);
+      if (!entry.attempted && !entry.terminalizing && time >= entry.preview.expiresAt) retire(operationId, entry);
     }
   }
   function terminal(operationId, entry, reason, definitiveAttempt = false) {
     // Another confirmation can enter the sole write while this read-only
     // validation awaits. Its uncertainty takes precedence over a stale refusal.
-    if (entry.attempted && !definitiveAttempt) return unknown(operationId);
+    if (entry.terminalizing || (entry.attempted && !definitiveAttempt)) return unknown(operationId);
     retire(operationId, entry);
     return rejected(reason);
   }
@@ -314,6 +318,34 @@ function createSettlementEvidenceConfirmation(deps) {
     if (!Object.hasOwn(request, 'generation')) {
       if (prejournalRefused) uncertainOperation = null;
       return terminal(request.operationId, entry, reason, prejournalRefused);
+    }
+    if (terminalProtocol) {
+      // Claim ownership BEFORE the first await. Failed/lost acknowledgements
+      // retain this state and latch: P2, sweep, outcome and duplicate confirms
+      // cannot steal it. A landed seal is never undone by a failed recheck.
+      if (previews.get(request.operationId) !== entry || request.previewToken !== entry.previewToken
+        || request.generation !== entry.generation || entry.terminalizing) return unknown(request.operationId);
+      if (prejournalRefused ? (!entry.attempted || !writeInFlight || uncertainOperation !== request.operationId)
+        : (entry.attempted || writeInFlight || uncertainOperation)) return unknown(request.operationId);
+      const owner = {};
+      entry.terminalizing = owner;
+      uncertainOperation = request.operationId;
+      try {
+        await sameAuthority(context, authority);
+        const result = await terminalProtocol.sealNegative({
+          actorId: authority.actorId, preview: entry.preview, confirmationDigest: entry.confirmationDigest,
+          generation: entry.generation, kind: entry.kind || 'link', reason });
+        await sameAuthority(context, authority);
+        if (result.status !== 'certified' || previews.get(request.operationId) !== entry
+          || entry.terminalizing !== owner || request.previewToken !== entry.previewToken || request.generation !== entry.generation
+          || uncertainOperation !== request.operationId || (prejournalRefused ? !writeInFlight : writeInFlight))
+          return unknown(request.operationId);
+        // No await between the final ownership checks, retirement and response.
+        retire(request.operationId, entry, owner);
+        uncertainOperation = null;
+        return Object.freeze({ status: 'not-applied', operationId: request.operationId,
+          generation: entry.generation, previewToken: entry.previewToken });
+      } catch { return unknown(request.operationId); }
     }
     await sameAuthority(context, authority);
     if (previews.get(request.operationId) !== entry || request.previewToken !== entry.previewToken
@@ -482,7 +514,7 @@ function createSettlementEvidenceConfirmation(deps) {
         || !matches(/^assignment-[a-f0-9]{32}$/, request.assignmentHandle)) return unavailable('invalid-request');
       sweepExpired();
       if (uncertainOperation) return unavailable('outcome-unresolved');
-      if (terminalOperations.has(request.operationId) || terminalOperations.size >= MAX_TERMINAL_OPERATIONS)
+      if (!terminalProtocol && (terminalOperations.has(request.operationId) || terminalOperations.size >= MAX_TERMINAL_OPERATIONS))
         return unavailable('preview-unavailable');
       if (previews.has(request.operationId) || preparing.has(request.operationId)
         || previews.size + preparing.size >= MAX_PREVIEWS) return unavailable('preview-unavailable');
@@ -512,9 +544,10 @@ function createSettlementEvidenceConfirmation(deps) {
     finally { if (reservation && preparing.get(request.operationId) === reservation) preparing.delete(request.operationId); }
   }
   async function originalOutcome(context, authority, operationId, expected = previews.get(operationId)) {
+    if (expected?.terminalizing) return null;
     const result = snapshot(await store.outcome({ actorId: authority.actorId, operationId }));
     await sameAuthority(context, authority);
-    if (result.status === 'unknown') return null;
+    if (result.status === 'unknown' || expected?.terminalizing) return null;
     const original = receipt(result, authority, operationId);
     if (!original) fail();
     if (uncertainOperation === operationId) uncertainOperation = null;
@@ -546,7 +579,7 @@ function createSettlementEvidenceConfirmation(deps) {
     const operationId = uncertainOperation;
     if (!operationId) return ack('idle');
     const entry = previews.get(operationId);
-    if (!entry || !entry.attempted) return ack('blocked');
+    if (!entry || !entry.attempted || entry.terminalizing) return ack('blocked');
     if (typeof store.inspectAttempt !== 'function') return ack('blocked');
     const capturedToken = entry.previewToken;
     let disposition, ready;
@@ -561,7 +594,7 @@ function createSettlementEvidenceConfirmation(deps) {
     // one synchronous step after the inspection settles.
     if (uncertainOperation !== operationId || previews.get(operationId) !== entry
       || entry.previewToken !== capturedToken) return ack('obsolete');
-    if (writeInFlight) return ack('blocked');
+    if (writeInFlight || entry.terminalizing) return ack('blocked');
     if ((disposition === 'committed' || disposition === 'not-committed') && ready === true) {
       uncertainOperation = null;
       retire(operationId, entry);
@@ -580,7 +613,7 @@ function createSettlementEvidenceConfirmation(deps) {
         || !positive(request.assignedCents)) return unavailable('invalid-request');
       sweepExpired();
       if (uncertainOperation) return unavailable('outcome-unresolved');
-      if (terminalOperations.has(request.operationId) || terminalOperations.size >= MAX_TERMINAL_OPERATIONS)
+      if (!terminalProtocol && (terminalOperations.has(request.operationId) || terminalOperations.size >= MAX_TERMINAL_OPERATIONS))
         return unavailable('preview-unavailable');
       if (previews.has(request.operationId) || preparing.has(request.operationId)
         || previews.size + preparing.size >= MAX_PREVIEWS) return unavailable('preview-unavailable');
@@ -687,7 +720,7 @@ function createSettlementEvidenceConfirmation(deps) {
       if (tick() >= retained.preview.expiresAt) return await terminalNoEffect(ownedContext, authority, request, retained, 'preview-expired');
       // No await between this check, consuming the sole attempt and invoking
       // commit. The store sees the original frozen preview, never a rebase.
-      if (retained.attempted || writeInFlight || uncertainOperation) return unknown(request.operationId);
+      if (retained.terminalizing || retained.attempted || writeInFlight || uncertainOperation) return unknown(request.operationId);
       if (previews.get(request.operationId) !== retained || request.previewToken !== retained.previewToken) {
         return rejected('preview-token-invalid');
       }
