@@ -88,6 +88,7 @@ const suites = [
   ['inactive Savings assignment real HTTP journey', 'test-settlement-evidence-http.js'],
   ['settlement evidence serving: receipt-bound qualified publication read over the construction-fixed serving dependency (ATLAS-080)', 'test-settlement-evidence-serving.js'],
   ['settlement evidence confirmation: synthetic session-bound prepare/confirm/outcome with atomic no-recovery commits (ATLAS-080)', 'test-settlement-evidence-confirmation.js'],
+  ['settlement evidence terminal certificate: irreversible operation seal, certificate-after-seal and modelled atomic fencing (ATLAS-080)', 'test-settlement-evidence-terminal-certificate.js'],
   ['settlement evidence resolver foundation: pure identity/binding foundation — txRef v1, BIND bindings, canonical-row crosswalk and handles (ATLAS-080)', 'test-settlement-evidence-resolver.js'],
   ['settlement evidence crosswalk exporter: same-pass tuple provenance from the incumbent sanitizer pass (ATLAS-080)', 'test-settlement-evidence-crosswalk.js'],
   ['settlement evidence refresh acquisition: memory-replay-only private acquisition through the refresh worker/lifecycle (ATLAS-080)', 'test-settlement-evidence-refresh-acquisition.js'],
