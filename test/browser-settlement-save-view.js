@@ -916,7 +916,12 @@ function rendererReversalEvidence(withReversal) {
         const snapshot = () => page.evaluate(ids => ids.map(id => ({ id, html: document.getElementById(id).innerHTML,
           text: document.getElementById(id).textContent })), ids);
         const ready = await snapshot();
+        const diagnosticIds = ['hero-tiles', 'cap-headline', 'phases', 'risk-list'];
+        const diagnostics = () => page.evaluate(ids => ids.map(id => ({ id, html: document.getElementById(id).innerHTML,
+          text: document.getElementById(id).textContent })), diagnosticIds);
+        const retainedDiagnostics = await diagnostics();
         const categories = await page.locator('#budget-cats').innerHTML();
+        await page.evaluate(() => { document.getElementById('road-ahead').hidden = true; });
         w.base.settlementEvidence = rendererReversalEvidence(true);
         const publication = await page.evaluate(async () => {
           const d = await (await fetch('/data.json', { credentials: 'same-origin' })).json();
@@ -925,11 +930,21 @@ function rendererReversalEvidence(withReversal) {
           const cap = Forecast.budgetBreakdown(d.plan, App.periods, { weeklyCap: advice.weekly }).cap;
           // Explicit mutable fixture input exercises the renderer lifecycle;
           // production acquisition/reload policy is not being changed here.
-          Object.assign(App.data, d); App.rerender();
-          return { weekly: advice.weekly, cap, reason: advice.operatingPlanNote };
+          Object.assign(App.data, d);
+          let hiddenCounterfactualCalls = 0;
+          const original = Forecast.counterfactuals;
+          Forecast.counterfactuals = (...args) => { hiddenCounterfactualCalls++; return original(...args); };
+          try { App.rerender(); } finally { Forecast.counterfactuals = original; }
+          return { weekly: advice.weekly, cap, reason: advice.operatingPlanNote, hiddenCounterfactualCalls };
         });
         assert.equal(publication.weekly, null); assert.equal(publication.cap, null);
         assert.match(publication.reason, /remaining cost is uncertain/);
+        assert.equal(publication.hiddenCounterfactualCalls, 0);
+        assert.deepEqual(await diagnostics(), retainedDiagnostics, 'explicitly hidden diagnostic mounts remain untouched');
+        for (const row of (await snapshot()).filter(row => !diagnosticIds.includes(row.id))) {
+          assert.ok(row.text.includes(publication.reason), row.id + ': active state refreshes while diagnostics are hidden');
+        }
+        await page.evaluate(() => { document.getElementById('road-ahead').hidden = false; App.rerender(); });
         for (const row of await snapshot()) {
           assert.ok(row.text.includes(publication.reason), row.id + ': published reason');
           assert.doesNotMatch(row.text, /protected funding shortfall|\$0\/wk|\$0\s*\/\s*week/);
@@ -943,12 +958,18 @@ function rendererReversalEvidence(withReversal) {
         await page.evaluate(async () => { const d = await (await fetch('/data.json', { credentials: 'same-origin' })).json(); Object.assign(App.data, d); App.rerender(); });
         assert.deepEqual(await snapshot(), ready, 'ready control restores exactly after uncertainty');
         assert.equal(w.calls.commit, 0); assert.equal(w.calls.storage, 0);
-        fixture.details = { publication, override, cycle: ['ready', 'unavailable', 'ready'], normalizedSyntheticEvidence: true, actualDataRoute: true };
+        fixture.details = { publication, override, cycle: ['ready-visible', 'unavailable-hidden', 'unavailable-visible', 'ready-visible'], normalizedSyntheticEvidence: true, actualDataRoute: true };
       }, false, width);
     }
     for (const width of [390, 1440]) {
       await run('renderer hidden diagnostics unfunded sentinel ' + width, async (w, fixture) => {
         const { page } = fixture;
+        const diagnosticIds = ['hero-tiles', 'cap-headline', 'phases', 'risk-list'];
+        const nativeDiagnostics = await page.evaluate(async ids => {
+          const html = await (await fetch('/', { credentials: 'same-origin' })).text();
+          const document = new DOMParser().parseFromString(html, 'text/html');
+          return ids.map(id => ({ id, html: document.getElementById(id).innerHTML, text: document.getElementById(id).textContent }));
+        }, diagnosticIds);
         // Same invented $400 buffer / $150 cash / empty funding source as the
         // registered weekly suite: independent unfunded gap = $250.
         const payload = { meta: { asOf: '2026-08-16', title: 'Synthetic unfunded renderer' },
@@ -963,6 +984,9 @@ function rendererReversalEvidence(withReversal) {
               { id: 'dining', label: 'Dining', class: 'discretionary', from: ['Dining'], plannedMonthly: 400 }] } } };
         for (const key of Object.keys(w.base)) delete w.base[key]; Object.assign(w.base, payload);
         await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+        assert.deepEqual(await page.evaluate(ids => ids.map(id => ({ id, html: document.getElementById(id).innerHTML,
+          text: document.getElementById(id).textContent })), diagnosticIds), nativeDiagnostics,
+        'default hidden diagnostic mounts preserve native markup through initial boot');
         const trace = await page.evaluate(() => {
           const hidden = document.getElementById('road-ahead').hidden;
           const advice = Forecast.recommend(App.data.plan, App.data.meta.asOf,
@@ -979,7 +1003,13 @@ function rendererReversalEvidence(withReversal) {
         assert.equal(trace.weekly, 0); assert.equal(trace.feasible, false); assert.equal(trace.shortfall, 250);
         assert.equal(trace.calls, 0, 'hidden root never enables counterfactual calculations');
         assert.equal(trace.error, null, 'unfunded zero sentinel completes the renderer');
-        assert.match(trace.headline, /unavailable/); assert.match(trace.headline, /250/);
+        assert.equal(trace.headline, nativeDiagnostics.find(row => row.id === 'cap-headline').text,
+          'hidden headline remains untouched on repeated render');
+        assert.match(await page.locator('#cap-split .total .cap-part-amt').textContent(), /unavailable/);
+        await page.evaluate(() => { document.getElementById('road-ahead').hidden = false; App.rerender(); });
+        const revealedHeadline = await page.locator('#cap-headline').textContent();
+        assert.match(revealedHeadline, /unavailable/); assert.match(revealedHeadline, /250/);
+        fixture.details.revealedHeadline = revealedHeadline;
         assert.equal(w.calls.storage, 0); assert.equal(w.calls.commit, 0);
       }, false, width);
     }

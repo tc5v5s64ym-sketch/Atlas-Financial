@@ -8221,11 +8221,12 @@ function renderPlan(d, periods, history) {
   const cap = budget ? budget.cap : null;
   const capMonthly = Forecast.monthlyFromWeekly(weekly);
 
-  // A missing cap is not a zero or an unfunded-gap verdict. Replace every
-  // cap-owned mount on rerender so a previous ready split cannot survive.
+  // A missing cap is not a zero or an unfunded-gap verdict. Refresh active
+  // cap mounts; the diagnostic headline obeys its explicit visibility gate.
   if (!budget || !cap || capView.permissionUnavailable) {
     const reason = capView.reason || 'The weekly cap split is unavailable.';
     for (const id of ['cap-headline', 'cap-split', 'cap-basis', 'budget-out', 'budget-basis']) {
+      if (id === 'cap-headline' && !diagnosticsVisible) continue;
       const node = $(id);
       if (node) { node.innerHTML = ''; node.textContent = reason; }
     }
@@ -8349,7 +8350,7 @@ function renderPlan(d, periods, history) {
     // situation — not for a covered gap. Saying "once the gap is covered"
     // beside it attached the condition of one simulation to the answer of
     // another, so the full-coverage figure is computed and shown separately.
-    $('cap-headline').innerHTML = capView.hasFeasibleCap
+    if (diagnosticsVisible) $('cap-headline').innerHTML = capView.hasFeasibleCap
       ? `<span class="cap-amt">${money(weekly)}</span><span class="cap-per">/ week</span>
        <span class="cap-qual">${capQualifier}</span>`
       : `<span class="cap-amt">unavailable</span>

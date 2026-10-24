@@ -533,7 +533,7 @@ function bootPage(storedKnobs, payload, periodsOverride) {
     };
     let html = '';
     Object.defineProperty(el, 'innerHTML',
-      { get: () => html, set(v) { html = String(v); el.children = []; el.textContent = ''; } });
+      { get: () => html, set(v) { html = String(v); el.children = []; el.textContent = ''; el.htmlWrites = (el.htmlWrites || 0) + 1; } });
     return el;
   };
   const get = id => { if (!els.has(id)) els.set(id, makeEl(id)); return els.get(id); };
@@ -751,6 +751,7 @@ const settle = () => new Promise(r => setTimeout(r, 0));
 
   const unfundedPage = bootPage(null, unfundedPayload, FIXTURE_PERIODS);
   await settle();
+  const retainedHeadline = { html: unfundedPage.get('cap-headline').innerHTML, writes: unfundedPage.get('cap-headline').htmlWrites };
   let hiddenError = null;
   try {
     unfundedPage.run(`document.getElementById('road-ahead').hidden = true;
@@ -761,6 +762,9 @@ const settle = () => new Promise(r => setTimeout(r, 0));
   } catch (error) { hiddenError = error; }
   ok(!hiddenError, 'hidden diagnostics unfunded sentinel completes renderer', hiddenError?.message || '');
   ok(unfundedPage.run('hiddenCounterfactualCalls') === 0, 'hidden diagnostics never enables counterfactual calculations');
+  ok(unfundedPage.get('cap-headline').htmlWrites === retainedHeadline.writes
+    && unfundedPage.get('cap-headline').innerHTML === retainedHeadline.html,
+  'hidden unfunded headline is untouched until diagnostics are requested');
   unfundedPage.run(`document.getElementById('road-ahead').hidden = false; App.rerender();`);
   const u = capSurfaces(unfundedPage);
   const uTile = capTile(u.tiles);
@@ -877,10 +881,21 @@ const settle = () => new Promise(r => setTimeout(r, 0));
     await settle();
     const ids = ['cap-headline', 'cap-split', 'cap-basis', 'budget-out', 'budget-basis', 'budget-cats-note', 'hero-tiles'];
     const before = ids.map(id => ({ html: page.get(id).innerHTML, text: page.get(id).textContent }));
+    const diagnosticIds = ['hero-tiles', 'cap-headline', 'phases', 'risk-list'];
+    const diagnosticBefore = diagnosticIds.map(id => ({ html: page.get(id).innerHTML, text: page.get(id).textContent, writes: page.get(id).htmlWrites }));
     const categories = page.get('budget-cats').innerHTML;
+    page.run("document.getElementById('road-ahead').hidden = true");
     ready.settlementEvidence = unknown.settlementEvidence;
     let error = null; try { page.run('App.rerender()'); } catch (e) { error = e; }
     ok(!error, 'ready to unknown rerender does not throw', error ? error.message : '');
+    ok(diagnosticIds.every((id, i) => page.get(id).innerHTML === diagnosticBefore[i].html
+      && page.get(id).textContent === diagnosticBefore[i].text && page.get(id).htmlWrites === diagnosticBefore[i].writes),
+    'unknown rerender leaves every explicitly hidden diagnostic mount untouched');
+    for (const id of ids.filter(id => !diagnosticIds.includes(id))) {
+      ok((page.get(id).innerHTML + page.get(id).textContent).includes(advice.operatingPlanNote),
+        id + ' refreshes active cap state while diagnostics are hidden');
+    }
+    page.run("document.getElementById('road-ahead').hidden = false; App.rerender()");
     const view = page.run('weeklyCapView({weekly:null, operatingPlanNote:"published uncertainty"}, state.weeklyVariable)');
     ok(view.hasFeasibleCap === false && view.weekly === null && view.reason === 'published uncertainty',
       'published unknown wins even with an explicit weekly override');
