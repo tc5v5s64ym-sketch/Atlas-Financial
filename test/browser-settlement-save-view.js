@@ -114,6 +114,25 @@ function observeMarkerMutations() {
     };
   }
 }
+function rendererReversalEvidence(withReversal) {
+  const C = require('../scripts/planned-obligation-settlement-contract');
+  const householdId = 'household-' + 'a'.repeat(32), actorId = 'session-' + 'b'.repeat(64);
+  const op = n => 'operation-' + n.toString(16).padStart(32, '0');
+  const evidence = { accountId: 'chequing-a', currency: 'cad', direction: 'debit', date: '2026-10-03', cents: 6000, posted: true };
+  const link = { version: 1, kind: 'link', goalId: 'commitment:near', txRef: 'tx-' + 'c'.repeat(32),
+    evidence, evidenceDigest: C.digest(evidence), assignedCents: 2500, asOf: '2026-10-05' };
+  const counter = { ...evidence, direction: 'credit', cents: 1000 };
+  const commands = [link, ...(withReversal ? [{ version: 1, kind: 'reverse', targetOperationId: op(1),
+    counterTxRef: 'tx-' + 'd'.repeat(32), counterEvidence: counter, counterEvidenceDigest: C.digest(counter), cents: 1000 }] : []),
+  { ...link, goalId: 'commitment:far', assignedCents: 2000 }];
+  let body = C.adopt({ householdId });
+  commands.forEach((command, i) => {
+    const p = C.prepare(body, { householdId, actorId, operationId: op(i + 1), command, now: 100 + i * 2 });
+    body = C.confirmCandidate(body, { householdId, actorId, preview: p.preview,
+      confirmationDigest: p.confirmationDigest, now: 101 + i * 2 }).document;
+  });
+  return C.effectiveEvidence(JSON.parse(body));
+}
 (async () => {
   fs.mkdirSync(out, { recursive: true });
   const browser = await chromium.launch({ headless: true,
@@ -885,6 +904,115 @@ function observeMarkerMutations() {
         assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
       }, true, width);
     }
+    for (const width of [390, 1440]) for (const override of [null, 1800]) {
+      await run('renderer reversal uncertainty ready-unknown-ready ' + width + ' override ' + override, async (w, fixture) => {
+        const { page } = fixture;
+        w.base.settlementEvidenceStatus = { status: 'qualified' };
+        w.base.settlementEvidence = rendererReversalEvidence(false);
+        if (override != null) await page.addInitScript(value => localStorage.setItem('hfd-plan-knobs-v1', JSON.stringify({ weeklyVariable: value })), override);
+        await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null && document.querySelector('[data-budget-savings-goals]'));
+        await page.evaluate(() => { document.getElementById('road-ahead').hidden = false; App.rerender(); });
+        const ids = ['cap-headline', 'cap-split', 'cap-basis', 'budget-out', 'budget-basis', 'budget-cats-note', 'hero-tiles'];
+        const snapshot = () => page.evaluate(ids => ids.map(id => ({ id, html: document.getElementById(id).innerHTML,
+          text: document.getElementById(id).textContent })), ids);
+        const ready = await snapshot();
+        const diagnosticIds = ['hero-tiles', 'cap-headline', 'phases', 'risk-list'];
+        const diagnostics = () => page.evaluate(ids => ids.map(id => ({ id, html: document.getElementById(id).innerHTML,
+          text: document.getElementById(id).textContent })), diagnosticIds);
+        const retainedDiagnostics = await diagnostics();
+        const categories = await page.locator('#budget-cats').innerHTML();
+        await page.evaluate(() => { document.getElementById('road-ahead').hidden = true; });
+        w.base.settlementEvidence = rendererReversalEvidence(true);
+        const publication = await page.evaluate(async () => {
+          const d = await (await fetch('/data.json', { credentials: 'same-origin' })).json();
+          const advice = Forecast.recommend(d.plan, d.meta.asOf, { ...d.plan.defaults, ...d.liveOverlay,
+            weeklyVariable: state.weeklyVariable, debts: d.debts, settlementEvidence: d.settlementEvidence });
+          const cap = Forecast.budgetBreakdown(d.plan, App.periods, { weeklyCap: advice.weekly }).cap;
+          // Explicit mutable fixture input exercises the renderer lifecycle;
+          // production acquisition/reload policy is not being changed here.
+          Object.assign(App.data, d);
+          let hiddenCounterfactualCalls = 0;
+          const original = Forecast.counterfactuals;
+          Forecast.counterfactuals = (...args) => { hiddenCounterfactualCalls++; return original(...args); };
+          try { App.rerender(); } finally { Forecast.counterfactuals = original; }
+          return { weekly: advice.weekly, cap, reason: advice.operatingPlanNote, hiddenCounterfactualCalls };
+        });
+        assert.equal(publication.weekly, null); assert.equal(publication.cap, null);
+        assert.match(publication.reason, /remaining cost is uncertain/);
+        assert.equal(publication.hiddenCounterfactualCalls, 0);
+        assert.deepEqual(await diagnostics(), retainedDiagnostics, 'explicitly hidden diagnostic mounts remain untouched');
+        for (const row of (await snapshot()).filter(row => !diagnosticIds.includes(row.id))) {
+          assert.ok(row.text.includes(publication.reason), row.id + ': active state refreshes while diagnostics are hidden');
+        }
+        await page.evaluate(() => { document.getElementById('road-ahead').hidden = false; App.rerender(); });
+        for (const row of await snapshot()) {
+          assert.ok(row.text.includes(publication.reason), row.id + ': published reason');
+          assert.doesNotMatch(row.text, /protected funding shortfall|\$0\/wk|\$0\s*\/\s*week/);
+        }
+        assert.equal(w.base.plan.budget.categories[0].plannedWeekly, 40, 'synthetic groceries are independently positive');
+        const essential = page.locator('#hero-tiles .tile').filter({ has: page.locator('.lab', { hasText: /^Essential variable need$/ }) });
+        assert.equal(await essential.locator('.val').textContent(), 'unavailable');
+        assert.ok((await essential.locator('.note').textContent()).includes(publication.reason));
+        assert.equal(await page.locator('#budget-cats').innerHTML(), categories, 'known categories/history remain unchanged');
+        w.base.settlementEvidence = rendererReversalEvidence(false);
+        await page.evaluate(async () => { const d = await (await fetch('/data.json', { credentials: 'same-origin' })).json(); Object.assign(App.data, d); App.rerender(); });
+        assert.deepEqual(await snapshot(), ready, 'ready control restores exactly after uncertainty');
+        assert.equal(w.calls.commit, 0); assert.equal(w.calls.storage, 0);
+        fixture.details = { publication, override, cycle: ['ready-visible', 'unavailable-hidden', 'unavailable-visible', 'ready-visible'], normalizedSyntheticEvidence: true, actualDataRoute: true };
+      }, false, width);
+    }
+    for (const width of [390, 1440]) {
+      await run('renderer hidden diagnostics unfunded sentinel ' + width, async (w, fixture) => {
+        const { page } = fixture;
+        const diagnosticIds = ['hero-tiles', 'cap-headline', 'phases', 'risk-list'];
+        const nativeDiagnostics = await page.evaluate(async ids => {
+          const html = await (await fetch('/', { credentials: 'same-origin' })).text();
+          const document = new DOMParser().parseFromString(html, 'text/html');
+          return ids.map(id => ({ id, html: document.getElementById(id).innerHTML, text: document.getElementById(id).textContent }));
+        }, diagnosticIds);
+        // Same invented $400 buffer / $150 cash / empty funding source as the
+        // registered weekly suite: independent unfunded gap = $250.
+        const payload = { meta: { asOf: '2026-08-16', title: 'Synthetic unfunded renderer' },
+          debts: [], revolvingExtra: [], paypal: null, helocHistory: [],
+          plan: { windowDays: 21, defaults: { scenario: 'expected', extraDebtMonthly: 0, targetBuffer: 400 },
+            obligations: [], bills: [], commitments: [], actions: [], startingCash: { amount: 150, note: '' },
+            income: [{ id: 'later-pay', label: 'Later pay', frequency: 'once', date: '2026-08-30', amount: 3000, confidence: 'confirmed' }],
+            funding: { heading: 'Cover the gap', note: '', options: [{ id: 'empty', label: 'Empty pot', short: 'empty', available: 0, rank: 1 }] },
+            budget: { basis: 'ytd', categories: [
+              { id: 'groceries', label: 'Groceries', class: 'essential', from: ['Groceries'], plannedMonthly: 1200 },
+              { id: 'fuel', label: 'Fuel', class: 'essential', from: ['Fuel'], plannedMonthly: 800 },
+              { id: 'dining', label: 'Dining', class: 'discretionary', from: ['Dining'], plannedMonthly: 400 }] } } };
+        for (const key of Object.keys(w.base)) delete w.base[key]; Object.assign(w.base, payload);
+        await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+        assert.deepEqual(await page.evaluate(ids => ids.map(id => ({ id, html: document.getElementById(id).innerHTML,
+          text: document.getElementById(id).textContent })), diagnosticIds), nativeDiagnostics,
+        'default hidden diagnostic mounts preserve native markup through initial boot');
+        const trace = await page.evaluate(() => {
+          const hidden = document.getElementById('road-ahead').hidden;
+          const advice = Forecast.recommend(App.data.plan, App.data.meta.asOf,
+            { ...App.data.plan.defaults, fundingSources: App.data.plan.funding.options, debts: [] });
+          let calls = 0, error = null;
+          const original = Forecast.counterfactuals;
+          Forecast.counterfactuals = (...args) => { calls++; return original(...args); };
+          try { App.rerender(); } catch (e) { error = e.message; } finally { Forecast.counterfactuals = original; }
+          return { hidden, weekly: advice.weekly, feasible: advice.funding.feasible, shortfall: advice.funding.shortfall,
+            calls, error, headline: document.getElementById('cap-headline').textContent };
+        });
+        fixture.details = { trace, actualDataRoute: true, normalizedSyntheticEvidence: false };
+        assert.equal(trace.hidden, true, 'actual default root is hidden');
+        assert.equal(trace.weekly, 0); assert.equal(trace.feasible, false); assert.equal(trace.shortfall, 250);
+        assert.equal(trace.calls, 0, 'hidden root never enables counterfactual calculations');
+        assert.equal(trace.error, null, 'unfunded zero sentinel completes the renderer');
+        assert.equal(trace.headline, nativeDiagnostics.find(row => row.id === 'cap-headline').text,
+          'hidden headline remains untouched on repeated render');
+        assert.match(await page.locator('#cap-split .total .cap-part-amt').textContent(), /unavailable/);
+        await page.evaluate(() => { document.getElementById('road-ahead').hidden = false; App.rerender(); });
+        const revealedHeadline = await page.locator('#cap-headline').textContent();
+        assert.match(revealedHeadline, /unavailable/); assert.match(revealedHeadline, /250/);
+        fixture.details.revealedHeadline = revealedHeadline;
+        assert.equal(w.calls.storage, 0); assert.equal(w.calls.commit, 0);
+      }, false, width);
+    }
   } finally { await browser.close(); }
   assert.ok(results.length, 'at least one browser case must run');
   fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ synthetic: true,
@@ -894,7 +1022,7 @@ function observeMarkerMutations() {
     repositorySources: Object.fromEntries(['server.js', 'public/app.js', 'public/plan.js', 'public/budget-blend.js',
       'scripts/settlement-evidence-http.js', 'scripts/settlement-evidence-confirmation.js', 'scripts/settlement-evidence-resolver.js',
       'scripts/settlement-evidence-serving.js', 'test/test-settlement-evidence-http.js',
-      'test/test-settlement-evidence-confirmation.js', 'test/browser-settlement-save-view.js'].map(file => [file,
+      'test/test-settlement-evidence-confirmation.js', 'test/test-weekly-cap.js', 'test/browser-settlement-save-view.js'].map(file => [file,
       require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(__dirname, '..', file))).digest('hex')])),
     actualHttpAndBrowser: true, results }, null, 2) + '\n');
   console.log('Proof: ' + out);

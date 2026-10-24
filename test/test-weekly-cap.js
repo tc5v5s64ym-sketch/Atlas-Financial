@@ -533,7 +533,7 @@ function bootPage(storedKnobs, payload, periodsOverride) {
     };
     let html = '';
     Object.defineProperty(el, 'innerHTML',
-      { get: () => html, set(v) { html = String(v); el.children = []; } });
+      { get: () => html, set(v) { html = String(v); el.children = []; el.textContent = ''; el.htmlWrites = (el.htmlWrites || 0) + 1; } });
     return el;
   };
   const get = id => { if (!els.has(id)) els.set(id, makeEl(id)); return els.get(id); };
@@ -566,7 +566,31 @@ function bootPage(storedKnobs, payload, periodsOverride) {
   for (const file of ['public/app.js', 'public/forecast.js', 'public/budget-surface.js', 'public/plan.js']) {
     vm.runInContext(read(file), sandbox, { filename: file });
   }
-  return { get };
+  return { get, run: script => vm.runInContext(script, sandbox) };
+}
+// Exact synthetic ledger corpus, independent of any withdrawal consumer.
+function reversalRendererFixture(withReversal) {
+  const C = require('../scripts/planned-obligation-settlement-contract');
+  const d = require('./fixtures/savings-daily-consumer-data')();
+  d.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'commitment', id: 'near' }];
+  const householdId = 'household-' + 'a'.repeat(32), actorId = 'session-' + 'b'.repeat(64);
+  const op = n => 'operation-' + n.toString(16).padStart(32, '0');
+  const evidence = { accountId: 'chequing-a', currency: 'cad', direction: 'debit', date: '2026-10-03', cents: 6000, posted: true };
+  const link = { version: 1, kind: 'link', goalId: 'commitment:near', txRef: 'tx-' + 'c'.repeat(32),
+    evidence, evidenceDigest: C.digest(evidence), assignedCents: 2500, asOf: '2026-10-05' };
+  const counter = { ...evidence, direction: 'credit', cents: 1000 };
+  const commands = [link, ...(withReversal ? [{ version: 1, kind: 'reverse', targetOperationId: op(1),
+    counterTxRef: 'tx-' + 'd'.repeat(32), counterEvidence: counter, counterEvidenceDigest: C.digest(counter), cents: 1000 }] : []),
+  { ...link, goalId: 'commitment:far', assignedCents: 2000 }];
+  let body = C.adopt({ householdId });
+  commands.forEach((command, i) => {
+    const p = C.prepare(body, { householdId, actorId, operationId: op(i + 1), command, now: 100 + i * 2 });
+    body = C.confirmCandidate(body, { householdId, actorId, preview: p.preview,
+      confirmationDigest: p.confirmationDigest, now: 101 + i * 2 }).document;
+  });
+  d.settlementEvidenceStatus = { status: 'qualified' };
+  d.settlementEvidence = C.effectiveEvidence(JSON.parse(body));
+  return d;
 }
 const flat = s => s.replace(/\s+/g, ' ').trim();
 const settle = () => new Promise(r => setTimeout(r, 0));
@@ -727,6 +751,21 @@ const settle = () => new Promise(r => setTimeout(r, 0));
 
   const unfundedPage = bootPage(null, unfundedPayload, FIXTURE_PERIODS);
   await settle();
+  const retainedHeadline = { html: unfundedPage.get('cap-headline').innerHTML, writes: unfundedPage.get('cap-headline').htmlWrites };
+  let hiddenError = null;
+  try {
+    unfundedPage.run(`document.getElementById('road-ahead').hidden = true;
+      globalThis.hiddenCounterfactualCalls = 0;
+      const originalCounterfactuals = Forecast.counterfactuals;
+      Forecast.counterfactuals = (...args) => { hiddenCounterfactualCalls++; return originalCounterfactuals(...args); };
+      try { App.rerender(); } finally { Forecast.counterfactuals = originalCounterfactuals; }`);
+  } catch (error) { hiddenError = error; }
+  ok(!hiddenError, 'hidden diagnostics unfunded sentinel completes renderer', hiddenError?.message || '');
+  ok(unfundedPage.run('hiddenCounterfactualCalls') === 0, 'hidden diagnostics never enables counterfactual calculations');
+  ok(unfundedPage.get('cap-headline').htmlWrites === retainedHeadline.writes
+    && unfundedPage.get('cap-headline').innerHTML === retainedHeadline.html,
+  'hidden unfunded headline is untouched until diagnostics are requested');
+  unfundedPage.run(`document.getElementById('road-ahead').hidden = false; App.rerender();`);
   const u = capSurfaces(unfundedPage);
   const uTile = capTile(u.tiles);
   ok(uTile.val === 'unavailable',
@@ -829,6 +868,52 @@ const settle = () => new Promise(r => setTimeout(r, 0));
   ok(!/no feasible weekly cap/i.test(tTile.note + t.headline + t.basis + t.payday),
     'and is not described as an unfunded gap');
 
+  console.log('=== reversal uncertainty: real renderer, stale clearing and override fence ===');
+  for (const override of [null, 1800]) {
+    const ready = reversalRendererFixture(false), unknown = reversalRendererFixture(true);
+    const advice = F.recommend(unknown.plan, unknown.meta.asOf, { ...unknown.plan.defaults, ...unknown.liveOverlay,
+      debts: unknown.debts, weeklyVariable: override, settlementEvidence: unknown.settlementEvidence });
+    ok(advice.weekly === null && /remaining cost is uncertain/.test(advice.operatingPlanNote),
+      'exact25/reversal10/sibling20 fixture publishes unknown weekly permission with its reason');
+    ok(F.budgetBreakdown(unknown.plan, periods, { weeklyCap: advice.weekly }).cap === null,
+      'unchanged budgetBreakdown publishes null cap rather than invented zero');
+    const page = bootPage(override == null ? null : { weeklyVariable: override }, ready);
+    await settle();
+    const ids = ['cap-headline', 'cap-split', 'cap-basis', 'budget-out', 'budget-basis', 'budget-cats-note', 'hero-tiles'];
+    const before = ids.map(id => ({ html: page.get(id).innerHTML, text: page.get(id).textContent }));
+    const diagnosticIds = ['hero-tiles', 'cap-headline', 'phases', 'risk-list'];
+    const diagnosticBefore = diagnosticIds.map(id => ({ html: page.get(id).innerHTML, text: page.get(id).textContent, writes: page.get(id).htmlWrites }));
+    const categories = page.get('budget-cats').innerHTML;
+    page.run("document.getElementById('road-ahead').hidden = true");
+    ready.settlementEvidence = unknown.settlementEvidence;
+    let error = null; try { page.run('App.rerender()'); } catch (e) { error = e; }
+    ok(!error, 'ready to unknown rerender does not throw', error ? error.message : '');
+    ok(diagnosticIds.every((id, i) => page.get(id).innerHTML === diagnosticBefore[i].html
+      && page.get(id).textContent === diagnosticBefore[i].text && page.get(id).htmlWrites === diagnosticBefore[i].writes),
+    'unknown rerender leaves every explicitly hidden diagnostic mount untouched');
+    for (const id of ids.filter(id => !diagnosticIds.includes(id))) {
+      ok((page.get(id).innerHTML + page.get(id).textContent).includes(advice.operatingPlanNote),
+        id + ' refreshes active cap state while diagnostics are hidden');
+    }
+    page.run("document.getElementById('road-ahead').hidden = false; App.rerender()");
+    const view = page.run('weeklyCapView({weekly:null, operatingPlanNote:"published uncertainty"}, state.weeklyVariable)');
+    ok(view.hasFeasibleCap === false && view.weekly === null && view.reason === 'published uncertainty',
+      'published unknown wins even with an explicit weekly override');
+    for (const id of ids) {
+      const output = page.get(id).innerHTML + page.get(id).textContent;
+      ok(output.includes(advice.operatingPlanNote), id + ' replaces stale permission with the published reason');
+      ok(!/protected funding shortfall|\$0\/wk|\$0\s*\/\s*week/.test(output), id + ' invents neither zero nor shortfall');
+    }
+    const essentialTile = /Essential variable need<\/div>\s*<div class="val">([^<]*)<\/div>\s*<div class="note">([\s\S]*?)<\/div>/.exec(page.get('hero-tiles').innerHTML);
+    ok(ready.plan.budget.categories[0].plannedWeekly === 40, 'independently invented groceries stay positive');
+    ok(essentialTile?.[1] === 'unavailable' && essentialTile[2].includes(advice.operatingPlanNote),
+      'absent cap withholds essential and food/fuel hero publication rather than inventing zero');
+    ok(page.get('budget-cats').innerHTML === categories, 'independently known category/history facts survive');
+    ready.settlementEvidence = reversalRendererFixture(false).settlementEvidence;
+    page.run('App.rerender()');
+    ok(ids.every((id, i) => page.get(id).innerHTML === before[i].html && page.get(id).textContent === before[i].text),
+      'unknown to ready restores the unchanged ready control');
+  }
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
   process.exit(failures === 0 ? 0 : 1);
 })();
