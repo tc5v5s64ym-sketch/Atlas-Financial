@@ -242,3 +242,8 @@ test('F16 late close after event-loop delay is unconfirmed rather than false suc
   const w=world({end:()=>{const until=performance.now()+16;while(performance.now()<until){ /* public dummy */ }}});
   const owner=await w.open({timeouts:{close:8}});assert.equal((await owner.retire()).close,'unconfirmed');assert.equal(w.ends,1);
 });
+test('F2 a Pool-shaped constructor is refused before its connect can borrow a session', async()=>{
+  let connects=0;
+  class PoolShape extends EventEmitter {connect(){connects++;}query(){}end(){}}
+  const w=world();await assert.rejects(w.open({Client:PoolShape}));assert.equal(connects,0);
+});

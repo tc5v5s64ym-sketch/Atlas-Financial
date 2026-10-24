@@ -142,7 +142,8 @@ async function createSettlementEvidencePostgresConnection(options) {
   try { raw=new o.Client(o.config); } catch(error) { throw sanitize(error,'client-setup'); }
   try {
     check(raw && !CLAIMED.has(raw), 'client-setup','setup');
-    check(['connect','query','on','end'].every(k=>typeof raw[k]==='function') && typeof raw.release!=='function','client-setup','setup');
+    check(['connect','query','on','end'].every(k=>typeof raw[k]==='function') && typeof raw.release!=='function'
+      && raw.connection && typeof raw.connection.stream==='object','client-setup','setup');
   } catch(error){throw sanitize(error,'client-setup');}
   CLAIMED.add(raw);
   let state='connecting', primary=null, retirement=null, report=null, connectSettled;
