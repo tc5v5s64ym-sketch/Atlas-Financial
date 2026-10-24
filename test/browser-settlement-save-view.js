@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { chromium } = require('playwright');
-const { startWorld, env } = require('./test-settlement-evidence-http');
+const { startWorld, env, syntheticRecord } = require('./test-settlement-evidence-http');
 const KEY = 'atlas-settlement-pending-v1';
 const out = process.env.ATLAS_SETTLEMENT_BROWSER_PROOF || path.join(os.tmpdir(), 'atlas-settlement-browser-proof');
 const results = [];
@@ -76,6 +76,29 @@ async function complete(page, dialog) {
   await Promise.all([page.waitForEvent('load'), dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).dblclick()]);
   await page.waitForFunction(() => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified');
   await page.waitForFunction(KEY => localStorage.getItem(KEY) === null, KEY);
+}
+async function withdrawalPreview(page) {
+  const dialog = await sheet(page);
+  await dialog.getByRole('button', { name: 'Withdraw an assignment', exact: true }).click();
+  // Catalogue order is not target identity: a sibling can sort before this
+  // assignment. Select the independently known original cost explicitly.
+  const assignments = dialog.getByLabel('Existing assignment', { exact: true });
+  const target = assignments.locator('option').filter({ hasText: /Invented first club cost|Recorded planned cost/ });
+  await target.first().waitFor({ state: 'attached' });
+  assert.equal(await target.count(), 1);
+  await assignments.selectOption(await target.getAttribute('value'));
+  await dialog.getByRole('button', { name: 'Preview withdrawal', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).waitFor();
+  assert.match(await dialog.locator('[data-settlement-assignment]').innerText(), /Withdraw.*\$25\.00 CAD.*does not move money.*Preview expires/);
+  const marker = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY);
+  assert.deepEqual(Object.keys(marker).sort(), ['generation', 'operationId', 'phase']);
+  assert.equal(marker.phase, 'preview'); assert.match(marker.generation, /^generation-[a-f0-9]{32}$/);
+  return dialog;
+}
+async function completeWithdrawal(page, dialog) {
+  await Promise.all([page.waitForEvent('load'), dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).dblclick()]);
+  await page.waitForFunction(KEY => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified'
+    && localStorage.getItem(KEY) === null, KEY);
 }
 async function refuseStorageReads(context) {
   await context.addInitScript(() => {
@@ -1013,6 +1036,167 @@ function rendererReversalEvidence(withReversal) {
         assert.equal(w.calls.storage, 0); assert.equal(w.calls.commit, 0);
       }, false, width);
     }
+    for (const width of [390, 1440]) {
+      await run('withdrawal then separately explicit normal relink ' + width, async (w, { page }) => {
+        await complete(page, await preview(page));
+        assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 });
+        await completeWithdrawal(page, await withdrawalPreview(page));
+        assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 });
+        assert.equal(w.calls.commit, 2, 'no automatic relink');
+        await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+        assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 });
+        await complete(page, await preview(page));
+        assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 });
+        assert.equal(w.calls.commit, 3);
+        assert.deepEqual(JSON.parse(w.durable.doc).operations.map(o => o.command.kind), ['link', 'retract', 'link']);
+      }, true, width);
+    }
+    await run('withdrawal lost committed response reload never resends or automatically relinks', async (w, { page }) => {
+      await complete(page, await preview(page)); const dialog = await withdrawalPreview(page);
+      let dropped = false;
+      await page.route('**/settlement/confirm', async route => {
+        const response = await route.fetch(); assert.equal((await response.json()).status, 'committed');
+        dropped = true; await route.abort('failed');
+      });
+      await dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).click();
+      await dialog.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+      const marker = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY);
+      assert.equal(marker.phase, 'dispatched'); assert.equal(dropped, true);
+      w.recreate(); await page.reload();
+      await page.waitForFunction(KEY => typeof App !== 'undefined' && App.data !== null && localStorage.getItem(KEY) === null, KEY);
+      assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 });
+      assert.equal(w.calls.commit, 2);
+      assert.deepEqual(JSON.parse(w.durable.doc).operations.map(o => o.command.kind), ['link', 'retract']);
+    });
+    await run('withdrawal remains available without current provider row or goal and preview dismissal is read-only', async (w, { page }) => {
+      await complete(page, await preview(page));
+      w.acquisition.packet.transactions = []; w.base.plan.commitments = [];
+      await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+      const dialog = await withdrawalPreview(page);
+      await page.keyboard.press('Escape');
+      assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 1);
+      await page.reload(); await page.waitForFunction(KEY => typeof App !== 'undefined' && App.data !== null && localStorage.getItem(KEY) === null, KEY);
+      await completeWithdrawal(page, await withdrawalPreview(page));
+      assert.equal(w.calls.commit, 2);
+      assert.deepEqual(await page.evaluate(() => App.data.settlementEvidence.commitments), []);
+    });
+    await run('household cross-login withdrawal owns a new receipt without exposing original receipt', async (w, { page, context }) => {
+      await complete(page, await preview(page));
+      const original = JSON.parse(w.durable.doc).operations[0];
+      const oldCookie = (await context.cookies(w.origin)).find(c => c.name === 'hfd_session'); assert.ok(oldCookie);
+      await context.clearCookies(); await page.goto(w.origin + '/login');
+      await page.getByLabel('Password', { exact: true }).fill(env.SITE_PASSWORD);
+      await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+      await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+      const foreign = await page.evaluate(async operationId => (await fetch('/settlement/outcome', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Atlas-Settlement': 'same-origin' }, body: JSON.stringify({ operationId }) })).json(), original.operationId);
+      assert.equal(foreign.status, 'unknown');
+      await completeWithdrawal(page, await withdrawalPreview(page));
+      const history = JSON.parse(w.durable.doc).operations;
+      assert.notEqual(history[0].actorId, history[1].actorId); assert.equal(history[1].command.kind, 'retract');
+      assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 }); assert.equal(w.calls.commit, 2);
+      w.cookie = 'hfd_session=' + oldCookie.value;
+      assert.equal((await w.post('outcome', { operationId: original.operationId })).status, 'committed');
+      assert.equal((await w.post('outcome', { operationId: history[1].operationId })).status, 'unknown');
+    });
+    await run('withdrawal partial reversal and sibling leave exactly thirty dollars for separate relink', async (w, { page }) => {
+      await complete(page, await preview(page)); const first = JSON.parse(w.durable.doc).operations[0];
+      const C = require('../scripts/planned-obligation-settlement-contract');
+      const counter = { ...first.command.evidence, direction: 'credit', cents: 1000 };
+      await syntheticRecord(w, 100, { version: 1, kind: 'reverse', targetOperationId: first.operationId,
+        counterTxRef: 'tx-' + '9'.repeat(32), counterEvidence: counter, counterEvidenceDigest: C.digest(counter), cents: 1000 }, first.actorId);
+      // The browser consumes the complete Forecast view: use its existing
+      // second planned commitment, rather than inventing an unknown goal.
+      const siblingGoal = 'commitment:' + w.base.plan.commitments[1].id;
+      await syntheticRecord(w, 101, { ...first.command, goalId: siblingGoal, assignedCents: 2000 }, first.actorId);
+      await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+      await completeWithdrawal(page, await withdrawalPreview(page));
+      assert.equal(JSON.parse(w.durable.doc).operations.length, 4, 'withdrawal cannot relink automatically');
+      const prepareAmount = async amount => {
+        const dialog = await sheet(page); await dialog.getByRole('button', { name: 'Assign a recorded payment', exact: true }).click();
+        await dialog.getByLabel('Amount to assign (CAD)', { exact: true }).fill(amount);
+        await dialog.getByRole('button', { name: 'Preview assignment', exact: true }).click(); return dialog;
+      };
+      let dialog = await prepareAmount('30.01');
+      await dialog.getByText('Preview unavailable. No confirmation was sent.', { exact: false }).waitFor();
+      assert.equal(w.calls.commit, 2);
+      await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+      dialog = await prepareAmount('30.00'); await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).waitFor();
+      await complete(page, dialog); assert.equal(w.calls.commit, 3);
+      assert.deepEqual(await facts(page), { original: 60, paid: 30, remaining: 30 });
+    });
+    let withdrawalClock = Date.now();
+    for (const boundary of ['controller', 'store']) {
+      withdrawalClock = Date.now();
+      await run('withdrawal ' + boundary + ' expiry keeps terminal generation proof and permits explicit reload', async (w, { page, requests }) => {
+        await complete(page, await preview(page));
+        const dialog = await withdrawalPreview(page);
+        const before = Buffer.from(w.durable.doc), pin = JSON.stringify(w.durable.pin);
+        const ttl = require('../scripts/planned-obligation-settlement-contract').TTL_MS;
+        withdrawalClock += ttl - (boundary === 'store' ? 1 : 0);
+        if (boundary === 'store') w.hooks.admission = async () => { withdrawalClock++; };
+        await dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).click();
+        await dialog.getByText('Not saved. No withdrawal was recorded.', { exact: false }).waitFor();
+        assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), null);
+        assert.equal(w.calls.commit, boundary === 'store' ? 2 : 1); assert.equal(w.calls.journal, 1);
+        assert.ok(w.durable.doc.equals(before)); assert.equal(JSON.stringify(w.durable.pin), pin);
+        await Promise.all([page.waitForEvent('load'), dialog.getByRole('button', { name: 'Reload current view', exact: true }).click()]);
+        await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+        assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 });
+        assert.equal(requests.filter(x => x.path === '/settlement/confirm').length, 2);
+      }, true, 390, { now: () => withdrawalClock });
+    }
+    for (const refusal of ['context-ABA', 'late-domain-fence']) {
+      await run('withdrawal ' + refusal + ' uses terminal proof without writing', async (w, { page }) => {
+        await complete(page, await preview(page)); const dialog = await withdrawalPreview(page);
+        if (refusal === 'context-ABA') { const original = w.cell.domain; w.cell.domain = 'other'; w.cell.revision++; w.cell.domain = original; w.cell.revision++; }
+        else w.hooks.admission = async () => { w.cell.domain = 'other'; w.cell.revision++; };
+        await dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).click();
+        await dialog.getByText('Not saved. No withdrawal was recorded.', { exact: false }).waitFor();
+        assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), null);
+        assert.equal(w.calls.journal, 1); assert.equal(JSON.parse(w.durable.doc).operations.length, 1);
+      });
+    }
+    await run('withdrawal publication unavailable retains marker and unrelated card holds until whole recovery', async (w, { page }) => {
+      w.base.liveOverlay.currentPeriodActuals.cardCoverageRequired = true; w.acquisition.packet.cardCoverageRequired = true;
+      await page.reload(); await page.waitForFunction(() => typeof App !== 'undefined' && App.data !== null);
+      await complete(page, await preview(page)); const dialog = await withdrawalPreview(page);
+      w.hooks.admission = async () => { w.readFailure = true; };
+      await Promise.all([page.waitForEvent('load'), dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).click()]);
+      await page.locator('[data-settlement-recovery]').waitFor();
+      assert.equal(await page.evaluate(() => App.data.settlementEvidenceStatus.status), 'unavailable');
+      assert.equal(await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)).phase, KEY), 'dispatched');
+      assert.equal(w.calls.commit, 2); delete w.hooks.admission; w.readFailure = false;
+      await page.getByRole('button', { name: 'Check saved view', exact: true }).click();
+      await page.waitForFunction(KEY => typeof App !== 'undefined' && App.data?.settlementEvidenceStatus?.status === 'qualified'
+        && localStorage.getItem(KEY) === null, KEY);
+      assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 });
+      assert.equal(await page.evaluate(() => {
+        const d = App.data; return Forecast.recommend(d.plan, d.meta.asOf, { ...d.liveOverlay, debts: d.debts,
+          weeklyVariable: 0, settlementEvidence: d.settlementEvidence }).cardPurchaseCoverage.status;
+      }), 'unavailable'); assert.equal(w.calls.commit, 2);
+    });
+    await run('withdrawal restart before dispatch abandons only its unsent preview', async (w, { page, requests }) => {
+      await complete(page, await preview(page)); await withdrawalPreview(page);
+      await page.reload(); await page.waitForFunction(KEY => typeof App !== 'undefined' && App.data !== null && localStorage.getItem(KEY) === null, KEY);
+      assert.equal(w.calls.commit, 1); assert.equal(requests.filter(r => r.path === '/settlement/confirm').length, 1);
+      assert.deepEqual(await facts(page), { original: 60, paid: 25, remaining: 35 });
+    });
+    await run('withdrawal cancellation while confirm is dispatched retains generation and one effect', async (w, { page, requests }) => {
+      await complete(page, await preview(page)); const dialog = await withdrawalPreview(page);
+      let reached, release; const seen = new Promise(r => { reached = r; }), gate = new Promise(r => { release = r; });
+      await page.route('**/settlement/confirm', async route => { const response = await route.fetch(); reached(); await gate; await route.fulfill({ response }); });
+      try {
+        await dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).click(); await seen;
+        const marker = await page.evaluate(KEY => localStorage.getItem(KEY), KEY);
+        await page.keyboard.press('Escape'); const reopened = await sheet(page);
+        assert.equal(await page.evaluate(KEY => localStorage.getItem(KEY), KEY), marker);
+        assert.equal(await reopened.getByRole('button', { name: 'Confirm withdrawal', exact: true }).isEnabled(), false);
+        const loaded = page.waitForEvent('load'); release(); await loaded;
+        await page.waitForFunction(KEY => typeof App !== 'undefined' && App.data !== null && localStorage.getItem(KEY) === null, KEY);
+        assert.equal(w.calls.commit, 2); assert.equal(requests.filter(r => r.path === '/settlement/confirm').length, 2);
+      } finally { release(); }
+    });
   } finally { await browser.close(); }
   assert.ok(results.length, 'at least one browser case must run');
   fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ synthetic: true,
@@ -1022,6 +1206,7 @@ function rendererReversalEvidence(withReversal) {
     repositorySources: Object.fromEntries(['server.js', 'public/app.js', 'public/plan.js', 'public/budget-blend.js',
       'scripts/settlement-evidence-http.js', 'scripts/settlement-evidence-confirmation.js', 'scripts/settlement-evidence-resolver.js',
       'scripts/settlement-evidence-serving.js', 'test/test-settlement-evidence-http.js',
+      'scripts/settlement-evidence-loader.js', 'test/test-settlement-evidence-loader.js',
       'test/test-settlement-evidence-confirmation.js', 'test/test-weekly-cap.js', 'test/browser-settlement-save-view.js'].map(file => [file,
       require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(__dirname, '..', file))).digest('hex')])),
     actualHttpAndBrowser: true, results }, null, 2) + '\n');

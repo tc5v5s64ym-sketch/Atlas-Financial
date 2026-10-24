@@ -144,6 +144,21 @@ async function startWorld(active = true, options = {}) {
 }
 module.exports = { startWorld, op, env, householdId };
 
+async function syntheticRecord(w, n, command, actorId) {
+  const p = await w.store.prepare({ actorId, operationId: op(n), command });
+  assert.ok(p.preview);
+  const r = await w.store.commitWithoutRecovery({ actorId, preview: p.preview,
+    confirmationDigest: p.confirmationDigest });
+  assert.equal(r.status, 'committed'); return r;
+}
+async function withdrawal(w, n = 10) {
+  const c = await w.post('assignments', {}); assert.equal(c.status, 'available');
+  assert.ok(c.assignments.length);
+  return w.post('prepare-withdrawal', { operationId: op(n), assignmentHandle: c.assignments[0].handle });
+}
+module.exports.syntheticRecord = syntheticRecord;
+module.exports.withdrawal = withdrawal;
+
 if (require.main === module) {
   const test = require('node:test');
   const correlatedConfirm = (w, p, overrides = {}) => w.post('confirm', {
@@ -221,6 +236,131 @@ if (require.main === module) {
       generation: p.generation, confirmed: true });
     assert.equal(r.status, 503); assert.deepEqual(await r.json(), { status: 'unavailable' });
     assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
+});
+  test('withdrawal cross-login creates its own receipt; absent provider/goal and historical receipts survive', async t => {
+    const w = await startWorld(); t.after(w.close);
+    const p = await w.prepare(); const original = await w.confirm(p); const firstCookie = w.cookie;
+    w.cookie = await w.login();
+    w.acquisition.packet.transactions = []; w.base.plan.commitments = [];
+    const c = await w.post('assignments', {}); assert.equal(c.status, 'available');
+    assert.equal(c.assignments.length, 1);
+    assert.deepEqual(Object.keys(c.assignments[0]).sort(), ['assignedCents', 'currency', 'date', 'handle', 'label', 'reversals']);
+    assert.ok(!JSON.stringify(c).includes(original.digest));
+    assert.equal((await w.post('outcome', { operationId: p.operationId })).status, 'unknown');
+    const u = await w.post('prepare-withdrawal', { operationId: op(10), assignmentHandle: c.assignments[0].handle });
+    assert.equal(u.status, 'prepared'); assert.equal(w.calls.commit, 1, 'preview read-only');
+    const own = await w.confirm(u); assert.equal(own.status, 'committed');
+    assert.equal(w.calls.commit, 2);
+    assert.deepEqual(await w.confirm(u), own, 'repeat confirm original withdrawal receipt');
+    assert.equal(w.calls.commit, 2);
+    const view = await w.post('publication', { operationId: u.operationId });
+    assert.equal(view.publication, 'included'); assert.deepEqual(view.data.settlementEvidence.commitments, []);
+    const doc = JSON.parse(w.durable.doc); assert.equal(doc.operations[1].command.kind, 'retract');
+    assert.notEqual(doc.operations[1].actorId, doc.operations[0].actorId);
+    w.recreate(); assert.deepEqual(await w.post('outcome', { operationId: u.operationId }), own);
+    w.cookie = firstCookie;
+    assert.deepEqual(await w.post('outcome', { operationId: p.operationId }), original);
+    assert.equal((await w.post('publication', { operationId: p.operationId })).publication, 'included');
+    assert.equal((await w.post('outcome', { operationId: u.operationId })).status, 'unknown');
+  });
+  test('withdrawal conserves independent 60/25/10/20 arithmetic and separate normal relink', async t => {
+    const w = await startWorld(); t.after(w.close);
+    const p = await w.prepare(); await w.confirm(p);
+    const first = JSON.parse(w.durable.doc).operations[0];
+    const C = require('../scripts/planned-obligation-settlement-contract');
+    const counter = { ...first.command.evidence, direction: 'credit', cents: 1000 };
+    await syntheticRecord(w, 2, { version: 1, kind: 'reverse', targetOperationId: p.operationId,
+      counterTxRef: 'tx-' + '9'.repeat(32), counterEvidence: counter, counterEvidenceDigest: C.digest(counter), cents: 1000 }, first.actorId);
+    await syntheticRecord(w, 3, { ...first.command, goalId: 'commitment:synthetic-sibling', assignedCents: 2000 }, first.actorId);
+    const u = await withdrawal(w); await w.confirm(u);
+    assert.equal(JSON.parse(w.durable.doc).operations.length, 4, 'withdrawal alone never relinks');
+    const selection = await w.selection();
+    assert.notEqual((await w.post('prepare', { operationId: op(11), selection, assignedCents: 3001 })).status, 'prepared');
+    const relink = await w.post('prepare', { operationId: op(12), selection, assignedCents: 3000 });
+    assert.equal(relink.status, 'prepared'); await w.confirm(relink);
+    assert.notEqual((await w.post('prepare', { operationId: op(13), selection, assignedCents: 1 })).status, 'prepared');
+    assert.equal(JSON.parse(w.durable.doc).operations.length, 5);
+  });
+  test('withdrawal stale catalogue and preview, context ABA and late domain fence refuse without writes', async t => {
+    const w = await startWorld(); t.after(w.close); await w.confirm(await w.prepare());
+    const c = await w.post('assignments', {}); const handle = c.assignments[0].handle;
+    const cookie = w.cookie; w.cookie = await w.login();
+    assert.notEqual((await w.post('prepare-withdrawal', { operationId: op(10), assignmentHandle: handle })).status, 'prepared');
+    w.cookie = cookie;
+    let u = await w.post('prepare-withdrawal', { operationId: op(10), assignmentHandle: handle });
+    w.cell.revision += 2; // revoke/restore or A-B-A must advance monotonically.
+    assert.equal((await w.confirm(u)).status, 'rejected'); assert.equal(w.calls.commit, 1);
+    u = await withdrawal(w, 11);
+    w.hooks.admission = async () => { w.cell.domain = 'changed-domain'; w.cell.revision++; };
+    assert.equal((await w.confirm(u)).status, 'rejected'); assert.equal(w.calls.journal, 1);
+    delete w.hooks.admission;
+    u = await withdrawal(w, 12);
+    const first = JSON.parse(w.durable.doc).operations[0];
+    await syntheticRecord(w, 20, { ...first.command, goalId: 'commitment:sibling', assignedCents: 1 }, first.actorId);
+    assert.notEqual((await w.confirm(u)).status, 'committed'); assert.equal(w.calls.journal, 2, 'only the explicit synthetic sibling appended');
+    assert.notEqual((await w.post('prepare-withdrawal', { operationId: op(21), assignmentHandle: handle })).status, 'prepared');
+  });
+  test('withdrawal full reversal preserves consumed capacity, sibling and original receipt', async t => {
+    const w = await startWorld(); t.after(w.close);
+    const p = await w.prepare(); const receipt = await w.confirm(p);
+    const first = JSON.parse(w.durable.doc).operations[0], C = require('../scripts/planned-obligation-settlement-contract');
+    const evidence = { ...first.command.evidence, direction: 'credit', cents: 2500 };
+    await syntheticRecord(w, 2, { version: 1, kind: 'reverse', targetOperationId: p.operationId,
+      counterTxRef: 'tx-' + '8'.repeat(32), counterEvidence: evidence, counterEvidenceDigest: C.digest(evidence), cents: 2500 }, first.actorId);
+    await syntheticRecord(w, 3, { ...first.command, goalId: 'commitment:sibling', assignedCents: 2000 }, first.actorId);
+    const u = await withdrawal(w); assert.equal((await w.confirm(u)).status, 'committed');
+    const selection = await w.selection();
+    assert.notEqual((await w.post('prepare', { operationId: op(11), selection, assignedCents: 1501 })).status, 'prepared');
+    const next = await w.post('prepare', { operationId: op(12), selection, assignedCents: 1500 });
+    assert.equal(next.status, 'prepared'); assert.equal((await w.confirm(next)).status, 'committed');
+    assert.deepEqual(await w.post('outcome', { operationId: p.operationId }), receipt);
+    const doc = JSON.parse(w.durable.doc); assert.equal(doc.operations[1].command.kind, 'reverse');
+    assert.equal(doc.operations[2].command.assignedCents, 2000); assert.equal(doc.operations.length, 5);
+  });
+  test('withdrawal handles expire, strict bodies reject authority and post-acquisition revocation withholds catalogue', async t => {
+    let clock = Date.now(); const w = await startWorld(true, { now: () => clock }); t.after(w.close);
+    await w.confirm(await w.prepare()); const c = await w.post('assignments', {});
+    for (const field of ['actorId', 'householdId', 'targetOperationId', 'receipt', 'command', 'readers'])
+      assert.equal((await w.raw('prepare-withdrawal', { operationId: op(10), assignmentHandle: c.assignments[0].handle, [field]: 'forged' })).status, 400);
+    assert.equal((await w.raw('assignments', { actorId: 'forged' })).status, 400);
+    clock += require('../scripts/planned-obligation-settlement-contract').TTL_MS;
+    assert.notEqual((await w.post('prepare-withdrawal', { operationId: op(10), assignmentHandle: c.assignments[0].handle })).status, 'prepared');
+    w.hooks.document = async () => { w.authorized = false; };
+    const denied = await w.raw('assignments', {}); assert.equal(denied.status, 503);
+    assert.deepEqual(await denied.json(), { status: 'unavailable' }); assert.equal(w.calls.commit, 1);
+  });
+  test('withdrawal expiry at controller and real-store boundaries retains exact generation terminal proof', async t => {
+    for (const boundary of ['controller', 'store']) {
+      let clock = Date.now(); const w = await startWorld(true, { now: () => clock }); t.after(w.close);
+      const original = await w.confirm(await w.prepare()); const p = await withdrawal(w);
+      const before = Buffer.from(w.durable.doc), pin = JSON.stringify(w.durable.pin);
+      clock = p.expiresAt - (boundary === 'store' ? 1 : 0);
+      if (boundary === 'store') w.hooks.admission = async () => { clock = p.expiresAt; };
+      assert.deepEqual(await correlatedConfirm(w, p), negative(p));
+      assert.equal(w.calls.commit, boundary === 'store' ? 2 : 1);
+      assert.equal(w.calls.journal, 1); assert.ok(w.durable.doc.equals(before));
+      assert.equal(JSON.stringify(w.durable.pin), pin);
+      assert.deepEqual(await w.post('outcome', { operationId: original.operationId }), original);
+      assert.equal((await w.post('prepare-withdrawal', { operationId: p.operationId,
+        assignmentHandle: 'assignment-' + '0'.repeat(32) })).status, 'unavailable');
+    }
+  });
+  test('concurrent withdrawal and link share one in-flight write and never silently rebase', async t => {
+    const w = await startWorld(); t.after(w.close); await w.confirm(await w.prepare());
+    const goals = await w.post('selections', {}); assert.ok(goals.commitments.length > 1);
+    const u = await withdrawal(w); const selection = { transaction: goals.transactions[0].handle, commitment: goals.commitments[1].handle };
+    const link = await w.post('prepare', { operationId: op(11), selection, assignedCents: 1 }); assert.equal(link.status, 'prepared');
+    let reached, release; const entered = new Promise(r => { reached = r; }), gate = new Promise(r => { release = r; });
+    w.hooks.admission = async () => { reached(); await gate; };
+    try {
+      const pending = w.confirm(u); await entered;
+      assert.equal((await w.confirm(link)).status, 'unknown'); assert.equal(w.calls.commit, 2);
+      release(); assert.equal((await pending).status, 'committed'); delete w.hooks.admission;
+      assert.notEqual((await w.confirm(link)).status, 'committed', 'old preview cannot rebase after withdrawal');
+      const fresh = await w.post('prepare', { operationId: op(12), selection, assignedCents: 1 });
+      assert.equal(fresh.status, 'prepared'); assert.equal((await w.confirm(fresh)).status, 'committed');
+      assert.equal(w.calls.commit, 3);
+    } finally { release(); }
   });
   test('default actual application is inactive and touches zero settlement storage', async t => {
     const w = await startWorld(false); t.after(w.close);

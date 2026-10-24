@@ -522,6 +522,62 @@ const SettlementSave = (() => {
             });
           } catch { text('Recorded payment selections unavailable. Reload to try again.'); }
         });
+        button('Withdraw an assignment', async event => {
+          event.currentTarget.disabled = true;
+          try {
+            if (pending()) { recover(); return; }
+            const catalogue = await post('assignments', {});
+            if (catalogue.status !== 'available' || !Array.isArray(catalogue.assignments)) throw new Error('catalogue');
+            if (!catalogue.assignments.length) { text('No active assignments are available to withdraw.'); return; }
+            text('Choose the whole assignment to withdraw. Recorded reversals remain; this does not move money.');
+            const label = document.createElement('label'); label.textContent = 'Existing assignment';
+            const select = document.createElement('select'); select.setAttribute('aria-label', 'Existing assignment');
+            for (const row of catalogue.assignments) {
+              if (typeof row.label !== 'string' || typeof row.date !== 'string' || row.currency !== 'cad'
+                || !Number.isSafeInteger(row.assignedCents) || row.assignedCents <= 0
+                || !/^assignment-[a-f0-9]{32}$/.test(row.handle)) throw new Error('catalogue');
+              const option = document.createElement('option'); option.value = row.handle;
+              option.textContent = row.label + ' · ' + money2(row.assignedCents / 100) + ' CAD · ' + row.date;
+              select.append(option);
+            }
+            label.append(select); panel.append(label);
+            button('Preview withdrawal', async event => {
+              event.currentTarget.disabled = true;
+              const operationId = 'operation-' + [...crypto.getRandomValues(new Uint8Array(16))]
+                .map(x => x.toString(16).padStart(2, '0')).join('');
+              try {
+                if (pending()) { recover(); return; }
+                const preview = await post('prepare-withdrawal', { operationId, assignmentHandle: select.value });
+                if (preview.status !== 'prepared' || preview.operationId !== operationId
+                  || !/^[a-f0-9]{64}$/.test(preview.previewToken) || preview.currency !== 'cad'
+                  || !GENERATION.test(preview.generation)
+                  || !Number.isSafeInteger(preview.assignedCents) || preview.assignedCents <= 0
+                  || !Number.isSafeInteger(preview.expiresAt) || typeof preview.date !== 'string'
+                  || typeof preview.labels?.goal !== 'string') throw new Error('preview');
+                await persist(operationId, 'preview', preview.generation);
+                text('Withdraw the whole assignment of ' + money2(preview.assignedCents / 100)
+                  + ' CAD to ' + preview.labels.goal + ' (' + preview.date + '). This does not move money;'
+                  + ' recorded reversals remain. A new assignment requires a separate confirmation. Preview expires '
+                  + new Date(preview.expiresAt).toISOString() + '. ');
+                button('Confirm withdrawal', async event => {
+                  event.currentTarget.disabled = true;
+                  try { await persist(operationId, 'dispatched', preview.generation); }
+                  catch { text('Confirmation was not sent: pending state could not be saved. Reload to continue.'); return; }
+                  try {
+                    const outcome = await post('confirm', { operationId, previewToken: preview.previewToken,
+                      generation: preview.generation, confirmed: true });
+                    if (outcome.status === 'committed' && outcome.operationId === operationId) { location.reload(); return; }
+                    if (await acknowledgeNoEffect(outcome, operationId, preview.generation, preview.previewToken)) {
+                      text('Not saved. No withdrawal was recorded. Reload to continue. ');
+                      button('Reload current view', () => location.reload()); return;
+                    }
+                  } catch { /* Possibly dispatched withdrawal remains unresolved. */ }
+                  recover();
+                });
+              } catch { text('Withdrawal preview unavailable. No confirmation was sent. Reload to start again.'); }
+            });
+          } catch { text('Assignments unavailable. Reload to try again.'); }
+        });
       }).catch(() => text('Assignment controls unavailable.'));
   }
   return { initialData, initialized, mount };
