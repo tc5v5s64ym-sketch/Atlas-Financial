@@ -209,15 +209,26 @@ function isSameDecision(a, b) {
   return RECORD_KEYS.every(key => key === 'decidedAt' || a[key] === b[key]);
 }
 
-function isCommittedRecord(value, operationId, actorId) {
+// The COMPLETE stored committed-record contract: exact keys, the
+// committed status, contextual operation identity, actor format,
+// integer revision and digest format. A stored row that violates any
+// part of it is divergent persistence, never a commit — the read gate
+// validates stored rows with this same completeness it applies to the
+// certificate record, not merely "an object that does not name another
+// operation".
+function isStoredCommittedRecord(value, operationId) {
   return isPlainObject(value)
     && hasExactKeys(value, COMMITTED_KEYS)
     && value.status === 'committed'
     && value.operationId === operationId
-    && value.actorId === actorId
+    && ACTOR_ID_PATTERN.test(value.actorId)
     && Number.isInteger(value.revision)
     && value.revision >= 0
     && DIGEST_PATTERN.test(value.documentDigest);
+}
+
+function isCommittedRecord(value, operationId, actorId) {
+  return isStoredCommittedRecord(value, operationId) && value.actorId === actorId;
 }
 
 function frozenCopy(record) {
@@ -272,10 +283,8 @@ function createTerminalCertificateProtocol(dependencies) {
       if (!isCertificateRecord(seal)) return { ok: false };
       if (seal.operationId !== operationId) return { ok: false };
     }
-    if (committed !== null) {
-      if (!isPlainObject(committed)) return { ok: false };
-      if (Object.prototype.hasOwnProperty.call(committed, 'operationId')
-        && committed.operationId !== operationId) return { ok: false };
+    if (committed !== null && !isStoredCommittedRecord(committed, operationId)) {
+      return { ok: false };
     }
     return { ok: true, seal, committed };
   }

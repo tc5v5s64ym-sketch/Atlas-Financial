@@ -43,6 +43,16 @@
 // unknown persistence is `unknown`, never an actionable ticket — a
 // read-integrity gate qualifies state before the atomic reservation,
 // which remains the fence.
+// The third head was BLOCKED at the same head it first passed: the
+// read-integrity gate validated the stored SEAL record completely but
+// accepted any stored COMMITTED object unless it explicitly named a
+// different operation — malformed committed persistence (empty object,
+// missing/invalid fields, extra key) was classified as a real commit,
+// producing false `sealed` states, false committed-coexists conflicts,
+// an invoked reservation transition, and a commit landing over
+// unqualified state. Repair: the gate validates the COMPLETE stored
+// committed-record shape (exact keys, status, operation identity, actor
+// format, revision, digest) exactly as it validates the seal record.
 // AMENDED EXPECTATION (C7 disposition): the reservation-versus-seal
 // refusal is an intentional exclusion change from the original contract.
 // An abandoned or crashed reservation HOLDs its operation fail-closed;
@@ -900,6 +910,139 @@ test('unknown never falls through to a negative', async () => {
     UNKNOWN_FOR(committedOnly),
     'a committed-only operation has no negative certificate to serve',
   );
+});
+
+// Wraps a fence over shared state with per-transition spy counts.
+function spiedProtocol(state) {
+  const base = makeFence(state);
+  const spies = { seal: 0, reserve: 0, commit: 0 };
+  const protocol = createTerminalCertificateProtocol({
+    fence: {
+      ...base,
+      async seal(...args) { spies.seal++; return base.seal(...args); },
+      async reserveAdmission(...args) { spies.reserve++; return base.reserveAdmission(...args); },
+      async commitReservation(...args) { spies.commit++; return base.commitReservation(...args); },
+    },
+  });
+  return { protocol, spies };
+}
+
+test('malformed stored committed records read as unknown on every surface, with zero transitions (stored committed-shape repair)', async () => {
+  const omitKey = (record, key) => {
+    const copy = { ...record };
+    delete copy[key];
+    return copy;
+  };
+  // Every variant is a STORED committed row for the SAME operation whose
+  // content violates the committed-record contract in exactly one way.
+  // (The final variant is a fully valid record naming a DIFFERENT
+  // operation — a control that already read unknown and must keep to.)
+  const variants = {
+    'empty object': () => ({}),
+    'missing operationId': id => omitKey(committedRecordFor(id), 'operationId'),
+    'missing status': id => omitKey(committedRecordFor(id), 'status'),
+    'missing actorId': id => omitKey(committedRecordFor(id), 'actorId'),
+    'missing revision': id => omitKey(committedRecordFor(id), 'revision'),
+    'missing documentDigest': id => omitKey(committedRecordFor(id), 'documentDigest'),
+    'extra key': id => ({ ...committedRecordFor(id), smuggled: 'field' }),
+    'invalid status': id => committedRecordFor(id, actorA, { status: 'sealed' }),
+    'actor format': id => committedRecordFor(id, actorA, { actorId: 'session-short' }),
+    'negative revision': id => committedRecordFor(id, actorA, { revision: -1 }),
+    'fractional revision': id => committedRecordFor(id, actorA, { revision: 1.5 }),
+    'digest format': id => committedRecordFor(id, actorA, { documentDigest: 'not-a-digest' }),
+    'wrong operation (control)': () => committedRecordFor(op(41)),
+  };
+  for (const [name, make] of Object.entries(variants)) {
+    const state = makeTransportState();
+    const operationId = op(40);
+    state.committed.set(operationId, make(operationId));
+    const { protocol, spies } = spiedProtocol(state);
+    assert.deepEqual(
+      await protocol.admissionState(operationId),
+      UNKNOWN_FOR(operationId),
+      `"${name}": unqualified committed persistence is unknown, never sealed`,
+    );
+    assert.deepEqual(
+      await protocol.beginAdmission(operationId, actorB),
+      UNKNOWN_FOR(operationId),
+      `"${name}": no actionable ticket is issued over unqualified persistence`,
+    );
+    assert.equal(spies.reserve, 0, `"${name}": the reservation transition is never invoked`);
+    assert.deepEqual(
+      await protocol.sealNegative(claimFor(operationId)),
+      UNKNOWN_FOR(operationId),
+      `"${name}": a malformed committed row is not a committed-coexists conflict`,
+    );
+    assert.equal(spies.seal, 0, `"${name}": the seal transition is never invoked`);
+    assert.equal(state.seals.size, 0, `"${name}": nothing was sealed`);
+  }
+});
+
+test('a malformed committed read under a valid seal is unknown, never a false conflict (stored committed-shape repair)', async () => {
+  const variants = {
+    'empty object': () => ({}),
+    'invalid status': id => committedRecordFor(id, actorA, { status: 'sealed' }),
+    'extra key': id => ({ ...committedRecordFor(id), smuggled: 'field' }),
+    'missing documentDigest': id => {
+      const copy = committedRecordFor(id);
+      delete copy.documentDigest;
+      return copy;
+    },
+  };
+  for (const [name, make] of Object.entries(variants)) {
+    const state = makeTransportState();
+    const operationId = op(42);
+    const { protocol } = spiedProtocol(state);
+    assert.equal((await protocol.sealNegative(claimFor(operationId))).status, 'certified');
+    state.committed.set(operationId, make(operationId));
+    assert.deepEqual(
+      await protocol.lookupCertificate(operationId, actorA),
+      UNKNOWN_FOR(operationId),
+      `"${name}": divergent persistence is unknown — the genuine coexistence conflict requires a VALID committed record`,
+    );
+    assert.deepEqual(
+      await protocol.lookupCertificate(operationId, actorB),
+      UNKNOWN_FOR(operationId),
+      `"${name}": nothing about the divergent state leaks to another actor`,
+    );
+  }
+});
+
+test('a reservation survives failed inspection over malformed committed persistence and lands only through the qualified path (stored committed-shape repair)', async () => {
+  const state = makeTransportState();
+  const operationId = op(43);
+  const { protocol, spies } = spiedProtocol(state);
+  const begun = await protocol.beginAdmission(operationId, actorA);
+  assert.equal(begun.status, 'admitted');
+  // Persistence becomes unqualified AFTER the reservation was taken.
+  state.committed.set(operationId, { ...committedRecordFor(operationId), revision: 999.5, extra: true });
+  assert.deepEqual(await protocol.admissionState(operationId), UNKNOWN_FOR(operationId));
+  const commitCallsBefore = spies.commit;
+  const reserveCallsBefore = spies.reserve;
+  assert.deepEqual(
+    await protocol.commitAdmission(begun.ticket, committedRecordFor(operationId)),
+    UNKNOWN_FOR(operationId),
+    'a separately valid supplied outcome never passes a malformed read gate',
+  );
+  assert.equal(spies.commit, commitCallsBefore, 'the commit transition is never invoked over unqualified persistence');
+  assert.deepEqual(
+    await protocol.beginAdmission(operationId, actorB),
+    UNKNOWN_FOR(operationId),
+    'no new admission is labelled usable while inspection fails',
+  );
+  assert.equal(spies.reserve, reserveCallsBefore, 'no further reservation transition is invoked');
+  assert.equal(
+    state.reservations.get(operationId)?.nonce,
+    begun.ticket.nonce,
+    'the existing reservation is unchanged by the failed inspection',
+  );
+  // The qualified path: persistence restored to a qualified state
+  // (explicit-null committed surface) — the SAME ticket then lands.
+  state.committed.delete(operationId);
+  assert.deepEqual(await protocol.admissionState(operationId), { status: 'open', operationId });
+  const committed = await protocol.commitAdmission(begun.ticket, committedRecordFor(operationId));
+  assert.equal(committed.status, 'committed');
+  assert.deepEqual(state.committed.get(operationId), committedRecordFor(operationId));
 });
 
 test('malformed claims fail closed and seal nothing', async () => {
