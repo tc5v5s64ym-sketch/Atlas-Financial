@@ -676,7 +676,12 @@ function createSettlementEvidenceConfirmation(deps) {
       } catch { return unavailable('store-unavailable'); }
       if (current.expectedRevision !== retained.preview.expectedRevision
         || current.expectedDocumentDigest !== retained.preview.expectedDocumentDigest) {
-        return terminal(request.operationId, retained, 'store-conflict');
+        // This is a validated successful fresh prepare, not a generic commit
+        // conflict: the trusted store qualified a pinned, journal-free head
+        // without this operation ID. Under the single-writer construction the
+        // exact never-attempted generation can be retired; the helper rechecks
+        // authorization, identity and all in-flight/uncertainty exclusions.
+        return await terminalNoEffect(ownedContext, authority, request, retained, 'store-conflict');
       }
       await sameAuthority(ownedContext, authority);
       if (tick() >= retained.preview.expiresAt) return await terminalNoEffect(ownedContext, authority, request, retained, 'preview-expired');

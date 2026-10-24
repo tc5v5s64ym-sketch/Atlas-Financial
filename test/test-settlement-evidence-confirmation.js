@@ -44,6 +44,88 @@ async function terminalWorld(t) {
   return { w, ctx, create, controller, resolver, advance: () => { clock += C.TTL_MS; }, rewind: () => { clock -= C.TTL_MS; },
     prepare: (n = 1) => controller.prepare(ctx, { operationId: op(n), selection, assignedCents: 2500 }) };
 }
+test('probe mismatch retired generation excludes a suspended old successful probe', async t => {
+  const a = await terminalWorld(t), { w, ctx, controller } = a;
+  const p = await a.prepare(); const prepare = w.store.prepare;
+  const seen = deferred(), gate = deferred(); let probes = 0, competing;
+  w.store.prepare = async input => {
+    if (++probes === 1) { const result = await prepare(input); seen.resolve(); await gate.promise; return result; }
+    competing = await require('./test-settlement-evidence-http').appendCompetingRecord(w, input, {}, prepare);
+    return prepare(input);
+  };
+  const input = { operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true };
+  const paused = controller.confirm(ctx, input); await seen.promise;
+  try {
+    const proof = await controller.confirm(ctx, input);
+    assert.equal(proof.status, 'not-applied'); gate.resolve();
+    assert.notEqual((await paused).status, 'committed');
+    assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 1); assert.ok(w.durable.doc.equals(competing.doc));
+    assert.equal((await a.prepare()).status, 'unavailable', 'retired operation is not recycled');
+  } finally { gate.resolve(); }
+});
+test('probe mismatch final authorization wait cannot overtake another in-flight or uncertain writer', async t => {
+  for (const mode of ['in-flight', 'uncertain']) {
+    const a = await terminalWorld(t), first = await a.prepare(1);
+    const control = require('./test-settlement-evidence-http').armProbeCompetition(a.w, first.operationId);
+    const seen = deferred(), gate = deferred(), writing = deferred(), finish = deferred(); let hold = true;
+    a.w.hooks.authorize = async () => {
+      if (control.successfulProbe && hold) { hold = false; seen.resolve(); await gate.promise; }
+    };
+    const refused = a.controller.confirm(a.ctx, { operationId: first.operationId, previewToken: first.previewToken,
+      generation: first.generation, confirmed: true });
+    await seen.promise;
+    try {
+      const next = await a.prepare(2); assert.equal(next.status, 'prepared');
+      a.w.hooks.admission = async () => { writing.resolve(); await finish.promise;
+        if (mode === 'uncertain') throw new Error('synthetic ambiguous admission transport'); };
+      const competing = a.controller.confirm(a.ctx, { operationId: next.operationId, previewToken: next.previewToken,
+        generation: next.generation, confirmed: true });
+      await writing.promise;
+      if (mode === 'uncertain') { finish.resolve(); assert.equal((await competing).status, 'unknown'); }
+      gate.resolve(); assert.equal((await refused).status, 'unknown', 'no proof may cross another write exclusion');
+      assert.equal(a.w.calls.journal, 1, 'only the explicit initial synthetic competitor has written so far');
+      if (mode === 'in-flight') { finish.resolve(); assert.equal((await competing).status, 'committed'); }
+      else assert.deepEqual(await a.prepare(3), { status: 'unavailable', reason: 'outcome-unresolved' });
+      assert.equal(a.w.calls.commit, 1);
+    } finally { gate.resolve(); finish.resolve(); }
+  }
+});
+test('probe mismatch postauthorization failure and malformed successful probes never emit proof', async t => {
+  for (const mode of ['authorization', 'malformed']) {
+    const a = await terminalWorld(t), p = await a.prepare(), prepare = a.w.store.prepare;
+    let probed = false;
+    a.w.store.prepare = async input => {
+      await require('./test-settlement-evidence-http').appendCompetingRecord(a.w, input, {}, prepare);
+      const result = await prepare(input); probed = true;
+      return mode === 'malformed' ? { ...result, confirmationDigest: '0'.repeat(64) } : result;
+    };
+    if (mode === 'authorization') a.w.hooks.authorize = async () => { if (probed) a.w.authorized = false; };
+    const result = await a.controller.confirm(a.ctx, { operationId: p.operationId, previewToken: p.previewToken,
+      generation: p.generation, confirmed: true });
+    assert.notEqual(result.status, 'not-applied'); assert.notEqual(result.status, 'committed');
+    assert.equal(a.w.calls.commit, 0); assert.equal(a.w.calls.journal, 1);
+  }
+});
+test('probe mismatch terminal capacity exhaustion stays unknown with no refused write', { timeout: 30000 }, async t => {
+  const a = await terminalWorld(t);
+  for (let n = 1; n <= 999; n++) {
+    const p = await a.prepare(n); a.advance();
+    assert.equal((await a.controller.confirm(a.ctx, { operationId: p.operationId, previewToken: p.previewToken,
+      generation: p.generation, confirmed: true })).status, 'not-applied');
+  }
+  const target = await a.prepare(2000), last = await a.prepare(2001);
+  const original = a.w.acquisition.packet.observationAsOf;
+  a.w.acquisition.packet.observationAsOf = '2026-10-06';
+  assert.equal((await a.controller.confirm(a.ctx, { operationId: last.operationId, previewToken: last.previewToken,
+    generation: last.generation, confirmed: true })).status, 'not-applied');
+  a.w.acquisition.packet.observationAsOf = original;
+  const control = require('./test-settlement-evidence-http').armProbeCompetition(a.w, target.operationId,
+    { competingOperationId: op(9000) });
+  const result = await a.controller.confirm(a.ctx, { operationId: target.operationId, previewToken: target.previewToken,
+    generation: target.generation, confirmed: true });
+  assert.equal(control.successfulProbe, true); assert.equal(result.status, 'unknown');
+  assert.equal(a.w.calls.commit, 0); assert.equal(a.w.calls.journal, 1);
+});
 test('terminal proof controller retirement prevents a suspended confirm from later admitting', async t => {
   const a = await terminalWorld(t); const { w, ctx, resolver } = a;
   let calls = 0; const gate = deferred(), seen = deferred();
