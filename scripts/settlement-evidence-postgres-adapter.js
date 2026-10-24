@@ -112,6 +112,16 @@ function isRecord(value) {
     && Object.getPrototypeOf(value) === Object.prototype;
 }
 
+// A resolved query envelope: any non-null, non-array object (node-postgres
+// resolves with instances of its Result class, so the prototype is NOT
+// required to be Object.prototype) whose own or inherited `rows` is an array.
+// null, arrays, scalars, functions and objects without array rows are
+// malformed. Control tags are checked separately and exactly (control()).
+function isResultEnvelope(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    && Array.isArray(value.rows);
+}
+
 function createSettlementEvidencePostgresAdapter(options) {
   check(isRecord(options), 'options are required');
   const { client, schema, scope } = options;
@@ -168,7 +178,7 @@ function createSettlementEvidencePostgresAdapter(options) {
     check(!lost, 'session lost; outcome unknown; adapter is permanently invalid');
     // A malformed resolved envelope is an unexpected protocol failure:
     // retire this exact session before failing.
-    if (!(isRecord(res) && Array.isArray(res.rows))) {
+    if (!isResultEnvelope(res)) {
       markLost();
       fail('malformed query result; outcome unknown; adapter is permanently invalid');
     }

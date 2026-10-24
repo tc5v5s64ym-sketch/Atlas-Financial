@@ -716,3 +716,72 @@ test('P2 validated inputs are snapshotted before the queue: immediate and queue-
     await new Promise(r => setImmediate(r)); release(); await rd; await run.catch(() => {});
     assert.ok(await throws(() => queued)); assert.ok(!b.pg.t().journal.has(SCOPE)); }
 });
+
+// --- Systems BLOCK re-review (1fde4b86): node-postgres Result class instances --
+// node-postgres resolves query() with instances of its Result class (not plain
+// objects). This synthetic stand-in mirrors that shape: a non-Object.prototype
+// instance carrying command/rowCount/oid/rows/fields. No driver is loaded.
+class FakeResult {
+  constructor(r) {
+    this.command = r.command; this.rowCount = r.rowCount; this.oid = null;
+    this.rows = r.rows; this.fields = []; this.rowAsArray = false;
+  }
+}
+function classWorld(Ctor = FakeResult) {
+  const pg = createFakePg(); const connect = pg.connect;
+  pg.connect = () => {
+    const c = connect(); const q = c.query;
+    c.query = async (t, v) => new Ctor(await q(t, v));
+    return c;
+  };
+  return { pg };
+}
+
+test('P3 node-postgres-style Result class instances: successful lock/read/mutation/control accepted; malformed class instances retire', async () => {
+  // Successful class results across bootstrap, prepare, commit and reconcile.
+  { const b = await booted(classWorld()); const r = await commitN(b.store, 1);
+    eq(r.status, 'committed'); eq(b.client.retired, 0); eq(b.client.alive, true);
+    const texts = b.pg.log.map(l => l.text);
+    for (const verb of ['BEGIN', 'COMMIT']) assert.ok(texts.includes(verb), verb + ' dispatched as class result');
+    assert.ok(texts.some(t => /pg_try_advisory_lock/.test(t)) && texts.some(t => /pg_advisory_unlock/.test(t)));
+    const rr = await rec(b.store); assert.notEqual(rr.status, 'unavailable'); eq(b.client.retired, 0); }
+  // Direct adapter: lock, unlocked read, mutation, read-back and ROLLBACK on a definite refusal.
+  { const b = await booted(classWorld()); let got, refused;
+    await b.adapter.lock.withLock(async () => {
+      await b.adapter.journalStore.write({ v: 'class' });
+      got = JSON.parse(await b.adapter.journalStore.read());
+      refused = await throws(() => b.adapter.documentStore.commitTemp()); // nothing staged: ROLLBACK path
+    });
+    eq(got, { v: 'class' }); assert.ok(refused); eq(b.client.retired, 0);
+    assert.ok(b.pg.log.some(l => l.text === 'ROLLBACK'));
+    eq(await b.adapter.lock.withLock(async () => 7), 7); eq(b.client.retired, 0);
+    assert.ok((await b.adapter.documentStore.read()) !== undefined); }
+  // Malformed class instances still retire the exact session (rows missing / not an array).
+  class NoRows { constructor(r) { this.command = r.command; this.rowCount = r.rowCount; } }
+  class BadRows { constructor(r) { this.command = r.command; this.rows = 'x'; } }
+  for (const Bad of [NoRows, BadRows]) {
+    for (const stage of ['BEGIN', 'mutation', 'COMMIT', 'unlock']) {
+      const match = { BEGIN: t => t === 'BEGIN', mutation: t => /INTO "[a-z_]+"\.journal/.test(t),
+        COMMIT: t => t === 'COMMIT', unlock: t => /pg_advisory_unlock/.test(t) }[stage];
+      const b = await booted(classWorld()); const n = b.pg.clients.length;
+      envelope(b, match, r => new Bad(r));
+      await b.adapter.lock.withLock(async () => { await b.adapter.journalStore.write({ v: 1 }).catch(() => {}); }).catch(() => {});
+      eq(b.client.retired, 1, Bad.name + ' at ' + stage + ' retired'); eq(b.pg.clients.length, n, 'no substitute session');
+      assert.ok(await throws(() => b.adapter.documentStore.read()));
+    }
+  }
+  // Class instances with wrong/missing control tags are never durable.
+  class Tag { constructor(r, command) { this.command = command; this.rowCount = r.rowCount; this.rows = r.rows; } }
+  for (const tag of ['ROLLBACK', undefined, 'commit']) {
+    const b = await booted(classWorld()); let acked = false;
+    envelope(b, t => t === 'COMMIT', r => new Tag(r, tag));
+    await b.adapter.lock.withLock(async () => { await b.adapter.journalStore.write({ v: 1 }).then(() => { acked = true; }, () => {}); }).catch(() => {});
+    eq(acked, false, String(tag)); eq(b.client.retired, 1, String(tag));
+  }
+  // Plain-object, null, array and scalar envelopes keep their prior outcomes.
+  for (const env of [null, [], 42, 'rows', true]) {
+    const b = await booted(); envelope(b, t => t === 'BEGIN', env);
+    await b.adapter.lock.withLock(async () => { await b.adapter.journalStore.write({ v: 1 }).catch(() => {}); }).catch(() => {});
+    eq(b.client.retired, 1, 'rejected ' + JSON.stringify(env));
+  }
+});
