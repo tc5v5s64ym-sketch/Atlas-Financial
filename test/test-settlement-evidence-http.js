@@ -39,7 +39,11 @@ async function startWorld(active = true, options = {}) {
   let tail = Promise.resolve();
   const lock = { withLock(fn) { const value = tail.then(fn, fn); tail = value.catch(() => {}); return value; } };
   const d = w.durable;
-  const read = (name, fn) => async (...args) => { w.calls.storage++; return fn(...args); };
+  const read = (name, fn) => async (...args) => {
+    w.calls.storage++;
+    if (w.hooks.storageRead) await w.hooks.storageRead(name);
+    return fn(...args);
+  };
   const documentStore = {
     read: read('doc', () => d.doc && Buffer.from(d.doc)),
     readStaged: read('staged', () => d.staged && Buffer.from(d.staged)),
@@ -52,7 +56,7 @@ async function startWorld(active = true, options = {}) {
       w.calls.journal++; d.journal = Buffer.from(JSON.stringify(value));
       if (w.hooks.journalWrite) await w.hooks.journalWrite();
     },
-    async clear() { d.journal = null; } };
+    async clear() { if (w.hooks.journalClear) await w.hooks.journalClear(); d.journal = null; } };
   const pinStore = { read: read('pin', () => d.pin && clone(d.pin)),
     async advance(expected, next) {
       if (expected === null ? d.pin !== null : !d.pin || expected.revision !== d.pin.revision || expected.digest !== d.pin.digest) return false;
@@ -205,6 +209,225 @@ if (require.main === module) {
     operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true, ...overrides });
   const negative = p => ({ status: 'not-applied', operationId: p.operationId,
     previewToken: p.previewToken, generation: p.generation });
+  const registrationGate = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
+  async function capturedHttpWorld(t) {
+    const w = await startWorld(); t.after(w.close); let capability, registrations = 0, reconciliations = 0;
+    w.dependency.registerRecovery = value => { registrations++; capability = value; };
+    w.recreate(); assert.equal(typeof capability, 'function', 'actual HTTP construction registers recovery');
+    const inspect = w.store.inspectAttempt, reconcile = w.store.reconcile, inspections = [];
+    w.store.inspectAttempt = async input => {
+      const record = { input: structuredClone(input) }; inspections.push(record);
+      const result = await inspect(input); record.result = structuredClone(result); return result;
+    };
+    w.store.reconcile = async () => { reconciliations++; return reconcile(); };
+    return { w, capability, inspections, registrations: () => registrations, reconciliations: () => reconciliations };
+  }
+  async function committedHttpUncertainty(w) {
+    const p = await w.prepare(); let revoked = false;
+    w.hooks.authorize = async () => {
+      if (!revoked && w.calls.commit && JSON.parse(w.durable.doc).operations.some(o => o.operationId === p.operationId)) {
+        revoked = true; w.authorized = false; w.cell.revision++;
+      }
+    };
+    const response = await w.raw('confirm', { operationId: p.operationId, previewToken: p.previewToken,
+      generation: p.generation, confirmed: true });
+    assert.equal(response.status, 503, 'actual commit cannot deliver through failed postauthorization');
+    delete w.hooks.authorize; return p;
+  }
+  async function nextHttpRequest(w, n = 2) {
+    const c = await w.post('selections', {});
+    return { operationId: op(n), selection: { transaction: c.transactions[0].handle, commitment: c.commitments[1].handle }, assignedCents: 100 };
+  }
+  test('HTTP recovery registration captures one synchronous private noargument capability per construction', async t => {
+    const w = await startWorld(); t.after(w.close);
+    let calls = 0, capability, receiver, argumentsCount, returnObserved = false;
+    w.dependency.registerRecovery = function (value) {
+      calls++; capability = value; receiver = this; argumentsCount = arguments.length;
+      return { then() { returnObserved = true; throw new Error('registrar return must be ignored'); } };
+    };
+    w.recreate();
+    assert.equal(calls, 1, 'HTTP construction must forward the existing registrar');
+    assert.equal(typeof capability, 'function'); assert.equal(capability.length, 0);
+    assert.equal(receiver, undefined, 'registrar is forwarded unchanged, not rebound to dependency');
+    assert.equal(argumentsCount, 1); assert.deepEqual(await capability(), { status: 'idle' });
+    await w.post('selections', {}); assert.equal(calls, 1, 'requests reuse the constructed controller');
+    assert.equal(returnObserved, false, 'return/thenable is not awaited or inspected');
+    const previous = capability; w.recreate(); assert.equal(calls, 2); assert.notEqual(capability, previous);
+    assert.deepEqual(await capability(), { status: 'idle' });
+  });
+  test('HTTP recovery registration optional invalid and synchronously throwing registrars preserve controller semantics', async t => {
+    const w = await startWorld(); t.after(w.close);
+    w.dependency.registerRecovery = undefined; assert.doesNotThrow(() => w.recreate());
+    for (const value of [null, false, 1, 'invalid', {}, []]) {
+      w.dependency.registerRecovery = value;
+      assert.throws(() => w.recreate(), /incomplete trusted dependencies/);
+    }
+    const failure = new Error('synthetic registrar refusal');
+    w.dependency.registerRecovery = () => { throw failure; };
+    assert.throws(() => w.recreate(), error => error === failure, 'synchronous registrar error is not swallowed');
+  });
+  test('HTTP recovery registration keeps async return values ignored without changing capture timing', async t => {
+    const w = await startWorld(); t.after(w.close); let capability, finished = false;
+    w.dependency.registerRecovery = async value => { capability = value; await Promise.resolve(); finished = true; return 'ignored'; };
+    w.recreate(); assert.equal(typeof capability, 'function'); assert.equal(finished, false);
+    await Promise.resolve(); assert.equal(finished, true); assert.deepEqual(await capability(), { status: 'idle' });
+  });
+  test('HTTP recovery registration exposes no controller or HTTP maintenance surface', async t => {
+    const a = await capturedHttpWorld(t), { w } = a;
+    for (const route of ['recover', 'recovery', 'reconcile', 'reset', 'registerRecovery']) {
+      assert.equal((await w.raw(route, {})).status, 404);
+      assert.equal((await fetch(w.origin + '/settlement/' + route, { headers: { Cookie: w.cookie } })).status, 405);
+    }
+    const capability = await fetch(w.origin + '/settlement/capability', { headers: { Cookie: w.cookie } });
+    assert.deepEqual(await capability.json(), { status: 'active', bootClassification: 'recovery-required' });
+    assert.equal((await w.raw('outcome', { operationId: op(1), recover: true })).status, 400);
+    const resolver = R.createSettlementEvidenceResolver({ householdId, acquire: () => w.syntheticAcquire(w.contextReader) });
+    let privateOnly;
+    // Public-object shape control only. All recovery behavior tests use the
+    // actual HTTP-created instance's separately captured capability.
+    const publicController = require('../scripts/settlement-evidence-confirmation').createSettlementEvidenceConfirmation({
+      householdId, authorize: w.dependency.authorize, resolveSelection: resolver.resolveSelection,
+      resolvePairedSelection: resolver.resolvePairedSelection, commitAdmitted: w.dependency.commitAdmitted,
+      store: w.store, now: Date.now, registerRecovery: value => { privateOnly = value; } });
+    assert.deepEqual(Object.keys(publicController).sort(), ['confirm', 'outcome', 'prepare']);
+    assert.equal(Object.values(publicController).includes(privateOnly), false);
+    assert.deepEqual(await a.capability(), { status: 'idle' }); assert.equal(a.inspections.length, 0);
+    assert.equal(w.calls.commit, 0); assert.equal(a.registrations(), 1);
+  });
+  test('HTTP recovery registration resolves actual committed postauthorization uncertainty with fresh exact inspection', async t => {
+    const a = await capturedHttpWorld(t), { w } = a, p = await committedHttpUncertainty(w);
+    const original = JSON.parse(w.durable.doc).operations[0], before = Buffer.from(w.durable.doc), pin = JSON.stringify(w.durable.pin);
+    w.authorized = true; w.cell.revision++;
+    const next = await nextHttpRequest(w);
+    assert.deepEqual(await w.post('prepare', next), { status: 'unavailable', reason: 'outcome-unresolved' });
+    w.authorized = false; w.cell.revision++;
+    assert.deepEqual(await a.capability(), { status: 'resolved' });
+    assert.equal(a.inspections.length, 1); const inspected = a.inspections[0];
+    assert.deepEqual(inspected.result, { disposition: 'committed', ready: true });
+    assert.equal(inspected.input.actorId === original.actorId && inspected.input.preview.operationId === p.operationId, true);
+    assert.equal(inspected.input.confirmationDigest === original.requestDigest, true);
+    assert.equal((await w.raw('outcome', { operationId: p.operationId })).status, 503, 'private recovery grants no HTTP authority');
+    w.authorized = true; w.cell.revision++;
+    const receipt = await w.post('outcome', { operationId: p.operationId }); assert.equal(receipt.status, 'committed');
+    const owner = w.cookie; w.cookie = await w.login();
+    assert.equal((await w.post('outcome', { operationId: p.operationId })).status, 'unknown'); w.cookie = owner;
+    assert.equal(require('node:util').isDeepStrictEqual(await w.post('outcome', { operationId: p.operationId }), receipt), true);
+    assert.equal((await w.post('prepare', next)).status, 'prepared');
+    assert.deepEqual(await a.capability(), { status: 'idle' }); assert.equal(a.inspections.length, 1);
+    assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 1); assert.equal(a.reconciliations(), 0);
+    assert.ok(w.durable.doc.equals(before)); assert.equal(JSON.stringify(w.durable.pin), pin);
+  });
+  test('HTTP recovery registration keeps lost journal acknowledgement blocked until explicit test-owned reconciliation', async t => {
+    const a = await capturedHttpWorld(t), { w } = a, p = await w.prepare();
+    w.hooks.journalWrite = async () => { throw new Error('synthetic lost journal acknowledgement'); };
+    assert.equal((await correlatedConfirm(w, p)).status, 'unknown'); delete w.hooks.journalWrite;
+    const before = Buffer.from(w.durable.doc), pin = JSON.stringify(w.durable.pin), journal = Buffer.from(w.durable.journal);
+    assert.deepEqual(await a.capability(), { status: 'blocked' });
+    assert.deepEqual(a.inspections[0].result, { disposition: 'not-committed', ready: false });
+    assert.deepEqual(await a.capability(), { status: 'blocked' }); assert.equal(a.inspections.length, 2);
+    assert.ok(w.durable.doc.equals(before)); assert.ok(w.durable.journal.equals(journal));
+    assert.equal(JSON.stringify(w.durable.pin), pin); assert.equal(a.reconciliations(), 0);
+    // Explicit TEST-OWNED mutation, authorized only in this synthetic fixture.
+    // Reconcile can mutate before returning; its report is never permission.
+    await w.store.reconcile();
+    assert.equal(w.durable.journal, null); assert.equal(a.reconciliations(), 1);
+    assert.deepEqual(await a.capability(), { status: 'resolved' }); assert.equal(a.inspections.length, 3);
+    assert.deepEqual(a.inspections[2].result, { disposition: 'not-committed', ready: true });
+    assert.equal((await w.post('outcome', { operationId: p.operationId })).status, 'unknown', 'no durable browser negative proof is added');
+    assert.equal((await w.post('prepare', { operationId: op(2), selection: await w.selection(), assignedCents: 2500 })).status, 'prepared');
+    assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 1); assert.ok(w.durable.doc.equals(before));
+  });
+  test('HTTP recovery registration requires readiness even for a committed ledger receipt', async t => {
+    const a = await capturedHttpWorld(t), { w } = a;
+    w.hooks.journalClear = async () => { throw new Error('synthetic journal cleanup refusal'); };
+    await committedHttpUncertainty(w); delete w.hooks.journalClear;
+    const before = Buffer.from(w.durable.doc), journal = Buffer.from(w.durable.journal);
+    assert.deepEqual(await a.capability(), { status: 'blocked' });
+    assert.deepEqual(a.inspections[0].result, { disposition: 'committed', ready: false });
+    assert.ok(w.durable.doc.equals(before)); assert.ok(w.durable.journal.equals(journal)); assert.equal(a.reconciliations(), 0);
+    await w.store.reconcile(); // Explicit TEST-OWNED reconciliation, never automatic.
+    assert.deepEqual(await a.capability(), { status: 'resolved' });
+    assert.deepEqual(a.inspections[1].result, { disposition: 'committed', ready: true });
+    assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 1); assert.equal(a.reconciliations(), 1);
+  });
+  test('HTTP recovery registration refuses unreadable divergent and same-ID inspection traces without mutation', async t => {
+    for (const mode of ['unreadable', 'divergent', 'same-ID']) {
+      const a = await capturedHttpWorld(t), { w } = a;
+      if (mode === 'same-ID') {
+        const p = await w.prepare(), prepare = w.store.prepare; let incoming;
+        w.store.prepare = async input => { incoming = input; return prepare(input); };
+        w.hooks.admission = async () => { throw new Error('synthetic ambiguous admission transport'); };
+        assert.equal((await correlatedConfirm(w, p)).status, 'unknown'); delete w.hooks.admission;
+        await appendCompetingRecord(w, incoming, { sameId: true }, prepare);
+      } else await committedHttpUncertainty(w);
+      if (mode === 'unreadable') w.hooks.storageRead = async name => { if (name === 'pin') throw new Error('synthetic unreadable pin'); };
+      if (mode === 'divergent') w.durable.pin = { ...w.durable.pin, digest: 'f'.repeat(64) };
+      const before = Buffer.from(w.durable.doc), pin = JSON.stringify(w.durable.pin);
+      assert.deepEqual(await a.capability(), { status: 'blocked' });
+      assert.equal(a.inspections[0].result.disposition, 'unresolved');
+      assert.ok(w.durable.doc.equals(before)); assert.equal(JSON.stringify(w.durable.pin), pin);
+      assert.equal(w.calls.commit, 1); assert.equal(a.reconciliations(), 0);
+    }
+  });
+  test('HTTP recovery registration blocks during actual commit and postauthorization invocations', async t => {
+    for (const phase of ['commit', 'postauthorization']) {
+      const a = await capturedHttpWorld(t), { w } = a, p = await w.prepare();
+      const seen = registrationGate(), gate = registrationGate(); let held = false;
+      if (phase === 'commit') w.hooks.admission = async () => { seen.resolve(); await gate.promise; };
+      w.hooks.authorize = async () => {
+        if (!held && w.calls.commit && JSON.parse(w.durable.doc).operations.length) {
+          held = true; if (phase === 'postauthorization') { seen.resolve(); await gate.promise; }
+          w.authorized = false;
+        }
+      };
+      const pending = w.raw('confirm', { operationId: p.operationId, previewToken: p.previewToken,
+        generation: p.generation, confirmed: true });
+      await seen.promise;
+      try {
+        assert.deepEqual(await a.capability(), { status: 'blocked' }); assert.equal(a.inspections.length, 0);
+        gate.resolve(); assert.equal((await pending).status, 503);
+        assert.deepEqual(await a.capability(), { status: 'resolved' }); assert.equal(a.inspections.length, 1);
+        assert.equal(w.calls.commit, 1); assert.equal(w.calls.journal, 1); assert.equal(a.reconciliations(), 0);
+      } finally { gate.resolve(); }
+    }
+  });
+  test('HTTP recovery registration rejects an obsolete delayed inspection before inspecting a newer latch', async t => {
+    const a = await capturedHttpWorld(t), { w } = a, original = await committedHttpUncertainty(w);
+    w.authorized = true; w.cell.revision++;
+    const inspect = w.store.inspectAttempt, seen = registrationGate(), gate = registrationGate(); let hold = true;
+    w.store.inspectAttempt = async input => {
+      const result = await inspect(input);
+      if (hold) { hold = false; seen.resolve(); await gate.promise; }
+      return result;
+    };
+    const delayed = a.capability(); await seen.promise;
+    try {
+      assert.equal((await w.post('outcome', { operationId: original.operationId })).status, 'committed');
+      const nextRequest = await nextHttpRequest(w), next = await w.post('prepare', nextRequest);
+      w.hooks.admission = async () => { throw new Error('synthetic newer ambiguous attempt'); };
+      assert.equal((await correlatedConfirm(w, next)).status, 'unknown'); delete w.hooks.admission;
+      gate.resolve(); assert.deepEqual(await delayed, { status: 'obsolete' });
+      assert.deepEqual(await w.post('prepare', { ...nextRequest, operationId: op(3) }), { status: 'unavailable', reason: 'outcome-unresolved' });
+      assert.deepEqual(await a.capability(), { status: 'resolved' }); assert.equal(a.inspections.length, 2);
+      assert.equal(a.inspections[0].input.preview.operationId === original.operationId, true);
+      assert.equal(a.inspections[1].input.preview.operationId === next.operationId, true);
+      assert.equal((await w.post('outcome', { operationId: next.operationId })).status, 'unknown');
+      assert.equal(w.calls.commit, 2); assert.equal(w.calls.journal, 1); assert.equal(a.reconciliations(), 0);
+    } finally { gate.resolve(); }
+  });
+  test('HTTP recovery registration keeps separate application capabilities and uncertainty isolated', async t => {
+    const a = await capturedHttpWorld(t), b = await capturedHttpWorld(t);
+    assert.notEqual(a.capability, b.capability); await committedHttpUncertainty(a.w);
+    assert.deepEqual(await b.capability(), { status: 'idle' }); assert.equal(b.inspections.length, 0);
+    assert.deepEqual(await a.capability(), { status: 'resolved' });
+    const p = await b.w.prepare(); b.w.hooks.admission = async () => { throw new Error('synthetic isolated unknown'); };
+    assert.equal((await correlatedConfirm(b.w, p)).status, 'unknown'); delete b.w.hooks.admission;
+    assert.deepEqual(await a.capability(), { status: 'idle' });
+    assert.deepEqual(await b.w.post('prepare', { operationId: op(2), selection: await b.w.selection(), assignedCents: 2500 }),
+      { status: 'unavailable', reason: 'outcome-unresolved' });
+    assert.deepEqual(await b.capability(), { status: 'resolved' });
+    assert.equal(a.w.calls.commit, 1); assert.equal(b.w.calls.commit, 1); assert.equal(b.w.calls.journal, 0);
+  });
   test('probe mismatch real link prepares return exact terminal proof without refused-operation writes', async t => {
     const w = await startWorld(); t.after(w.close);
     const p = await w.prepare(), control = armProbeCompetition(w, p.operationId);

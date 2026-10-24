@@ -47,6 +47,7 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     controller = createSettlementEvidenceConfirmation({ householdId: d.householdId, authorize,
       resolveSelection: resolver.resolveSelection, resolvePairedSelection: resolver.resolvePairedSelection,
       store: d.store, commitAdmitted: d.commitAdmitted, now,
+      registerRecovery: d.registerRecovery,
       withdrawalReader: withdrawalReader.acquire,
       // Names are presentation only. Missing/failed current base labels use
       // the controller's bounded fallback; they never qualify ledger targets.
