@@ -91,6 +91,7 @@ const suites = [
   ['settlement evidence resolver foundation: pure identity/binding foundation — txRef v1, BIND bindings, canonical-row crosswalk and handles (ATLAS-080)', 'test-settlement-evidence-resolver.js'],
   ['settlement evidence crosswalk exporter: same-pass tuple provenance from the incumbent sanitizer pass (ATLAS-080)', 'test-settlement-evidence-crosswalk.js'],
   ['settlement evidence refresh acquisition: memory-replay-only private acquisition through the refresh worker/lifecycle (ATLAS-080)', 'test-settlement-evidence-refresh-acquisition.js'],
+  ['settlement evidence PostgreSQL adapter: injected-session SQL local state, lost-ack ambiguity and session-loss invalidation (ATLAS-080)', 'test-settlement-evidence-postgres-adapter.js'],
   ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
