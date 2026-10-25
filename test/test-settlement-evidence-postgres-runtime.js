@@ -31,7 +31,8 @@ function world(hooks = {}) {
   class Client extends EventEmitter {
     constructor() { super(); w.clients.push(this); this.connection={stream:{encrypted:true,authorized:true,
       servername:host,getPeerCertificate:()=>({subjectaltname:'DNS:'+host})}};
-      if(hooks.tls)Object.assign(this.connection.stream,hooks.tls); }
+      if(hooks.tls)Object.assign(this.connection.stream,hooks.tls);
+      if(hooks.construct)hooks.construct(); }
     async connect() {w.connects++;if(hooks.connect)await hooks.connect();}
     async end() {w.ends++;if(hooks.end)await hooks.end();this.emit('end');}
     async query(text, values) {
@@ -222,4 +223,33 @@ test('connection inputs are snapshotted and invalid driver config is refused bef
 test('same known custody surface cannot be rewrapped into a conflicting terminal domain',()=>{
   const w=world();w.construct();const other=world();other.options.custody.pinStore=w.options.custody.pinStore;
   assert.throws(other.construct,TypeError);assert.equal(other.clients.length,0);
+});
+for(const close of ['confirmed','failed','unconfirmed'])test('synchronous constructor retirement owns opening and reports '+close,async()=>{
+  const gate=defer();let r,retiring,settled=false,endRetirement;
+  const w=world({construct:()=>{retiring=r.retire();retiring.then(()=>{settled=true;});},
+    connect:()=>gate.promise,end:()=>{
+      endRetirement=r.retire();
+      if(close==='failed')throw Object.assign(Error(CANARY),{code:'ECONNRESET'});
+      if(close==='unconfirmed')return new Promise(()=>{});
+    }});
+  r=w.construct();const opening=r.connect();
+  // Observe rejection immediately; assertions happen after releasing all owned
+  // work, so the deliberately broken source also leaves no orphaned rejection.
+  const outcome=opening.then(()=>null,e=>e);await turn();
+  const early={settled,clients:w.clients.length,connects:w.connects,ends:w.ends,queries:w.queries.length};
+  gate.resolve();const error=await outcome,report=await retiring;
+  assert.equal(early.clients,1);assert.equal(early.settled,false);
+  assert.equal(error.code,'SETTLEMENT_RUNTIME_UNAVAILABLE');
+  assert.equal(report.close,close);assert.equal(await r.retire(),report);
+  assert.equal(endRetirement,retiring);assert.equal(w.ends,1);assert.equal(w.connects,1);
+  const count=w.queries.length;assert.equal(count,4);
+  assert.throws(r.settlement.readDocument,unavailable);await assert.rejects(r.connect(),unavailable);
+  await turn();assert.equal(w.queries.length,count);
+});
+test('retirement before deferred opening dispatch prevents Client construction entirely',async()=>{
+  const w=world(),r=w.construct(),opening=r.connect();assert.equal(r.connect(),opening);
+  const outcome=opening.catch(e=>e),retiring=r.retire();assert.equal(r.retire(),retiring);
+  const report=await retiring;assert.equal((await outcome).code,'SETTLEMENT_RUNTIME_UNAVAILABLE');
+  assert.equal(report.close,'not-opened');assert.equal(w.clients.length,0);assert.equal(w.connects,0);
+  assert.equal(w.ends,0);assert.equal(w.queries.length,0);
 });

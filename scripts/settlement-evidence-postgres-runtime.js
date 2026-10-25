@@ -97,8 +97,11 @@ function createSettlementEvidencePostgresRuntime(options) {
       || owner && owner.status().state !== 'ready') return Promise.reject(unavailable());
     if (opening) return opening;
     phase = 'connecting';
-    opening = (async () => {
+    // Publish lifetime ownership before the factory can invoke an injected
+    // constructor (which may synchronously request retirement).
+    opening = Promise.resolve().then(async () => {
       try {
+        if (phase !== 'connecting') throw unavailable();
         owner = await createSettlementEvidencePostgresConnection(connection);
         if (phase !== 'connecting') { await owner.retire(); throw unavailable(); }
         phase = 'ready'; return status();
@@ -110,20 +113,21 @@ function createSettlementEvidencePostgresRuntime(options) {
         if (phase === 'connecting') phase = 'lost';
         throw error;
       }
-    })();
+    });
     return opening;
   }
   function retire() {
     if (retiring) return retiring;
     phase = 'retiring'; // Synchronous fence, including pending custody callbacks.
-    retiring = (async () => {
+    // Publish this promise before calling any potentially reentrant owner.
+    retiring = Promise.resolve().then(async () => {
       // The factory bounds connect/preflight/close. Never race it with a second
       // session owner or a second close. No timer here claims an unproven close.
       if (opening) { try { await opening; } catch { /* preserve factory report below */ } }
       const report = owner ? await owner.retire() : lastFailureRetirement || Object.freeze({
         state:'retired',close:'not-opened',primary,closeDiagnostic:null});
       phase = report.state; return report;
-    })();
+    });
     return retiring;
   }
   return Object.freeze({settlement,connect,retire,status});
