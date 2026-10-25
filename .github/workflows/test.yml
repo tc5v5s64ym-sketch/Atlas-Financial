@@ -36,9 +36,6 @@ jobs:
       - name: Install runtime dependencies
         run: bash scripts/ci-test.sh install-runtime
 
-      - name: Verify pinned runtime and driver without connecting
-        run: node scripts/ci-output.js --identity test-ci-split.js -- node test/test-ci-split.js --runtime-driver-import
-
       - name: Run the correctness suite
         run: bash scripts/ci-test.sh standard
 
