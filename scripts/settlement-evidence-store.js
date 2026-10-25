@@ -84,6 +84,7 @@
 // a cached or caller-supplied R4 report.
 
 const C = require('./planned-obligation-settlement-contract');
+const TC = require('./settlement-evidence-terminal-certificate');
 
 const HOUSEHOLD_RE = /^household-[a-f0-9]{32}$/;
 const ACTOR_RE = /^session-[a-f0-9]{64}$/;
@@ -138,6 +139,20 @@ function createSettlementEvidenceStore(deps) {
     return t;
   };
 
+  // Optional D1(i): the SAME lock governs negative seals and financial landing.
+  // No production dependency. Missing/rolled-back history is never genesis.
+  const terminalHistory = deps.terminalHistory, exclusionEnabled = terminalHistory !== undefined;
+  if (exclusionEnabled && (!isRecord(terminalHistory) || typeof terminalHistory.readSnapshot !== 'function'
+    || typeof terminalHistory.compareAndAppend !== 'function')) throw new TypeError('terminal history incomplete');
+  const domain = TC.registerDomain(householdId, deps.exclusionDomain, exclusionEnabled,
+    [documentStore, journalStore, pinStore, lock]);
+  async function terminalGate(head) {
+    if (!exclusionEnabled) return null;
+    const state = TC.qualifySnapshot(await terminalHistory.readSnapshot(), domain);
+    if (head && state.history.records.some(r => head.operations.some(o => o.operationId === r.operationId)))
+      throw new Error('terminal negative/financial coexistence');
+    return state;
+  }
   const derive = pin => C.digest({
     householdId, revision: pin.revision, documentDigest: pin.digest,
   });
@@ -281,6 +296,17 @@ function createSettlementEvidenceStore(deps) {
   }
 
   async function r4Disposition(head, pin, raw, parsed) {
+    // Addendum A C3: a journal naming a sealed operation is contradictory
+    // evidence even when ordinary R4 could discard it. Preserve EVERY byte.
+    if (exclusionEnabled) {
+      try {
+        const terminal = await terminalGate(head);
+        let named;
+        try { named = JSON.parse(raw.toString('utf8'))?.operationId; } catch {}
+        if (terminal.history.records.some(r => r.operationId === named))
+          return { row: 'R4', disposition: 'recovery-blocked', reason: 'sealed-journal' };
+      } catch { return { row: 'R4', disposition: 'recovery-blocked', reason: 'terminal-history-unavailable' }; }
+    }
     if (parsed.kind === 'valid') {
       const journal = parsed.journal;
       const opAbsent = !head.operations.some(o => o.operationId === journal.operationId);
@@ -443,6 +469,8 @@ function createSettlementEvidenceStore(deps) {
     try { C.restore(bytes, derive(pin)); } catch {
       return { row, disposition: 'recovery-blocked', reason: 'backup-unverifiable' };
     }
+    try { await terminalGate(restored); }
+    catch { return { row, disposition: 'recovery-blocked', reason: 'terminal-history-unavailable' }; }
     // Preserve divergent evidence BEFORE overwriting (F-D: a failed
     // quarantine blocks the overwrite it guards).
     if (headBytes) {
@@ -502,6 +530,8 @@ function createSettlementEvidenceStore(deps) {
     const H = await readDocState();
     const J = await readJournalState();
     const M = await readManifestState();
+    try { await terminalGate(H.kind === 'ok' && H.bytes ? docState(H.bytes) : null); }
+    catch { return { row: 'R1', disposition: 'recovery-blocked', reason: 'terminal-history-unavailable' }; }
     if (P.kind === 'error') {
       return { row: 'R1', disposition: 'recovery-blocked', reason: 'pin-unreadable' };
     }
@@ -574,6 +604,12 @@ function createSettlementEvidenceStore(deps) {
       return allowRecovery ? unavailable('store-divergent')
         : { status: 'rejected', reason: 'recovery-required' };
     }
+    // Every terminal await is BEFORE final expiry/candidate validation and
+    // the synchronous freshness witness; this lock stays held through pinning.
+    try {
+      const terminal = await terminalGate(head);
+      if (terminal?.history.records.some(r => r.operationId === req.preview.operationId)) return { status: 'rejected', reason: 'operation-sealed' };
+    } catch { return unavailable('terminal-history-unavailable'); }
     // C2: candidate through the Phase 1 contract.
     let result;
     try {
@@ -729,6 +765,10 @@ function createSettlementEvidenceStore(deps) {
       const head = H.bytes ? docState(H.bytes) : null;
       const qualified = !!head && head.revision === pin.revision
         && head.digest === pin.digest;
+      try {
+        const terminal = await terminalGate(head);
+        if (terminal?.history.records.some(r => r.operationId === operationId)) return { status: 'rejected', reason: 'operation-sealed' };
+      } catch { return unavailable('terminal-history-unavailable'); }
       // C0(a): the C1 fast path — pin + validated document prove
       // commitment; the journal is irrelevant. F-E: altered input on a
       // committed operation is a conflict, taking precedence.
@@ -792,6 +832,8 @@ function createSettlementEvidenceStore(deps) {
   async function bootstrap() {
     return lock.withLock(async () => {
       try {
+        const terminal = await terminalGate(null);
+        if (terminal?.history.records.length) return unavailable('terminal-history-has-traces');
         const P = await readPinState();
         if (P.kind === 'error') return unavailable('pin-unavailable');
         const H = await readDocState();
@@ -867,6 +909,9 @@ function createSettlementEvidenceStore(deps) {
       if (!head || head.revision !== P.pin.revision || head.digest !== P.pin.digest) {
         return unavailable('store-divergent');
       }
+      let terminal;
+      try { terminal = await terminalGate(head); } catch { return unavailable('terminal-history-unavailable'); }
+      if (terminal?.history.records.some(r => r.operationId === input.operationId)) return unavailable('operation-sealed');
       return C.prepare(Buffer.from(H.bytes), {
         householdId, actorId: input.actorId, operationId: input.operationId,
         command: input.command, now: tick(),
@@ -955,6 +1000,8 @@ function createSettlementEvidenceStore(deps) {
     // when the disposition below is known.
     const ready = qualified && J.kind === 'ok' && !J.raw;
     if (!qualified) return { disposition: 'unresolved', ready: false };
+    try { await terminalGate(head); }
+    catch { return { disposition: 'unresolved', ready: false }; }
     // Binding validation: the supplied actor must be the preview's actor
     // and the supplied confirmation digest must be the preview's digest.
     if (req.actorId !== preview.actorId || req.confirmationDigest !== previewDigest) {
@@ -998,7 +1045,7 @@ function createSettlementEvidenceStore(deps) {
     });
   }
 
-  async function outcome(input) {
+  async function outcomeLocked(input) {
     // Read-only (F4): no writes, no repair, and the journal never
     // overrides what the pin and the validated document prove.
     if (!isRecord(input) || typeof input.actorId !== 'string' || !ACTOR_RE.test(input.actorId)
@@ -1014,6 +1061,7 @@ function createSettlementEvidenceStore(deps) {
       if (!head || head.revision !== P.pin.revision || head.digest !== P.pin.digest) {
         return { status: 'unknown' };
       }
+      await terminalGate(head);
       const recorded = head.operations.find(o => o.operationId === input.operationId);
       if (!recorded || recorded.actorId !== input.actorId) return { status: 'unknown' };
       return {
@@ -1023,6 +1071,79 @@ function createSettlementEvidenceStore(deps) {
     } catch { return { status: 'unknown' }; }
   }
 
+  async function outcome(input) {
+    return exclusionEnabled ? lock.withLock(() => outcomeLocked(input)) : outcomeLocked(input);
+  }
+  // This store-owned seal proof is distinct from P2's unchanged exact-base proof.
+  async function terminalState() {
+    const P = await readPinState(), H = await readDocState(), J = await readJournalState();
+    const head = P.kind === 'ok' && H.kind === 'ok' && H.bytes ? docState(H.bytes) : null;
+    if (!head || head.revision !== P.pin.revision || head.digest !== P.pin.digest || J.kind !== 'ok' || J.raw)
+      throw new Error('terminal ledger not ready');
+    return { head, terminal: await terminalGate(head) };
+  }
+  function validateSealRequest(req, head) {
+    if (!isRecord(req) || Object.keys(req).sort().join(',') !==
+      ['actorId','preview','confirmationDigest','generation','kind','reason'].sort().join(',')) return false;
+    const p = req.preview;
+    if (!isRecord(p) || p.householdId !== householdId || p.actorId !== req.actorId
+      || !ACTOR_RE.test(req.actorId) || !OPERATION_RE.test(p.operationId)
+      || !Number.isSafeInteger(p.expectedRevision) || p.expectedRevision < 0
+      || p.expectedRevision > head.revision || p.expectedDocumentDigest !== prefixDigest(head, p.expectedRevision)
+      || req.confirmationDigest !== C.digest(p) || req.kind !== (p.command?.kind === 'retract' ? 'withdrawal' : p.command?.kind)) return false;
+    // Validate the WHOLE preview/command against its immutable prefix at its
+    // ORIGINAL issued tick. Expired previews are valid negative-seal subjects;
+    // never use expiry-sensitive confirmCandidate here.
+    const body = { schema: C.SCHEMA, householdId, revision: p.expectedRevision,
+      operations: head.operations.slice(0, p.expectedRevision) };
+    const oldBytes = Buffer.from(JSON.stringify({ ...body, digest: C.digest(body) }));
+    const checked = C.prepare(oldBytes, { householdId, actorId: req.actorId,
+      operationId: p.operationId, command: p.command, now: p.issuedAt });
+    return require('node:util').isDeepStrictEqual(checked.preview, p)
+      && checked.confirmationDigest === req.confirmationDigest;
+  }
+  async function sealNegative(input) {
+    let req; try { req = TC.own(input); } catch { return { status: 'unknown' }; }
+    const operationId = req?.preview?.operationId;
+    return lock.withLock(async () => {
+      try {
+        const { head, terminal } = await terminalState();
+        if (!validateSealRequest(req, head) || head.operations.some(o => o.operationId === operationId)) return { status: 'unknown', operationId };
+        const p = req.preview;
+        const certificate = TC.own({ schema: TC.TERMINAL_CERTIFICATE_SCHEMA, householdId,
+          ledgerNamespace: domain.ledgerNamespace, operationId, actorId: req.actorId,
+          kind: req.kind, generation: req.generation, reason: req.reason,
+          expectedRevision: p.expectedRevision, expectedDocumentDigest: p.expectedDocumentDigest,
+          confirmationDigest: req.confirmationDigest, decidedAt: tick() });
+        if (!TC.isCertificate(certificate)) return { status: 'unknown', operationId };
+        const existing = terminal.history.records.find(r => r.operationId === operationId);
+        if (existing) return TC.sameDecision(existing, certificate)
+          ? { status: 'certified', operationId, certificate: existing } : { status: 'unknown', operationId };
+        const result = await terminalHistory.compareAndAppend(TC.own({ expectedCheckpoint: terminal.checkpoint, certificate }));
+        // No retry/repair. Unknown acknowledgements may have landed.
+        if (result !== true) return { status: 'unknown', operationId };
+        const after = await terminalGate(head);
+        if (after.history.revision !== terminal.history.revision + 1
+          || C.digest(after.history.records.slice(0, -1)) !== C.digest(terminal.history.records)
+          || !require('node:util').isDeepStrictEqual(after.history.records.at(-1), certificate)) return { status: 'unknown', operationId };
+        return { status: 'certified', operationId, certificate };
+      } catch { return { status: 'unknown', operationId }; }
+    });
+  }
+  async function lookupCertificate(input) {
+    let req; try { req = TC.own(input); } catch { return { status: 'unknown' }; }
+    const operationId = req?.operationId;
+    if (!isRecord(req) || !OPERATION_RE.test(operationId) || !ACTOR_RE.test(req.actorId)
+      || Object.keys(req).some(k => !['actorId','operationId','generation'].includes(k))) return { status: 'unknown', operationId };
+    return lock.withLock(async () => {
+      try {
+        const { terminal } = await terminalState();
+        const c = terminal.history.records.find(r => r.operationId === operationId);
+        if (!c || c.actorId !== req.actorId || (req.generation !== undefined && c.generation !== req.generation)) return { status: 'unknown', operationId };
+        return { status: 'not-applied', operationId, generation: c.generation };
+      } catch { return { status: 'unknown', operationId }; }
+    });
+  }
   async function reconcile() {
     return lock.withLock(async () => {
       try {
@@ -1033,7 +1154,8 @@ function createSettlementEvidenceStore(deps) {
     });
   }
 
-  return { bootstrap, prepare, commit, commitWithoutRecovery, commitAdmitted, outcome, reconcile, inspectAttempt };
+  return { bootstrap, prepare, commit, commitWithoutRecovery, commitAdmitted, outcome, reconcile, inspectAttempt,
+    ...(exclusionEnabled ? { terminalExclusion: Object.freeze({ householdId, ledgerNamespace: domain.ledgerNamespace, sealNegative, lookupCertificate }) } : {}) };
 }
 
 module.exports = { createSettlementEvidenceStore };
