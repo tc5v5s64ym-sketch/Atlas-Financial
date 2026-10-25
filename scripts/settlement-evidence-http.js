@@ -125,8 +125,14 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
       // revocation landing in any earlier await (the B4 recovery-policy
       // BLOCK, Atlas ts 1792947464) cannot serialize past it. `gate` is a
       // per-request holder the handler fills during run(); it is never
-      // shared across requests.
-      if (finalCheck) await finalCheck(gate);
+      // shared across requests. The check is awaited ONLY when this
+      // request's evaluation armed one (a recovery proof in play): on
+      // incumbent paths the gate is empty, and an await here — after the
+      // session check above, with no re-read after it — would reopen a
+      // post-check expiry window the shipped incumbent boundary never
+      // had (Atlas provisional BLOCK on c6626dfa, ts 1792954819).
+      // Incumbent paths serialize in this same continuation, as shipped.
+      if (finalCheck && gate.recheckRecovery) await finalCheck(gate);
       // Addendum A final-disclosure boundary. When this request's
       // evaluation put a recovery proof in play, `gate.finalDisclosure`
       // holds its retained frozen selectors, and disclosure requires —
@@ -145,7 +151,15 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
         let verdict;
         try { verdict = finalDisclosureAuthorize(gate.finalDisclosure); }
         catch { throw new Error('final-disclosure refused'); }
-        if (verdict !== true) throw new Error('final-disclosure refused');
+        if (verdict !== true) {
+          // The verdict refuses. A native Promise verdict is never
+          // awaited or assimilated, but its rejection must not escape
+          // as an unhandled rejection: attach a swallowing handler.
+          // Arbitrary thenables are left entirely untouched — their
+          // `then` is never invoked.
+          if (verdict instanceof Promise) verdict.catch(() => {});
+          throw new Error('final-disclosure refused');
+        }
         if (sessionActor(req) !== context.actorId) throw new Error('expired');
       }
       return res.json(result);

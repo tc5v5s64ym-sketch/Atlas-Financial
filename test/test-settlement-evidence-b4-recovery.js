@@ -1420,3 +1420,112 @@ test('B4R-A8: concurrent recovery disclosures keep request-local final predicate
     assert.equal(pub1.body.publication, 'included');
   } finally { await h.close(); }
 });
+
+// === Provisional-BLOCK repair rows (Atlas ts 1792954819, on head c6626dfa) =
+// Atlas's source-seam probes confirmed the named recovery ordering is
+// repaired but found two regressions in the repair itself:
+// (1) the helper awaited the (for incumbent paths, no-op) recovery gate
+//     AFTER its final session check, reopening a post-check expiry window
+//     on incumbent same-actor/unconfigured paths, which get no final
+//     session re-read — the shipped incumbent boundary is check-then-
+//     serialize in one synchronous continuation;
+// (2) a native rejected Promise returned by the final predicate was
+//     refused (503) but its rejection was left unhandled.
+
+// === B4R-A6b: rejected-promise verdict — refused, rejection handled ========
+test('B4R-A6b: a rejected-promise final verdict refuses with no unhandled rejection', async () => {
+  const seen = [];
+  const onUnhandled = reason => { seen.push(String(reason)); };
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const h = await httpWorld({
+      finalDisclosure: () => Promise.reject(new Error('predicate verdict rejected')),
+    });
+    try {
+      await commitOp(h.w, h.w.controller, 1);
+      const out = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+      assert.equal(out.status, 503);
+      assert.deepEqual(out.body, { status: 'unavailable' });
+      const pub = await h.call('publication', { operationId: op(1) }, ACTOR2);
+      assert.equal(pub.status, 503);
+      assert.deepEqual(pub.body, { status: 'unavailable' });
+    } finally { await h.close(); }
+    // The arbitrary-thenable case under the same listener: refused, and
+    // its `then` is never invoked (no assimilation).
+    let thenCalled = false;
+    const h2 = await httpWorld({
+      finalDisclosure: () => ({ then() { thenCalled = true; } }),
+    });
+    try {
+      await commitOp(h2.w, h2.w.controller, 1);
+      const out = await h2.call('outcome', { operationId: op(1) }, ACTOR2);
+      assert.equal(out.status, 503);
+      assert.deepEqual(out.body, { status: 'unavailable' });
+      assert.equal(thenCalled, false, 'the seam must not invoke an arbitrary thenable');
+    } finally { await h2.close(); }
+    // Give any unhandled rejection its chance to fire.
+    await new Promise(res => setTimeout(res, 100));
+    assert.deepEqual(seen, [], 'no unhandled rejection may escape a refused verdict');
+  } finally { process.removeListener('unhandledRejection', onUnhandled); }
+});
+
+// === B4R-A10: incumbent paths keep the shipped disclosure boundary =========
+test('B4R-A10: incumbent paths serialize in the same continuation as the final session check', async () => {
+  // A fully configured world, but the requests below are the RECORDED
+  // actor's own (incumbent) ones: no recovery proof is in play, the gate
+  // stays empty, and the shipped boundary — final session check, then
+  // serialize, with no await between — must hold exactly. The session
+  // double arms an expiry microtask at the helper's final check (its
+  // second read of the request): if any await intervenes before
+  // serialization, the expiry lands first and the res.json wrapper
+  // observes serialization against an expired session.
+  const w = await makeWorld({});
+  await w.bootstrap();
+  await commitOp(w, w.controller, 1);
+  const express = require('express');
+  const app = express();
+  const state = { calls: 0, expired: false, serializedExpired: null };
+  const sessionActor = () => {
+    state.calls++;
+    if (state.calls === 2) queueMicrotask(() => { state.expired = true; });
+    return state.expired ? null : ACTOR;
+  };
+  app.use((req, res, next) => {
+    const orig = res.json.bind(res);
+    res.json = body => { state.serializedExpired = state.expired; return orig(body); };
+    next();
+  });
+  mountSettlementHttp(app, sessionActor, { householdId, origin: 'http://synthetic.local',
+    authorize: w.authorize, acquire: w.syntheticAcquire, contextReader: w.contextReader,
+    readBase: async () => clone(w.baseFixture), now: () => w.clock.t,
+    commitAdmitted: w.commitAdmitted, readDocument: w.readDocument, readPin: w.readPin,
+    store: w.wrappedStore, registerRecovery: () => {},
+    authorizeRecovery: w.policy.fn, finalDisclosureAuthorize: () => true });
+  const server = await new Promise(res => { const s = app.listen(0, '127.0.0.1', () => res(s)); });
+  const port = server.address().port;
+  const call = async (route, body) => {
+    const r = await fetch(`http://127.0.0.1:${port}/settlement/${route}`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Origin': 'http://synthetic.local',
+        'X-Atlas-Settlement': 'same-origin', 'Sec-Fetch-Site': 'same-origin' },
+      body: JSON.stringify(body) });
+    return { status: r.status, body: await r.json() };
+  };
+  try {
+    const out = await call('outcome', { operationId: op(1) });
+    assert.equal(out.status, 200);
+    assert.equal(out.body.status, 'committed');
+    assert.equal(out.body.revision, 1);
+    assert.equal(state.serializedExpired, false,
+      'outcome serialized after the session expired: an await intervened on the incumbent path');
+    await new Promise(res => setTimeout(res, 10));
+    assert.equal(state.expired, true, 'the armed expiry really landed during the outcome request');
+    state.calls = 0; state.expired = false; state.serializedExpired = null;
+    const pub = await call('publication', { operationId: op(1) });
+    assert.equal(pub.status, 200);
+    assert.equal(pub.body.publication, 'included');
+    assert.equal(state.serializedExpired, false,
+      'publication serialized after the session expired: an await intervened on the incumbent path');
+    await new Promise(res => setTimeout(res, 10));
+    assert.equal(state.expired, true, 'the armed expiry really landed during the publication request');
+  } finally { await new Promise(res => server.close(res)); }
+});
