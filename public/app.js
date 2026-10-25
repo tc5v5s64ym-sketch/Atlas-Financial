@@ -415,7 +415,7 @@ const SettlementSave = (() => {
       // Observation headers and base-only/unavailable packets cannot release
       // reconciliation. This is the single ordinary acquisition/attachment.
       if (!completeData(data) || data.settlementEvidenceStatus?.status !== 'qualified'
-        || !record(data.settlementEvidence) || !Array.isArray(data.settlementEvidence.commitments))
+        || !record(data.settlementEvidence))
         throw new Error('settlement-reconciliation');
       bootContexts.set(attempt, { marker, data, status: 'not-applied' });
       return data;

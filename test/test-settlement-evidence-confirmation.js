@@ -2514,7 +2514,10 @@ test('B3 native negative read requires exact actor generation and never releases
    assert.notEqual((await a.controller.outcome(ctx,{operationId:p.operationId,generation:gen})).status,'not-applied');
   }
   const expected={status:'not-applied',operationId:p.operationId,generation:p.generation};
-  assert.deepEqual(await a.controller.outcome(context,{operationId:p.operationId,generation:p.generation}),expected);
+  const reads=w.reads;
+  assert.deepEqual(await a.controller.outcome(context,{operationId:p.operationId,generation:p.generation}),
+    lostAck?{status:'unknown',operationId:p.operationId}:expected);
+  if(lostAck)assert.equal(w.reads,reads,'held terminal owner never enters negative lookup');
   const b=w.create();
   assert.deepEqual(await b.controller.outcome(context,{operationId:p.operationId,generation:p.generation}),expected);
   if(lostAck){
@@ -2556,4 +2559,20 @@ test('B3 public negative outcome never infers absence or accepts malformed lower
   assert.notEqual((await a.controller.outcome(context,input)).status,'not-applied',mode);
   assert.deepEqual(received,{...input,actorId});assert.equal(calls,1);assert.deepEqual(w.writes,[]);assert.equal(w.appends,0);
  }
+});
+
+test('B3 Addendum A terminalizing ownership acquired during lookup suppresses a delayed proof',async()=>{
+ const w=d1ControllerWorld(),seen=deferred(),gate=deferred();
+ // Deliberate delayed trusted-capability reply isolates the controller's
+ // ownership recheck; real native qualification is covered separately.
+ const a=w.create({lookup:async input=>{seen.resolve();await gate.promise;
+  return {status:'not-applied',operationId:input.operationId,generation:input.generation};}});
+ const p=await a.controller.prepare(context,request(1));
+ const pending=a.controller.outcome(context,{operationId:p.operationId,generation:p.generation});await seen.promise;
+ try{
+  w.time=p.expiresAt;w.hooks.append=perform=>{perform();throw Error('synthetic lost seal acknowledgement');};
+  assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'unknown');
+  gate.resolve();assert.equal((await pending).status,'unknown');
+  assert.equal((await a.recovery()).status,'blocked');assert.deepEqual(w.writes,[]);assert.equal(w.appends,1);
+ }finally{gate.resolve();}
 });

@@ -330,6 +330,22 @@ if (require.main === module && !process.argv.includes('--synthetic-negative-chil
   const test = require('node:test');
 
 
+
+  test('B3 Addendum A lost store acknowledgement blocks same-instance lookup until reconstruction',async t=>{
+    const w=await startWorld(true,{nativeNegative:true});t.after(w.close);const p=await w.prepare();w.setClock(p.expiresAt);
+    w.hooks.historyAppend=perform=>{perform();throw Error('synthetic lost store acknowledgement');};
+    assert.equal((await w.post('confirm',{operationId:p.operationId,previewToken:p.previewToken,generation:p.generation,confirmed:true})).status,'unknown');
+    const before=w.snapshot(),reads=w.historyCalls.read;
+    assert.equal((await w.post('outcome',{operationId:p.operationId,generation:p.generation})).status,'unknown');
+    assert.equal(w.historyCalls.read,reads,'terminal owner blocks the native lookup');
+    assert.equal((await w.prepare(2)).reason,'outcome-unresolved');
+    w.recreateStore();
+    assert.deepEqual(await w.post('outcome',{operationId:p.operationId,generation:p.generation}),
+      {status:'not-applied',operationId:p.operationId,generation:p.generation});
+    const after=w.snapshot();assert.equal(after.doc,before.doc);assert.equal(after.historyBytes,before.historyBytes);
+    assert.equal(after.historyCalls.append,1);assert.deepEqual(after.effects,[]);
+  });
+
   async function b3Sealed(w) {
     const p = await w.prepare(); w.setClock(p.expiresAt);
     assert.equal((await w.post('confirm', { operationId:p.operationId, previewToken:p.previewToken,

@@ -775,13 +775,16 @@ function createSettlementEvidenceConfirmation(deps) {
       // Operation-only callers retain their committed-receipt contract. Null
       // originalOutcome is never absence proof. Only the native store's fresh
       // qualified lookup may prove this exact actor/operation/generation.
-      if (!terminalProtocol || !Object.hasOwn(request, 'generation')) return unknown(request.operationId);
+      if (!terminalProtocol || !Object.hasOwn(request, 'generation')
+        || previews.get(request.operationId)?.terminalizing) return unknown(request.operationId);
       const negative = snapshot(await terminalProtocol.lookupCertificate(request.operationId,
         authority.actorId, { generation: request.generation }));
       await sameAuthority(ownedContext, authority);
       // Read only: no retirement, latch cleanup, reconciliation or retry. In
-      // particular a lost seal acknowledgement can still own terminalizing.
-      if (shape(negative, ['status', 'operationId', 'generation']) && negative.status === 'not-applied'
+      // particular a lost seal acknowledgement keeps terminalizing ownership and
+      // suppresses this response, even when its durable certificate exists.
+      if (!previews.get(request.operationId)?.terminalizing
+        && shape(negative, ['status', 'operationId', 'generation']) && negative.status === 'not-applied'
         && negative.operationId === request.operationId && negative.generation === request.generation)
         return negative; // No await after the final authority/proof checks.
       return unknown(request.operationId);

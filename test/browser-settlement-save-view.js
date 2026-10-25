@@ -208,13 +208,17 @@ function rendererReversalEvidence(withReversal) {
       } finally { await fixture?.context.close(); await w.close(); }
     };
 
-    await run('B3 lost store acknowledgement recovers view but never releases server latch',async(w,fixture)=>{
+    await run('B3 lost store acknowledgement stays fenced until controller reconstruction',async(w,fixture)=>{
       const {page,requests}=fixture;await lostNativeNegative(w,page,true);
-      await page.reload();await b3Ready(page);
+      const traffic=bootTraffic(page);await page.reload();await reconciliationBoot(page);
+      assert.equal(traffic.ordinary,0);
+      assert.equal(await page.evaluate(KEY=>JSON.parse(localStorage.getItem(KEY)).phase,KEY),'dispatched');
       assert.equal((await w.prepare(2)).reason,'outcome-unresolved');
+      w.recreateStore();await page.reload();await b3Ready(page);
+      assert.equal(traffic.ordinary,1);
       assert.equal(w.calls.commit,0);assert.equal(w.calls.journal,0);assert.equal(w.historyCalls.append,1);
       assert.equal(requests.filter(r=>r.path==='/settlement/confirm').length,1);
-      fixture.details={lostStoreAck:true,serverLatchHeld:true,noReplay:true};
+      fixture.details={lostStoreAck:true,sameInstanceFenced:true,freshControllerQualifiedRead:true,noReplay:true};
     },true,390,{nativeNegative:true});
     for(const lostStoreAck of [false,true]){
       await run('B3 real child replacement recovers '+(lostStoreAck?'lost store ack':'lost HTTP reply'),async(w,fixture)=>{
@@ -265,7 +269,7 @@ function rendererReversalEvidence(withReversal) {
           if(fault==='base-only'||fault==='observation-only'){delete data.settlementEvidence;delete data.settlementEvidenceStatus;}
           if(fault==='unavailable'){delete data.settlementEvidence;data.settlementEvidenceStatus={status:'unavailable'};}
           if(fault==='incomplete')delete data.plan.startingCash;
-          if(fault==='malformed-evidence')data.settlementEvidence={};
+          if(fault==='malformed-evidence')data.settlementEvidence=null;
           const body=fault==='publication-shape'?{status:'committed',publication:'included',data}:data;
           await route.fulfill({response,json:body,headers:{...response.headers(),
             'X-Atlas-Observation-Qualified':'true','X-Atlas-Observation-Source':'memory'}});
