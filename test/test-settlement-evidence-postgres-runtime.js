@@ -253,3 +253,13 @@ test('retirement before deferred opening dispatch prevents Client construction e
   assert.equal(report.close,'not-opened');assert.equal(w.clients.length,0);assert.equal(w.connects,0);
   assert.equal(w.ends,0);assert.equal(w.queries.length,0);
 });
+test('constructor retirement followed by setup throw reports unconfirmed ownership, never not-opened',async()=>{
+  let r,retiring;const w=world({construct:()=>{
+    retiring=r.retire();throw Object.assign(Error(CANARY),{code:'ECONNRESET'});
+  }});
+  r=w.construct();await assert.rejects(r.connect(),e=>e.diagnostic.stage==='client-setup');
+  const report=await retiring;assert.equal(report.state,'lost');assert.equal(report.close,'unconfirmed');
+  assert.equal(report.primary.stage,'client-setup');assert.equal(report.closeDiagnostic.category,'unconfirmed');
+  assert.equal(await r.retire(),report);assert.equal(w.clients.length,1);assert.equal(w.connects,0);
+  assert.equal(w.ends,0);assert.equal(w.queries.length,0);assert.ok(!JSON.stringify(report).includes(CANARY));
+});

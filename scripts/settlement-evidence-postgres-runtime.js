@@ -124,8 +124,13 @@ function createSettlementEvidencePostgresRuntime(options) {
       // The factory bounds connect/preflight/close. Never race it with a second
       // session owner or a second close. No timer here claims an unproven close.
       if (opening) { try { await opening; } catch { /* preserve factory report below */ } }
+      // Config/environment refusal precedes construction. A setup exception
+      // may instead have escaped a constructor after allocating a Client; the
+      // factory returned neither owner nor close proof. Never invent absence.
+      const uncertain = primary && !['config','environment'].includes(primary.stage);
       const report = owner ? await owner.retire() : lastFailureRetirement || Object.freeze({
-        state:'retired',close:'not-opened',primary,closeDiagnostic:null});
+        state:uncertain?'lost':'retired',close:uncertain?'unconfirmed':'not-opened',primary,
+        closeDiagnostic:uncertain?Object.freeze({stage:'end',category:'unconfirmed',code:null}):null});
       phase = report.state; return report;
     });
     return retiring;
