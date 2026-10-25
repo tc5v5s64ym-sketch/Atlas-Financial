@@ -150,10 +150,10 @@ function workflowContract(src) {
     assert.doesNotMatch(job, /^\s+(?:if|needs|ref):/m);
     assert.equal((job.match(/uses: actions\/checkout@v4/g) || []).length, 1);
     assert.match(job, /^          fetch-depth: 0$/m);
-    assert.match(job, /uses: actions\/setup-node@v4\n        with:\n          node-version: '20'/);
+    assert.match(job, /uses: actions\/setup-node@v4\n        with:\n          node-version: '24\.22\.1'/);
     assert.match(job, /^        run: bash scripts\/ci-test.sh install-runtime$/m);
     const commands = [...job.matchAll(/^        run: (.+)$/gm)].map(match => match[1]);
-    assert.deepEqual(commands, ['bash scripts/ci-test.sh install-runtime', `bash scripts/ci-test.sh ${group}`,
+    assert.deepEqual(commands, ['bash scripts/ci-test.sh install-runtime', ...(group === 'standard' ? ["node scripts/ci-output.js --identity runtime-driver-import -- node -e \"const a=require('node:assert/strict');a.equal(process.version,'v24.22.1');a.equal(require('pg/package.json').version,'8.16.3');a.equal(typeof require('pg').Client,'function')\""] : []), `bash scripts/ci-test.sh ${group}`,
       'test -f .githooks/pre-commit && test -f scripts/privacy-guard.js']);
   }
   const gate = jobs.test;
@@ -169,7 +169,7 @@ function workflowContract(src) {
   return shell[1].split('\n').map(line => line.slice(10)).join('\n');
 }
 
-check('workflow keeps both event identities, isolated Node 20 jobs, privacy and the always-run test gate', () => {
+check('workflow keeps both event identities, isolated Node 24.22.1 jobs, privacy and the always-run test gate', () => {
   workflowContract(workflow);
   const repair = sourceText(fs.readFileSync(path.join(ROOT, '.github/workflows/atlas-test-repair.yml'), 'utf8'));
   assert.match(repair, /workflows:\s*\["tests", "Merge card check"\]/);
@@ -177,12 +177,14 @@ check('workflow keeps both event identities, isolated Node 20 jobs, privacy and 
 
 check('workflow contract rejects omissions, skips, shallow history, changed refs and weakened checks', () => {
   const mutations = [
+    ["        run: node scripts/ci-output.js --identity runtime-driver-import -- node -e \"const a=require('node:assert/strict');a.equal(process.version,'v24.22.1');a.equal(require('pg/package.json').version,'8.16.3');a.equal(typeof require('pg').Client,'function')\"\n", ''],
+    ['8.16.3', '8.23.1'],
     ['needs: [standard, refresh-isolation]', 'needs: [standard]'],
     ['    if: ${{ always() }}', '    if: ${{ success() }}'],
     ['  refresh-isolation:', '  missing-isolation:'],
     ['  standard:\n', '  standard:\n    if: false\n'],
     ['fetch-depth: 0', 'fetch-depth: 1'],
-    ["node-version: '20'", "node-version: '24'"],
+    ["node-version: '24.22.1'", "node-version: '24'"],
     ['run: bash scripts/ci-test.sh standard', 'run: bash scripts/ci-test.sh refresh-isolation'],
     ['run: bash scripts/ci-test.sh standard', 'run: node test/test.js --group standard'],
     ['run: bash scripts/ci-test.sh refresh-isolation', 'run: node test/test.js --group refresh-isolation'],
