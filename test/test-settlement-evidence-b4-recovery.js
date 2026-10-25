@@ -4,6 +4,9 @@
 // B4R-30 (B4S-1..17 harness re-run) and B4R-31 (test-static + full standard
 // group on the pushed tree) are external proofs reported on the PR, not
 // encoded here.
+// Addendum A (Rev 2) rows B4R-A1..A8 are encoded at the end of this file;
+// B4R-A9 is the external non-regression proof (this file's rows + B4S
+// re-run + test-static + standard group on the pushed tree).
 //
 // The slice under test: a default-disabled, policy-gated recovery READ.
 // A later household-authorized session (a different actor than the one
@@ -297,7 +300,7 @@ async function httpWorld(opts = {}) {
   await w.bootstrap();
   const express = require('express');
   const app = express();
-  const sessionActor = req => req.get('x-test-actor') || null;
+  const sessionActor = opts.sessionActor || (req => req.get('x-test-actor') || null);
   const readers = { current: { readDocument: w.readDocument, readPin: w.readPin } };
   const dep = { householdId, origin: 'http://synthetic.local',
     authorize: w.authorize,
@@ -312,6 +315,16 @@ async function httpWorld(opts = {}) {
     readPin: async () => { events.push('readPin'); return readers.current.readPin(); },
     store: w.wrappedStore, registerRecovery: () => {} };
   if (opts.httpPolicy !== false && policy) dep.authorizeRecovery = policy.fn;
+  // Addendum A: the synchronous final-disclosure capability. The default is
+  // a healthy recording double (the amended contract requires the
+  // capability for any recovery disclosure); opts.finalDisclosure may
+  // supply a custom implementation, or null to omit the capability
+  // entirely (B4R-A7). The double never writes to the events log.
+  const finalDisclosureCalls = [];
+  if (opts.finalDisclosure !== null) {
+    const impl = typeof opts.finalDisclosure === 'function' ? opts.finalDisclosure : () => true;
+    dep.finalDisclosureAuthorize = sel => { finalDisclosureCalls.push(clone(sel)); return impl(sel); };
+  }
   const mounted = mountSettlementHttp(app, sessionActor, dep);
   assert.equal(mounted.active, true);
   const server = await new Promise(res => { const s = app.listen(0, '127.0.0.1', () => res(s)); });
@@ -324,7 +337,7 @@ async function httpWorld(opts = {}) {
       { method: 'POST', headers, body: JSON.stringify(body) });
     return { status: r.status, body: await r.json() };
   };
-  return { w, server, call, readers, events, policy,
+  return { w, server, call, readers, events, policy, finalDisclosureCalls,
     close: () => new Promise(res => server.close(res)) };
 }
 
@@ -1081,5 +1094,329 @@ test('B4R-29: repeated recovery reads are identical and side-effect free', async
     assert.equal(h.w.history.calls.compareAndAppend, appendsBefore, 'no new seals');
     assert.equal(JSON.parse(h.w.adapters.d.doc.toString('utf8')).operations.length, opsBefore,
       'no new operations');
+  } finally { await h.close(); }
+});
+
+// === Addendum A (Rev 2): the synchronous final-disclosure boundary =========
+// Atlas Systems Review BLOCKING on head d98a7ef4 (comment 6401273769): the
+// BLOCK-FIX recovery recheck is itself an await, so a session expiry or
+// replacement, or an ordinary-authority revocation, landing DURING that
+// final recovery await still serialized on both routes. The amendment
+// makes disclosure require a synchronous final predicate — the factory
+// option finalDisclosureAuthorize({householdId, actorId, operationId,
+// generation?}) -> boolean — invoked in ONE synchronous continuation
+// after the last await: predicate FIRST on the retained frozen selectors,
+// then the sessionActor re-read, then serialization. Rows A1–A3 are the
+// defect-repair rows (they fail against the d98a7ef4 tree). A4 is the
+// retained BLOCK-FIX direction — a control, green on both trees. A5–A8
+// exercise the new seam, which does not exist at d98a7ef4.
+
+// A world whose HTTP session identity lives in a mutable holder and whose
+// recovery policy runs `flip(session)` inside the request's FINAL
+// recovery await (authorizeRecovery call 3 for the request: fresh
+// decision, controller post-read recheck, HTTP final recheck), while
+// still returning its approval — so the flip is invisible to every check
+// that has already run. Tests reset policy.calls between requests so each
+// request's final await is call 3 again.
+async function seamWorld(opts = {}) {
+  const session = { current: ACTOR2 };
+  const policy = makePolicy((input, n) => {
+    if (n === 3 && opts.flip) opts.flip(session);
+    return { householdId: input.householdId, actorId: input.actorId, operationId: input.operationId };
+  });
+  const httpOpts = { policy, sessionActor: () => session.current };
+  if (opts.finalDisclosure !== undefined) httpOpts.finalDisclosure = opts.finalDisclosure;
+  const h = await httpWorld(httpOpts);
+  return { h, session };
+}
+
+// === B4R-A1: session expiry during the final recovery await ================
+test('B4R-A1: session expiry during the final recovery await refuses on both routes', async () => {
+  let flipOn = false;
+  const { h, session } = await seamWorld({ flip: s => { if (flipOn) s.current = null; } });
+  try {
+    await commitOp(h.w, h.w.controller, 1);
+    // Control: a healthy cross-login request discloses.
+    const control = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(control.status, 200);
+    assert.deepEqual(control.body, { status: 'committed', operationId: op(1) });
+    flipOn = true;
+    h.policy.calls.length = 0;
+    const fdBefore = h.finalDisclosureCalls.length;
+    const out = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(out.status, 503, 'an expired session must not receive the outcome disclosure');
+    assert.deepEqual(out.body, { status: 'unavailable' });
+    assert.ok(h.finalDisclosureCalls.length > fdBefore,
+      'the synchronous final predicate ran before the session re-read refused');
+    session.current = ACTOR2; // the next request arrives on a fresh login
+    h.policy.calls.length = 0;
+    const pub = await h.call('publication', { operationId: op(1) }, ACTOR2);
+    assert.equal(pub.status, 503, 'an expired session must not receive the publication disclosure');
+    assert.deepEqual(pub.body, { status: 'unavailable' });
+  } finally { await h.close(); }
+});
+
+// === B4R-A2: session replacement during the final recovery await ===========
+test('B4R-A2: session replacement during the final recovery await refuses on both routes', async () => {
+  let flipOn = false;
+  const { h, session } = await seamWorld({ flip: s => { if (flipOn) s.current = ACTOR3; } });
+  try {
+    await commitOp(h.w, h.w.controller, 1);
+    const control = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(control.status, 200);
+    assert.deepEqual(control.body, { status: 'committed', operationId: op(1) });
+    flipOn = true;
+    h.policy.calls.length = 0;
+    const out = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(out.status, 503, 'a replaced session must not receive the outcome disclosure');
+    assert.deepEqual(out.body, { status: 'unavailable' });
+    session.current = ACTOR2;
+    h.policy.calls.length = 0;
+    const pub = await h.call('publication', { operationId: op(1) }, ACTOR2);
+    assert.equal(pub.status, 503, 'a replaced session must not receive the publication disclosure');
+    assert.deepEqual(pub.body, { status: 'unavailable' });
+  } finally { await h.close(); }
+});
+
+// === B4R-A3: ordinary-authority revocation during the final recovery await =
+test('B4R-A3: ordinary-authority revocation during the final recovery await refuses on both routes', async () => {
+  // The authoritative current state the synchronous predicate consults:
+  // ordinary household authority AND the named recovery grant.
+  const liveAuth = { ordinary: true, grant: true };
+  let flipOn = false;
+  const { h } = await seamWorld({
+    flip: () => { if (flipOn) liveAuth.ordinary = false; },
+    finalDisclosure: () => liveAuth.ordinary && liveAuth.grant,
+  });
+  try {
+    await commitOp(h.w, h.w.controller, 1);
+    const control = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(control.status, 200);
+    assert.deepEqual(control.body, { status: 'committed', operationId: op(1) });
+    flipOn = true;
+    h.policy.calls.length = 0;
+    const fdBefore = h.finalDisclosureCalls.length;
+    const out = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(out.status, 503, 'revoked ordinary authority must not receive the outcome disclosure');
+    assert.deepEqual(out.body, { status: 'unavailable' });
+    assert.equal(h.finalDisclosureCalls.length, fdBefore + 1,
+      'the synchronous final predicate was the refusing check');
+    liveAuth.ordinary = true; flipOn = false;
+    const controlPub = await h.call('publication', { operationId: op(1) }, ACTOR2);
+    assert.equal(controlPub.status, 200);
+    assert.equal(controlPub.body.publication, 'included');
+    flipOn = true;
+    h.policy.calls.length = 0;
+    const pub = await h.call('publication', { operationId: op(1) }, ACTOR2);
+    assert.equal(pub.status, 503, 'revoked ordinary authority must not receive the publication disclosure');
+    assert.deepEqual(pub.body, { status: 'unavailable' });
+  } finally { await h.close(); }
+});
+
+// === B4R-A4 (CONTROL): revocation during the final ordinary-authorization ==
+// await — the original BLOCK-FIX direction — still refuses, and refuses at
+// the async recheck, before the synchronous final predicate is consulted.
+// Green on d98a7ef4 and on the repaired tree.
+test('B4R-A4 (control): revocation during the final authorization await refuses before the sync predicate', async () => {
+  let authorizeCalls = 0, flipAt = Infinity, revoked = false;
+  const policy = makePolicy(input => {
+    if (revoked) throw new Error('revoked during final authorization await');
+    return { householdId: input.householdId, actorId: input.actorId, operationId: input.operationId };
+  });
+  const h = await httpWorld({ policy });
+  try {
+    await commitOp(h.w, h.w.controller, 1);
+    h.w.authState.hooks.authorize = async () => {
+      authorizeCalls++;
+      if (authorizeCalls >= flipAt) revoked = true;
+    };
+    authorizeCalls = 0;
+    const control = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(control.status, 200);
+    assert.deepEqual(control.body, { status: 'committed', operationId: op(1) });
+    const outcomeCalls = authorizeCalls;
+    const fdBefore = h.finalDisclosureCalls.length;
+    authorizeCalls = 0; flipAt = outcomeCalls;
+    const out = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(out.status, 503);
+    assert.deepEqual(out.body, { status: 'unavailable' });
+    assert.equal(h.finalDisclosureCalls.length, fdBefore,
+      'the async recheck refused before the synchronous final predicate ran');
+    flipAt = Infinity; revoked = false; authorizeCalls = 0; policy.calls.length = 0;
+    const controlPub = await h.call('publication', { operationId: op(1) }, ACTOR2);
+    assert.equal(controlPub.body.publication, 'included');
+    const pubCalls = authorizeCalls;
+    const fdBeforePub = h.finalDisclosureCalls.length;
+    authorizeCalls = 0; flipAt = pubCalls;
+    const pub = await h.call('publication', { operationId: op(1) }, ACTOR2);
+    assert.equal(pub.status, 503);
+    assert.deepEqual(pub.body, { status: 'unavailable' });
+    assert.equal(h.finalDisclosureCalls.length, fdBeforePub,
+      'publication: the async recheck refused before the synchronous final predicate ran');
+  } finally { await h.close(); }
+});
+
+// === B4R-A5: stale revision witness / captured-true predicate ==============
+test('B4R-A5: a witness-validating final predicate refuses after revocation; a captured-true predicate cannot', async () => {
+  // The authoritative state the synchronous predicate consults, with a
+  // revision witness covering BOTH permissions and the revocation path.
+  const authz = { revision: 1, ordinary: true, grant: true };
+  const witness = { admittedRevision: null };
+  const mkPolicy = state => makePolicy((input, n) => {
+    if (n === 1) witness.admittedRevision = authz.revision;
+    if (n === 3 && state.flipOn) { authz.revision = 2; authz.grant = false; }
+    return { householdId: input.householdId, actorId: input.actorId, operationId: input.operationId };
+  });
+  const state = { flipOn: false };
+  const h = await httpWorld({ policy: mkPolicy(state),
+    finalDisclosure: () => authz.ordinary && authz.grant && authz.revision === witness.admittedRevision });
+  try {
+    await commitOp(h.w, h.w.controller, 1);
+    const control = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(control.status, 200);
+    // The predicate was consulted with the retained frozen selectors of
+    // the request — no generation is fabricated for an operation-only call.
+    assert.deepEqual(h.finalDisclosureCalls.at(-1),
+      { householdId, actorId: ACTOR2, operationId: op(1) });
+    state.flipOn = true; h.policy.calls.length = 0;
+    const out = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(out.status, 503, 'a stale witness must refuse after revocation');
+    assert.deepEqual(out.body, { status: 'unavailable' });
+  } finally { await h.close(); }
+  // Present-generation semantics: the retained selector carries the exact
+  // supplied generation, and the negative proof discloses when healthy.
+  const h2 = await httpWorld({});
+  try {
+    const s5 = await sealViaExpiry(h2.w, h2.w.controller, 5);
+    const neg = await h2.call('outcome',
+      { operationId: op(5), generation: s5.prepared.generation }, ACTOR2);
+    assert.equal(neg.status, 200);
+    assert.deepEqual(neg.body, { status: 'not-applied', operationId: op(5),
+      generation: s5.prepared.generation });
+    assert.deepEqual(h2.finalDisclosureCalls.at(-1),
+      { householdId, actorId: ACTOR2, operationId: op(5), generation: s5.prepared.generation });
+  } finally { await h2.close(); }
+  // Control demonstrating Addendum A §5: in the SAME revoked state, a
+  // captured-true predicate (it returns the admission-time answer without
+  // consulting current state) discloses — the seam trusts the predicate,
+  // which is exactly why the contract forbids captured-true predicates.
+  authz.revision = 1; authz.ordinary = true; authz.grant = true;
+  const state2 = { flipOn: true };
+  const h3 = await httpWorld({ policy: mkPolicy(state2), finalDisclosure: () => true });
+  try {
+    await commitOp(h3.w, h3.w.controller, 1);
+    const out = await h3.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(out.status, 200, 'a captured-true predicate discloses despite revocation (why §5 forbids it)');
+    assert.deepEqual(out.body, { status: 'committed', operationId: op(1) });
+    assert.equal(authz.grant, false, 'the revocation really landed during the request');
+  } finally { await h3.close(); }
+});
+
+// === B4R-A6: predicate throws / thenable / malformed =======================
+test('B4R-A6: a throwing, thenable, or malformed final predicate refuses with zero disclosure', async () => {
+  const variants = [
+    ['throws', () => { throw new Error('predicate fault'); }],
+    ['returns a promise', () => Promise.resolve(true)],
+    ['returns a thenable', () => ({ then() {} })],
+    ['returns 1', () => 1],
+    ['returns "true"', () => 'true'],
+    ['returns null', () => null],
+    ['returns undefined', () => undefined],
+  ];
+  for (const [label, impl] of variants) {
+    const h = await httpWorld({ finalDisclosure: impl });
+    try {
+      await commitOp(h.w, h.w.controller, 1);
+      const out = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+      assert.equal(out.status, 503, label + ' (outcome)');
+      assert.deepEqual(out.body, { status: 'unavailable' }, label + ' (outcome)');
+      const pub = await h.call('publication', { operationId: op(1) }, ACTOR2);
+      assert.equal(pub.status, 503, label + ' (publication)');
+      assert.deepEqual(pub.body, { status: 'unavailable' }, label + ' (publication)');
+      assert.equal(h.finalDisclosureCalls.length, 2, label + ': exactly one predicate call per disclosure');
+    } finally { await h.close(); }
+  }
+});
+
+// === B4R-A7: missing capability fails closed; incumbents unchanged =========
+test('B4R-A7: missing final-disclosure capability refuses recovery; incumbents unchanged', async () => {
+  const h = await httpWorld({ finalDisclosure: null });
+  try {
+    await commitOp(h.w, h.w.controller, 1);
+    const out = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(out.status, 503);
+    assert.deepEqual(out.body, { status: 'unavailable' });
+    const pub = await h.call('publication', { operationId: op(1) }, ACTOR2);
+    assert.equal(pub.status, 503);
+    assert.deepEqual(pub.body, { status: 'unavailable' });
+    // Incumbent same-actor surfaces never needed the capability.
+    const outA = await h.call('outcome', { operationId: op(1) }, ACTOR);
+    assert.equal(outA.status, 200);
+    assert.equal(outA.body.status, 'committed');
+    assert.equal(outA.body.revision, 1);
+    const pubA = await h.call('publication', { operationId: op(1) }, ACTOR);
+    assert.equal(pubA.status, 200);
+    assert.equal(pubA.body.publication, 'included');
+  } finally { await h.close(); }
+  // A recovery negative proof is a disclosure too: it refuses as well,
+  // while the same-actor negative contract is untouched.
+  const h2 = await httpWorld({ finalDisclosure: null });
+  try {
+    const s5 = await sealViaExpiry(h2.w, h2.w.controller, 5);
+    const neg = await h2.call('outcome',
+      { operationId: op(5), generation: s5.prepared.generation }, ACTOR2);
+    assert.equal(neg.status, 503);
+    assert.deepEqual(neg.body, { status: 'unavailable' });
+    const negA = await h2.call('outcome',
+      { operationId: op(5), generation: s5.prepared.generation }, ACTOR);
+    assert.equal(negA.status, 200);
+    assert.deepEqual(negA.body, { status: 'not-applied', operationId: op(5),
+      generation: s5.prepared.generation });
+  } finally { await h2.close(); }
+  // A non-function capability value is a construction error.
+  const express = require('express');
+  const w = await makeWorld({});
+  assert.throws(() => mountSettlementHttp(express(), req => null,
+    { householdId, origin: 'http://synthetic.local', authorize: w.authorize,
+      acquire: w.syntheticAcquire, contextReader: w.contextReader,
+      readBase: async () => clone(w.baseFixture), now: () => NOW0,
+      commitAdmitted: w.commitAdmitted, readDocument: w.readDocument,
+      readPin: w.readPin, store: w.wrappedStore, finalDisclosureAuthorize: 'yes' }), TypeError);
+  // Where the recovery branch itself is absent, the capability is never
+  // consulted and behaviour is the shipped unknown.
+  const h3 = await httpWorld({ httpPolicy: false });
+  try {
+    await commitOp(h3.w, h3.w.controller, 1);
+    const out = await h3.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(out.status, 200);
+    assert.deepEqual(out.body, { status: 'unknown', operationId: op(1) });
+    assert.equal(h3.finalDisclosureCalls.length, 0);
+  } finally { await h3.close(); }
+});
+
+// === B4R-A8: concurrent requests keep request-local final predicates =======
+test('B4R-A8: concurrent recovery disclosures keep request-local final predicates', async () => {
+  const h = await httpWorld({ finalDisclosure: sel => sel.operationId !== op(2) });
+  try {
+    await commitOp(h.w, h.w.controller, 1);            // op1 recorded by A
+    await commitOp(h.w, h.w.controller, 2, h.w.ctxC);  // op2 recorded by C
+    const [o1, o2] = await Promise.all([
+      h.call('outcome', { operationId: op(1) }, ACTOR2),
+      h.call('outcome', { operationId: op(2) }, ACTOR2),
+    ]);
+    assert.equal(o1.status, 200);
+    assert.deepEqual(o1.body, { status: 'committed', operationId: op(1) });
+    assert.equal(o2.status, 503, 'the request whose grant the predicate refuses must refuse');
+    assert.deepEqual(o2.body, { status: 'unavailable' });
+    // Each evaluation carried its own request's retained selectors.
+    assert.deepEqual(h.finalDisclosureCalls.map(c => c.operationId).sort(), [op(1), op(2)].sort());
+    // No residue leaks into later requests either way.
+    const again = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.equal(again.status, 200);
+    const pub2 = await h.call('publication', { operationId: op(2) }, ACTOR2);
+    assert.equal(pub2.status, 503);
+    const pub1 = await h.call('publication', { operationId: op(1) }, ACTOR2);
+    assert.equal(pub1.status, 200);
+    assert.equal(pub1.body.publication, 'included');
   } finally { await h.close(); }
 });

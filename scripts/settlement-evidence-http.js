@@ -20,20 +20,25 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
   if (typeof preactivationOnly !== 'boolean' || preactivationOnly && dependency !== undefined)
     throw new TypeError('sealed preactivation rejects settlement dependencies');
   const router = express.Router({ caseSensitive: true, strict: true });
-  let active = false, controller, resolver, serving, authorize, readBase, origin, now, publicationOutcome = null;
+  let active = false, controller, resolver, serving, authorize, readBase, origin, now, publicationOutcome = null,
+    householdId = null, finalDisclosureAuthorize = null;
   const catalogues = new Map();
   if (dependency !== undefined) {
     const d = dependency;
     if (!record(d) || !/^household-[a-f0-9]{32}$/.test(d.householdId)
       || ['authorize', 'acquire', 'contextReader', 'readBase', 'now', 'commitAdmitted', 'readDocument', 'readPin']
         .some(k => typeof d[k] !== 'function')
-      || (d.authorizeRecovery !== undefined && typeof d.authorizeRecovery !== 'function'))
+      || (d.authorizeRecovery !== undefined && typeof d.authorizeRecovery !== 'function')
+      || (d.finalDisclosureAuthorize !== undefined && typeof d.finalDisclosureAuthorize !== 'function'))
       throw new TypeError('incomplete settlement composition');
     const url = new URL(d.origin);
     if (!['http:', 'https:'].includes(url.protocol) || url.origin !== d.origin
       || url.username || url.password) throw new TypeError('invalid configured settlement origin');
     origin = d.origin; now = d.now; readBase = d.readBase;
-    const householdId = d.householdId, policy = d.authorize;
+    householdId = d.householdId;
+    finalDisclosureAuthorize = typeof d.finalDisclosureAuthorize === 'function'
+      ? d.finalDisclosureAuthorize : null;
+    const policy = d.authorize;
     const acquire = d.acquire, contextReader = d.contextReader;
     authorize = async context => {
       const authority = await policy(Object.freeze({ ...context }));
@@ -122,6 +127,27 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
       // per-request holder the handler fills during run(); it is never
       // shared across requests.
       if (finalCheck) await finalCheck(gate);
+      // Addendum A final-disclosure boundary. When this request's
+      // evaluation put a recovery proof in play, `gate.finalDisclosure`
+      // holds its retained frozen selectors, and disclosure requires —
+      // in THIS synchronous continuation, after the last await above,
+      // with no acquisition or async callback afterward — the injected
+      // synchronous final predicate FIRST (exact boolean true only; it
+      // judges current ordinary household authority AND the named
+      // recovery grant), then the session-actor re-read, then
+      // serialization. A missing capability, a throw, or any non-true
+      // verdict (false, malformed, Promise/thenable) refuses through
+      // the catch: 503, zero disclosure. Incumbent paths never set the
+      // gate, never call the predicate, and are unchanged.
+      if (gate.finalDisclosure) {
+        if (typeof finalDisclosureAuthorize !== 'function')
+          throw new Error('final-disclosure capability missing');
+        let verdict;
+        try { verdict = finalDisclosureAuthorize(gate.finalDisclosure); }
+        catch { throw new Error('final-disclosure refused'); }
+        if (verdict !== true) throw new Error('final-disclosure refused');
+        if (sessionActor(req) !== context.actorId) throw new Error('expired');
+      }
       return res.json(result);
     } catch { return fail(res); } // No raw exception, body, token or receipt log.
   });
@@ -162,6 +188,16 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
   // re-runs the recovery decision captured by THIS request's evaluation,
   // inside the helper AFTER its final authorization await (see post()).
   const recoveryGate = async gate => { if (gate.recheckRecovery) await gate.recheckRecovery(); };
+  // The retained frozen selectors for the Addendum A final predicate:
+  // the configured household, this request's session authority actor
+  // (the authorize wrapper forces the evaluation's authority actor to
+  // equal it), and the validated operation/generation selectors the
+  // evaluation itself retained — generation present exactly when the
+  // caller supplied it, never fabricated.
+  const finalSelectors = (context, body) => Object.freeze(Object.hasOwn(body, 'generation')
+    ? { householdId, actorId: context.actorId, operationId: body.operationId,
+      generation: body.generation }
+    : { householdId, actorId: context.actorId, operationId: body.operationId });
   post('/outcome', outcomeRequest, async (context, _authority, body, gate) => {
     if (typeof publicationOutcome !== 'function') throw new Error('publication evaluation unavailable');
     const r = await publicationOutcome(context, body);
@@ -172,6 +208,7 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     // authorization await, immediately before serialization.
     if (r.recoveryRefused) throw new Error('recovery-refused');
     gate.recheckRecovery = r.recheckRecovery;
+    if (r.recheckRecovery) gate.finalDisclosure = finalSelectors(context, body);
     return r.result;
   }, recoveryGate);
   post('/publication', operation, async (context, _authority, body, gate) => {
@@ -181,6 +218,7 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     // A recovery negative proof is a disclosure too: its recheck is gated
     // exactly like the committed path's.
     gate.recheckRecovery = r.recheckRecovery;
+    if (r.recheckRecovery) gate.finalDisclosure = finalSelectors(context, body);
     if (r.result.status !== 'committed') return r.result;
     // readBase must supply a complete served object; no ordinary attach or
     // provider fallback is allowed on this receipt-bound path. The binding
