@@ -132,8 +132,21 @@ const talkSessions = TalkSession.createSessionContext({ secret: SECRET });
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // Render terminates TLS in front of us
-const formParser = express.urlencoded({ extended: false, limit: '8kb' });
-app.use((req, res, next) => /^\/settlement(?:\/|$)/i.test(req.path) ? next() : formParser(req, res, next));
+const formParser = express.urlencoded({ extended: false, limit: '8kb', inflate: false });
+// Compressed request bodies are rejected before any parser runs: this surface
+// accepts only uncompressed input, the same refusal the settlement router
+// already makes. A malformed compressed stream otherwise reaches body-parser's
+// inflater and surfaces through the default error handler as an HTML error
+// page (with stack detail outside production) instead of one fixed refusal,
+// and a well-formed compressed body is silently decompressed and accepted.
+function rejectCompressed(req, res, next) {
+  const encoding = req.get('Content-Encoding');
+  if (encoding && encoding.trim().toLowerCase() !== 'identity') {
+    return res.status(415).json({ status: 'invalid-request' });
+  }
+  return formParser(req, res, next);
+}
+app.use((req, res, next) => /^\/settlement(?:\/|$)/i.test(req.path) ? next() : rejectCompressed(req, res, next));
 
 // ---------------------------------------------------------------- security
 app.use((req, res, next) => {
@@ -401,7 +414,7 @@ function mcpOAuthGate(req, res, next) {
   }
   return MCP_BEARER_AUTH(req, res, next);
 }
-const mcpJson = express.json({ limit: '32kb', type: 'application/json' });
+const mcpJson = express.json({ limit: '32kb', type: 'application/json', inflate: false });
 app.post('/assistant/mcp', mcpOAuthGate, (req, res, next) => {
   mcpJson(req, res, (err) => {
     if (!err) return next();
@@ -535,7 +548,7 @@ app.all('/talk/capability', (_req, res) => {
 // tokens, incomplete model JSON, and unverified prose are never written
 // to the stream. Envelope failures stay JSON so the auth and body
 // contract do not change.
-const talkAskJson = express.json({ limit: '4kb', type: 'application/json' });
+const talkAskJson = express.json({ limit: '4kb', type: 'application/json', inflate: false });
 
 function appendTalkSessionTurn(sessionKey, question, presented) {
   talkSessions.append(sessionKey, {

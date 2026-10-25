@@ -86,6 +86,7 @@ const suites = [
   ['settlement evidence publication gating: configured-unavailable withholding at the packet, Planning and Plan surfaces (ATLAS-080)', 'test-settlement-evidence-publication-gating.js'],
   ['settlement evidence server seam: default-inactive bridge from the shared served data to the loader outcome (ATLAS-080)', 'test-settlement-evidence-server-seam.js'],
   ['inactive Savings assignment real HTTP journey', 'test-settlement-evidence-http.js'],
+  ['compressed input rejected before parsing on the core request surface', 'test-server-compressed-input.js'],
   ['settlement evidence serving: receipt-bound qualified publication read over the construction-fixed serving dependency (ATLAS-080)', 'test-settlement-evidence-serving.js'],
   ['settlement evidence confirmation: synthetic session-bound prepare/confirm/outcome with atomic no-recovery commits (ATLAS-080)', 'test-settlement-evidence-confirmation.js'],
   ['settlement evidence terminal certificate: irreversible operation seal, certificate-after-seal and modelled atomic fencing (ATLAS-080)', 'test-settlement-evidence-terminal-certificate.js'],
