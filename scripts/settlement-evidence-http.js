@@ -20,13 +20,15 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
   if (typeof preactivationOnly !== 'boolean' || preactivationOnly && dependency !== undefined)
     throw new TypeError('sealed preactivation rejects settlement dependencies');
   const router = express.Router({ caseSensitive: true, strict: true });
-  let active = false, controller, resolver, serving, authorize, readBase, origin, now;
+  let active = false, controller, resolver, serving, authorize, readBase, origin, now, publicationOutcome = null;
   const catalogues = new Map();
   if (dependency !== undefined) {
     const d = dependency;
     if (!record(d) || !/^household-[a-f0-9]{32}$/.test(d.householdId)
       || ['authorize', 'acquire', 'contextReader', 'readBase', 'now', 'commitAdmitted', 'readDocument', 'readPin']
-        .some(k => typeof d[k] !== 'function')) throw new TypeError('incomplete settlement composition');
+        .some(k => typeof d[k] !== 'function')
+      || (d.authorizeRecovery !== undefined && typeof d.authorizeRecovery !== 'function'))
+      throw new TypeError('incomplete settlement composition');
     const url = new URL(d.origin);
     if (!['http:', 'https:'].includes(url.protocol) || url.origin !== d.origin
       || url.username || url.password) throw new TypeError('invalid configured settlement origin');
@@ -43,8 +45,14 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
       acquire: () => acquire(contextReader) });
     const withdrawalReader = createWithdrawalTargetReader({ householdId,
       readDocument: d.readDocument, readPin: d.readPin, contextReader });
+    // Private publication-evaluation capability, captured through the
+    // controller's construction-time registration (the registerRecovery
+    // pattern): it never appears on the controller's public object, and
+    // only this mount's /outcome and /publication routes consume it.
     // Exactly one controller for this application lifetime, including all routes.
     controller = createSettlementEvidenceConfirmation({ householdId: d.householdId, authorize,
+      authorizeRecovery: d.authorizeRecovery,
+      registerPublicationOutcome: fn => { publicationOutcome = fn; },
       resolveSelection: resolver.resolveSelection, resolvePairedSelection: resolver.resolvePairedSelection,
       store: d.store, commitAdmitted: d.commitAdmitted, now,
       registerRecovery: d.registerRecovery,
@@ -96,16 +104,24 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     next();
   });
   router.use(express.json({ limit: 4096, strict: true, inflate: false }));
-  const post = (route, valid, run) => router.post(route, async (req, res) => {
+  const post = (route, valid, run, finalCheck) => router.post(route, async (req, res) => {
     if (!valid(req.body)) return res.status(400).json({ status: 'invalid-request' });
     const context = req.settlementContext;
     try {
       const authority = await authorize(context);
-      const result = await run(context, authority, req.body);
+      const gate = {};
+      const result = await run(context, authority, req.body, gate);
       // Cookies remain identity only, and authorization must still hold after
       // asynchronous publication. Never return a view after revocation.
       await authorize(context);
       if (sessionActor(req) !== context.actorId) throw new Error('expired');
+      // A route's final disclosure check runs after EVERY other await in
+      // this helper — including the final authorization above — so a
+      // revocation landing in any earlier await (the B4 recovery-policy
+      // BLOCK, Atlas ts 1792947464) cannot serialize past it. `gate` is a
+      // per-request holder the handler fills during run(); it is never
+      // shared across requests.
+      if (finalCheck) await finalCheck(gate);
       return res.json(result);
     } catch { return fail(res); } // No raw exception, body, token or receipt log.
   });
@@ -142,16 +158,41 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
   const outcomeRequest = body => operation(body)
     || shape(body, ['operationId', 'generation']) && OP.test(body.operationId)
       && /^generation-[a-f0-9]{32}$/.test(body.generation);
-  post('/outcome', outcomeRequest, (context, _authority, body) => controller.outcome(context, body));
-  post('/publication', operation, async (context, authority, body) => {
-    const receipt = await controller.outcome(context, body);
-    if (receipt.status !== 'committed') return receipt;
+  // The B4 final disclosure check, shared by both disclosing routes: it
+  // re-runs the recovery decision captured by THIS request's evaluation,
+  // inside the helper AFTER its final authorization await (see post()).
+  const recoveryGate = async gate => { if (gate.recheckRecovery) await gate.recheckRecovery(); };
+  post('/outcome', outcomeRequest, async (context, _authority, body, gate) => {
+    if (typeof publicationOutcome !== 'function') throw new Error('publication evaluation unavailable');
+    const r = await publicationOutcome(context, body);
+    // A recovery decision refusal anywhere in the evaluation suppresses
+    // disclosure with the seam's incumbent 503 (the helper's catch), never
+    // a locally invented shape. When a recovery proof is in play, its
+    // final recheck is deferred to the helper's gate — after the final
+    // authorization await, immediately before serialization.
+    if (r.recoveryRefused) throw new Error('recovery-refused');
+    gate.recheckRecovery = r.recheckRecovery;
+    return r.result;
+  }, recoveryGate);
+  post('/publication', operation, async (context, _authority, body, gate) => {
+    if (typeof publicationOutcome !== 'function') throw new Error('publication evaluation unavailable');
+    const r = await publicationOutcome(context, body);
+    if (r.recoveryRefused) throw new Error('recovery-refused');
+    // A recovery negative proof is a disclosure too: its recheck is gated
+    // exactly like the committed path's.
+    gate.recheckRecovery = r.recheckRecovery;
+    if (r.result.status !== 'committed') return r.result;
     // readBase must supply a complete served object; no ordinary attach or
-    // provider fallback is allowed on this receipt-bound path.
+    // provider fallback is allowed on this receipt-bound path. The binding
+    // is the evaluation's own receipt + actor: the same-actor receipt and
+    // authority on the incumbent path (byte-identical behaviour), or the
+    // store's private qualified bundle when the recovery branch proved the
+    // commit — publication never depends on the current session being the
+    // recorded actor. No acquisition follows the helper's final gate.
     const base = await readBase();
-    const publication = await receiptBoundView(serving, base, receipt, authority.actorId);
+    const publication = await receiptBoundView(serving, base, r.binding.receipt, r.binding.actorId);
     return { status: 'committed', publication: publication.status, data: publication.data };
-  });
+  }, recoveryGate);
   router.use((_req, res) => res.status(404).json({ status: 'unavailable' }));
   router.use((_err, _req, res, _next) => res.status(400).json({ status: 'invalid-request' }));
   app.use('/settlement', router);
