@@ -2,7 +2,11 @@
 
 // Construction only. No environment, provider, storage default, maintenance
 // route or caller-selected authority. Production deliberately supplies nothing.
+const { types: utilTypes } = require('node:util');
 const express = require('express');
+// Captured at load: the refusal handler attaches rejection containment
+// through this intrinsic, never through a verdict's own properties.
+const promiseThen = Promise.prototype.then;
 const { createSettlementEvidenceConfirmation } = require('./settlement-evidence-confirmation');
 const { createSettlementEvidenceResolver } = require('./settlement-evidence-resolver');
 const { createSettlementEvidenceServing, receiptBoundView } = require('./settlement-evidence-serving');
@@ -152,12 +156,21 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
         try { verdict = finalDisclosureAuthorize(gate.finalDisclosure); }
         catch { throw new Error('final-disclosure refused'); }
         if (verdict !== true) {
-          // The verdict refuses. A native Promise verdict is never
-          // awaited or assimilated, but its rejection must not escape
-          // as an unhandled rejection: attach a swallowing handler.
-          // Arbitrary thenables are left entirely untouched — their
-          // `then` is never invoked.
-          if (verdict instanceof Promise) verdict.catch(() => {});
+          // The verdict refuses — synchronously, whatever it is. A
+          // genuine native Promise verdict (recognized across realms by
+          // util.types.isPromise, which reads no property of the value)
+          // is never awaited or assimilated and its eventual value is
+          // never accepted, but its rejection must not escape as an
+          // unhandled rejection: attach nonthrowing handlers through
+          // the CAPTURED Promise.prototype.then via Reflect.apply, so
+          // a shadowed `.then`/`.catch` property on the value is never
+          // read or invoked. Arbitrary thenables are left entirely
+          // untouched — no property access at all. A failure attaching
+          // the handlers is itself contained; the refusal stands.
+          if (utilTypes.isPromise(verdict)) {
+            try { Reflect.apply(promiseThen, verdict, [() => {}, () => {}]); }
+            catch { /* containment failed; the refusal below stands */ }
+          }
           throw new Error('final-disclosure refused');
         }
         if (sessionActor(req) !== context.actorId) throw new Error('expired');

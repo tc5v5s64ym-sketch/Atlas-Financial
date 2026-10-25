@@ -1529,3 +1529,110 @@ test('B4R-A10: incumbent paths serialize in the same continuation as the final s
     assert.equal(state.expired, true, 'the armed expiry really landed during the publication request');
   } finally { await new Promise(res => server.close(res)); }
 });
+
+// === Residual correction rows (Atlas review of feb989bb, ts 1792957095) ====
+// The feb989bb refusal handler recognized verdict Promises with
+// `instanceof Promise` and called the value's own `.catch`: a
+// foreign-realm native Promise bypassed recognition, and a native
+// Promise with a shadowed `.catch`/`.then` property had that supplied
+// method invoked — both still left unhandled rejections. The correction
+// recognizes genuine native Promises across realms (util.types.isPromise)
+// and attaches nonthrowing handlers through a CAPTURED
+// Promise.prototype.then via Reflect.apply, never reading the value's
+// own properties; arbitrary thenables stay completely untouched.
+
+// === B4R-A6c: foreign-realm / shadowed rejected promises are contained =====
+test('B4R-A6c: foreign-realm and shadowed rejected promises refuse contained, supplied methods untouched', async () => {
+  const vm = require('node:vm');
+  const seen = [];
+  const onUnhandled = reason => { seen.push(String(reason)); };
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    // (1) Foreign-realm native rejected Promise, both routes.
+    const h1 = await httpWorld({
+      finalDisclosure: () => vm.runInNewContext('Promise.reject(new Error("foreign realm rejection"))'),
+    });
+    try {
+      await commitOp(h1.w, h1.w.controller, 1);
+      const out = await h1.call('outcome', { operationId: op(1) }, ACTOR2);
+      assert.equal(out.status, 503, 'foreign-realm rejected verdict (outcome)');
+      assert.deepEqual(out.body, { status: 'unavailable' });
+      const pub = await h1.call('publication', { operationId: op(1) }, ACTOR2);
+      assert.equal(pub.status, 503, 'foreign-realm rejected verdict (publication)');
+      assert.deepEqual(pub.body, { status: 'unavailable' });
+    } finally { await h1.close(); }
+    // (2) Native rejected Promise with a shadowed `.catch`, both routes:
+    // the supplied method must never be invoked.
+    let catchInvoked = false;
+    const h2 = await httpWorld({
+      finalDisclosure: () => {
+        const p = Promise.reject(new Error('shadowed catch rejection'));
+        p.catch = () => { catchInvoked = true; };
+        return p;
+      },
+    });
+    try {
+      await commitOp(h2.w, h2.w.controller, 1);
+      const out = await h2.call('outcome', { operationId: op(1) }, ACTOR2);
+      assert.equal(out.status, 503, 'shadowed-catch rejected verdict (outcome)');
+      assert.deepEqual(out.body, { status: 'unavailable' });
+      const pub = await h2.call('publication', { operationId: op(1) }, ACTOR2);
+      assert.equal(pub.status, 503, 'shadowed-catch rejected verdict (publication)');
+      assert.deepEqual(pub.body, { status: 'unavailable' });
+      assert.equal(catchInvoked, false, 'the supplied .catch must never be invoked');
+    } finally { await h2.close(); }
+    // (3) Native rejected Promise with a shadowed `.then`, both routes.
+    let thenInvoked = false;
+    const h3 = await httpWorld({
+      finalDisclosure: () => {
+        const p = Promise.reject(new Error('shadowed then rejection'));
+        p.then = () => { thenInvoked = true; };
+        return p;
+      },
+    });
+    try {
+      await commitOp(h3.w, h3.w.controller, 1);
+      const out = await h3.call('outcome', { operationId: op(1) }, ACTOR2);
+      assert.equal(out.status, 503, 'shadowed-then rejected verdict (outcome)');
+      assert.deepEqual(out.body, { status: 'unavailable' });
+      const pub = await h3.call('publication', { operationId: op(1) }, ACTOR2);
+      assert.equal(pub.status, 503, 'shadowed-then rejected verdict (publication)');
+      assert.deepEqual(pub.body, { status: 'unavailable' });
+      assert.equal(thenInvoked, false, 'the supplied .then must never be invoked');
+    } finally { await h3.close(); }
+    // Give any unhandled rejection its chance to fire.
+    await new Promise(res => setTimeout(res, 100));
+    assert.deepEqual(seen, [], 'no unhandled rejection may escape any refused verdict');
+  } finally { process.removeListener('unhandledRejection', onUnhandled); }
+});
+
+// === B4R-A6d (controls): resolved verdict refused; getter-thenable untouched
+// Both limbs already hold at feb989bb (the instanceof check never touches
+// non-Promises); they pin the correction against over-eager recognition.
+test('B4R-A6d (controls): a resolved Promise still refuses; a throwing-then-getter thenable refuses untouched', async () => {
+  const seen = [];
+  const onUnhandled = reason => { seen.push(String(reason)); };
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const h = await httpWorld({ finalDisclosure: () => Promise.resolve(true) });
+    try {
+      await commitOp(h.w, h.w.controller, 1);
+      const out = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+      assert.equal(out.status, 503, 'a resolved Promise verdict is still not boolean true');
+      assert.deepEqual(out.body, { status: 'unavailable' });
+    } finally { await h.close(); }
+    let getterAccessed = false;
+    const evil = {};
+    Object.defineProperty(evil, 'then', { get() { getterAccessed = true; throw new Error('getter trap'); } });
+    const h2 = await httpWorld({ finalDisclosure: () => evil });
+    try {
+      await commitOp(h2.w, h2.w.controller, 1);
+      const out = await h2.call('outcome', { operationId: op(1) }, ACTOR2);
+      assert.equal(out.status, 503, 'a non-Promise thenable verdict refuses');
+      assert.deepEqual(out.body, { status: 'unavailable' });
+      assert.equal(getterAccessed, false, 'the seam must not access any property of a thenable verdict');
+    } finally { await h2.close(); }
+    await new Promise(res => setTimeout(res, 50));
+    assert.deepEqual(seen, [], 'no unhandled rejection in the control limbs');
+  } finally { process.removeListener('unhandledRejection', onUnhandled); }
+});
