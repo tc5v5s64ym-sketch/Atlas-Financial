@@ -89,9 +89,10 @@ const PRIVILEGES = `SELECT has_database_privilege(current_database(),'CONNECT') 
   (SELECT bool_and(has_table_privilege(format('%I.%I',$1,t.name),'SELECT')
     AND has_table_privilege(format('%I.%I',$1,t.name),'INSERT')
     AND has_table_privilege(format('%I.%I',$1,t.name),'UPDATE')=(t.name<>'quarantine')
+    AND (t.name<>'quarantine' OR NOT has_any_column_privilege(format('%I.%I',$1,t.name),'UPDATE'))
     AND has_table_privilege(format('%I.%I',$1,t.name),'DELETE')=(t.name<>'quarantine')
     AND NOT has_table_privilege(format('%I.%I',$1,t.name),'TRUNCATE')
-    AND NOT has_table_privilege(format('%I.%I',$1,t.name),'REFERENCES')
+    AND NOT has_any_column_privilege(format('%I.%I',$1,t.name),'REFERENCES')
     AND NOT has_table_privilege(format('%I.%I',$1,t.name),'TRIGGER'))
     FROM (VALUES ('doc_head'),('doc_staged'),('journal'),('quarantine')) t(name)) AS tables,
   has_function_privilege('pg_catalog.pg_try_advisory_lock(integer,integer)','EXECUTE')
@@ -105,7 +106,7 @@ const SCHEMA = `SELECT c.relname AS name,c.relkind AS kind,c.relpersistence AS p
       OR NOT k.convalidated OR NOT k.conenforced))) AS unsafe,
   (SELECT count(*)::int FROM pg_catalog.pg_constraint k WHERE k.conrelid=c.oid AND k.contype='p') AS "primaryKeyCount",
   (SELECT jsonb_agg(jsonb_build_object('name',a.attname,'type',pg_catalog.format_type(a.atttypid,a.atttypmod),
-    'notNull',a.attnotnull) ORDER BY a.attnum) FROM pg_catalog.pg_attribute a
+    'notNull',a.attnotnull,'generated',a.attgenerated) ORDER BY a.attnum) FROM pg_catalog.pg_attribute a
     WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped) AS columns,
   ARRAY(SELECT a.attname FROM pg_catalog.pg_constraint k CROSS JOIN LATERAL unnest(k.conkey)
     WITH ORDINALITY p(num,ord) JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum=p.num
@@ -130,7 +131,8 @@ function schemaMatches(result) {
       && t.unsafe===false && t.primaryKeyCount===1, 'schema','schema');
     const cols=t.name==='quarantine'?['scope','name','label','bytes']:['scope','bytes'];
     check(Array.isArray(t.columns) && t.columns.length===cols.length && t.columns.every((c,i)=>
-      c.name===cols[i] && c.type===(c.name==='bytes'?'bytea':'text') && c.notNull===(c.name!=='label')),'schema','schema');
+      c.name===cols[i] && c.type===(c.name==='bytes'?'bytea':'text') && c.notNull===(c.name!=='label')
+      && c.generated===''),'schema','schema');
     const pk=t.name==='quarantine'?['scope','name']:['scope'];
     check(Array.isArray(t.primaryKey) && t.primaryKey.length===pk.length && t.primaryKey.every((c,i)=>c===pk[i]),'schema','schema');
   }

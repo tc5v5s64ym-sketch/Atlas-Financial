@@ -27,7 +27,7 @@ function metadata() {
     ['doc_head','doc_staged','journal','quarantine'].map(name => ({ name, kind:'r', persistence:'p',
       rls:false, forceRls:false, unsafe:false, primaryKeyCount:1,
       columns:(name === 'quarantine' ? ['scope','name','label','bytes'] : ['scope','bytes'])
-        .map(n => ({ name:n, type:n === 'bytes' ? 'bytea' : 'text', notNull:n !== 'label' })),
+        .map(n => ({ name:n, type:n === 'bytes' ? 'bytea' : 'text', notNull:n !== 'label', generated:'' })),
       primaryKey:name === 'quarantine' ? ['scope','name'] : ['scope'] }))
   ];
 }
@@ -58,6 +58,36 @@ function projectConstraints(text, table, constraints) {
   result.primaryKey=constraints.filter(k=>k.contype==='p').flatMap(k=>k.conkey);
   return result;
 }
+function approvedAcl() {
+  return Object.fromEntries(['doc_head','doc_staged','journal','quarantine'].map(name=>[name,{
+    table:new Set(name==='quarantine'?['SELECT','INSERT']:['SELECT','INSERT','UPDATE','DELETE']),columns:{}
+  }]));
+}
+function projectAcl(text, base, acl) {
+  // Narrow inquiry model over effective table/column input grants. It follows
+  // only the emitted inquiry forms, not a SQL parser or PostgreSQL execution.
+  for(const privilege of ['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','TRIGGER'])
+    assert.ok(text.includes("has_table_privilege(format('%I.%I',$1,t.name),'"+privilege+"')"));
+  const columnUpdate=text.includes("(t.name<>'quarantine' OR NOT has_any_column_privilege(format('%I.%I',$1,t.name),'UPDATE'))");
+  const columnReferences=text.includes("NOT has_any_column_privilege(format('%I.%I',$1,t.name),'REFERENCES')");
+  if(!columnReferences)assert.ok(text.includes("NOT has_table_privilege(format('%I.%I',$1,t.name),'REFERENCES')"));
+  const any=(grants,privilege)=>grants.table.has(privilege)||Object.values(grants.columns).some(p=>p.has(privilege));
+  return {...base,tables:Object.entries(acl).every(([name,g])=>g.table.has('SELECT')&&g.table.has('INSERT')
+    &&g.table.has('UPDATE')===(name!=='quarantine')&&g.table.has('DELETE')===(name!=='quarantine')
+    &&!g.table.has('TRUNCATE')&&!g.table.has('TRIGGER')
+    &&!(columnReferences?any(g,'REFERENCES'):g.table.has('REFERENCES'))
+    &&!(columnUpdate&&name==='quarantine'&&any(g,'UPDATE')))};
+}
+function attributeCatalog() {
+  return metadata()[3].map(table=>({...table,columns:table.columns.map(c=>({
+    name:c.name,type:c.type,notNull:c.notNull,attgenerated:''
+  }))}));
+}
+function projectAttributes(text, table) {
+  const selected=text.includes("'generated',a.attgenerated");
+  return {...table,columns:table.columns.map(c=>({name:c.name,type:c.type,notNull:c.notNull,
+    ...(selected?{generated:c.attgenerated}:{})}))};
+}
 function world(options = {}) {
   const w = { constructed:0, connects:0, ends:0, queries:[], clients:[], rows:metadata(), data:null };
   class Client extends EventEmitter {
@@ -73,8 +103,11 @@ function world(options = {}) {
       const index=w.queries.length; w.queries.push({ text, values });
       if (options.query) { const r=await options.query({ text, values, index, client:this, w }); if (r !== undefined) return r; }
       if (index < 4) {
-        if(index===3 && options.catalog) {
-          w.projected=w.rows[3].map(row=>projectConstraints(text,row,options.catalog[row.name]));
+        if(index===2 && options.acl)return {command:'SELECT',rows:[projectAcl(text,w.rows[2],options.acl)]};
+        if(index===3 && (options.catalog||options.attributes)) {
+          let projected=options.attributes?options.attributes.map(row=>projectAttributes(text,row)):w.rows[3];
+          if(options.catalog)projected=projected.map(row=>projectConstraints(text,row,options.catalog[row.name]));
+          w.projected=projected;
           return {command:'SELECT',rows:w.projected};
         }
         return { command:'SELECT', rows:index === 3 ? w.rows[3] : [w.rows[index]] };
@@ -304,5 +337,54 @@ test('F8 PG18 catalog model: separate PK count and original column/PK/nullabilit
   for(const change of changes){const catalog=catalog18();change(catalog);const w=world({catalog});await assert.rejects(w.open());assert.equal(w.ends,1);}
   for(const change of [rows=>rows[0].columns[1].notNull=false,rows=>rows[0].columns[1].type='text',rows=>rows[3].columns[2].notNull=true]){
     const w=world({catalog:catalog18()});change(w.rows[3]);await assert.rejects(w.open());assert.equal(w.ends,1);
+  }
+});
+async function preflightRefused(w,stage) {
+  let owner,error;try{owner=await w.open();}catch(e){error=e;}
+  if(owner)await owner.retire(); // keep tests-first ready failures closed too
+  assert.ok(error,'unexpected adapter capabilities published');retirement(error);
+  assert.equal(error.diagnostic.stage,stage);assert.equal(w.queries.length,stage==='privileges'?3:4);
+  assert.equal(error.retirement.close,'confirmed');assert.equal(w.ends,1);
+  assert.ok(w.queries.every(q=>/^SELECT\b/.test(q.text)));assert.ok(!JSON.stringify(error).includes(CANARY));
+}
+test('P2 ACL model: approved full-table grants and mutable-table updates qualify',async()=>{
+  const w=world({acl:approvedAcl(),catalog:catalog18(),attributes:attributeCatalog()});
+  const owner=await w.open();assert.equal(owner.status().state,'ready');assert.equal(w.queries.length,4);
+  await owner.retire();assert.equal(w.ends,1);
+});
+test('P2 ACL model: table and every column-only quarantine UPDATE refuse',async()=>{
+  for(const column of [null,'bytes','scope','name','label']){
+    const acl=approvedAcl();if(column===null)acl.quarantine.table.add('UPDATE');else acl.quarantine.columns[column]=new Set(['UPDATE']);
+    await preflightRefused(world({acl}),'privileges');
+  }
+});
+test('P2 ACL model: table and column-only REFERENCES across all four tables refuse',async()=>{
+  const columns={doc_head:['bytes','scope'],doc_staged:['bytes','scope'],journal:['bytes','scope'],quarantine:['bytes','scope','name','label']};
+  for(const [name,names]of Object.entries(columns))for(const column of [null,...names]){
+    const acl=approvedAcl();if(column===null)acl[name].table.add('REFERENCES');else acl[name].columns[column]=new Set(['REFERENCES']);
+    await preflightRefused(world({acl}),'privileges');
+  }
+});
+test('P2 ACL model: required whole-table grants and other prohibitions stay enforced',async()=>{
+  for(const [name,g]of Object.entries(approvedAcl()))for(const privilege of g.table){
+    const acl=approvedAcl();acl[name].table.delete(privilege);
+    if(privilege!=='DELETE')acl[name].columns.bytes=new Set([privilege]);
+    await preflightRefused(world({acl}),'privileges');
+  }
+  for(const name of Object.keys(approvedAcl()))for(const privilege of ['TRUNCATE','TRIGGER']){
+    const acl=approvedAcl();acl[name].table.add(privilege);await preflightRefused(world({acl}),'privileges');
+  }
+  const acl=approvedAcl();acl.quarantine.table.add('DELETE');await preflightRefused(world({acl}),'privileges');
+});
+test('P2 generated model: stored and virtual columns supplied by adapter refuse',async()=>{
+  for(const marker of ['s','v'])for(const table of attributeCatalog())for(const column of [...table.columns].sort((a,b)=>(a.name==='bytes'?-1:b.name==='bytes'?1:0))){
+    const attributes=attributeCatalog();attributes.find(t=>t.name===table.name).columns.find(c=>c.name===column.name).attgenerated=marker;
+    await preflightRefused(world({catalog:catalog18(),attributes}),'schema');
+  }
+});
+test('P2 generated model: missing null and malformed projected generation never qualifies',async()=>{
+  for(const value of [undefined,null,false,1,{},[],'other','s','v']){
+    const w=world();if(value===undefined)delete w.rows[3][0].columns[1].generated;else w.rows[3][0].columns[1].generated=value;
+    await preflightRefused(w,'schema');
   }
 });
