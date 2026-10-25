@@ -88,6 +88,24 @@ function projectAttributes(text, table) {
   return {...table,columns:table.columns.map(c=>({name:c.name,type:c.type,notNull:c.notNull,
     ...(selected?{generated:c.attgenerated}:{})}))};
 }
+// Captured pg-types 2.2.0 default text-parser boundary, reproduced with the
+// installed package offline before this repair. No pg dependency is added here.
+// index.js SHA256 ece6d549270ba55d08126b10c9997324d808ee828ef00dad236e84e54d9d556d
+// lib/textParsers.js SHA256 bd811a530000508b6b90c1db462078e122f0404769d73f57ad41fe90aca159bd
+// PG18 pg_attribute.attname is name; name[] OID1003 falls back to String,
+// whereas registered text[] OID1009 returns an array. This narrow model handles
+// only these fixed unquoted catalog identifiers, not arbitrary array syntax.
+function catalogArray(oid,wire) {
+  assert.match(wire,/^\{(?:[a-z_]+(?:,[a-z_]+)*)?\}$/);
+  if(oid===1003)return String(wire);
+  assert.equal(oid,1009);return wire==='{}'?[]:wire.slice(1,-1).split(',');
+}
+function projectKeyType(text,table) {
+  const oid=/ARRAY\(SELECT a\.attname::text FROM/.test(text)?1009
+    :/ARRAY\(SELECT a\.attname FROM/.test(text)?1003:null;
+  assert.ok(oid,'unmodelled primary-key projection');
+  return {...table,primaryKey:catalogArray(oid,'{'+table.primaryKey.join(',')+'}')};
+}
 function world(options = {}) {
   const w = { constructed:0, connects:0, ends:0, queries:[], clients:[], rows:metadata(), data:null };
   class Client extends EventEmitter {
@@ -104,9 +122,10 @@ function world(options = {}) {
       if (options.query) { const r=await options.query({ text, values, index, client:this, w }); if (r !== undefined) return r; }
       if (index < 4) {
         if(index===2 && options.acl)return {command:'SELECT',rows:[projectAcl(text,w.rows[2],options.acl)]};
-        if(index===3 && (options.catalog||options.attributes)) {
+        if(index===3 && (options.catalog||options.attributes||options.parserBoundary)) {
           let projected=options.attributes?options.attributes.map(row=>projectAttributes(text,row)):w.rows[3];
           if(options.catalog)projected=projected.map(row=>projectConstraints(text,row,options.catalog[row.name]));
+          if(options.parserBoundary)projected=projected.map(row=>projectKeyType(text,row));
           w.projected=projected;
           return {command:'SELECT',rows:w.projected};
         }
@@ -385,6 +404,24 @@ test('P2 generated model: stored and virtual columns supplied by adapter refuse'
 test('P2 generated model: missing null and malformed projected generation never qualifies',async()=>{
   for(const value of [undefined,null,false,1,{},[],'other','s','v']){
     const w=world();if(value===undefined)delete w.rows[3][0].columns[1].generated;else w.rows[3][0].columns[1].generated=value;
+    await preflightRefused(w,'schema');
+  }
+});
+test('PK parser boundary: captured single/composite name[] and text[] values differ',()=>{
+  for(const [wire,keys]of [['{scope}',['scope']],['{scope,name}',['scope','name']],['{}',[]]]){
+    assert.equal(catalogArray(1003,wire),wire);assert.deepEqual(catalogArray(1009,wire),keys);
+  }
+});
+test('PK parser boundary: ordinary single and composite keys qualify as text arrays',async()=>{
+  const w=world({parserBoundary:true,catalog:catalog18(),attributes:attributeCatalog(),acl:approvedAcl()});
+  const owner=await w.open();assert.equal(owner.status().state,'ready');
+  assert.deepEqual(w.projected[0].primaryKey,['scope']);assert.deepEqual(w.projected[3].primaryKey,['scope','name']);
+  assert.match(w.queries[3].text,/ARRAY\(SELECT a\.attname::text FROM/);
+  assert.equal((await owner.retire()).close,'confirmed');assert.equal(w.ends,1);
+});
+test('PK parser boundary: missing reordered extra duplicate and wrong keys still refuse',async()=>{
+  for(const [index,keys]of [[0,[]],[3,['name','scope']],[3,['scope','name','bytes']],[3,['scope','scope']],[0,['bytes']]]){
+    const w=world({parserBoundary:true});w.rows[3][index].primaryKey=keys;
     await preflightRefused(w,'schema');
   }
 });
