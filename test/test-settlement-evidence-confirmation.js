@@ -2435,6 +2435,7 @@ function d1ControllerWorld(){
  w.authorized=true;w.drift=false;w.fresh=true;
  w.create=(options={})=>{
   const store=w.newStore({wrap:true});let recovery;
+  if(options.lookup)store.terminalExclusion={...store.terminalExclusion,lookupCertificate:options.lookup};
   const resolve=async input=>{
    const f=classificationFixture();input.classify(f.tx,f.plan,f.opts);
    if(options.resolveHook)await options.resolveHook();
@@ -2499,4 +2500,79 @@ test('D1 attempted prejournal terminal uncertainty cannot be cleared by exact-ba
   w.time+=C.TTL_MS;assert.equal((await a.controller.prepare(context,request(2))).reason,'outcome-unresolved');
   assert.equal(w.appends,1);assert.deepEqual(w.writes,[]);
  }
+});
+
+test('B3 native negative read requires exact actor generation and never releases held terminal ownership',async()=>{
+ for(const lostAck of [false,true]){
+  const w=d1ControllerWorld(),a=w.create(),p=await a.controller.prepare(context,request(1));
+  w.time=p.expiresAt;
+  if(lostAck)w.hooks.append=perform=>{perform();throw Error('synthetic lost seal acknowledgement');};
+  assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,lostAck?'unknown':'not-applied');
+  const before={doc:Buffer.from(w.doc),history:Buffer.from(w.historyBytes),appends:w.appends,writes:[...w.writes]};
+  assert.equal((await a.controller.outcome(context,{operationId:p.operationId})).status,'unknown');
+  for(const [ctx,gen] of [[otherContext,p.generation],[context,'generation-'+'f'.repeat(32)]]){
+   assert.notEqual((await a.controller.outcome(ctx,{operationId:p.operationId,generation:gen})).status,'not-applied');
+  }
+  const expected={status:'not-applied',operationId:p.operationId,generation:p.generation};
+  const reads=w.reads;
+  assert.deepEqual(await a.controller.outcome(context,{operationId:p.operationId,generation:p.generation}),
+    lostAck?{status:'unknown',operationId:p.operationId}:expected);
+  if(lostAck)assert.equal(w.reads,reads,'held terminal owner never enters negative lookup');
+  const b=w.create();
+  assert.deepEqual(await b.controller.outcome(context,{operationId:p.operationId,generation:p.generation}),expected);
+  if(lostAck){
+   assert.equal((await a.recovery()).status,'blocked');
+   assert.equal((await a.controller.prepare(context,request(2))).reason,'outcome-unresolved');
+   assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'unknown');
+  }
+  assert.ok(w.doc.equals(before.doc));assert.ok(w.historyBytes.equals(before.history));
+  assert.equal(w.appends,before.appends);assert.deepEqual(w.writes,before.writes);
+ }
+});
+test('B3 negative lookup owns request and reauthorizes after awaited history read',async()=>{
+ const w=d1ControllerWorld(),a=w.create(),p=await a.controller.prepare(context,request(1));
+ w.time=p.expiresAt;assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'not-applied');
+ const seen=deferred(),gate=deferred();w.hooks.historyRead=async perform=>{seen.resolve();await gate.promise;return perform();};
+ const input={operationId:p.operationId,generation:p.generation};
+ const pending=a.controller.outcome(context,input);await seen.promise;
+ input.operationId=op(2);input.generation='generation-'+'f'.repeat(32);w.authorized=false;
+ gate.resolve();assert.notEqual((await pending).status,'not-applied');w.authorized=true;delete w.hooks.historyRead;
+ assert.deepEqual(await a.controller.outcome(context,{operationId:p.operationId,generation:p.generation}),
+  {status:'not-applied',operationId:p.operationId,generation:p.generation});
+ assert.equal(w.records().length,1);assert.deepEqual(w.writes,[]);
+});
+
+test('B3 public negative outcome never infers absence or accepts malformed lower proof',async()=>{
+ for(const mode of ['unknown','null','extra','wrong-generation','wrong-operation','throw']){
+  const w=d1ControllerWorld();let calls=0,received;
+  const a=w.create({lookup:async input=>{
+   calls++;received=input;
+   const proof={status:'not-applied',operationId:op(1),generation:'generation-'+'1'.repeat(32)};
+   if(mode==='throw')throw Error('synthetic unknown');
+   if(mode==='unknown')return {status:'unknown',operationId:op(1)};
+   if(mode==='null')return null;if(mode==='extra')proof.extra=true;
+   if(mode==='wrong-generation')proof.generation='generation-'+'2'.repeat(32);
+   if(mode==='wrong-operation')proof.operationId=op(2);return proof;
+  }});
+  assert.equal((await a.controller.outcome(context,{operationId:op(1)})).status,'unknown');assert.equal(calls,0);
+  const input={operationId:op(1),generation:'generation-'+'1'.repeat(32)};
+  assert.notEqual((await a.controller.outcome(context,input)).status,'not-applied',mode);
+  assert.deepEqual(received,{...input,actorId});assert.equal(calls,1);assert.deepEqual(w.writes,[]);assert.equal(w.appends,0);
+ }
+});
+
+test('B3 Addendum A terminalizing ownership acquired during lookup suppresses a delayed proof',async()=>{
+ const w=d1ControllerWorld(),seen=deferred(),gate=deferred();
+ // Deliberate delayed trusted-capability reply isolates the controller's
+ // ownership recheck; real native qualification is covered separately.
+ const a=w.create({lookup:async input=>{seen.resolve();await gate.promise;
+  return {status:'not-applied',operationId:input.operationId,generation:input.generation};}});
+ const p=await a.controller.prepare(context,request(1));
+ const pending=a.controller.outcome(context,{operationId:p.operationId,generation:p.generation});await seen.promise;
+ try{
+  w.time=p.expiresAt;w.hooks.append=perform=>{perform();throw Error('synthetic lost seal acknowledgement');};
+  assert.equal((await a.controller.confirm(context,d1Confirm(p))).status,'unknown');
+  gate.resolve();assert.equal((await pending).status,'unknown');
+  assert.equal((await a.recovery()).status,'blocked');assert.deepEqual(w.writes,[]);assert.equal(w.appends,1);
+ }finally{gate.resolve();}
 });

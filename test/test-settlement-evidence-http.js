@@ -29,13 +29,24 @@ function acquisitionFor(base) {
 async function startWorld(active = true, options = {}) {
   // Test-only clock injection exercises the unchanged controller/store TTL.
   // The application's signed-cookie expiry continues to use its real clock.
-  const now = options.now || Date.now;
+  let syntheticClock = options.syntheticState?.clock ?? Date.now();
+  const now = options.now || (options.nativeNegative ? () => syntheticClock : Date.now);
   const base = require('./fixtures/savings-daily-consumer-data')();
   base.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'commitment', id: 'near' }];
   const w = { base, cell: { revision: 1, domain: 'synthetic-domain' }, authorized: true,
     readFailure: false, calls: { storage: 0, journal: 0, commit: 0, acquire: 0, base: 0 },
-    hooks: {}, durable: { doc: null, staged: null, journal: null, pin: null, backups: new Map() } };
+    hooks: {}, effects: clone(options.syntheticState?.effects || []), durable: { doc: null, staged: null, journal: null, pin: null, backups: new Map() } };
   w.acquisition = acquisitionFor(base);
+  w.setClock = value => { syntheticClock = value; };
+  w.historyCalls = clone(options.syntheticState?.historyCalls || { read: 0, append: 0 });
+  if (options.syntheticState) {
+    assert.equal(options.nativeNegative, true, 'restored synthetic state uses its original native mode');
+    const saved = options.syntheticState;
+    for (const key of ['doc', 'staged', 'journal']) w.durable[key] = saved[key] === null ? null : Buffer.from(saved[key], 'base64');
+    w.durable.pin = clone(saved.pin);
+    w.durable.backups = new Map(saved.backups.map(([key, entry]) => [key, { ...entry, bytes: Buffer.from(entry.bytes, 'base64') }]));
+    w.cell = clone(saved.cell); Object.assign(w.calls, saved.calls);
+  }
   let tail = Promise.resolve();
   const lock = { withLock(fn) { const value = tail.then(fn, fn); tail = value.catch(() => {}); return value; } };
   const d = w.durable;
@@ -47,31 +58,65 @@ async function startWorld(active = true, options = {}) {
   const documentStore = {
     read: read('doc', () => d.doc && Buffer.from(d.doc)),
     readStaged: read('staged', () => d.staged && Buffer.from(d.staged)),
-    async writeTemp(bytes) { d.staged = Buffer.from(bytes); },
-    async commitTemp() { d.doc = d.staged; d.staged = null; },
-    async discardTemp() { d.staged = null; },
+    async writeTemp(bytes) { w.effects.push('temp'); d.staged = Buffer.from(bytes); },
+    async commitTemp() { w.effects.push('rename'); d.doc = d.staged; d.staged = null; },
+    async discardTemp() { w.effects.push('discard'); d.staged = null; },
   };
   const journalStore = { read: read('journal', () => d.journal && Buffer.from(d.journal)),
     async write(value) {
-      w.calls.journal++; d.journal = Buffer.from(JSON.stringify(value));
+      w.effects.push('journal'); w.calls.journal++; d.journal = Buffer.from(JSON.stringify(value));
       if (w.hooks.journalWrite) await w.hooks.journalWrite();
     },
-    async clear() { if (w.hooks.journalClear) await w.hooks.journalClear(); d.journal = null; } };
+    async clear() { w.effects.push('clear'); if (w.hooks.journalClear) await w.hooks.journalClear(); d.journal = null; } };
   const pinStore = { read: read('pin', () => d.pin && clone(d.pin)),
     async advance(expected, next) {
+      w.effects.push('pin');
       if (expected === null ? d.pin !== null : !d.pin || expected.revision !== d.pin.revision || expected.digest !== d.pin.digest) return false;
       d.pin = clone(next); return true;
     } };
   const backupStore = { async put(revision, digest, bytes) {
+    w.effects.push('backup');
     const entry = { revision, digest, artifactId: 'synthetic-' + revision };
     d.backups.set(digest, { ...entry, bytes: Buffer.from(bytes) }); return entry;
   }, async get(revision, digest) { const entry = d.backups.get(digest); return entry?.revision === revision ? Buffer.from(entry.bytes) : null; },
   async list() { return [...d.backups.values()].map(({ bytes, ...entry }) => entry); } };
-  w.store = createSettlementEvidenceStore({ householdId, documentStore, journalStore, pinStore, backupStore,
-    quarantine: { async put() { throw new Error('synthetic quarantine forbidden'); } }, lock, now });
-  if (active) assert.equal((await w.store.bootstrap()).status, 'bootstrapped');
+  let nativeDependencies = {};
+  if (options.nativeNegative) {
+    // Explicit TEST-OWNED positive history genesis, never runtime fallback.
+    // This reuses D1's synthetic encoder; no new production transport exists.
+    const { encoded } = require('./test-settlement-evidence-terminal-certificate');
+    const saved = options.syntheticState;
+    w.exclusionDomain = clone(saved?.domain || {
+      ledgerNamespace: 'ledger-' + crypto.randomBytes(16).toString('hex'),
+      serializationAuthority: 'authority-' + crypto.randomBytes(16).toString('hex'),
+      historyAuthority: 'authority-' + crypto.randomBytes(16).toString('hex') });
+    if (saved) {
+      d.historyBytes = Buffer.from(saved.historyBytes, 'base64'); d.checkpoint = clone(saved.checkpoint);
+    } else Object.assign(d, encoded([], householdId, w.exclusionDomain.ledgerNamespace));
+    const terminalHistory = {
+      async readSnapshot() {
+        w.historyCalls.read++;
+        if (w.hooks.historyRead) await w.hooks.historyRead();
+        return { historyBytes: d.historyBytes && Buffer.from(d.historyBytes), checkpoint: d.checkpoint && clone(d.checkpoint) };
+      },
+      async compareAndAppend(input) {
+        w.historyCalls.append++;
+        const perform = () => {
+          if (!require('node:util').isDeepStrictEqual(input.expectedCheckpoint, d.checkpoint)) return false;
+          const next = encoded([...JSON.parse(d.historyBytes).records, clone(input.certificate)], householdId, w.exclusionDomain.ledgerNamespace);
+          d.historyBytes = next.historyBytes; d.checkpoint = next.checkpoint; return true;
+        };
+        return w.hooks.historyAppend ? w.hooks.historyAppend(perform, input) : perform();
+      }
+    };
+    nativeDependencies = { exclusionDomain: w.exclusionDomain, terminalHistory };
+  }
+  const constructStore = () => createSettlementEvidenceStore({ householdId, documentStore, journalStore, pinStore, backupStore,
+    quarantine: { async put() { throw new Error('synthetic quarantine forbidden'); } }, lock, now, ...nativeDependencies });
+  w.store = constructStore();
+  if (active && !options.syntheticState) assert.equal((await w.store.bootstrap()).status, 'bootstrapped');
   const server = w.server = http.createServer();
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise(resolve => server.listen(options.port || 0, '127.0.0.1', resolve));
   w.origin = 'http://127.0.0.1:' + server.address().port;
   w.contextReader = () => ({ contextRevision: w.cell.revision, domain: w.cell.domain });
   w.syntheticAcquire = async reader => {
@@ -124,6 +169,14 @@ async function startWorld(active = true, options = {}) {
     server.removeAllListeners('request'); server.on('request', app); w.app = app;
   };
   w.recreate();
+  w.recreateStore = () => { w.store = constructStore(); w.dependency.store = w.store; w.recreate(); };
+  w.snapshot = () => {
+    assert.equal(options.nativeNegative, true);
+    return { clock: now(), domain: clone(w.exclusionDomain), historyBytes: d.historyBytes.toString('base64'),
+      checkpoint: clone(d.checkpoint), historyCalls: clone(w.historyCalls), effects: [...w.effects], cell: clone(w.cell), calls: clone(w.calls),
+      ...Object.fromEntries(['doc', 'staged', 'journal'].map(key => [key, d[key] && d[key].toString('base64')])),
+      pin: clone(d.pin), backups: [...d.backups].map(([key, e]) => [key, { ...e, bytes: e.bytes.toString('base64') }]) };
+  };
   w.login = async () => {
     const response = await fetch(w.origin + '/login', { method: 'POST', redirect: 'manual',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ password: constructionEnv.SITE_PASSWORD }) });
@@ -146,7 +199,7 @@ async function startWorld(active = true, options = {}) {
   w.prepare = async (n = 1) => w.post('prepare', { operationId: op(n), selection: await w.selection(), assignedCents: 2500 });
   w.confirm = p => w.post('confirm', { operationId: p.operationId, previewToken: p.previewToken, confirmed: true });
   w.close = async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); };
-  w.calls.storage = 0;
+  if (!options.syntheticState) { w.calls.storage = 0; w.effects.length = 0; }
   return w;
 }
 module.exports = { startWorld, op, env, householdId };
@@ -203,8 +256,187 @@ function armProbeCompetition(w, operationId, options = {}) {
 module.exports.appendCompetingRecord = appendCompetingRecord;
 module.exports.armProbeCompetition = armProbeCompetition;
 
-if (require.main === module) {
+
+/* TEST-ONLY process replacement. State is retained by the parent over IPC;
+ * no production persistence/transport or runtime endpoint is introduced. */
+async function startChildWorld(options = {}) {
+  const { fork } = require('node:child_process');
+  let child, world, sequence = 0;
+  const pending = new Map();
+  const rpc = (kind, value) => new Promise((resolve, reject) => {
+    const id = ++sequence; pending.set(id, { resolve, reject }); child.send({ id, kind, value });
+  });
+  async function launch(state, port) {
+    child = fork(__filename, ['--synthetic-negative-child'], { windowsHide: true,
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+    let stderr = ''; child.stderr.on('data', b => { stderr += b.toString().slice(0, 1000); });
+    child.on('message', reply => {
+      const waiter = pending.get(reply.id); if (!waiter) return; pending.delete(reply.id);
+      if (reply.error) waiter.reject(Error(reply.error)); else waiter.resolve(reply.value);
+    });
+    child.on('exit', code => {
+      for (const [id, p] of pending) { p.reject(Error('synthetic child exited ' + code + ': ' + stderr)); pending.delete(id); }
+    });
+    const ready = await rpc('start', { ...options, nativeNegative: true, syntheticState: state, port, env });
+    if (!world) {
+      world = { ...ready,
+        setClock: value => rpc('clock', value),
+        async snapshot() { const state = await rpc('snapshot'); Object.assign(world.calls, state.calls);
+          Object.assign(world.historyCalls, state.historyCalls); world.effects = state.effects; return state; },
+        async restart() {
+          const state = await world.snapshot(), port = new URL(world.origin).port;
+          await world.stop(); await launch(state, Number(port)); return state;
+        },
+        async stop() {
+          const stopped = new Promise(resolve => child.once('exit', resolve));
+          await rpc('close'); await stopped;
+        },
+        close: () => world.stop(),
+        raw: (name, body, opts = {}) => fetch(world.origin + '/settlement/' + name, {
+          method:'POST', headers:{Cookie:world.cookie,Origin:world.origin,
+            'Content-Type':'application/json','X-Atlas-Settlement':'same-origin', ...opts.headers},
+          body:JSON.stringify(body) }),
+        async post(name, body) { const r=await world.raw(name,body);assert.equal(r.status,200);return r.json(); }
+      };
+    } else {
+      assert.equal(ready.origin, world.origin, 'original browser origin survives replacement');
+      assert.notEqual(ready.processId, world.processId, 'a different actual child owns the recreated application');
+      world.processId = ready.processId;
+    }
+    return world;
+  }
+  return launch();
+}
+module.exports.startChildWorld = startChildWorld;
+if (require.main === module && process.argv.includes('--synthetic-negative-child')) {
+  let fixture;
+  process.on('message', async request => {
+    try {
+      let value;
+      if (request.kind === 'start') {
+        fixture = await startWorld(true, request.value);
+        if (request.value.loseSealAck) fixture.hooks.historyAppend = perform => { perform(); throw Error('synthetic lost store acknowledgement'); };
+        value = { origin: fixture.origin, cookie: fixture.cookie, calls: fixture.calls, historyCalls: fixture.historyCalls, effects: fixture.effects, processId: process.pid };
+      } else if (request.kind === 'clock') fixture.setClock(request.value);
+      else if (request.kind === 'snapshot') value = fixture.snapshot();
+      else if (request.kind === 'close') await fixture.close();
+      else throw Error('unknown synthetic command');
+      process.send({ id: request.id, value }, () => { if (request.kind === 'close') process.exit(0); });
+    } catch (error) { process.send({ id: request.id, error: error.message }); }
+  });
+}
+
+if (require.main === module && !process.argv.includes('--synthetic-negative-child')) {
   const test = require('node:test');
+
+
+
+  test('B3 Addendum A lost store acknowledgement blocks same-instance lookup until reconstruction',async t=>{
+    const w=await startWorld(true,{nativeNegative:true});t.after(w.close);const p=await w.prepare();w.setClock(p.expiresAt);
+    w.hooks.historyAppend=perform=>{perform();throw Error('synthetic lost store acknowledgement');};
+    assert.equal((await w.post('confirm',{operationId:p.operationId,previewToken:p.previewToken,generation:p.generation,confirmed:true})).status,'unknown');
+    const before=w.snapshot(),reads=w.historyCalls.read;
+    assert.equal((await w.post('outcome',{operationId:p.operationId,generation:p.generation})).status,'unknown');
+    assert.equal(w.historyCalls.read,reads,'terminal owner blocks the native lookup');
+    assert.equal((await w.prepare(2)).reason,'outcome-unresolved');
+    w.recreateStore();
+    assert.deepEqual(await w.post('outcome',{operationId:p.operationId,generation:p.generation}),
+      {status:'not-applied',operationId:p.operationId,generation:p.generation});
+    const after=w.snapshot();assert.equal(after.doc,before.doc);assert.equal(after.historyBytes,before.historyBytes);
+    assert.equal(after.historyCalls.append,1);assert.deepEqual(after.effects,[]);
+  });
+
+  async function b3Sealed(w) {
+    const p = await w.prepare(); w.setClock(p.expiresAt);
+    assert.equal((await w.post('confirm', { operationId:p.operationId, previewToken:p.previewToken,
+      generation:p.generation, confirmed:true })).status,'not-applied'); return p;
+  }
+  test('B3 outcome shape actor generation and publication remain independently bounded',async t=>{
+    const w=await startWorld(true,{nativeNegative:true});t.after(w.close);const p=await b3Sealed(w);
+    assert.equal((await w.post('outcome',{operationId:p.operationId})).status,'unknown');
+    assert.equal((await w.post('publication',{operationId:p.operationId})).status,'unknown');
+    assert.equal((await w.raw('publication',{operationId:p.operationId,generation:p.generation})).status,400);
+    for(const body of [{operationId:p.operationId,generation:null},{operationId:p.operationId,generation:'bad'},
+      {operationId:p.operationId,generation:p.generation,actorId:'session-'+'f'.repeat(64)}])
+      assert.equal((await w.raw('outcome',body)).status,400);
+    assert.equal((await w.post('outcome',{operationId:p.operationId,generation:'generation-'+'f'.repeat(32)})).status,'unknown');
+    const owner=w.cookie;w.cookie=await w.login();
+    assert.equal((await w.post('outcome',{operationId:p.operationId,generation:p.generation})).status,'unknown');
+    w.cookie=owner;
+    assert.deepEqual(await w.post('outcome',{operationId:p.operationId,generation:p.generation}),
+      {status:'not-applied',operationId:p.operationId,generation:p.generation});
+    assert.equal(w.calls.commit,0);assert.equal(w.calls.journal,0);assert.equal(w.historyCalls.append,1);assert.deepEqual(w.effects,[]);
+  });
+  for(const fault of ['unreadable','missing','torn','rollback','ledger-pin','journal','coexistence']){
+    test('B3 qualified lookup refuses '+fault+' without mutation',async t=>{
+      const w=await startWorld(true,{nativeNegative:true});t.after(w.close);const p=await b3Sealed(w);
+      if(fault==='unreadable')w.hooks.historyRead=()=>{throw Error('synthetic history outage');};
+      if(fault==='missing')w.durable.historyBytes=null;
+      if(fault==='torn')w.durable.checkpoint.digest='f'.repeat(64);
+      if(fault==='rollback')Object.assign(w.durable,require('./test-settlement-evidence-terminal-certificate').encoded([],householdId,w.exclusionDomain.ledgerNamespace));
+      if(fault==='ledger-pin')w.durable.pin.digest='f'.repeat(64);
+      if(fault==='journal')w.durable.journal=Buffer.from('{}');
+      if(fault==='coexistence'){
+        // Deliberately impossible under gated writers: qualify fail-closed on
+        // independently forged coexistence, never grant either proof/receipt.
+        const source=await startWorld();try{
+          source.cookie=w.cookie; // Same synthetic signing authority and actor.
+          const other=await source.prepare();assert.equal((await source.confirm(other)).status,'committed');
+          w.durable.doc=Buffer.from(source.durable.doc);w.durable.pin=clone(source.durable.pin);
+        }finally{await source.close();}
+      }
+      const before={doc:Buffer.from(w.durable.doc),journal:w.durable.journal&&Buffer.from(w.durable.journal),
+        history:w.durable.historyBytes&&Buffer.from(w.durable.historyBytes),pin:clone(w.durable.pin),append:w.historyCalls.append};
+      const r=await w.post('outcome',{operationId:p.operationId,generation:p.generation});
+      assert.equal(r.status,'unknown');assert.ok(w.durable.doc.equals(before.doc));
+      assert.deepEqual(w.durable.journal,before.journal);assert.deepEqual(w.durable.historyBytes,before.history);
+      assert.deepEqual(w.durable.pin,before.pin);assert.equal(w.historyCalls.append,before.append);assert.equal(w.calls.journal,0);assert.deepEqual(w.effects,[]);
+    });
+  }
+  for(const expiry of ['authorization','cookie']){
+    test('B3 '+expiry+' expiry across native lookup suppresses proof',async t=>{
+      const w=await startWorld(true,{nativeNegative:true});t.after(w.close);const p=await b3Sealed(w);
+      let entered,release;const seen=new Promise(r=>{entered=r;}),gate=new Promise(r=>{release=r;});
+      w.hooks.historyRead=async()=>{entered();await gate;};
+      const originalNow=Date.now;
+      try{
+        const pending=w.raw('outcome',{operationId:p.operationId,generation:p.generation});await seen;
+        if(expiry==='authorization')w.authorized=false;
+        else {const payload=JSON.parse(Buffer.from(w.cookie.split('=')[1].split('.')[0],'base64url'));
+          Date.now=()=>payload.exp+1;}
+        release();const response=await pending;assert.equal(response.status,503);
+        assert.deepEqual(await response.json(),{status:'unavailable'});
+        assert.equal(w.historyCalls.append,1);assert.equal(w.calls.journal,0);
+      }finally{Date.now=originalNow;release();}
+    });
+  }
+  test('B3 actual child replacement preserves same-actor negative history without replay',async t=>{
+    const w=await startChildWorld();t.after(w.close);
+    const s=await w.post('selections',{}),id=op(777),p=await w.post('prepare',{
+      operationId:id,selection:{transaction:s.transactions[0].handle,commitment:s.commitments[0].handle},assignedCents:2500});
+    await w.setClock(p.expiresAt);
+    assert.equal((await w.post('confirm',{operationId:id,previewToken:p.previewToken,generation:p.generation,confirmed:true})).status,'not-applied');
+    const cookie=w.cookie,before=await w.restart();assert.equal(w.cookie,cookie);
+    assert.deepEqual(await w.post('outcome',{operationId:id,generation:p.generation}),
+      {status:'not-applied',operationId:id,generation:p.generation});
+    const after=await w.snapshot();assert.equal(after.doc,before.doc);assert.equal(after.historyBytes,before.historyBytes);
+    assert.equal(after.historyCalls.append,1);assert.equal(after.calls.commit,0);assert.equal(after.calls.journal,0);assert.deepEqual(after.effects,[]);
+  });
+
+  test('B3 qualified negative outcome survives application recreation without a write', async t => {
+    const w = await startWorld(true, { nativeNegative: true }); t.after(w.close);
+    const p = await w.prepare(); w.setClock(p.expiresAt);
+    const result = await w.post('confirm', { operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true });
+    assert.equal(result.status, 'not-applied'); assert.equal(w.historyCalls.append, 1);
+    const before = Buffer.from(w.durable.doc), history = Buffer.from(w.durable.historyBytes);
+    w.recreateStore();
+    const response = await w.raw('outcome', { operationId: p.operationId, generation: p.generation });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { status: 'not-applied', operationId: p.operationId, generation: p.generation });
+    assert.ok(w.durable.doc.equals(before)); assert.ok(w.durable.historyBytes.equals(history));
+    assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0); assert.equal(w.historyCalls.append, 1);
+  });
+
   const correlatedConfirm = (w, p, overrides = {}) => w.post('confirm', {
     operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true, ...overrides });
   const negative = p => ({ status: 'not-applied', operationId: p.operationId,
