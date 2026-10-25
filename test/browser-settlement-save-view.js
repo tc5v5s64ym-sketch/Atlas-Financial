@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { chromium } = require('playwright');
-const { startWorld, env, syntheticRecord, armProbeCompetition, appendCompetingRecord } = require('./test-settlement-evidence-http');
+const { startWorld, startChildWorld, env, syntheticRecord, armProbeCompetition, appendCompetingRecord } = require('./test-settlement-evidence-http');
 const KEY = 'atlas-settlement-pending-v1';
 const out = process.env.ATLAS_SETTLEMENT_BROWSER_PROOF || path.join(os.tmpdir(), 'atlas-settlement-browser-proof');
 const results = [];
@@ -138,6 +138,26 @@ function observeMarkerMutations() {
     };
   }
 }
+
+async function lostNativeNegative(w, page, loseStoreAck = false) {
+  const ready=page.waitForResponse(r=>r.url().endsWith('/settlement/prepare'));
+  const dialog=await preview(page),p=await(await ready).json();await w.setClock(p.expiresAt);
+  if(loseStoreAck)w.hooks.historyAppend=perform=>{perform();throw Error('synthetic lost store acknowledgement');};
+  await page.route('**/settlement/confirm',async route=>{
+    const response=await route.fetch();assert.equal((await response.json()).status,loseStoreAck?'unknown':'not-applied');
+    return route.abort(); // Only the reply is deliberately lost, never the write route.
+  });
+  await dialog.getByRole('button',{name:'Confirm assignment',exact:true}).click();
+  await page.getByText('Assignment outcome needs reconciliation.',{exact:false}).waitFor();
+  const marker=await page.evaluate(KEY=>JSON.parse(localStorage.getItem(KEY)),KEY);
+  assert.equal(marker.phase,'dispatched');return {marker,p};
+}
+async function b3Ready(page) {
+  await page.waitForFunction(KEY=>App.data?.settlementEvidenceStatus?.status==='qualified'
+    &&localStorage.getItem(KEY)===null&&window.__settlementOnce===1,KEY);
+  assert.deepEqual(await facts(page),{original:60,paid:0,remaining:60});
+}
+
 function rendererReversalEvidence(withReversal) {
   const C = require('../scripts/planned-obligation-settlement-contract');
   const householdId = 'household-' + 'a'.repeat(32), actorId = 'session-' + 'b'.repeat(64);
@@ -165,10 +185,13 @@ function rendererReversalEvidence(withReversal) {
   try {
     const run = async (name, action, active = true, width = 390, options = {}) => {
       if (process.env.ATLAS_SETTLEMENT_BROWSER_CASE && name !== process.env.ATLAS_SETTLEMENT_BROWSER_CASE) return;
-      const w = await startWorld(active, options); let fixture;
+      if (process.env.ATLAS_SETTLEMENT_BROWSER_PREFIX && !name.startsWith(process.env.ATLAS_SETTLEMENT_BROWSER_PREFIX)) return;
+      const w = options.childNegative ? await startChildWorld(options) : await startWorld(active, options); let fixture;
       try {
         fixture = await openPage(browser, w, width);
         await action(w, fixture);
+        if (options.childNegative) await w.snapshot();
+        if (options.nativeNegative || options.childNegative) assert.deepEqual(w.effects, [], 'no financial adapter write of any kind');
         assert.deepEqual(fixture.external, [], 'zero external network requests');
         assert.deepEqual(fixture.errors, [], 'zero page errors');
         results.push({ name, width, status: 'PASS', commits: w.calls.commit, journalWrites: w.calls.journal,
@@ -184,6 +207,215 @@ function rendererReversalEvidence(withReversal) {
         console.error('FAIL ' + name + ': ' + error.message.split('\n')[0]);
       } finally { await fixture?.context.close(); await w.close(); }
     };
+
+    await run('B3 lost store acknowledgement recovers view but never releases server latch',async(w,fixture)=>{
+      const {page,requests}=fixture;await lostNativeNegative(w,page,true);
+      await page.reload();await b3Ready(page);
+      assert.equal((await w.prepare(2)).reason,'outcome-unresolved');
+      assert.equal(w.calls.commit,0);assert.equal(w.calls.journal,0);assert.equal(w.historyCalls.append,1);
+      assert.equal(requests.filter(r=>r.path==='/settlement/confirm').length,1);
+      fixture.details={lostStoreAck:true,serverLatchHeld:true,noReplay:true};
+    },true,390,{nativeNegative:true});
+    for(const lostStoreAck of [false,true]){
+      await run('B3 real child replacement recovers '+(lostStoreAck?'lost store ack':'lost HTTP reply'),async(w,fixture)=>{
+        const {page,requests}=fixture;
+        const ready=page.waitForResponse(r=>r.url().endsWith('/settlement/prepare'));
+        const dialog=await preview(page),p=await(await ready).json();await w.setClock(p.expiresAt);
+        await page.route('**/settlement/confirm',async route=>{
+          const response=await route.fetch();assert.equal((await response.json()).status,lostStoreAck?'unknown':'not-applied');
+          return route.abort();
+        });
+        await dialog.getByRole('button',{name:'Confirm assignment',exact:true}).click();
+        await page.getByText('Assignment outcome needs reconciliation.',{exact:false}).waitFor();
+        const before=await w.restart();await page.reload();await b3Ready(page);
+        const after=await w.snapshot();assert.equal(after.doc,before.doc);assert.equal(after.historyBytes,before.historyBytes);
+        assert.equal(after.historyCalls.append,1);assert.equal(after.calls.journal,0);assert.equal(after.calls.commit,0);
+        assert.equal(requests.filter(r=>r.path==='/settlement/confirm').length,1);
+        fixture.details={actualChildReplacement:true,parentRetainedSyntheticPersistence:true,sameActorCookie:true,lostStoreAck};
+      },true,390,{childNegative:true,loseSealAck:lostStoreAck});
+    }
+    for(const fault of ['legacy','wrong-generation','malformed','other-actor','history-unreadable','journal']){
+      await run('B3 '+fault+' never releases pending browser boot',async(w,fixture)=>{
+        const {page,context}=fixture;const {marker}=await lostNativeNegative(w,page);
+        if(fault==='history-unreadable')w.hooks.historyRead=()=>{throw Error('synthetic history refusal');};
+        if(fault==='journal')w.durable.journal=Buffer.from('{}');
+        if(['legacy','wrong-generation','malformed'].includes(fault))await page.evaluate(({KEY,fault})=>{
+          const value=JSON.parse(localStorage.getItem(KEY));
+          if(fault==='legacy')delete value.generation;
+          if(fault==='wrong-generation')value.generation='generation-'+'f'.repeat(32);
+          if(fault==='malformed')value.extra=true;
+          localStorage.setItem(KEY,JSON.stringify(value));
+        },{KEY,fault});
+        if(fault==='other-actor'){
+          await context.clearCookies();await page.goto(w.origin+'/login');await page.getByLabel('Password',{exact:true}).fill(env.SITE_PASSWORD);
+          await page.getByRole('button',{name:'Sign in',exact:true}).click();
+        }else await page.reload();
+        await reconciliationBoot(page);
+        assert.equal(await page.evaluate(KEY=>localStorage.getItem(KEY)!==null,KEY),true);
+        assert.equal(w.calls.commit,0);assert.equal(w.calls.journal,0);assert.equal(w.historyCalls.append,1);
+        fixture.details={fault,neverInitialized:true};
+      },true,390,{nativeNegative:true});
+    }
+    for(const fault of ['base-only','unavailable','incomplete','publication-shape','observation-only','malformed-evidence']){
+      await run('B3 negative proof plus '+fault+' data never publishes',async(w,fixture)=>{
+        const {page}=fixture;await lostNativeNegative(w,page);
+        let ordinary=0;
+        await page.route('**/data.json',async route=>{
+          ordinary++;const response=await route.fetch(),data=await response.json();
+          if(fault==='base-only'||fault==='observation-only'){delete data.settlementEvidence;delete data.settlementEvidenceStatus;}
+          if(fault==='unavailable'){delete data.settlementEvidence;data.settlementEvidenceStatus={status:'unavailable'};}
+          if(fault==='incomplete')delete data.plan.startingCash;
+          if(fault==='malformed-evidence')data.settlementEvidence={};
+          const body=fault==='publication-shape'?{status:'committed',publication:'included',data}:data;
+          await route.fulfill({response,json:body,headers:{...response.headers(),
+            'X-Atlas-Observation-Qualified':'true','X-Atlas-Observation-Source':'memory'}});
+        });
+        await page.reload();await reconciliationBoot(page);
+        assert.equal(ordinary,1);assert.equal(await page.evaluate(KEY=>JSON.parse(localStorage.getItem(KEY)).phase,KEY),'dispatched');
+        assert.equal(w.historyCalls.append,1);assert.equal(w.calls.commit,0);
+        fixture.details={deliberateDataFault:fault,ordinaryAcquisitions:ordinary,once:0};
+      },true,390,{nativeNegative:true});
+    }
+    for(const fault of ['extra-field','wrong-generation','wrong-operation','live-proof-token']){
+      await run('B3 malformed recovery '+fault+' acknowledgement is never cleanup authority',async(w,fixture)=>{
+        const {page}=fixture;await lostNativeNegative(w,page);
+        await page.route('**/settlement/outcome',async route=>{
+          const response=await route.fetch(),proof=await response.json();assert.equal(proof.status,'not-applied');
+          if(fault==='extra-field')proof.extra=true;
+          if(fault==='wrong-generation')proof.generation='generation-'+'f'.repeat(32);
+          if(fault==='wrong-operation')proof.operationId='operation-'+'f'.repeat(32);
+          if(fault==='live-proof-token')proof.previewToken='f'.repeat(64);
+          return route.fulfill({response,json:proof});
+        });
+        const traffic=bootTraffic(page);await page.reload();await reconciliationBoot(page);
+        assert.equal(traffic.ordinary,0);assert.equal(w.historyCalls.append,1);
+        assert.equal(await page.evaluate(KEY=>JSON.parse(localStorage.getItem(KEY)).phase,KEY),'dispatched');
+        fixture.details={deliberateProofFault:fault,ordinary:0};
+      },true,390,{nativeNegative:true});
+    }
+    for(const fault of ['read-before-removal','remove','read-after-removal','remove-after-effect','lock']){
+      await run('B3 '+fault+' fault initializes nothing without invented marker rollback',async(w,fixture)=>{
+        const {page,context}=fixture;await lostNativeNegative(w,page);
+        await context.addInitScript(({KEY,fault})=>{
+          const get=Storage.prototype.getItem,remove=Storage.prototype.removeItem;
+          window.__actualPending=()=>get.call(localStorage,KEY);let reads=0;
+          Storage.prototype.getItem=function(key){
+            if(key===KEY){reads++;if(reads===(fault==='read-before-removal'?2:fault==='read-after-removal'?3:-1))
+              throw Error('synthetic pending read refusal');}
+            return get.call(this,key);
+          };
+          Storage.prototype.removeItem=function(key){
+            if(key===KEY&&fault==='remove')throw Error('synthetic remove refusal');
+            const result=remove.call(this,key);
+            if(key===KEY&&fault==='remove-after-effect')throw Error('synthetic lost remove acknowledgement');
+            return result;
+          };
+          if(fault==='lock')navigator.locks.request=()=>Promise.reject(Error('synthetic lock refusal'));
+        },{KEY,fault});
+        await page.reload();
+        await page.locator('[data-boot-notice].crit').waitFor();
+        assert.equal(await page.evaluate(()=>App.data),null);
+        assert.equal(await page.evaluate(()=>window.__settlementOnce||0),0);
+        assert.equal(await page.evaluate(()=>window.__actualPending()===null),['read-after-removal','remove-after-effect'].includes(fault));
+        assert.equal(w.calls.commit,0);assert.equal(w.historyCalls.append,1);
+        fixture.details={fault,once:0,markerActuallyRemoved:['read-after-removal','remove-after-effect'].includes(fault),noRollbackClaim:true};
+      },true,390,{nativeNegative:true});
+    }
+    for(const replacement of ['same-operation-new-generation','different-operation']){
+      await run('B3 delayed negative reply preserves '+replacement,async(w,fixture)=>{
+        const {page}=fixture;await lostNativeNegative(w,page);
+        let reached,release;const seen=new Promise(r=>{reached=r;}),gate=new Promise(r=>{release=r;});
+        await page.route('**/settlement/outcome',async route=>{
+          const response=await route.fetch();reached();await gate;return route.fulfill({response});
+        });
+        try{
+          await page.reload();await seen;
+          const next=await page.evaluate(async({KEY,replacement})=>navigator.locks.request(KEY,{mode:'exclusive'},()=>{
+            const marker=JSON.parse(localStorage.getItem(KEY));marker.generation='generation-'+'f'.repeat(32);
+            if(replacement==='different-operation')marker.operationId='operation-'+'f'.repeat(32);
+            localStorage.setItem(KEY,JSON.stringify(marker));return marker;
+          }),{KEY,replacement});
+          release();await reconciliationBoot(page);
+          assert.deepEqual(await page.evaluate(KEY=>JSON.parse(localStorage.getItem(KEY)),KEY),next);
+          assert.equal(w.calls.commit,0);assert.equal(w.historyCalls.append,1);
+          fixture.details={delayedActualProof:true,replacement,preserved:true};
+        }finally{release();}
+      },true,390,{nativeNegative:true});
+    }
+    await run('B3 cancel queued final Web Lock never initializes or clears',async(w,fixture)=>{
+      const {page,context}=fixture;await lostNativeNegative(w,page);
+      const holder=await context.newPage();await holder.goto(w.origin+'/styles.css'); // Same-origin document with no App boot.
+      await holder.evaluate(KEY=>{
+        window.__held=navigator.locks.request(KEY,{mode:'exclusive'},()=>new Promise(r=>{window.__release=r;window.__locked=true;}));
+      },KEY);await holder.waitForFunction(()=>window.__locked===true);
+      await context.addInitScript(KEY=>{
+        const request=navigator.locks.request.bind(navigator.locks);
+        navigator.locks.request=(name,options,fn)=>{if(name===KEY)window.__queued=true;return request(name,options,fn);};
+      },KEY);
+      try{
+        await page.reload();await page.waitForFunction(()=>window.__queued===true);
+        await page.getByRole('button',{name:'Cancel',exact:true}).click();
+        await holder.evaluate(()=>window.__release());await page.locator('[data-boot-notice].crit').waitFor();
+        assert.equal(await page.evaluate(()=>App.data),null);assert.equal(await page.evaluate(()=>window.__settlementOnce||0),0);
+        assert.equal(await page.evaluate(KEY=>JSON.parse(localStorage.getItem(KEY)).phase,KEY),'dispatched');
+        assert.equal(w.calls.commit,0);assert.equal(w.historyCalls.append,1);
+        fixture.details={actualSecondPageLock:true,cancelledWhileQueued:true,once:0};
+      }finally{await holder.evaluate(()=>window.__release());await holder.close();}
+    },true,390,{nativeNegative:true});
+    for(const failure of ['once-hook','render']){
+      await run('B3 post-publication '+failure+' failure withholds shell and allows only whole reload',async(w,fixture)=>{
+        const {page}=fixture;await lostNativeNegative(w,page);
+        await page.route('**/plan.js',async route=>{
+          const response=await route.fetch(),body=await response.text();
+          const instrumentation="App.once(()=>{window.__settlementOnce=(window.__settlementOnce||0)+1;});\n"
+            +(failure==='once-hook'?"App.once(()=>{throw Error('synthetic once failure');});\n":
+              "App.register(()=>{window.__failedRender=(window.__failedRender||0)+1;throw Error('synthetic render failure');});\n");
+          return route.fulfill({response,body:instrumentation+body});
+        });
+        await page.reload();await page.getByRole('button',{name:'Reload page',exact:true}).waitFor();
+        assert.equal(await page.evaluate(()=>window.__settlementOnce),1);
+        assert.equal(await page.evaluate(()=>App.data!==null),true,'publication started; no invented rollback');
+        assert.equal(await page.evaluate(()=>document.querySelector('.site-head').inert),true);
+        assert.equal(await page.evaluate(KEY=>localStorage.getItem(KEY),KEY),null,'valid negative marker was removed before hooks');
+        assert.equal(await page.locator('[data-manual-refresh]').isDisabled(),true);
+        await page.evaluate(()=>App.rerender());
+        assert.equal(await page.evaluate(()=>window.__settlementOnce),1);
+        if(failure==='render')assert.equal(await page.evaluate(()=>window.__failedRender),1,'failed page never renders in place again');
+        const outcomeCalls=fixture.requests.filter(r=>r.path==='/settlement/outcome').length;
+        await page.unroute('**/plan.js');
+        await page.route('**/plan.js',async route=>{
+          const response=await route.fetch();return route.fulfill({response,body:
+            'App.once(()=>{window.__settlementOnce=(window.__settlementOnce||0)+1;});\n'+await response.text()});
+        });
+        await Promise.all([page.waitForEvent('load'),page.getByRole('button',{name:'Reload page',exact:true}).click()]);
+        await b3Ready(page);assert.equal(fixture.requests.filter(r=>r.path==='/settlement/outcome').length,outcomeCalls);
+        assert.equal(w.calls.commit,0);assert.equal(w.historyCalls.append,1);
+        fixture.details={deliberateHookFault:failure,oldPageOnce:1,noInPlaceRetry:true,fullReloadRecovered:true};
+      },true,390,{nativeNegative:true});
+    }
+
+    await run('B3 lost negative HTTP reply recovers qualified ordinary view', async (w, fixture) => {
+      const { page } = fixture;
+      const prepared = page.waitForResponse(r => r.url().endsWith('/settlement/prepare'));
+      const dialog = await preview(page); const p = await (await prepared).json();
+      w.setClock(p.expiresAt);
+      await page.route('**/settlement/confirm', async route => {
+        const response = await route.fetch();
+        assert.equal((await response.json()).status, 'not-applied');
+        await route.abort(); // Deliberately lose the real mounted HTTP reply.
+      });
+      await dialog.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+      await page.getByText('Assignment outcome needs reconciliation.', { exact: false }).waitFor();
+      const marker = await page.evaluate(KEY => JSON.parse(localStorage.getItem(KEY)), KEY);
+      assert.equal(marker.phase, 'dispatched'); assert.equal(w.historyCalls.append, 1);
+      const before = w.snapshot(); await page.reload();
+      await page.waitForFunction(KEY => App.data?.settlementEvidenceStatus?.status === 'qualified'
+        && localStorage.getItem(KEY) === null && window.__settlementOnce === 1, KEY);
+      assert.deepEqual(await facts(page), { original: 60, paid: 0, remaining: 60 });
+      assert.equal(w.calls.commit, 0); assert.equal(w.calls.journal, 0);
+      assert.equal(w.historyCalls.append, 1); assert.equal(w.snapshot().historyBytes, before.historyBytes);
+      fixture.details = { deliberateLostHttpReply: true, nativeSyntheticHistory: true, qualifiedOrdinaryBoot: true };
+    }, true, 390, { nativeNegative: true });
     await run('default inactive controls and zero storage', async (w, { page }) => {
       const dialog = await sheet(page);
       await page.waitForResponse(r => r.url().endsWith('/settlement/capability')).catch(() => {});

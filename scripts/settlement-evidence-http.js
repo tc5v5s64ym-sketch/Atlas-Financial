@@ -139,7 +139,10 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
       && /^generation-[a-f0-9]{32}$/.test(body.generation))
     && OP.test(body.operationId) && /^[a-f0-9]{64}$/.test(body.previewToken) && body.confirmed === true,
   (context, _authority, body) => controller.confirm(context, body));
-  post('/outcome', operation, (context, _authority, body) => controller.outcome(context, body));
+  const outcomeRequest = body => operation(body)
+    || shape(body, ['operationId', 'generation']) && OP.test(body.operationId)
+      && /^generation-[a-f0-9]{32}$/.test(body.generation);
+  post('/outcome', outcomeRequest, (context, _authority, body) => controller.outcome(context, body));
   post('/publication', operation, async (context, authority, body) => {
     const receipt = await controller.outcome(context, body);
     if (receipt.status !== 'committed') return receipt;

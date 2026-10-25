@@ -291,7 +291,7 @@ const SettlementSave = (() => {
   const KEY = 'atlas-settlement-pending-v1';
   const OP = /^operation-[a-f0-9]{32}$/;
   const GENERATION = /^generation-[a-f0-9]{32}$/;
-  let bootPublication = null;
+  const bootContexts = new WeakMap();
   const record = value => value && typeof value === 'object' && !Array.isArray(value);
   const canLock = () => typeof globalThis.navigator?.locks?.request === 'function';
   function mutateMarker(action) {
@@ -373,8 +373,13 @@ const SettlementSave = (() => {
       return value;
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   }
-  async function initialData(ordinary, signal) {
-    bootPublication = null;
+  function completeData(data) {
+    return record(data) && record(data.plan) && record(data.meta)
+      && record(data.plan.defaults) && record(data.plan.startingCash)
+      && ['income', 'bills', 'obligations', 'commitments'].every(k => Array.isArray(data.plan[k]))
+      && Array.isArray(data.debts);
+  }
+  async function initialData(ordinary, signal, attempt) {
     let raw;
     // Only the actual storage access may use the preactivation exception.
     // Readable malformed/dispatched markers and later reconciliation failures
@@ -401,7 +406,20 @@ const SettlementSave = (() => {
     }
     if (!marker) return ordinary();
     if (marker.phase !== 'dispatched') throw new Error('settlement-reconciliation');
-    const outcome = await post('outcome', { operationId: marker.operationId }, signal);
+    const outcome = await post('outcome', { operationId: marker.operationId,
+      ...(marker.generation ? { generation: marker.generation } : {}) }, signal);
+    if (record(outcome) && Object.keys(outcome).length === 3 && outcome.status === 'not-applied'
+      && outcome.operationId === marker.operationId && outcome.generation === marker.generation
+      && GENERATION.test(marker.generation)) {
+      const data = await ordinary();
+      // Observation headers and base-only/unavailable packets cannot release
+      // reconciliation. This is the single ordinary acquisition/attachment.
+      if (!completeData(data) || data.settlementEvidenceStatus?.status !== 'qualified'
+        || !record(data.settlementEvidence) || !Array.isArray(data.settlementEvidence.commitments))
+        throw new Error('settlement-reconciliation');
+      bootContexts.set(attempt, { marker, data, status: 'not-applied' });
+      return data;
+    }
     if (outcome.status !== 'committed' || outcome.operationId !== marker.operationId)
       throw new Error('settlement-reconciliation');
     const view = await post('publication', { operationId: marker.operationId }, signal);
@@ -415,14 +433,34 @@ const SettlementSave = (() => {
       || view.publication === 'unavailable' && Object.hasOwn(view.data, 'settlementEvidence')) {
       throw new Error('settlement-reconciliation');
     }
-    bootPublication = { operationId: marker.operationId, generation: marker.generation, status: view.publication };
+    bootContexts.set(attempt, { marker, data: view.data, status: view.publication });
     return view.data;
   }
-  async function initialized() {
+  async function publishInitial(attempt, data, publish) {
+    const context = bootContexts.get(attempt);
+    const install = () => {
+      if (!attempt.current() || attempt.signal.aborted) throw new Error('settlement-reconciliation');
+      publish();
+    };
+    if (context?.status !== 'not-applied') { install(); return; }
+    return mutateMarker(() => {
+      const current = pending();
+      if (!attempt.current() || attempt.signal.aborted || data !== context.data
+        || current?.phase !== 'dispatched' || current.operationId !== context.marker.operationId
+        || current.generation !== context.marker.generation) throw new Error('settlement-reconciliation');
+      // Removal/readback and synchronous publication share exclusion, not a
+      // transaction. A storage error never permits publication or rollback.
+      localStorage.removeItem(KEY);
+      if (localStorage.getItem(KEY) !== null) throw new Error('settlement-persistence');
+      install();
+    });
+  }
+  async function initialized(attempt) {
+    const bootPublication = bootContexts.get(attempt);
     // Called only AFTER DATA installation, once-hooks and render complete.
     if (bootPublication?.status === 'included') {
-      const operationId = bootPublication.operationId;
-      const generation = bootPublication.generation;
+      const operationId = bootPublication.marker.operationId;
+      const generation = bootPublication.marker.generation;
       await mutateMarker(() => {
         const marker = pending();
         if (marker?.operationId === operationId && marker.generation === generation && marker.phase === 'dispatched') localStorage.removeItem(KEY);
@@ -580,7 +618,7 @@ const SettlementSave = (() => {
         });
       }).catch(() => text('Assignment controls unavailable.'));
   }
-  return { initialData, initialized, mount };
+  return { initialData, publishInitial, initialized, mount };
 })();
 
 function applyTheme(mode) {
@@ -686,7 +724,7 @@ function watchBudgetRelease() {
 // Pages register render callbacks; the core fetches the data, applies the
 // theme, and re-runs the callbacks whenever the theme changes.
 const App = (() => {
-  let DATA = null, PERIODS = null, HISTORY = null;
+  let DATA = null, PERIODS = null, HISTORY = null, publicationFailed = false;
   const hooks = [];   // re-run on every render (data arrival, theme change)
   const onceHooks = []; // run once when data arrives (control wiring)
 
@@ -785,7 +823,7 @@ const App = (() => {
   }
 
   function rerender() {
-    if (!DATA) return;
+    if (!DATA || publicationFailed) return;
     for (const fn of hooks) fn(DATA, PERIODS, HISTORY);
   }
 
@@ -956,7 +994,7 @@ const App = (() => {
         + '<span class="boot-wordmark">ATLAS</span>';
       return treatment;
     };
-    let loading = false;
+    let loading = false, activeLoad = null;
     const refresh = document.createElement('button');
     refresh.type = 'button';
     refresh.textContent = 'Manual Refresh';
@@ -987,6 +1025,7 @@ const App = (() => {
       ? privateComparisonSave(reviewCheckMount, busy => { refresh.disabled = busy || loading; }) : null;
     refresh.addEventListener('click', () => load(true));
     function load(forceRefresh = false) {
+      if (publicationFailed) { location.reload(); return; }
       if (loading || privateSave?.isWriting()) return;
       loading = true;
       privateSave?.reset();
@@ -994,6 +1033,10 @@ const App = (() => {
       isolateShell();
       refresh.disabled = true;
       const controller = new AbortController();
+      let publicationStarted = false;
+      const attempt = { signal: controller.signal,
+        current: () => activeLoad === attempt && !cancelled && DATA === null && !publicationStarted };
+      activeLoad = attempt;
       let check = null;
       let exportCheck = null;
       const responses = { data: null, periods: null, history: null };
@@ -1028,7 +1071,7 @@ const App = (() => {
           const json = await r.json();
           responses.data = { path: '/data.json', status: r.status };
           return json;
-        }), controller.signal)];
+        }), controller.signal, attempt)];
       wants.push(opts.periods
         ? fetch('/periods.json', { credentials: 'same-origin', signal: controller.signal })
           .then(async r => {
@@ -1054,25 +1097,29 @@ const App = (() => {
         // Existing once-wired views capture their initial inputs. A successful
         // forced check rebuilds every view; the next boot replays its evidence.
         if (forceRefresh) { location.reload(); return; }
-        privateSave?.capture(d, p, h, exportCheck, responses);
-        DATA = d; PERIODS = p || null; HISTORY = h || null;
-        const asof = $('asof');
-        if (asof) {
-          asof.textContent = formatSiteAsOfChip(d, PERIODS);
-        }
-        for (const fn of onceHooks) fn(DATA, PERIODS, HISTORY);
-        rerender();
-        await SettlementSave.initialized();
+        await SettlementSave.publishInitial(attempt, d, () => {
+          publicationStarted = true;
+          privateSave?.capture(d, p, h, exportCheck, responses);
+          DATA = d; PERIODS = p || null; HISTORY = h || null;
+          const asof = $('asof');
+          if (asof) asof.textContent = formatSiteAsOfChip(d, PERIODS);
+          for (const fn of onceHooks) fn(DATA, PERIODS, HISTORY);
+          rerender();
+        });
+        await SettlementSave.initialized(attempt);
         checkStatus.textContent = formatObservationCheck(check, d.refreshTrust);
         refresh.disabled = false;
         restoreShell();
         notice.remove();
       }).catch(err => {
+        if (publicationStarted) publicationFailed = true;
         privateSave?.reset();
         if (err.message === 'auth') return;
         controller.abort();
         notice.className = 'note-box crit';
-        notice.textContent = err.message === 'settlement-reconciliation'
+        notice.textContent = publicationFailed
+          ? 'Page initialization failed. Figures remain unavailable. Reload the page to continue. '
+          : err.message === 'settlement-reconciliation'
           ? 'Assignment outcome needs reconciliation. Figures remain unavailable. '
           : cancelled
           ? 'Loading cancelled. Figures remain unavailable. '
@@ -1089,10 +1136,10 @@ const App = (() => {
         notice.append(buildBootTreatment());
         const retry = document.createElement('button');
         retry.type = 'button';
-        retry.textContent = 'Retry';
-        retry.addEventListener('click', () => load(forceRefresh));
+        retry.textContent = publicationFailed ? 'Reload page' : 'Retry';
+        retry.addEventListener('click', () => publicationFailed ? location.reload() : load(forceRefresh));
         notice.append(retry);
-      }).finally(() => { loading = false; refresh.disabled = false; clearTimeout(timer); });
+      }).finally(() => { loading = false; refresh.disabled = publicationFailed; clearTimeout(timer); });
     }
     load();
     watchBudgetRelease();
