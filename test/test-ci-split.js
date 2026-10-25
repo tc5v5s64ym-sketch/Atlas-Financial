@@ -11,6 +11,19 @@ const { suites, GROUPS, selectSuites, selectionFromArgs, runSuites } = require('
 const { sourceText } = require('./test-source-text');
 const Capture = require('../scripts/ci-output');
 const ROOT = path.join(__dirname, '..');
+function assertRuntimeDriver(version, driverVersion, Client) {
+  assert.equal(version, 'v24.22.1');
+  assert.equal(driverVersion, '8.16.3');
+  assert.equal(typeof Client, 'function');
+}
+// Explicit disconnected post-install mode. Use this existing suite identity so
+// the incumbent private-output runner can validate/capture the real command.
+// The ordinary manifest invocation below still executes the complete suite.
+if (process.argv.includes('--runtime-driver-import')) {
+  assert.deepEqual(process.argv.slice(2), ['--runtime-driver-import']);
+  assertRuntimeDriver(process.version, require('pg/package.json').version, require('pg').Client);
+  process.exit(0); // No Client construction, query, credential or socket.
+}
 const files = rows => rows.map(([, file]) => file);
 let failures = 0;
 let checks = 0;
@@ -19,6 +32,13 @@ function check(label, fn) {
   try { fn(); console.log(`  PASS  ${label}`); }
   catch (error) { failures++; console.error(`  FAIL  ${label}: ${error.message}`); }
 }
+
+check('runtime import predicate rejects wrong Node, driver and missing Client capability', () => {
+  assertRuntimeDriver('v24.22.1', '8.16.3', function Client() {});
+  for (const args of [['v20.20.2','8.16.3',()=>{}], ['v24.22.0','8.16.3',()=>{}],
+    ['v24.22.1','8.23.1',()=>{}], ['v24.22.1','8.16.3',null]])
+    assert.throws(() => assertRuntimeDriver(...args));
+});
 
 check('npm test remains the complete ordered serial reference', () => {
   assert.equal(require('../package.json').scripts.test, 'node test/test.js');
@@ -153,7 +173,7 @@ function workflowContract(src) {
     assert.match(job, /uses: actions\/setup-node@v4\n        with:\n          node-version: '24\.22\.1'/);
     assert.match(job, /^        run: bash scripts\/ci-test.sh install-runtime$/m);
     const commands = [...job.matchAll(/^        run: (.+)$/gm)].map(match => match[1]);
-    assert.deepEqual(commands, ['bash scripts/ci-test.sh install-runtime', ...(group === 'standard' ? ["node scripts/ci-output.js --identity runtime-driver-import -- node -e \"const a=require('node:assert/strict');a.equal(process.version,'v24.22.1');a.equal(require('pg/package.json').version,'8.16.3');a.equal(typeof require('pg').Client,'function')\""] : []), `bash scripts/ci-test.sh ${group}`,
+    assert.deepEqual(commands, ['bash scripts/ci-test.sh install-runtime', ...(group === 'standard' ? ['node scripts/ci-output.js --identity test-ci-split.js -- node test/test-ci-split.js --runtime-driver-import'] : []), `bash scripts/ci-test.sh ${group}`,
       'test -f .githooks/pre-commit && test -f scripts/privacy-guard.js']);
   }
   const gate = jobs.test;
@@ -177,8 +197,8 @@ check('workflow keeps both event identities, isolated Node 24.22.1 jobs, privacy
 
 check('workflow contract rejects omissions, skips, shallow history, changed refs and weakened checks', () => {
   const mutations = [
-    ["        run: node scripts/ci-output.js --identity runtime-driver-import -- node -e \"const a=require('node:assert/strict');a.equal(process.version,'v24.22.1');a.equal(require('pg/package.json').version,'8.16.3');a.equal(typeof require('pg').Client,'function')\"\n", ''],
-    ['8.16.3', '8.23.1'],
+    ['        run: node scripts/ci-output.js --identity test-ci-split.js -- node test/test-ci-split.js --runtime-driver-import\n', ''],
+    ['--runtime-driver-import', '--unsupported-runtime-mode'],
     ['needs: [standard, refresh-isolation]', 'needs: [standard]'],
     ['    if: ${{ always() }}', '    if: ${{ success() }}'],
     ['  refresh-isolation:', '  missing-isolation:'],

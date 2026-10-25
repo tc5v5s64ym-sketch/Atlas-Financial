@@ -37,7 +37,7 @@ jobs:
         run: bash scripts/ci-test.sh install-runtime
 
       - name: Verify pinned runtime and driver without connecting
-        run: node scripts/ci-output.js --identity runtime-driver-import -- node -e "const a=require('node:assert/strict');a.equal(process.version,'v24.22.1');a.equal(require('pg/package.json').version,'8.16.3');a.equal(typeof require('pg').Client,'function')"
+        run: node scripts/ci-output.js --identity test-ci-split.js -- node test/test-ci-split.js --runtime-driver-import
 
       - name: Run the correctness suite
         run: bash scripts/ci-test.sh standard
