@@ -2911,3 +2911,20 @@ test('D1 Addendum B declared serialization authority survives alternate lock wra
   assert.deepEqual(a.writes,[]);assert.deepEqual(b.writes,[]);assert.equal(a.reads+b.reads,0);
  }
 });
+test('B4B receipt: the commit receipt stays the exact 5-field receipt (no requestDigest)',async()=>{
+ const w=makeWorld(),s=newStore(w);await s.bootstrap();
+ const receipt=await commitLink(s,1);
+ // The commit return IS receiptForOperation's output. Its shape is shared
+ // and strictly constructed: exactly five keys with these values, and the
+ // recorded requestDigest never joins it (it lives only in the private
+ // recovery bundle).
+ assert.deepEqual(Object.keys(receipt).sort(),['actorId','digest','operationId','revision','status']);
+ assert.equal(receipt.status,'committed');assert.equal(receipt.operationId,op(1));
+ assert.equal(receipt.actorId,actorId);assert.equal(receipt.revision,1);
+ assert.match(receipt.digest,/^[a-f0-9]{64}$/);
+ assert.equal('requestDigest' in receipt,false);
+ // The store outcome projection agrees on revision and prefix digest.
+ const viaOutcome=await s.outcome({actorId,operationId:op(1)});
+ assert.equal(viaOutcome.revision,receipt.revision);
+ assert.equal(viaOutcome.digest,receipt.digest);
+});

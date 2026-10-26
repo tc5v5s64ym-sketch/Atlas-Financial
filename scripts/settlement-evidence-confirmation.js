@@ -823,17 +823,22 @@ function createSettlementEvidenceConfirmation(deps) {
     await sameAuthority(ownedContext, authority);
     if (previews.get(request.operationId)?.terminalizing) return null;
     const recheckRecovery = async () => { await recoveryDecision(retained); };
-    if (shape(bundle, ['status', 'operationId', 'actorId', 'revision', 'digest'])
+    if (shape(bundle, ['status', 'operationId', 'actorId', 'revision', 'digest', 'requestDigest'])
       && bundle.status === 'committed' && bundle.operationId === request.operationId
-      && matches(ACTOR, bundle.actorId) && positive(bundle.revision) && matches(HASH, bundle.digest)) {
+      && matches(ACTOR, bundle.actorId) && positive(bundle.revision) && matches(HASH, bundle.digest)
+      && matches(HASH, bundle.requestDigest)) {
       // Public projection is exactly status + operationId: the recorded
       // actor and the revision/digest anchors stay inside the private
-      // binding, which only the publication hand-off consumes.
+      // binding, which only the publication hand-off consumes. The
+      // requestDigest is retained as a sibling of the receipt — never
+      // inside it: the receipt is the strictly-constructed shared shape
+      // the publication path consumes unchanged.
       return { result: Object.freeze({ status: 'committed', operationId: request.operationId }),
         binding: Object.freeze({
           receipt: Object.freeze({ status: 'committed', operationId: request.operationId,
             revision: bundle.revision, digest: bundle.digest }),
-          actorId: bundle.actorId }),
+          actorId: bundle.actorId,
+          requestDigest: bundle.requestDigest }),
         recoveryRefused: false, recheckRecovery };
     }
     if (shape(bundle, ['status', 'operationId', 'generation'])

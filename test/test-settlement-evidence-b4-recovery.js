@@ -432,20 +432,166 @@ test('B4R-3: approved cross-login outcome is exactly {status, operationId}', asy
 });
 
 // === B4R-4: private qualified bundle at store level ========================
-test('B4R-4: store recoveryRead returns the private 5-field bundle', async () => {
+test('B4R-4: store recoveryRead returns the private bundle (receipt fields + requestDigest)', async () => {
   const w = await makeWorld({ policy: null });
   await w.bootstrap();
   await commitOp(w, w.controller, 1);
   const receipt = await w.store.outcome({ actorId: ACTOR, operationId: op(1) });
   assert.equal(receipt.status, 'committed');
+  // The private sixth field is the recorded requestDigest, read from the
+  // durable document record itself — never part of the receipt.
+  const doc = JSON.parse(w.adapters.d.doc.toString('utf8'));
+  const recorded = doc.operations.find(o => o.operationId === op(1));
   // Operation-only request: the positive rule needs no generation.
   const bundle = await w.store.recoveryRead({ operationId: op(1) });
   assert.deepEqual(bundle, { status: 'committed', operationId: op(1), actorId: ACTOR,
-    revision: receipt.revision, digest: receipt.digest });
+    revision: receipt.revision, digest: receipt.digest, requestDigest: recorded.requestDigest });
   // A generation selector does not disturb the positive rule.
   const bundle2 = await w.store.recoveryRead({ operationId: op(1),
     generation: 'generation-' + 'e'.repeat(32) });
   assert.deepEqual(bundle2, bundle);
+});
+
+// === B4B: private committed-request binding (requestDigest) ================
+// The recovery bundle gains the recorded requestDigest as a private sixth
+// field; the confirmation boundary requires it; it is never disclosed.
+
+// === B4B-1 (i): the private bundle carries the stored requestDigest ========
+test('B4B-1: recoveryRead committed bundle gains the recorded requestDigest', async () => {
+  const w = await makeWorld({ policy: null });
+  await w.bootstrap();
+  // Prepare manually and capture the journal at its durable write during
+  // confirm — an independent source. The expected digest is computed from
+  // the journal's own frozen preview with the contract digest, not taken
+  // from any store return value.
+  const p = await prepareOp(w, w.controller, 1);
+  assert.equal(p.status, 'prepared');
+  let journal = null;
+  w.adapters.hooks.journalWrite = async value => { journal = value; };
+  const ack = await w.controller.confirm(w.ctx, { operationId: p.operationId,
+    previewToken: p.previewToken, generation: p.generation, confirmed: true });
+  assert.equal(ack.status, 'committed');
+  assert.ok(journal && journal.preview, 'the commit wrote its journal first');
+  const expected = C.digest(journal.preview);
+  assert.equal(journal.requestDigest, expected, 'journal binds the preview digest');
+  const bundle = await w.store.recoveryRead({ operationId: op(1) });
+  assert.equal(bundle.status, 'committed');
+  assert.equal(bundle.requestDigest, expected);
+  assert.deepEqual(Object.keys(bundle).sort(),
+    ['actorId', 'digest', 'operationId', 'requestDigest', 'revision', 'status']);
+  // The durable document record itself carries the same digest.
+  const doc = JSON.parse(w.adapters.d.doc.toString('utf8'));
+  assert.equal(doc.operations.find(o => o.operationId === op(1)).requestDigest, expected);
+});
+
+// === B4B-2 (ii): a stored record without requestDigest proves nothing ======
+test('B4B-2: missing stored requestDigest -> recoveryRead unknown', async () => {
+  const w = await makeWorld({ policy: null });
+  await w.bootstrap();
+  await commitOp(w, w.controller, 1);
+  // Rewrite the durable document without the recorded digest, keeping the
+  // document digest and pin in agreement with the tampered bytes.
+  const doc = JSON.parse(w.adapters.d.doc.toString('utf8'));
+  delete doc.operations[0].requestDigest;
+  doc.digest = C.digest({ schema: C.SCHEMA, householdId,
+    revision: doc.revision, operations: doc.operations });
+  w.adapters.d.doc = Buffer.from(JSON.stringify(doc));
+  w.adapters.d.pin = { ...w.adapters.d.pin, digest: doc.digest };
+  assert.deepEqual(await w.store.recoveryRead({ operationId: op(1) }),
+    { status: 'unknown', operationId: op(1) });
+  // And the controller discloses nothing for the new login either.
+  assert.deepEqual(await w.controller.outcome(w.ctxB, { operationId: op(1) }),
+    { status: 'unknown', operationId: op(1) });
+});
+
+// === B4B-3 (iii): a malformed stored requestDigest proves nothing ==========
+test('B4B-3: malformed stored requestDigest -> recoveryRead unknown', async () => {
+  const w = await makeWorld({ policy: null });
+  await w.bootstrap();
+  await commitOp(w, w.controller, 1);
+  const doc = JSON.parse(w.adapters.d.doc.toString('utf8'));
+  doc.operations[0].requestDigest = 'not-a-hash';
+  doc.digest = C.digest({ schema: C.SCHEMA, householdId,
+    revision: doc.revision, operations: doc.operations });
+  w.adapters.d.doc = Buffer.from(JSON.stringify(doc));
+  w.adapters.d.pin = { ...w.adapters.d.pin, digest: doc.digest };
+  assert.deepEqual(await w.store.recoveryRead({ operationId: op(1) }),
+    { status: 'unknown', operationId: op(1) });
+  assert.deepEqual(await w.controller.outcome(w.ctxB, { operationId: op(1) }),
+    { status: 'unknown', operationId: op(1) });
+});
+
+// === B4B-4 (iv): the confirmation boundary refuses an under-bound bundle ===
+test('B4B-4: a 5-field or malformed-digest bundle no longer proves committed', async () => {
+  const w = await makeWorld({});
+  await w.bootstrap();
+  await commitOp(w, w.controller, 1);
+  const real = w.store.recoveryRead.bind(w.store);
+  const variants = {
+    'requestDigest missing (the pre-change 5-field bundle)': b => {
+      const { requestDigest, ...rest } = b; return rest; },
+    'requestDigest malformed': b => ({ ...b, requestDigest: 'not-a-hash' }),
+    'requestDigest non-hex': b => ({ ...b, requestDigest: 'z'.repeat(64) }),
+    'requestDigest uppercase': b => ({ ...b, requestDigest: 'A'.repeat(64) }),
+  };
+  for (const [label, tamper] of Object.entries(variants)) {
+    const store = { ...w.store, recoveryRead: async input => tamper(await real(input)) };
+    const c = w.createController({ store });
+    const out = await c.outcome(w.ctxB, { operationId: op(1) });
+    assert.deepEqual(out, { status: 'unknown', operationId: op(1) }, label);
+  }
+  // Control: the untampered bundle still proves committed for the new login.
+  assert.deepEqual(await w.controller.outcome(w.ctxB, { operationId: op(1) }),
+    { status: 'committed', operationId: op(1) });
+});
+
+// === B4B-5 (v): canary — the requestDigest never reaches a disclosure ======
+test('B4B-5: the stored requestDigest appears in no outcome or publication', async () => {
+  const h = await httpWorld({});
+  try {
+    await commitOp(h.w, h.w.controller, 1);
+    const doc = JSON.parse(h.w.adapters.d.doc.toString('utf8'));
+    const secret = doc.operations.find(o => o.operationId === op(1)).requestDigest;
+    assert.match(secret, /^[a-f0-9]{64}$/);
+    // The digest is present in the private bundle — and only there.
+    const bundle = await h.w.store.recoveryRead({ operationId: op(1) });
+    assert.equal(bundle.requestDigest, secret);
+    const direct = await h.w.controller.outcome(h.w.ctxB, { operationId: op(1) });
+    assert.deepEqual(direct, { status: 'committed', operationId: op(1) });
+    assert.ok(!JSON.stringify(direct).includes(secret), 'controller outcome leaks requestDigest');
+    const out = await h.call('outcome', { operationId: op(1) }, ACTOR2);
+    assert.deepEqual(out.body, { status: 'committed', operationId: op(1) });
+    const pub = await h.call('publication', { operationId: op(1) }, ACTOR2);
+    assert.equal(pub.body.publication, 'included');
+    for (const [label, body] of [['outcome', out.body], ['publication', pub.body]]) {
+      const wire = JSON.stringify(body);
+      assert.ok(!wire.includes(secret), label + ' leaks the requestDigest');
+      assert.ok(!wire.includes('requestDigest'), label + ' names the requestDigest');
+    }
+  } finally { await h.close(); }
+});
+
+// === B4B-6 (vii): negative + unconfigured behaviour non-regressed ==========
+test('B4B-6: negative proof and unconfigured behaviour are unchanged by the binding', async () => {
+  const w = await makeWorld({});
+  await w.bootstrap();
+  await commitOp(w, w.controller, 1);
+  const { prepared } = await sealViaExpiry(w, w.controller, 5);
+  // Exact-generation negative proof: the exact 3-key shape, no digest field.
+  const neg = await w.controller.outcome(w.ctxB, { operationId: op(5), generation: prepared.generation });
+  assert.deepEqual(neg, { status: 'not-applied', operationId: op(5), generation: prepared.generation });
+  const bundleNeg = await w.store.recoveryRead({ operationId: op(5), generation: prepared.generation });
+  assert.deepEqual(bundleNeg, { status: 'not-applied', operationId: op(5), generation: prepared.generation });
+  // A wrong generation stays unknown.
+  assert.deepEqual(await w.controller.outcome(w.ctxB, { operationId: op(5),
+    generation: 'generation-' + '0'.repeat(32) }), { status: 'unknown', operationId: op(5) });
+  // Unconfigured world: no recovery capability; cross-login stays unknown.
+  const plain = await makeWorld({ recovery: false });
+  await plain.bootstrap();
+  await commitOp(plain, plain.controller, 1);
+  assert.equal('recoveryRead' in plain.store, false);
+  assert.deepEqual(await plain.controller.outcome(plain.ctxB, { operationId: op(1) }),
+    { status: 'unknown', operationId: op(1) });
 });
 
 // === B4R-5: policy input/output contract ===================================
