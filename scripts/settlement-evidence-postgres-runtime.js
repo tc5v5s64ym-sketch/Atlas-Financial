@@ -2,7 +2,8 @@
 // FOUNDATION - NOT ACTIVATION. Explicit composition for createApplication's
 // existing settlement dependency. Default construction performs no I/O.
 // No driver, environment secrets, bootstrap, reconciliation or reconnect.
-// Independent pin/archive/history custody remains a caller prerequisite.
+// Independent pin/archive and rollback checkpoint custody remain prerequisites.
+// Explicit native history is local persistence, never independent rollback proof.
 const { createSettlementEvidencePostgresConnection } = require('./settlement-evidence-postgres-connection');
 const { createSettlementEvidenceStore } = require('./settlement-evidence-store');
 const TC = require('./settlement-evidence-terminal-certificate');
@@ -21,6 +22,12 @@ function methods(value, names) {
   const snapshot = record(value, names);
   if (names.some(k => typeof snapshot[k] !== 'function')) throw invalid();
   return snapshot;
+}
+function isNativeHistory(value) {
+  if(value&&Object.getPrototypeOf(value)===Object.prototype&&Object.hasOwn(value,'mode')){
+    const selected=record(value,['mode']);if(selected.mode!=='postgres')throw invalid();return true;
+  }
+  return false;
 }
 function unavailable() {
   // Never forward injected policy/custody/driver errors, input or connection config.
@@ -88,7 +95,14 @@ function createSettlementEvidencePostgresRuntime(options) {
     if (!['http:','https:'].includes(origin.protocol) || origin.origin !== a.origin || origin.username || origin.password) throw invalid();
     const c = record(o.custody,['pinStore','backupStore','terminalHistory','exclusionDomain']);
     const pin = methods(c.pinStore,['read','advance']), backup = methods(c.backupStore,['put','get','list']);
-    const history = methods(c.terminalHistory,['readSnapshot','compareAndAppend']);
+    // Explicit native selection only; existing injected surfaces remain unchanged.
+    // No constructor, provisioning, snapshot read or implicit empty genesis here.
+    const nativeHistory=isNativeHistory(c.terminalHistory);
+    const history = nativeHistory?null:methods(c.terminalHistory,['readSnapshot','compareAndAppend']);
+    if(nativeHistory){
+      const domain=record(c.exclusionDomain,['ledgerNamespace','serializationAuthority','historyAuthority']);
+      connection=Object.freeze({...connection,terminalHistory:Object.freeze({householdId:a.householdId,ledgerNamespace:domain.ledgerNamespace})});
+    }
     // Construct the REAL store before connecting. Its existing constructor owns
     // domain/mode/alias validation. Stable local proxies bind to the sole verified
     // owner only after connect; constructing them never calls a dependency.
@@ -102,7 +116,7 @@ function createSettlementEvidencePostgresRuntime(options) {
         journalStore:surface(() => owner.journalStore,['read','write','clear']),
         quarantine:surface(() => owner.quarantine,['put']),lock:surface(() => owner.lock,['withLock']),
         pinStore:surface(() => pin,['read','advance']),backupStore:surface(() => backup,['put','get','list']),
-        terminalHistory:surface(() => history,['readSnapshot','compareAndAppend']),
+        terminalHistory:surface(() => nativeHistory?owner.terminalHistory:history,['readSnapshot','compareAndAppend']),
         exclusionDomain:c.exclusionDomain,now:fence(a.now),...(recovery ? {recoveryRead:true} : {})});
     } catch { throw invalid(); }
     const exposedStore = {...surface(() => store,['prepare','commitWithoutRecovery','outcome','inspectAttempt']),

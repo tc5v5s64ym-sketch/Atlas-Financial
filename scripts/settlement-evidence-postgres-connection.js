@@ -47,7 +47,7 @@ function record(value, allowed, required = allowed) {
   return Object.fromEntries(Object.entries(fields).map(([k,d]) => [k,d.value]));
 }
 function validate(options) {
-  const o = record(options, ['Client','config','schema','scope','timeouts'], ['Client','config','schema','scope']);
+  const o = record(options, ['Client','config','schema','scope','timeouts','terminalHistory'], ['Client','config','schema','scope']);
   const c = record(o.config, ['host','port','database','user','password','ssl']);
   const ssl = record(c.ssl, ['rejectUnauthorized','servername']);
   check(typeof o.Client === 'function', 'config','invalid-config');
@@ -61,10 +61,13 @@ function validate(options) {
   check(typeof o.schema === 'string' && /^[a-z_][a-z0-9_]{0,62}$/.test(o.schema)
     && !o.schema.startsWith('pg_') && o.schema !== 'information_schema', 'config','invalid-config');
   check(typeof o.scope === 'string' && /^[a-z0-9][a-z0-9-]{0,127}$/.test(o.scope), 'config','invalid-config');
+  const terminalHistory=o.terminalHistory===undefined?undefined:record(o.terminalHistory,['householdId','ledgerNamespace']);
+  if(terminalHistory)check(typeof terminalHistory.householdId==='string'&&/^household-[a-f0-9]{32}$/.test(terminalHistory.householdId)
+    &&typeof terminalHistory.ledgerNamespace==='string'&&/^ledger-[a-f0-9]{32}$/.test(terminalHistory.ledgerNamespace),'config','invalid-config');
   const times = { ...MAX, ...(o.timeouts === undefined ? {} : record(o.timeouts,Object.keys(MAX),[])) };
   for (const k of Object.keys(MAX)) check(Number.isInteger(times[k]) && times[k] > 0 && times[k] <= MAX[k], 'config','invalid-config');
   check(!Object.keys(process.env).some(k => TRUST.test(k)), 'environment','environment');
-  return { ...o, times, config:{ host:c.host, port:c.port, database:c.database, user:c.user,
+  return { ...o, terminalHistory, times, config:{ host:c.host, port:c.port, database:c.database, user:c.user,
     password:c.password, ssl:{rejectUnauthorized:true,servername:c.host},
     application_name:'atlas-settlement', connectionTimeoutMillis:times.connect,
     query_timeout:times.query, statement_timeout:5000, lock_timeout:1000,
@@ -113,25 +116,34 @@ const SCHEMA = `SELECT c.relname AS name,c.relkind AS kind,c.relpersistence AS p
     WHERE k.conrelid=c.oid AND k.contype='p' ORDER BY p.ord) AS "primaryKey"
   FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
   WHERE n.nspname=$1 AND c.relkind<>'i' ORDER BY c.relname LIMIT 5`;
+// Fixed second profile; no caller-supplied table list or optional extra state.
+const NATIVE_PRIVILEGES=PRIVILEGES
+  .replace("has_table_privilege(format('%I.%I',$1,t.name),'INSERT')",
+    "has_table_privilege(format('%I.%I',$1,t.name),'INSERT')=(t.name<>'terminal_history')\n"
+    +"    AND (t.name<>'terminal_history' OR NOT has_any_column_privilege(format('%I.%I',$1,t.name),'INSERT'))")
+  .replace("has_table_privilege(format('%I.%I',$1,t.name),'DELETE')=(t.name<>'quarantine')",
+    "has_table_privilege(format('%I.%I',$1,t.name),'DELETE')=(t.name NOT IN ('quarantine','terminal_history'))")
+  .replace("('quarantine')) t(name)","('quarantine'),('terminal_history')) t(name)");
+const NATIVE_SCHEMA=SCHEMA.replace('LIMIT 5','LIMIT 6');
 
 function rows(result, stage) {
   check(result && !Array.isArray(result) && result.command === 'SELECT' && Array.isArray(result.rows), stage,'protocol');
   return result.rows;
 }
 function single(result, stage) { const r=rows(result,stage);check(r.length===1 && r[0] && typeof r[0]==='object',stage,'protocol');return r[0]; }
-function schemaMatches(result) {
+function schemaMatches(result,native=false) {
   const r=rows(result,'schema');
   // At most five non-index relations: the fifth proves unexpected extra state.
   const tables=r;
-  check(tables.length===4,'schema','schema');
+  check(tables.length===(native?5:4),'schema','schema');
   const names=new Set();
   for (const t of tables) {
-    check(['doc_head','doc_staged','journal','quarantine'].includes(t.name) && !names.has(t.name), 'schema','schema'); names.add(t.name);
+    check(['doc_head','doc_staged','journal','quarantine',...(native?['terminal_history']:[])].includes(t.name) && !names.has(t.name), 'schema','schema'); names.add(t.name);
     check(t.kind==='r' && t.persistence==='p' && t.rls===false && t.forceRls===false
       && t.unsafe===false && t.primaryKeyCount===1, 'schema','schema');
-    const cols=t.name==='quarantine'?['scope','name','label','bytes']:['scope','bytes'];
+    const cols=t.name==='terminal_history'?['scope','history_bytes','checkpoint_bytes']:t.name==='quarantine'?['scope','name','label','bytes']:['scope','bytes'];
     check(Array.isArray(t.columns) && t.columns.length===cols.length && t.columns.every((c,i)=>
-      c.name===cols[i] && c.type===(c.name==='bytes'?'bytea':'text') && c.notNull===(c.name!=='label')
+      c.name===cols[i] && c.type===((t.name==='terminal_history'?c.name!=='scope':c.name==='bytes')?'bytea':'text') && c.notNull===(c.name!=='label')
       && c.generated===''),'schema','schema');
     const pk=t.name==='quarantine'?['scope','name']:['scope'];
     check(Array.isArray(t.primaryKey) && t.primaryKey.length===pk.length && t.primaryKey.every((c,i)=>c===pk[i]),'schema','schema');
@@ -226,17 +238,18 @@ async function createSettlementEvidencePostgresConnection(options) {
     const role=single(await query(ROLE,[],'role'),'role');
     check(role.canLogin===true && ['superuser','createDb','createRole','inherit','replication','bypassRls'].every(k=>role[k]===false)
       && role.connectionLimit===1 && role.memberships===0 && role.ownedObjects===0,'role','privileges');
-    const grants=single(await query(PRIVILEGES,[o.schema],'privileges'),'privileges');
+    const grants=single(await query(o.terminalHistory?NATIVE_PRIVILEGES:PRIVILEGES,[o.schema],'privileges'),'privileges');
     check(['connect','schemaUsage','tables','functions'].every(k=>grants[k]===true)
       && grants.databaseCreate===false && grants.schemaCreate===false,'privileges','privileges');
-    schemaMatches(await query(SCHEMA,[o.schema],'schema'));
+    schemaMatches(await query(o.terminalHistory?NATIVE_SCHEMA:SCHEMA,[o.schema],'schema'),!!o.terminalHistory);
     check(performance.now()<deadline,'schema','timeout');
     const client={
       query:(text,values)=>bounded(()=>raw.query(text,values),'query',o.times.query),
       on:(event,fn)=>{check(Object.hasOwn(subscribers,event)&&typeof fn==='function','client-setup','setup');subscribers[event].add(fn);},
       retire:()=>{if(state==='ready')primary ||= failure('adapter','protocol').diagnostic;return retire();}
     };
-    const adapter=createSettlementEvidencePostgresAdapter({client,schema:o.schema,scope:o.scope});
+    const adapter=createSettlementEvidencePostgresAdapter({client,schema:o.schema,scope:o.scope,
+      ...(o.terminalHistory?{terminalHistory:o.terminalHistory}:{})});
     function expose(capabilities) {
       return Object.freeze(Object.fromEntries(Object.entries(capabilities).map(([name,fn])=>[name,(...args)=>{
         // Invoke synchronously so the adapter still snapshots inputs at call time.
@@ -253,6 +266,7 @@ async function createSettlementEvidencePostgresConnection(options) {
     }
     state='ready';
     return Object.freeze({documentStore:expose(adapter.documentStore),journalStore:expose(adapter.journalStore),
+      ...(o.terminalHistory?{terminalHistory:expose(adapter.terminalHistory)}:{}),
       quarantine:expose(adapter.quarantine),lock:expose(adapter.lock),contract:adapter.contract,retire,status});
   } catch(error) {
     if(!connectStarted)connectSettled();
