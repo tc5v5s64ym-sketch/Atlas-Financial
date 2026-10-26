@@ -198,6 +198,32 @@ function createFakeSession(db = createFakeDatabase()) {
         staged = null; inTxn = false;
         return { command: 'ROLLBACK', rows: [], rowCount: 0 };
       }
+      if (text.includes('LEFT JOIN')
+        && (mode === 'flagsrow' || mode === 'mixedrow' || mode === 'missingcol')) {
+        // Malformed state-read results: absence must be proven by all
+        // six eligibility columns being SQL null in a complete row.
+        if (mode === 'flagsrow') {
+          return { command: 'SELECT', rows: [{ operation_revoked: false, session_revoked: false }], rowCount: 1 };
+        }
+        if (mode === 'mixedrow') {
+          return {
+            command: 'SELECT', rowCount: 1,
+            rows: [{
+              household_id: null, operation_id: null, generation: values[2],
+              confirmation_digest: null, secret_digest: null, issued_at: null,
+              operation_revoked: false, session_revoked: false,
+            }],
+          };
+        }
+        return {
+          command: 'SELECT', rowCount: 1,
+          rows: [{
+            household_id: null, operation_id: null, generation: null,
+            confirmation_digest: null, secret_digest: null, issued_at: null,
+            operation_revoked: false,
+          }],
+        };
+      }
       const res = dispatch(text, values);
       if (mode === 'dupe-rows' && res.rows.length === 1) res.rows = [res.rows[0], res.rows[0]];
       if (mode === 'bad-row' && res.rows.length === 1) {
@@ -677,4 +703,113 @@ test('AS-12 errors and outcomes expose no driver text, no input values, and the 
   const consoleBlob = consoleOutputs.join('\n');
   assert.ok(!consoleBlob.includes('FAKE-DRIVER-TEXT'), 'nothing logged carries driver text');
   assert.ok(!consoleBlob.includes(D('secret-1')), 'nothing logged carries fixture digests');
+});
+
+// --- Repair round (Systems Review BLOCK on 9d9dda31): frozen first -----
+// --- (11) primitive strings before snapshot ------------------------------
+test('AS-13 boxed/coercible string-likes are rejected at validation, before any statement', async () => {
+  const fake = createFakeSession();
+  const store = makeStore(fake);
+  const boxedOp = new String(op(41));
+  // A boxed string passes a bare regex test by coercion; the snapshot
+  // would retain the object, and a toPostgres added later would change
+  // the parameter pg actually formats. Primitive strings only.
+  boxedOp.toPostgres = () => op(42);
+  assert.throws(() => store.issueEligibility({ ...eligibility(), operationId: boxedOp }), TypeError);
+  assert.throws(() => store.issueEligibility(
+    { ...eligibility(), householdId: new String(householdId) }), TypeError);
+  assert.throws(() => store.issueEligibility(
+    { ...eligibility(), generation: new String(gen(1)) }), TypeError);
+  assert.throws(() => store.appendRevocation(
+    { operationId: new String(op(1)), generation: gen(1), revokedAt: tick() }), TypeError);
+  assert.throws(() => store.readAuthorizationState(
+    { operationId: op(1), generation: new String(gen(1)), sidDigest: D('sid-1') }), TypeError);
+  eq(fake.log.length, 0);
+  // Stored-row side: a boxed stored household must not validate as a
+  // record either (primitive-string validation in row projection).
+  const rec = eligibility({ operationId: op(43), generation: gen(43) });
+  eq((await store.issueEligibility(rec)).outcome, 'issued');
+  const row = [...fake.tables.auth_eligibility.values()][0];
+  row.household_id = new String(row.household_id);
+  const store2 = makeStore(createFakeSession({ tables: fake.tables }));
+  const read = await store2.readAuthorizationState(
+    { operationId: rec.operationId, generation: rec.generation, sidDigest: D('sid-1') });
+  eq(read.state, 'unknown'); // pre-repair this returned ok with a boxed householdId
+  eq(store2.status(), { retired: true, accepting: false });
+});
+
+// --- (12) read-result completeness ---------------------------------------
+test('AS-14 read absence requires a complete row with all six eligibility columns SQL-null', async () => {
+  for (const mode of ['flagsrow', 'mixedrow', 'missingcol']) {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    fake.faultOnce(t => t.includes('LEFT JOIN'), mode);
+    const read = await store.readAuthorizationState(
+      { operationId: op(1), generation: gen(1), sidDigest: D('sid-1') });
+    eq(read.state, 'unknown', mode + ': a missing/mixed row is never proven absence');
+    eq(store.status(), { retired: true, accepting: false }, mode + ': malformed result retires');
+    eq(fake.retiredCount, 1, mode);
+  }
+  // Genuine absence still reads ok/null on the healthy path.
+  const fake = createFakeSession();
+  const store = makeStore(fake);
+  const read = await store.readAuthorizationState(
+    { operationId: op(9), generation: gen(9), sidDigest: D('sid-1') });
+  eq(read.state, 'ok');
+  eq(read.eligibility, null);
+});
+
+// --- (13) validation exceptions retire ------------------------------------
+test('AS-15 a row-validation exception retires the store; the session is never reused', async () => {
+  const fake = createFakeSession();
+  const store = makeStore(fake);
+  const rec = eligibility({ operationId: op(51), generation: gen(51) });
+  eq((await store.issueEligibility(rec)).outcome, 'issued');
+  // Corrupt the stored household into a value whose coercion THROWS:
+  // pre-repair, RegExp.test throws raw inside the transaction body,
+  // the write resolves unknown, and the store stays accepting with the
+  // transaction unrolled-back and the session reusable.
+  const row = [...fake.tables.auth_eligibility.values()][0];
+  row.household_id = { toString() { throw new Error('FAKE-DRIVER-TEXT: coercion boom'); } };
+  const out = await store.issueEligibility(rec);
+  eq(out.outcome, 'unknown');
+  eq(store.status(), { retired: true, accepting: false });
+  eq(fake.retiredCount, 1);
+  const logAtFailure = fake.log.length;
+  // No reuse: later calls resolve unknown without touching the session.
+  eq((await store.readAuthorizationState(
+    { operationId: rec.operationId, generation: rec.generation, sidDigest: D('sid-1') })).state, 'unknown');
+  eq((await store.issueEligibility(
+    eligibility({ operationId: op(52), generation: gen(52) }))).outcome, 'unknown');
+  eq(fake.log.length, logAtFailure);
+});
+
+// --- (14) partial session.on setup ----------------------------------------
+test('AS-16 partial listener registration is sanitized and retires the exact session once', () => {
+  function badSession({ failOnCall, retireThrows = false }) {
+    const state = { onCalls: 0, retireCalls: 0 };
+    const session = {
+      query: async () => ({ command: 'SELECT', rows: [], rowCount: 0 }),
+      on() {
+        state.onCalls++;
+        if (state.onCalls === failOnCall) throw new Error('FAKE-DRIVER-TEXT: listener boom');
+      },
+      retire() {
+        state.retireCalls++;
+        if (retireThrows) throw new Error('FAKE-DRIVER-TEXT: retire boom');
+      },
+    };
+    return { session, state };
+  }
+  for (const opts of [{ failOnCall: 1 }, { failOnCall: 2 }, { failOnCall: 2, retireThrows: true }]) {
+    const { session, state } = badSession(opts);
+    let thrown = null;
+    try {
+      A.createAuthorizationStore({ session, schema: SCHEMA, scope: SCOPE_A });
+    } catch (e) { thrown = e; }
+    assert.ok(thrown instanceof TypeError, 'construction refuses with a TypeError');
+    assert.ok(!String(thrown && thrown.message).includes('FAKE-DRIVER-TEXT'),
+      'driver text never escapes construction');
+    eq(state.retireCalls, 1, 'the exact session is retired exactly once');
+  }
 });
