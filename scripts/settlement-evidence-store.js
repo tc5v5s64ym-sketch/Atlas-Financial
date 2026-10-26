@@ -1087,8 +1087,10 @@ function createSettlementEvidenceStore(deps) {
   // and returns exactly one of:
   //   - the private qualified bundle for a committed operation — the
   //     receiptForOperation shape {status, operationId, actorId, revision,
-  //     digest}. The recorded actor is read from the validated durable
-  //     record itself; it is server-internal and never a disclosure shape.
+  //     digest} PLUS the recorded requestDigest as a private sixth field
+  //     (fail-closed unknown when that digest is missing or malformed).
+  //     The recorded actor is read from the validated durable record
+  //     itself; it is server-internal and never a disclosure shape.
   //   - the exact negative proof {status:'not-applied', operationId,
   //     generation}, only on an exactly matching supplied generation.
   //   - {status:'unknown', operationId} for every other state.
@@ -1121,7 +1123,11 @@ function createSettlementEvidenceStore(deps) {
       const recorded = head.operations.find(o => o.operationId === operationId);
       if (recorded) {
         await terminalGate(head);
-        return receiptForOperation(head, operationId);
+        // The private bundle additionally binds the recorded requestDigest
+        // — the same durable record r3Proof cross-validates against the
+        // journal. Missing or malformed fails closed at this boundary.
+        if (!isHash(recorded.requestDigest)) return { status: 'unknown', operationId };
+        return { ...receiptForOperation(head, operationId), requestDigest: recorded.requestDigest };
       }
       const J = await readJournalState();
       if (J.kind !== 'ok' || J.raw) return { status: 'unknown', operationId };
