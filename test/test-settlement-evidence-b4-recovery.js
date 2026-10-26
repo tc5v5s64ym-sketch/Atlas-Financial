@@ -577,11 +577,15 @@ test('B4B-6: negative proof and unconfigured behaviour are unchanged by the bind
   await w.bootstrap();
   await commitOp(w, w.controller, 1);
   const { prepared } = await sealViaExpiry(w, w.controller, 5);
-  // Exact-generation negative proof: the exact 3-key shape, no digest field.
+  // Exact-generation negative proof: the public result keeps the exact
+  // 3-key shape; the private bundle now also carries the certificate's
+  // confirmationDigest (B4N-1) without changing the disclosure.
   const neg = await w.controller.outcome(w.ctxB, { operationId: op(5), generation: prepared.generation });
   assert.deepEqual(neg, { status: 'not-applied', operationId: op(5), generation: prepared.generation });
+  const certNeg = w.history.records().find(r => r.operationId === op(5));
   const bundleNeg = await w.store.recoveryRead({ operationId: op(5), generation: prepared.generation });
-  assert.deepEqual(bundleNeg, { status: 'not-applied', operationId: op(5), generation: prepared.generation });
+  assert.deepEqual(bundleNeg, { status: 'not-applied', operationId: op(5), generation: prepared.generation,
+    confirmationDigest: certNeg.confirmationDigest });
   // A wrong generation stays unknown.
   assert.deepEqual(await w.controller.outcome(w.ctxB, { operationId: op(5),
     generation: 'generation-' + '0'.repeat(32) }), { status: 'unknown', operationId: op(5) });
@@ -592,6 +596,181 @@ test('B4B-6: negative proof and unconfigured behaviour are unchanged by the bind
   assert.equal('recoveryRead' in plain.store, false);
   assert.deepEqual(await plain.controller.outcome(plain.ctxB, { operationId: op(1) }),
     { status: 'unknown', operationId: op(1) });
+});
+
+// === B4N: combined negative private binding (confirmationDigest) ===========
+// The recovery negative bundle gains the terminal certificate's recorded
+// confirmationDigest as a private fourth field; the confirmation boundary
+// requires it and retains it in the private binding; the public negative
+// result is explicitly projected back to exactly
+// {status, operationId, generation} and the digest is never disclosed.
+
+// === B4N-1 (i): the private bundle carries the certificate's digest ========
+test('B4N-1: recoveryRead negative bundle gains the certificate confirmationDigest', async () => {
+  const w = await makeWorld({ policy: null });
+  await w.bootstrap();
+  const { prepared } = await sealViaExpiry(w, w.controller, 5);
+  const gen = prepared.generation;
+  // The durable certificate record, read straight from the history bytes —
+  // independent of the recovery read under test. The append capture is a
+  // second independent source for the same record.
+  const cert = w.history.records().find(r => r.operationId === op(5));
+  assert.ok(cert, 'durable certificate exists');
+  assert.match(cert.confirmationDigest, /^[a-f0-9]{64}$/);
+  const appended = w.history.appendArgs.map(a => a.certificate).find(c => c && c.operationId === op(5));
+  assert.equal(appended.confirmationDigest, cert.confirmationDigest, 'append capture agrees');
+  const bundle = await w.store.recoveryRead({ operationId: op(5), generation: gen });
+  assert.deepEqual(bundle, { status: 'not-applied', operationId: op(5), generation: gen,
+    confirmationDigest: cert.confirmationDigest });
+  assert.deepEqual(Object.keys(bundle).sort(),
+    ['confirmationDigest', 'generation', 'operationId', 'status']);
+});
+
+// === B4N-2 (ii): a certificate without a valid digest proves nothing =======
+test('B4N-2: missing or malformed certificate confirmationDigest -> recoveryRead unknown', async () => {
+  const w = await makeWorld({});
+  await w.bootstrap();
+  const { prepared } = await sealViaExpiry(w, w.controller, 5);
+  const gen = prepared.generation;
+  // Control: the genuine certificate proves.
+  assert.equal((await w.store.recoveryRead({ operationId: op(5), generation: gen })).status, 'not-applied');
+  // Rewrite the durable history with the certificate's digest removed,
+  // keeping the container encoding valid. Shipped history qualification
+  // already refuses such a record at the gate; the branch's own hash
+  // check keeps the branch fail-closed on its own terms — either way the
+  // observable read is unknown and the controller discloses nothing.
+  const genuine = w.history.records();
+  const missing = genuine.map(r => { const c = { ...r }; delete c.confirmationDigest; return c; });
+  let e = w.history.encode(missing);
+  w.history.bytes = e.historyBytes; w.history.checkpoint = e.checkpoint;
+  assert.deepEqual(await w.store.recoveryRead({ operationId: op(5), generation: gen }),
+    { status: 'unknown', operationId: op(5) });
+  assert.deepEqual(await w.controller.outcome(w.ctxB, { operationId: op(5), generation: gen }),
+    { status: 'unknown', operationId: op(5) });
+  const malformed = genuine.map(r => ({ ...r, confirmationDigest: 'not-a-hash' }));
+  e = w.history.encode(malformed);
+  w.history.bytes = e.historyBytes; w.history.checkpoint = e.checkpoint;
+  assert.deepEqual(await w.store.recoveryRead({ operationId: op(5), generation: gen }),
+    { status: 'unknown', operationId: op(5) });
+  assert.deepEqual(await w.controller.outcome(w.ctxB, { operationId: op(5), generation: gen }),
+    { status: 'unknown', operationId: op(5) });
+});
+
+// === B4N-3 (iii): the confirmation boundary refuses an under-bound bundle ==
+test('B4N-3: a 3-field or malformed-digest negative bundle no longer proves not-applied', async () => {
+  const w = await makeWorld({});
+  await w.bootstrap();
+  const { prepared } = await sealViaExpiry(w, w.controller, 5);
+  const gen = prepared.generation;
+  const real = w.store.recoveryRead.bind(w.store);
+  const variants = {
+    'confirmationDigest missing (the pre-change 3-field bundle)': b => {
+      if (b.status !== 'not-applied') return b;
+      const { confirmationDigest, ...rest } = b; return rest; },
+    'confirmationDigest malformed': b => b.status === 'not-applied'
+      ? { ...b, confirmationDigest: 'not-a-hash' } : b,
+    'confirmationDigest non-hex': b => b.status === 'not-applied'
+      ? { ...b, confirmationDigest: 'z'.repeat(64) } : b,
+    'confirmationDigest uppercase': b => b.status === 'not-applied'
+      ? { ...b, confirmationDigest: 'A'.repeat(64) } : b,
+    'extra field added': b => b.status === 'not-applied' ? { ...b, extra: 'x' } : b,
+  };
+  for (const [label, tamper] of Object.entries(variants)) {
+    const store = { ...w.store, recoveryRead: async input => tamper(await real(input)) };
+    const c = w.createController({ store });
+    const out = await c.outcome(w.ctxB, { operationId: op(5), generation: gen });
+    assert.deepEqual(out, { status: 'unknown', operationId: op(5) }, label);
+  }
+  // Control: the untampered bundle still proves the exact negative.
+  assert.deepEqual(await w.controller.outcome(w.ctxB, { operationId: op(5), generation: gen }),
+    { status: 'not-applied', operationId: op(5), generation: gen });
+});
+
+// === B4N-4 (iv): retention — the digest lives only in the private binding ==
+test('B4N-4: the negative evaluation retains confirmationDigest in its private binding only', async () => {
+  const w = await makeWorld({});
+  await w.bootstrap();
+  const { prepared } = await sealViaExpiry(w, w.controller, 5);
+  const gen = prepared.generation;
+  const cert = w.history.records().find(r => r.operationId === op(5));
+  let publicationOutcome = null;
+  const c = w.createController({ registerPublicationOutcome: fn => { publicationOutcome = fn; } });
+  assert.equal(typeof publicationOutcome, 'function');
+  const evaluation = await publicationOutcome(w.ctxB, { operationId: op(5), generation: gen });
+  // The public result is the explicit projection: exactly three keys.
+  assert.deepEqual(evaluation.result, { status: 'not-applied', operationId: op(5), generation: gen });
+  assert.deepEqual(Object.keys(evaluation.result).sort(), ['generation', 'operationId', 'status']);
+  // The digest is retained in the private binding — its own frozen field,
+  // mirroring the committed branch's requestDigest retention — and nowhere
+  // else in the evaluation.
+  assert.deepEqual(evaluation.binding, { confirmationDigest: cert.confirmationDigest });
+  assert.ok(Object.isFrozen(evaluation.binding), 'the retained binding is frozen');
+  assert.ok(!JSON.stringify(evaluation.result).includes(cert.confirmationDigest),
+    'the public result carries the digest');
+  assert.equal(evaluation.recoveryRefused, false);
+  assert.equal(typeof evaluation.recheckRecovery, 'function');
+});
+
+// === B4N-5 (v): canary — the certificate digest never reaches a disclosure ==
+test('B4N-5: the certificate confirmationDigest appears in no outcome or publication', async () => {
+  const h = await httpWorld({});
+  try {
+    const { prepared } = await sealViaExpiry(h.w, h.w.controller, 5);
+    const gen = prepared.generation;
+    const cert = h.w.history.records().find(r => r.operationId === op(5));
+    const secret = cert.confirmationDigest;
+    assert.match(secret, /^[a-f0-9]{64}$/);
+    // The digest is present in the private bundle — and only there.
+    const bundle = await h.w.store.recoveryRead({ operationId: op(5), generation: gen });
+    assert.equal(bundle.confirmationDigest, secret);
+    const direct = await h.w.controller.outcome(h.w.ctxB, { operationId: op(5), generation: gen });
+    assert.deepEqual(direct, { status: 'not-applied', operationId: op(5), generation: gen });
+    assert.ok(!JSON.stringify(direct).includes(secret), 'controller outcome leaks confirmationDigest');
+    const out = await h.call('outcome', { operationId: op(5), generation: gen }, ACTOR2);
+    assert.deepEqual(out.body, { status: 'not-applied', operationId: op(5), generation: gen });
+    // The incumbent publication route takes operationId only: no negative
+    // proof is available to it and nothing about the digest leaks there.
+    const pub = await h.call('publication', { operationId: op(5) }, ACTOR2);
+    assert.deepEqual(pub.body, { status: 'unknown', operationId: op(5) });
+    for (const [label, body] of [['outcome', out.body], ['publication', pub.body]]) {
+      const wire = JSON.stringify(body);
+      assert.ok(!wire.includes(secret), label + ' leaks the confirmationDigest');
+      assert.ok(!wire.includes('confirmationDigest'), label + ' names the confirmationDigest');
+    }
+  } finally { await h.close(); }
+});
+
+// === B4N-6 (vi): non-regression around the negative binding =================
+test('B4N-6: committed branch, exact generation, same-actor and unconfigured paths unchanged', async () => {
+  const w = await makeWorld({});
+  await w.bootstrap();
+  await commitOp(w, w.controller, 1);
+  const { prepared } = await sealViaExpiry(w, w.controller, 5);
+  const gen = prepared.generation;
+  // Committed branch: the 6-field bundle and the 2-key public projection.
+  const bundleC = await w.store.recoveryRead({ operationId: op(1) });
+  assert.deepEqual(Object.keys(bundleC).sort(),
+    ['actorId', 'digest', 'operationId', 'requestDigest', 'revision', 'status']);
+  assert.deepEqual(await w.controller.outcome(w.ctxB, { operationId: op(1) }),
+    { status: 'committed', operationId: op(1) });
+  // Exact generation equality still binds the negative at both layers.
+  assert.deepEqual(await w.store.recoveryRead({ operationId: op(5), generation: 'generation-' + '0'.repeat(32) }),
+    { status: 'unknown', operationId: op(5) });
+  assert.deepEqual(await w.controller.outcome(w.ctxB, { operationId: op(5), generation: 'generation-' + '0'.repeat(32) }),
+    { status: 'unknown', operationId: op(5) });
+  // An operation-only recovery request still cannot take the negative branch.
+  assert.deepEqual(await w.controller.outcome(w.ctxB, { operationId: op(5) }),
+    { status: 'unknown', operationId: op(5) });
+  // Same-actor negative (certificate lookup) keeps its exact 3-key shape.
+  assert.deepEqual(await w.controller.outcome(w.ctx, { operationId: op(5), generation: gen }),
+    { status: 'not-applied', operationId: op(5), generation: gen });
+  // Unconfigured world: no recovery capability; cross-login stays unknown.
+  const plain = await makeWorld({ recovery: false });
+  await plain.bootstrap();
+  const s5 = await sealViaExpiry(plain, plain.controller, 5);
+  assert.equal('recoveryRead' in plain.store, false);
+  assert.deepEqual(await plain.controller.outcome(plain.ctxB, { operationId: op(5), generation: s5.prepared.generation }),
+    { status: 'unknown', operationId: op(5) });
 });
 
 // === B4R-5: policy input/output contract ===================================
@@ -645,9 +824,11 @@ test('B4R-7: a present or unreadable journal is never negative proof', async () 
   await w.bootstrap();
   const { prepared } = await sealViaExpiry(w, w.controller, 5);
   const gen = prepared.generation;
-  // Control: absent journal + qualified history -> exact negative.
+  // Control: absent journal + qualified history -> exact negative bundle.
+  const cert7 = w.history.records().find(r => r.operationId === op(5));
   assert.deepEqual(await w.store.recoveryRead({ operationId: op(5), generation: gen }),
-    { status: 'not-applied', operationId: op(5), generation: gen });
+    { status: 'not-applied', operationId: op(5), generation: gen,
+      confirmationDigest: cert7.confirmationDigest });
   // Journal bytes present (unparseable resident bytes) -> unknown.
   w.adapters.d.journal = Buffer.from('{"synthetic":"resident"}');
   assert.deepEqual(await w.store.recoveryRead({ operationId: op(5), generation: gen }),
@@ -756,9 +937,11 @@ test('B4R-11: negative proof requires the exact supplied generation', async () =
   // Fabricated generation -> unknown.
   assert.deepEqual(await w.store.recoveryRead({ operationId: op(5), generation: 'generation-' + '9'.repeat(32) }),
     { status: 'unknown', operationId: op(5) });
-  // The exact generation -> the exact 3-key negative.
+  // The exact generation -> the exact 4-key private negative bundle.
+  const cert11 = w.history.records().find(r => r.operationId === op(5));
   assert.deepEqual(await w.store.recoveryRead({ operationId: op(5), generation: s5.prepared.generation }),
-    { status: 'not-applied', operationId: op(5), generation: s5.prepared.generation });
+    { status: 'not-applied', operationId: op(5), generation: s5.prepared.generation,
+      confirmationDigest: cert11.confirmationDigest });
 });
 
 // === B4R-12: terminalizing latch suppresses recovery =======================

@@ -841,10 +841,19 @@ function createSettlementEvidenceConfirmation(deps) {
           requestDigest: bundle.requestDigest }),
         recoveryRefused: false, recheckRecovery };
     }
-    if (shape(bundle, ['status', 'operationId', 'generation'])
+    if (shape(bundle, ['status', 'operationId', 'generation', 'confirmationDigest'])
       && bundle.status === 'not-applied' && bundle.operationId === request.operationId
-      && Object.hasOwn(request, 'generation') && bundle.generation === request.generation) {
-      return { result: bundle, binding: null, recoveryRefused: false, recheckRecovery };
+      && Object.hasOwn(request, 'generation') && bundle.generation === request.generation
+      && matches(HASH, bundle.confirmationDigest)) {
+      // Public projection is exactly status + operationId + generation:
+      // the certificate's confirmationDigest stays inside the private
+      // binding, retained as the binding's own field — never in the
+      // serialized result (which the unprojected bundle itself used to
+      // be returned as).
+      return { result: Object.freeze({ status: 'not-applied', operationId: request.operationId,
+          generation: bundle.generation }),
+        binding: Object.freeze({ confirmationDigest: bundle.confirmationDigest }),
+        recoveryRefused: false, recheckRecovery };
     }
     return null;
   }

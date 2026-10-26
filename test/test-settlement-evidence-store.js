@@ -2928,3 +2928,43 @@ test('B4B receipt: the commit receipt stays the exact 5-field receipt (no reques
  assert.equal(viaOutcome.revision,receipt.revision);
  assert.equal(viaOutcome.digest,receipt.digest);
 });
+
+test('B4N store: recoveryRead negative bundle carries the sealed certificate confirmationDigest',async()=>{
+ const w=d1X.makeExclusionWorld();
+ const s=S.createSettlementEvidenceStore({householdId,...w.adapters,now:()=>w.time,
+  exclusionDomain:w.domain,terminalHistory:w.terminalHistory,recoveryRead:true});
+ assert.equal(typeof s.recoveryRead,'function');
+ const p=await w.prepare(s);
+ assert.equal((await w.seal(s,p)).status,'certified');
+ const cert=w.records()[0];
+ // Independent computation: the certificate's recorded digest is the
+ // contract digest of the sealed preview — exactly what seal validation
+ // required (req.confirmationDigest === C.digest(preview)).
+ assert.equal(cert.confirmationDigest,C.digest(p.preview));
+ assert.equal(cert.confirmationDigest,p.confirmationDigest);
+ const bundle=await s.recoveryRead({operationId:d1X.op(1),generation:d1X.generation(1)});
+ assert.deepEqual(bundle,{status:'not-applied',operationId:d1X.op(1),generation:d1X.generation(1),
+  confirmationDigest:cert.confirmationDigest});
+ assert.deepEqual(Object.keys(bundle).sort(),['confirmationDigest','generation','operationId','status']);
+});
+test('B4N store: certificate digest missing or malformed -> recoveryRead unknown',async()=>{
+ const w=d1X.makeExclusionWorld();
+ const s=S.createSettlementEvidenceStore({householdId,...w.adapters,now:()=>w.time,
+  exclusionDomain:w.domain,terminalHistory:w.terminalHistory,recoveryRead:true});
+ const p=await w.prepare(s);assert.equal((await w.seal(s,p)).status,'certified');
+ // Control: the genuine certificate proves the exact negative bundle.
+ assert.equal((await s.recoveryRead({operationId:d1X.op(1),generation:d1X.generation(1)})).status,'not-applied');
+ // Rewriting the durable history without a valid certificate digest —
+ // container encoding kept valid — never proves. Shipped history
+ // qualification refuses such a record at the gate, and the recovery
+ // branch's own hash check keeps the branch fail-closed on its own terms.
+ const genuine=w.records();
+ const missing=genuine.map(r=>{const c={...r};delete c.confirmationDigest;return c;});
+ Object.assign(w,d1X.encoded(missing,householdId,w.domain.ledgerNamespace));
+ assert.deepEqual(await s.recoveryRead({operationId:d1X.op(1),generation:d1X.generation(1)}),
+  {status:'unknown',operationId:d1X.op(1)});
+ const malformed=genuine.map(r=>({...r,confirmationDigest:'not-a-hash'}));
+ Object.assign(w,d1X.encoded(malformed,householdId,w.domain.ledgerNamespace));
+ assert.deepEqual(await s.recoveryRead({operationId:d1X.op(1),generation:d1X.generation(1)}),
+  {status:'unknown',operationId:d1X.op(1)});
+});
