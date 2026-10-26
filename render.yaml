@@ -16,7 +16,7 @@ services:
       - key: SESSION_SECRET
         generateValue: true  # Render generates and stores a random value
       - key: NODE_VERSION
-        value: "20"
+        value: "24.22.1"
       # On-demand read-only live overlay. No scheduler. No canonical write.
       - key: ATLAS_LIVE_OVERLAY
         value: "live"

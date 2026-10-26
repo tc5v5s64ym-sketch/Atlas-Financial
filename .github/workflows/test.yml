@@ -29,7 +29,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24.22.1'
 
       # express is the production server runtime. The production-boundary
       # suite starts server.js locally with synthetic secrets.
@@ -58,7 +58,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24.22.1'
 
       - name: Install runtime dependencies
         run: bash scripts/ci-test.sh install-runtime

@@ -11,6 +11,11 @@ const { suites, GROUPS, selectSuites, selectionFromArgs, runSuites } = require('
 const { sourceText } = require('./test-source-text');
 const Capture = require('../scripts/ci-output');
 const ROOT = path.join(__dirname, '..');
+function assertRuntimeDriver(version, driverVersion, Client) {
+  assert.equal(version, 'v24.22.1');
+  assert.equal(driverVersion, '8.16.3');
+  assert.equal(typeof Client, 'function');
+}
 const files = rows => rows.map(([, file]) => file);
 let failures = 0;
 let checks = 0;
@@ -19,6 +24,19 @@ function check(label, fn) {
   try { fn(); console.log(`  PASS  ${label}`); }
   catch (error) { failures++; console.error(`  FAIL  ${label}: ${error.message}`); }
 }
+
+check('installed Node and real pg import match the pinned disconnected runtime', () => {
+  // The standard manifest invokes this whole suite behind ci-test.sh, which
+  // establishes private capture before Node startup. Never construct a Client.
+  assertRuntimeDriver(process.version, require('pg/package.json').version, require('pg').Client);
+});
+
+check('runtime import predicate rejects wrong Node, driver and missing Client capability', () => {
+  assertRuntimeDriver('v24.22.1', '8.16.3', function Client() {});
+  for (const args of [['v20.20.2','8.16.3',()=>{}], ['v24.22.0','8.16.3',()=>{}],
+    ['v24.22.1','8.23.1',()=>{}], ['v24.22.1','8.16.3',null]])
+    assert.throws(() => assertRuntimeDriver(...args));
+});
 
 check('npm test remains the complete ordered serial reference', () => {
   assert.equal(require('../package.json').scripts.test, 'node test/test.js');
@@ -150,7 +168,7 @@ function workflowContract(src) {
     assert.doesNotMatch(job, /^\s+(?:if|needs|ref):/m);
     assert.equal((job.match(/uses: actions\/checkout@v4/g) || []).length, 1);
     assert.match(job, /^          fetch-depth: 0$/m);
-    assert.match(job, /uses: actions\/setup-node@v4\n        with:\n          node-version: '20'/);
+    assert.match(job, /uses: actions\/setup-node@v4\n        with:\n          node-version: '24\.22\.1'/);
     assert.match(job, /^        run: bash scripts\/ci-test.sh install-runtime$/m);
     const commands = [...job.matchAll(/^        run: (.+)$/gm)].map(match => match[1]);
     assert.deepEqual(commands, ['bash scripts/ci-test.sh install-runtime', `bash scripts/ci-test.sh ${group}`,
@@ -169,20 +187,40 @@ function workflowContract(src) {
   return shell[1].split('\n').map(line => line.slice(10)).join('\n');
 }
 
-check('workflow keeps both event identities, isolated Node 20 jobs, privacy and the always-run test gate', () => {
+check('workflow keeps both event identities, isolated Node 24.22.1 jobs, privacy and the always-run test gate', () => {
   workflowContract(workflow);
   const repair = sourceText(fs.readFileSync(path.join(ROOT, '.github/workflows/atlas-test-repair.yml'), 'utf8'));
   assert.match(repair, /workflows:\s*\["tests", "Merge card check"\]/);
 });
 
+check('workflow verification has no Node startup outside the private shell bootstrap', () => {
+  const canary = 'SYNTHETIC_UNCAPTURED_PRELOAD_314159';
+  const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
+  const commands = [...workflow.matchAll(/^        run: (.+)$/gm)].map(match => match[1]);
+  for (const command of commands.filter(value => /\bnode\b/.test(value))) {
+    // Execute the exact proposed workflow entrypoint with public dummy preload
+    // input. Its raw output remains in this child capture, never forwarded.
+    const probe = spawnSync(bash, ['--noprofile','--norc','-e','-o','pipefail','-c',command], {
+      cwd: ROOT, env: { ...process.env, NODE_OPTIONS: '--require=./' + canary + '-missing.cjs' },
+      encoding: 'utf8', timeout: 10000,
+    });
+    assert.ifError(probe.error);
+    assert(!probe.stdout.includes(canary) && !probe.stderr.includes(canary),
+      'workflow entrypoint must not publish a pre-capture preload diagnostic');
+    assert.fail('Node verification must be reached through ci-test.sh standard');
+  }
+});
+
 check('workflow contract rejects omissions, skips, shallow history, changed refs and weakened checks', () => {
   const mutations = [
+    ['      - name: Run the correctness suite',
+      '      - name: Unsafe direct Node verification\n        run: node scripts/ci-output.js --identity test-ci-split.js -- node test/test-ci-split.js\n\n      - name: Run the correctness suite'],
     ['needs: [standard, refresh-isolation]', 'needs: [standard]'],
     ['    if: ${{ always() }}', '    if: ${{ success() }}'],
     ['  refresh-isolation:', '  missing-isolation:'],
     ['  standard:\n', '  standard:\n    if: false\n'],
     ['fetch-depth: 0', 'fetch-depth: 1'],
-    ["node-version: '20'", "node-version: '24'"],
+    ["node-version: '24.22.1'", "node-version: '24'"],
     ['run: bash scripts/ci-test.sh standard', 'run: bash scripts/ci-test.sh refresh-isolation'],
     ['run: bash scripts/ci-test.sh standard', 'run: node test/test.js --group standard'],
     ['run: bash scripts/ci-test.sh refresh-isolation', 'run: node test/test.js --group refresh-isolation'],
@@ -356,6 +394,9 @@ check('exact worker entrypoints capture parse/load/launcher failures before Node
         result = run(group);
         assert.equal(result.child.status, fault === 'launcher-exit' ? 126 : 1, fault);
         assert.equal(result.records.filter(row => row.type === 'ci-suite-start').length, 0, fault);
+        const preloaded = run(group, { NODE_OPTIONS: '--require=./' + canary + '-missing.cjs' });
+        assert.equal(preloaded.child.status, fault === 'launcher-exit' ? 126 : 1,
+          'clearing a missing preload must not mask the real ' + fault + ' failure');
       }
       reset();
       fs.writeFileSync(path.join(root, 'test/test.js'), 'console.log(' + JSON.stringify(canary) + ');process.exit(7);');
@@ -375,6 +416,8 @@ check('exact worker entrypoints capture parse/load/launcher failures before Node
       const preload = path.join(root, 'preload.js');
       fs.writeFileSync(preload, 'console.log(' + JSON.stringify(canary) + ');throw new Error(' + JSON.stringify(canary) + ');');
       assert.equal(run(group, { NODE_OPTIONS: '--require="' + preload + '"' }).child.status, 0, 'bootstrap clears optional preloads');
+      assert.equal(run(group, { NODE_OPTIONS: '--require=./' + canary + '-missing.cjs' }).child.status, 0,
+        'missing optional preload is cleared before Node starts, with no public diagnostic');
       if (process.platform !== 'win32') {
         reset(); fs.writeFileSync(path.join(root, 'test/test.js'), 'process.kill(process.pid,"SIGTERM");');
         result = run(group); assert.equal(result.child.status, 143);
