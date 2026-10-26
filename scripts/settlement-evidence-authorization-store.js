@@ -56,9 +56,16 @@
 //   - Identifiers and digests are validated as primitive strings
 //     BEFORE snapshotting (a boxed String that a bare pattern test
 //     would coerce is refused), so a snapshot holds only immutable
-//     primitives. Validated write inputs are snapshotted at call time,
-//     BEFORE the queue; later caller mutation of a record cannot
-//     change what a queued operation persists or compares.
+//     primitives. Every caller-controlled property — call inputs,
+//     stored-row fields, and the construction inputs — is captured
+//     EXACTLY ONCE and validation applies to the captured values, so
+//     the value that is validated is the value that is used: an
+//     accessor that flips between reads cannot substitute an
+//     unvalidated value, and an accessor throwing during capture is
+//     refused (call time) or a protocol failure (row). Validated
+//     write inputs are snapshotted at call time, BEFORE the queue;
+//     later caller mutation of a record cannot change what a queued
+//     operation persists or compares.
 //   - Any rejected query, malformed resolved envelope, wrong or missing
 //     transaction command tag, or the session's 'error'/'end' event is
 //     session loss: the store is permanently invalid, the exact session
@@ -175,14 +182,43 @@ function isResultEnvelope(value) {
 function badInput(detail) {
   throw new TypeError('settlement-authorization-store: ' + detail);
 }
+// Capture caller-controlled properties EXACTLY ONCE, before
+// validation: validation and snapshot must see the same values. A
+// getter that flips between a validation read and a snapshot read
+// (valid primitive first, boxed/hostile value second) must never get
+// an unvalidated value into a statement. A getter throwing during
+// capture is a malformed input — bounded refusal, no leaked text.
+function captureFields(input, keys) {
+  const out = {};
+  try {
+    for (const k of keys) out[k] = input[k];
+  } catch {
+    badInput('input properties could not be read');
+  }
+  return out;
+}
 
 function createAuthorizationStore(options) {
   if (!isRecord(options)) badInput('options are required');
   const { session, schema, scope } = options;
-  if (!session || typeof session.query !== 'function' || typeof session.on !== 'function'
-    || typeof session.retire !== 'function') {
+  // Construction inputs are captured once as well: each session method
+  // is read a single time, validated as a function, and bound — the
+  // store only ever invokes the captured references.
+  let rawQuery; let rawOn; let rawRetire;
+  try {
+    rawQuery = session == null ? undefined : session.query;
+    rawOn = session == null ? undefined : session.on;
+    rawRetire = session == null ? undefined : session.retire;
+  } catch {
+    badInput('session could not be read');
+  }
+  if (typeof rawQuery !== 'function' || typeof rawOn !== 'function'
+    || typeof rawRetire !== 'function') {
     badInput('a dedicated session with query(), on() and retire() is required');
   }
+  const sessionQuery = rawQuery.bind(session);
+  const sessionOn = rawOn.bind(session);
+  const sessionRetire = rawRetire.bind(session);
   if (CLAIMED.has(session)) badInput('session is already owned by another authorization store');
   if (typeof schema !== 'string' || !SCHEMA_RE.test(schema)
     || schema.startsWith('pg_') || schema === 'information_schema') {
@@ -236,7 +272,7 @@ function createAuthorizationStore(options) {
   function retireSessionOnce() {
     if (sessionRetired) return;
     sessionRetired = true;
-    try { Promise.resolve(session.retire()).catch(() => {}); } catch { /* still retired */ }
+    try { Promise.resolve(sessionRetire()).catch(() => {}); } catch { /* still retired */ }
   }
   function markLost() {
     lost = true;
@@ -244,8 +280,8 @@ function createAuthorizationStore(options) {
   }
   const onLoss = () => markLost();
   try {
-    session.on('error', onLoss);
-    session.on('end', onLoss);
+    sessionOn('error', onLoss);
+    sessionOn('end', onLoss);
   } catch {
     // Partial listener registration after the ownership claim: the
     // claim stands, the thrown error is sanitized (driver text never
@@ -269,7 +305,7 @@ function createAuthorizationStore(options) {
   async function raw(text, values) {
     if (!accepting()) throw new Error('settlement-authorization-store: store is not accepting work');
     let res;
-    try { res = await session.query(text, values); } catch {
+    try { res = await sessionQuery(text, values); } catch {
       markLost();
       throw new Error('settlement-authorization-store: session query failed; outcome unknown');
     }
@@ -328,14 +364,23 @@ function createAuthorizationStore(options) {
   // never a readable record.
   function projectEligibilityRow(row, operationId, generation) {
     if (!isRecord(row)) protocolFail();
-    const issuedAt = asTick(row.issued_at);
-    if (row.scope !== scope || !isPattern(HOUSEHOLD_RE, row.household_id)
-      || row.operation_id !== operationId || row.generation !== generation
-      || !isHash(row.confirmation_digest) || !isHash(row.secret_digest)
+    // Row fields are captured exactly once, before validation, for
+    // the same reason as caller inputs; a throwing accessor on a row
+    // is a protocol failure (retire + unknown), never a raw escape.
+    let rScope; let household; let opId; let genId; let confD; let secD; let issuedRaw;
+    try {
+      rScope = row.scope; household = row.household_id; opId = row.operation_id;
+      genId = row.generation; confD = row.confirmation_digest; secD = row.secret_digest;
+      issuedRaw = row.issued_at;
+    } catch { protocolFail(); }
+    const issuedAt = asTick(issuedRaw);
+    if (rScope !== scope || !isPattern(HOUSEHOLD_RE, household)
+      || opId !== operationId || genId !== generation
+      || !isHash(confD) || !isHash(secD)
       || issuedAt === null) protocolFail();
     return Object.freeze({
-      householdId: row.household_id, operationId, generation,
-      confirmationDigest: row.confirmation_digest, secretDigest: row.secret_digest, issuedAt,
+      householdId: household, operationId, generation,
+      confirmationDigest: confD, secretDigest: secD, issuedAt,
     });
   }
   function projectRevocationRow(row) {
@@ -348,17 +393,16 @@ function createAuthorizationStore(options) {
       ['householdId', 'operationId', 'generation', 'confirmationDigest', 'secretDigest', 'issuedAt'])) {
       badInput('eligibility record shape is invalid');
     }
-    if (!isPattern(HOUSEHOLD_RE, input.householdId)) badInput('householdId is malformed');
-    if (!isPattern(OPERATION_RE, input.operationId)) badInput('operationId is malformed');
-    if (!isPattern(GENERATION_RE, input.generation)) badInput('generation is malformed');
-    if (!isHash(input.confirmationDigest)) badInput('confirmationDigest is malformed');
-    if (!isHash(input.secretDigest)) badInput('secretDigest is malformed');
-    if (!isTick(input.issuedAt)) badInput('issuedAt is malformed');
-    const record = Object.freeze({
-      householdId: input.householdId, operationId: input.operationId, generation: input.generation,
-      confirmationDigest: input.confirmationDigest, secretDigest: input.secretDigest,
-      issuedAt: input.issuedAt,
-    });
+    const fields = captureFields(input,
+      ['householdId', 'operationId', 'generation', 'confirmationDigest', 'secretDigest', 'issuedAt']);
+    if (!isPattern(HOUSEHOLD_RE, fields.householdId)) badInput('householdId is malformed');
+    if (!isPattern(OPERATION_RE, fields.operationId)) badInput('operationId is malformed');
+    if (!isPattern(GENERATION_RE, fields.generation)) badInput('generation is malformed');
+    if (!isHash(fields.confirmationDigest)) badInput('confirmationDigest is malformed');
+    if (!isHash(fields.secretDigest)) badInput('secretDigest is malformed');
+    if (!isTick(fields.issuedAt)) badInput('issuedAt is malformed');
+    // The snapshot is built ONLY from the captured, validated values.
+    const record = Object.freeze({ ...fields });
     return writeUnit(async () => {
       const found = await statement(SQL.eligibilityByKey,
         [scope, record.operationId, record.generation], 'SELECT');
@@ -386,12 +430,11 @@ function createAuthorizationStore(options) {
     if (!isRecord(input) || !exactKeys(input, ['operationId', 'generation', 'revokedAt'])) {
       badInput('revocation record shape is invalid');
     }
-    if (!isPattern(OPERATION_RE, input.operationId)) badInput('operationId is malformed');
-    if (!isPattern(GENERATION_RE, input.generation)) badInput('generation is malformed');
-    if (!isTick(input.revokedAt)) badInput('revokedAt is malformed');
-    const record = Object.freeze({
-      operationId: input.operationId, generation: input.generation, revokedAt: input.revokedAt,
-    });
+    const fields = captureFields(input, ['operationId', 'generation', 'revokedAt']);
+    if (!isPattern(OPERATION_RE, fields.operationId)) badInput('operationId is malformed');
+    if (!isPattern(GENERATION_RE, fields.generation)) badInput('generation is malformed');
+    if (!isTick(fields.revokedAt)) badInput('revokedAt is malformed');
+    const record = Object.freeze({ ...fields });
     return writeUnit(async () => {
       const found = await statement(SQL.revocationByKey,
         [scope, record.operationId, record.generation], 'SELECT');
@@ -413,9 +456,10 @@ function createAuthorizationStore(options) {
     if (!isRecord(input) || !exactKeys(input, ['sidDigest', 'revokedAt'])) {
       badInput('session revocation record shape is invalid');
     }
-    if (!isHash(input.sidDigest)) badInput('sidDigest is malformed');
-    if (!isTick(input.revokedAt)) badInput('revokedAt is malformed');
-    const record = Object.freeze({ sidDigest: input.sidDigest, revokedAt: input.revokedAt });
+    const fields = captureFields(input, ['sidDigest', 'revokedAt']);
+    if (!isHash(fields.sidDigest)) badInput('sidDigest is malformed');
+    if (!isTick(fields.revokedAt)) badInput('revokedAt is malformed');
+    const record = Object.freeze({ ...fields });
     return writeUnit(async () => {
       const found = await statement(SQL.sessionRevocationByKey,
         [scope, record.sidDigest], 'SELECT');
@@ -435,12 +479,11 @@ function createAuthorizationStore(options) {
     if (!isRecord(input) || !exactKeys(input, ['operationId', 'generation', 'sidDigest'])) {
       badInput('read input shape is invalid');
     }
-    if (!isPattern(OPERATION_RE, input.operationId)) badInput('operationId is malformed');
-    if (!isPattern(GENERATION_RE, input.generation)) badInput('generation is malformed');
-    if (!isHash(input.sidDigest)) badInput('sidDigest is malformed');
-    const key = Object.freeze({
-      operationId: input.operationId, generation: input.generation, sidDigest: input.sidDigest,
-    });
+    const fields = captureFields(input, ['operationId', 'generation', 'sidDigest']);
+    if (!isPattern(OPERATION_RE, fields.operationId)) badInput('operationId is malformed');
+    if (!isPattern(GENERATION_RE, fields.generation)) badInput('generation is malformed');
+    if (!isHash(fields.sidDigest)) badInput('sidDigest is malformed');
+    const key = Object.freeze({ ...fields });
     return serial(async () => {
       if (!accepting()) return UNKNOWN_READ;
       try {
@@ -456,19 +499,22 @@ function createAuthorizationStore(options) {
         // mixed null/non-null row is malformed — never absence: the
         // read resolves unknown and the store retires (protocolFail).
         if (!isRecord(row)) protocolFail();
-        for (const column of READ_ELIGIBILITY_COLUMNS) {
+        // Every selected field is captured exactly once, after the
+        // presence check and before any validation or use.
+        const captured = {};
+        for (const column of [...READ_ELIGIBILITY_COLUMNS, 'operation_revoked', 'session_revoked']) {
           if (!Object.hasOwn(row, column)) protocolFail();
+          captured[column] = row[column];
         }
-        if (!Object.hasOwn(row, 'operation_revoked') || !Object.hasOwn(row, 'session_revoked')
-          || typeof row.operation_revoked !== 'boolean'
-          || typeof row.session_revoked !== 'boolean') protocolFail();
-        const nullColumns = READ_ELIGIBILITY_COLUMNS.filter(c => row[c] === null).length;
+        if (typeof captured.operation_revoked !== 'boolean'
+          || typeof captured.session_revoked !== 'boolean') protocolFail();
+        const nullColumns = READ_ELIGIBILITY_COLUMNS.filter(c => captured[c] === null).length;
         let eligibility = null;
         if (nullColumns === 0) {
           eligibility = projectEligibilityRow({
-            scope, household_id: row.household_id, operation_id: row.operation_id,
-            generation: row.generation, confirmation_digest: row.confirmation_digest,
-            secret_digest: row.secret_digest, issued_at: row.issued_at,
+            scope, household_id: captured.household_id, operation_id: captured.operation_id,
+            generation: captured.generation, confirmation_digest: captured.confirmation_digest,
+            secret_digest: captured.secret_digest, issued_at: captured.issued_at,
           }, key.operationId, key.generation);
         } else if (nullColumns !== READ_ELIGIBILITY_COLUMNS.length) {
           protocolFail(); // mixed null/non-null: not proven absence
@@ -476,7 +522,7 @@ function createAuthorizationStore(options) {
         if (!accepting()) return UNKNOWN_READ;
         return Object.freeze({
           state: 'ok', eligibility,
-          operationRevoked: row.operation_revoked, sessionRevoked: row.session_revoked,
+          operationRevoked: captured.operation_revoked, sessionRevoked: captured.session_revoked,
         });
       } catch {
         // Same fence as the write path: any exception here — a

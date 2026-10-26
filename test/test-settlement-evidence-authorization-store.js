@@ -813,3 +813,105 @@ test('AS-16 partial listener registration is sanitized and retires the exact ses
     eq(state.retireCalls, 1, 'the exact session is retired exactly once');
   }
 });
+
+// --- Repair round 2 (re-review BLOCK on b479ab0e): frozen first ----------
+// --- (15) input getter TOCTOU: validate and snapshot must be one read ----
+test('AS-17 caller properties are captured exactly once: the validated value is the used value', async () => {
+  function flipping(base, key, values) {
+    let reads = 0;
+    const obj = { ...base };
+    Object.defineProperty(obj, key, {
+      enumerable: true,
+      get() { const v = values[Math.min(reads, values.length - 1)]; reads++; return v; },
+    });
+    return { obj, reads: () => reads };
+  }
+  // (a) valid -> different valid: the persisted household must be the
+  // FIRST (validated) value, and the property read exactly once.
+  {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    const f = flipping(eligibility({ operationId: op(61), generation: gen(61) }),
+      'householdId', [householdId, household2]);
+    eq((await store.issueEligibility(f.obj)).outcome, 'issued');
+    eq(f.reads(), 1, 'householdId read exactly once');
+    const row = [...fake.tables.auth_eligibility.values()][0];
+    eq(row.household_id, householdId, 'the validated value is the persisted value');
+  }
+  // (b) valid primitive -> boxed hostile with toPostgres: no boxed
+  // value may ever reach a statement parameter.
+  {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    const boxed = new String(op(62));
+    boxed.toPostgres = () => op(99);
+    const f = flipping(eligibility({ operationId: op(62), generation: gen(62) }),
+      'operationId', [op(62), boxed]);
+    eq((await store.issueEligibility(f.obj)).outcome, 'issued');
+    eq(f.reads(), 1);
+    for (const entry of fake.log) {
+      for (const v of entry.values) {
+        assert.ok(typeof v !== 'object' || v === null || typeof v === 'number',
+          'no object value ever reaches a statement');
+      }
+    }
+    const row = [...fake.tables.auth_eligibility.values()][0];
+    eq(row.operation_id, op(62));
+  }
+  // (c) getter throws on the SECOND read: with single-read capture the
+  // call simply succeeds on the validated first value.
+  {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    let reads = 0;
+    const obj = { ...eligibility({ operationId: op(63), generation: gen(63) }) };
+    Object.defineProperty(obj, 'generation', {
+      enumerable: true,
+      get() { reads++; if (reads >= 2) throw new Error('FAKE-DRIVER-TEXT: getter boom'); return gen(63); },
+    });
+    eq((await store.issueEligibility(obj)).outcome, 'issued');
+    eq(reads, 1);
+  }
+  // (d) getter throws during capture (first read): sanitized refusal,
+  // no session traffic, no leaked getter/driver text.
+  {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    const obj = { ...eligibility() };
+    Object.defineProperty(obj, 'confirmationDigest', {
+      enumerable: true,
+      get() { throw new Error('FAKE-DRIVER-TEXT: getter boom'); },
+    });
+    let thrown = null;
+    try { store.issueEligibility(obj); } catch (e) { thrown = e; }
+    assert.ok(thrown instanceof TypeError, 'refused with a TypeError');
+    assert.ok(!String(thrown && thrown.message).includes('FAKE-DRIVER-TEXT'),
+      'getter error text never escapes');
+    eq(fake.log.length, 0);
+  }
+  // (e) read selector flip: the statement must carry the FIRST
+  // (validated) sidDigest.
+  {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    const f = flipping(
+      { operationId: op(1), generation: gen(1), sidDigest: D('sid-first') },
+      'sidDigest', [D('sid-first'), D('sid-second')]);
+    const read = await store.readAuthorizationState(f.obj);
+    eq(read.state, 'ok');
+    eq(f.reads(), 1);
+    const readCall = fake.log.find(e => e.text.includes('LEFT JOIN'));
+    eq(readCall.values[3], D('sid-first'), 'the validated digest is the queried digest');
+  }
+  // (f) append selector flip: same single-read rule on revocations.
+  {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    const f = flipping({ sidDigest: D('sid-a'), revokedAt: tick() },
+      'sidDigest', [D('sid-a'), D('sid-b')]);
+    eq((await store.appendSessionRevocation(f.obj)).outcome, 'appended');
+    eq(f.reads(), 1);
+    const row = [...fake.tables.auth_session_revocation.values()][0];
+    eq(row.sid_digest, D('sid-a'));
+  }
+});
