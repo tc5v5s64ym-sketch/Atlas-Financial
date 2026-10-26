@@ -352,3 +352,103 @@ test('verify: lock held refuses; read loss/malformed/unaffirmed end is unknown; 
     assert.equal(writes(s2.log).length, 0); assert.equal(s2.retired, 1);
   }
 });
+
+// ---------------- #709 BLOCK repairs (failure-class regressions) ----------------
+// Class 1: positive-looking result envelopes must carry the right command tag
+// and an exactly-shaped validated row before lock acquisition or PID
+// continuity is relied on. Class 2: every result envelope, row and column is
+// captured exactly once; accessor properties are refused, never invoked twice.
+const getterRow = (cols, valueFor) => {
+  const row = {};
+  for (const c of cols) { let n = 0; Object.defineProperty(row, c, { enumerable: true, get() { return valueFor(c, n++); } }); }
+  return row;
+};
+function lockPidMutations() {
+  let pidCalls = 0;
+  const pidNth = (t, k) => /pg_backend_pid/.test(t) && ++pidCalls === k;
+  return [
+    ['lock tag INSERT', { after: t => /try_advisory/.test(t) ? { command: 'INSERT', rows: [{ locked: true }], rowCount: 1 } : undefined }],
+    ['lock tag missing', { after: t => /try_advisory/.test(t) ? { rows: [{ locked: true }] } : undefined }],
+    ['lock row extra column', { after: t => /try_advisory/.test(t) ? { command: 'SELECT', rows: [{ locked: true, x: 1 }], rowCount: 1 } : undefined }],
+    ['lock row accessor', { after: t => /try_advisory/.test(t) ? { command: 'SELECT', rows: [getterRow(['locked'], () => true)], rowCount: 1 } : undefined }],
+    ['acquire pid tag UPDATE', { after: (t, v, i, r, s) => pidNth(t, 1) ? { command: 'UPDATE', rows: [{ pid: s.pid }], rowCount: 1 } : undefined }],
+    ['continuity pid tag missing', { after: (t, v, i, r, s) => pidNth(t, 2) ? { rows: [{ pid: s.pid }] } : undefined }],
+    ['continuity pid extra column', { after: (t, v, i, r, s) => pidNth(t, 3) ? { command: 'SELECT', rows: [{ pid: s.pid, y: 2 }], rowCount: 1 } : undefined }],
+    ['envelope rows accessor', { after: (t, v, i, r) => /try_advisory/.test(t) ? Object.defineProperty({ command: 'SELECT', rowCount: 1 }, 'rows', { enumerable: true, get: () => r.rows }) : undefined }],
+  ];
+}
+
+test('#709 repair 1: malformed positive lock/PID envelopes never yield installed-unverified (install aborts before COMMIT)', async () => {
+  const f = await world();
+  for (const [name, hook] of lockPidMutations()) {
+    const db = makeDb({ head: Buffer.from('incumbent') }); const s = makeSession(db, hook);
+    const r = await M.installRestoreCandidate(f.base(s));
+    assert.deepEqual({ ...r }, { status: 'refused', reason: 'aborted-before-commit', cause: 'protocol-malformed' }, name);
+    assert.equal(s.log.includes('COMMIT'), false, name); assert.equal(s.retired, 1, name);
+    assert.ok(db.head.get(SCOPE).equals(Buffer.from('incumbent')), name); assert.equal(db.quarantine.size, 0, name);
+  }
+});
+
+test('#709 repair 1: malformed positive lock/PID envelopes never yield verified (readback is unknown)', async () => {
+  const f = await world();
+  for (const [name, hook] of lockPidMutations()) {
+    const db = await installed(f); const s = makeSession(db, hook);
+    const r = await M.verifyRestoreInstall({ ...f.base(s), pin: f.pin });
+    assert.deepEqual({ ...r }, { status: 'unknown', reason: 'protocol-malformed' }, name);
+    assert.equal(writes(s.log).length, 0, name); assert.equal(s.retired, 1, name);
+  }
+});
+
+const ARTIFACT_READS = [
+  ['head', /^SELECT bytes FROM "atlas_settle"\.doc_head/, ['bytes']],
+  ['staged', /^SELECT bytes FROM "atlas_settle"\.doc_staged/, ['bytes']],
+  ['journal', /^SELECT bytes FROM "atlas_settle"\.journal/, ['bytes']],
+  ['history+checkpoint', /^SELECT history_bytes, checkpoint_bytes/, ['history_bytes', 'checkpoint_bytes']],
+];
+
+test('#709 repair 2: an accessor row (validate A, copy B) for every incumbent artifact is refused; nothing committed, A preserved', async () => {
+  const f = await world();
+  const A = Buffer.from('incumbent-A'), B = Buffer.from('different-B');
+  for (const [name, re, cols] of ARTIFACT_READS) {
+    const db = makeDb({ head: A, staged: A, journal: A, terminal: { h: A, c: A } });
+    const s = makeSession(db, { after: t => re.test(t) ? { command: 'SELECT', rows: [getterRow(cols, (c, n) => Buffer.from(n === 0 ? A : B))], rowCount: 1 } : undefined });
+    const r = await M.installRestoreCandidate(f.base(s));
+    assert.deepEqual({ ...r }, { status: 'refused', reason: 'aborted-before-commit', cause: 'protocol-malformed' }, name);
+    assert.equal(s.log.includes('COMMIT'), false, name); assert.equal(db.quarantine.size, 0, name);
+    assert.ok(db.head.get(SCOPE).equals(A) && db.terminal.get(SCOPE).h.equals(A), name);
+    assert.equal([...db.quarantine.values()].some(q => q.bytes.equals(B)), false, name);
+  }
+});
+
+test('#709 repair 2: readback refuses accessor rows/envelopes and extra columns for every artifact (never verified)', async () => {
+  const f = await world();
+  for (const [name, re, cols] of ARTIFACT_READS) {
+    for (const [variant, reply] of [
+      ['accessor row', r => ({ command: 'SELECT', rows: [getterRow(cols, c => Buffer.from(r.rows.length ? r.rows[0][c] : 'z'))], rowCount: 1 })],
+      ['rows accessor', r => Object.defineProperty({ command: 'SELECT', rowCount: r.rows.length }, 'rows', { enumerable: true, get: () => r.rows })],
+      ['command accessor', r => Object.defineProperty({ rows: r.rows, rowCount: r.rows.length }, 'command', { enumerable: true, get: () => 'SELECT' })],
+      ['extra column', r => ({ command: 'SELECT', rows: [{ ...(r.rows[0] || Object.fromEntries(cols.map(c => [c, Buffer.from('z')]))), extra: Buffer.from('e') }], rowCount: 1 })],
+    ]) {
+      const db = await installed(f); const s = makeSession(db, { after: (t, v, i, r) => re.test(t) ? reply(r) : undefined });
+      const out = await M.verifyRestoreInstall({ ...f.base(s), pin: f.pin });
+      assert.deepEqual({ ...out }, { status: 'unknown', reason: 'protocol-malformed' }, name + ' ' + variant);
+      assert.equal(writes(s.log).length, 0); assert.equal(s.retired, 1);
+    }
+  }
+});
+
+test('#709 repair 2: captured column bytes are owned; later mutation of the driver buffer cannot change quarantined or compared bytes', async () => {
+  const f = await world();
+  let driverBuf = null;
+  const db = makeDb({ head: Buffer.from('incumbent') });
+  const s = makeSession(db, {
+    after: (t, v, i, r) => { if (/^SELECT bytes FROM "atlas_settle"\.doc_head/.test(t)) driverBuf = r.rows[0].bytes; },
+    before: t => { if (/quarantine \(/.test(t) && driverBuf) driverBuf.fill(0x5a); },
+  });
+  assert.equal((await M.installRestoreCandidate(f.base(s))).status, 'installed-unverified');
+  assert.ok([...db.quarantine.values()][0].bytes.equals(Buffer.from('incumbent')));
+  // quarantine-presence probe is shape-checked too (extra column refused, never treated as a collision)
+  const db2 = makeDb({ head: Buffer.from('incumbent') });
+  const s2 = makeSession(db2, { after: t => /^SELECT 1 AS present/.test(t) ? { command: 'SELECT', rows: [{ present: 1, x: 1 }], rowCount: 1 } : undefined });
+  assert.deepEqual({ ...(await M.installRestoreCandidate(f.base(s2))) }, { status: 'refused', reason: 'aborted-before-commit', cause: 'protocol-malformed' });
+});

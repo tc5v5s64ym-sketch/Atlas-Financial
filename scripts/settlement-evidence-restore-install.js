@@ -140,7 +140,66 @@ function tables(schema) {
     terminal: q + '.terminal_history', quarantine: q + '.quarantine' };
 }
 
-// One-shot session wrapper: loss events, envelope checks, single retirement.
+// Result capture (#709 repair). Every envelope field, row and column is read
+// EXACTLY ONCE through its own data-property descriptor; accessor properties
+// are refused and never invoked. Byte columns are copied immediately into
+// module-owned Buffers, so validation, quarantine and readback all operate on
+// the same captured value. Returns null for any malformed envelope.
+const MAX_ROWS = 2; // every statement here is LIMIT 2, single-row or row-less
+function dataOf(obj, key) {
+  const d = Reflect.getOwnPropertyDescriptor(obj, key);
+  if (d === undefined) return { absent: true };
+  if (!Object.hasOwn(d, 'value')) throw new Error('accessor');
+  return { value: d.value };
+}
+function captureCell(v) {
+  if (v === null || typeof v !== 'object') return typeof v === 'function' ? undefined : { value: v };
+  if (Reflect.apply(TAG, v, []) !== 'Uint8Array') return undefined; // throws for non-typed-array objects
+  const length = Reflect.apply(LEN, v, []);
+  const out = Buffer.alloc(length);
+  Reflect.apply(TA.set, out, [new Uint8Array(Reflect.apply(BUF, v, []), Reflect.apply(OFF, v, []), length)]);
+  return { value: out };
+}
+function capture(res) {
+  try {
+    if (res === null || typeof res !== 'object' || Array.isArray(res)) return null;
+    const command = dataOf(res, 'command'), rows = dataOf(res, 'rows'), rowCount = dataOf(res, 'rowCount');
+    if (rows.absent || !Array.isArray(rows.value)) return null;
+    const len = dataOf(rows.value, 'length');
+    if (len.absent || !Number.isSafeInteger(len.value) || len.value < 0 || len.value > MAX_ROWS) return null;
+    const out = [];
+    for (let i = 0; i < len.value; i++) {
+      const r = dataOf(rows.value, String(i));
+      if (r.absent || r.value === null || typeof r.value !== 'object' || Array.isArray(r.value)) return null;
+      const keys = Reflect.ownKeys(r.value), row = Object.create(null);
+      for (const k of keys) {
+        if (typeof k !== 'string') return null;
+        const d = Reflect.getOwnPropertyDescriptor(r.value, k);
+        if (!d || !Object.hasOwn(d, 'value') || !d.enumerable) return null;
+        const cell = captureCell(d.value);
+        if (!cell) return null;
+        row[k] = cell.value;
+      }
+      out.push(Object.freeze(row));
+    }
+    return Object.freeze({ command: command.absent ? undefined : command.value,
+      rowCount: rowCount.absent ? undefined : rowCount.value, rows: Object.freeze(out) });
+  } catch { return null; }
+}
+// A captured row with EXACTLY the named columns (no extras, none missing).
+function exactRow(row, columns) {
+  const keys = Object.keys(row);
+  return keys.length === columns.length && columns.every(c => keys.includes(c));
+}
+// One SELECT row of exactly `column`, or a protocol stop.
+function selectOne(c, res, column, uncertain) {
+  if (res.command !== 'SELECT' || res.rows.length !== 1 || !exactRow(res.rows[0], [column])) {
+    c.markLost(); stop(uncertain, 'protocol-malformed');
+  }
+  return res.rows[0][column];
+}
+
+// One-shot session wrapper: loss events, captured envelopes, single retirement.
 function channel(s) {
   let lost = false, retired = false;
   const retireOnce = () => {
@@ -155,10 +214,9 @@ function channel(s) {
     let res;
     try { res = await Reflect.apply(s.query, s.session, [text, values]); } catch { lost = true; stop(uncertain, 'session-lost'); }
     if (lost) stop(uncertain, 'session-lost');
-    if (res === null || typeof res !== 'object' || Array.isArray(res) || !Array.isArray(res.rows)) {
-      lost = true; stop(uncertain, 'protocol-malformed');
-    }
-    return res;
+    const snap = capture(res);
+    if (!snap) { lost = true; stop(uncertain, 'protocol-malformed'); }
+    return snap;
   }
   return { sql, retireOnce, isLost: () => lost, markLost: () => { lost = true; } };
 }
@@ -168,16 +226,18 @@ function count(res, tag, n) {
 }
 
 async function acquire(c, s, uncertain) {
-  const got = await c.sql('SELECT pg_try_advisory_lock($1, $2) AS locked', s.lockKeys, uncertain);
-  if (got.rows.length !== 1 || typeof got.rows[0].locked !== 'boolean') { c.markLost(); stop(uncertain, 'protocol-malformed'); }
-  if (got.rows[0].locked === false) stop('refused', 'lock-held');
-  const p = await c.sql('SELECT pg_backend_pid() AS pid', [], uncertain);
-  if (p.rows.length !== 1 || !Number.isSafeInteger(p.rows[0].pid) || p.rows[0].pid <= 0) { c.markLost(); stop(uncertain, 'protocol-malformed'); }
-  return p.rows[0].pid;
+  const locked = selectOne(c, await c.sql('SELECT pg_try_advisory_lock($1, $2) AS locked', s.lockKeys, uncertain), 'locked', uncertain);
+  if (typeof locked !== 'boolean') { c.markLost(); stop(uncertain, 'protocol-malformed'); }
+  if (locked === false) stop('refused', 'lock-held');
+  return backendPid(c, uncertain);
+}
+async function backendPid(c, uncertain) {
+  const pid = selectOne(c, await c.sql('SELECT pg_backend_pid() AS pid', [], uncertain), 'pid', uncertain);
+  if (!Number.isSafeInteger(pid) || pid <= 0) { c.markLost(); stop(uncertain, 'protocol-malformed'); }
+  return pid;
 }
 async function samePid(c, pid, uncertain) {
-  const p = await c.sql('SELECT pg_backend_pid() AS pid', [], uncertain);
-  if (p.rows.length !== 1 || p.rows[0].pid !== pid) { c.markLost(); stop(uncertain, 'backend-changed'); }
+  if (await backendPid(c, uncertain) !== pid) { c.markLost(); stop(uncertain, 'backend-changed'); }
 }
 // Bounded incumbent read: null when absent; a bytes value over `max` is
 // reported as oversize (never truncated); a non-bytes column is malformed.
@@ -186,9 +246,11 @@ async function readOne(c, text, scope, columns, uncertain) {
   if (r.command !== 'SELECT' || r.rows.length > 1) { c.markLost(); stop(uncertain, 'protocol-malformed'); }
   if (r.rows.length === 0) return null;
   const row = r.rows[0], out = {};
+  if (!exactRow(row, columns)) { c.markLost(); stop(uncertain, 'protocol-malformed'); }
   for (const col of columns) {
-    if (!row || !Buffer.isBuffer(row[col])) { c.markLost(); stop(uncertain, 'protocol-malformed'); }
-    out[col] = Buffer.from(row[col]);
+    const value = row[col]; // captured once, module-owned copy
+    if (!Buffer.isBuffer(value)) { c.markLost(); stop(uncertain, 'protocol-malformed'); }
+    out[col] = value;
   }
   return out;
 }
@@ -231,7 +293,10 @@ async function installRestoreCandidate(input) {
       const name = label + '-' + crypto.randomBytes(16).toString('hex');
       const seen = await c.sql('SELECT 1 AS present FROM ' + s.T.quarantine + ' WHERE scope = $1 AND name = $2', [s.scope, name], pre);
       if (seen.command !== 'SELECT' || seen.rows.length > 1) { c.markLost(); stop(pre, 'protocol-malformed'); }
-      if (seen.rows.length === 1) stop(pre, 'quarantine-collision');
+      if (seen.rows.length === 1) {
+        if (!exactRow(seen.rows[0], ['present']) || seen.rows[0].present !== 1) { c.markLost(); stop(pre, 'protocol-malformed'); }
+        stop(pre, 'quarantine-collision');
+      }
       const ins = await c.sql('INSERT INTO ' + s.T.quarantine + ' (scope, name, label, bytes) VALUES ($1, $2, $3, $4)',
         [s.scope, name, label, bytes], pre);
       if (!count(ins, 'INSERT', 1)) { c.markLost(); stop(pre, 'protocol-malformed'); }
