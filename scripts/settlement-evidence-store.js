@@ -1091,8 +1091,11 @@ function createSettlementEvidenceStore(deps) {
   //     (fail-closed unknown when that digest is missing or malformed).
   //     The recorded actor is read from the validated durable record
   //     itself; it is server-internal and never a disclosure shape.
-  //   - the exact negative proof {status:'not-applied', operationId,
-  //     generation}, only on an exactly matching supplied generation.
+  //   - the private qualified bundle for a not-applied operation —
+  //     {status, operationId, generation} PLUS the terminal certificate's
+  //     recorded confirmationDigest as a private fourth field (fail-closed
+  //     unknown when that digest is missing or malformed), only on an
+  //     exactly matching supplied generation.
   //   - {status:'unknown', operationId} for every other state.
   // There is deliberately NO actor input: the request names selectors only
   // ({operationId} / {operationId, generation}); any other key refuses.
@@ -1136,7 +1139,13 @@ function createSettlementEvidenceStore(deps) {
       if (!cert || input.generation === undefined || cert.generation !== input.generation) {
         return { status: 'unknown', operationId };
       }
-      return { status: 'not-applied', operationId, generation: cert.generation };
+      // The private bundle additionally binds the certificate's recorded
+      // confirmationDigest — the durable digest sealNegative validated as
+      // C.digest(preview). Missing or malformed fails closed at this
+      // boundary.
+      if (!isHash(cert.confirmationDigest)) return { status: 'unknown', operationId };
+      return { status: 'not-applied', operationId, generation: cert.generation,
+        confirmationDigest: cert.confirmationDigest };
     } catch { return { status: 'unknown', operationId }; }
   }
 
