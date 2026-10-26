@@ -75,11 +75,15 @@
 
 const crypto = require('node:crypto');
 const { AsyncLocalStorage } = require('node:async_hooks');
+const { isDeepStrictEqual } = require('node:util');
+const TC = require('./settlement-evidence-terminal-certificate');
+const C = require('./planned-obligation-settlement-contract');
 
 const DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;
 // Must exceed the maximum serialized journal envelope (~2.80 MB: base64
 // of a 2 MiB base document plus preview and keys) so it round-trips.
 const RECORD_MAX_BYTES = 4 * 1024 * 1024;
+const CHECKPOINT_MAX_BYTES = 2048;
 const SCHEMA_RE = /^[a-z_][a-z0-9_]{0,62}$/;
 const SCOPE_RE = /^[a-z0-9][a-z0-9-]{0,127}$/;
 const LABEL_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -96,6 +100,11 @@ const RELATION_CONTRACT = Object.freeze({
   client: 'query(text, values), on(\'error\'|\'end\'), retire() that terminates this exact session',
   functions: Object.freeze(['pg_try_advisory_lock(int4, int4)', 'pg_advisory_unlock(int4, int4)', 'pg_backend_pid()']),
 });
+// Exact opt-in profile only. Co-located checkpoint gives atomic local persistence,
+// not independently surviving rollback evidence across a new process/DB restore.
+const NATIVE_RELATION_CONTRACT = Object.freeze({ ...RELATION_CONTRACT,
+  relations:Object.freeze({...RELATION_CONTRACT.relations,terminal_history:Object.freeze({
+    columns:'scope text primary key, history_bytes bytea not null, checkpoint_bytes bytea not null',grants:'SELECT, UPDATE'})}) });
 
 const CLAIMED = new WeakSet(); // clients under exclusive adapter ownership
 
@@ -132,10 +141,18 @@ function createSettlementEvidencePostgresAdapter(options) {
   check(typeof schema === 'string' && SCHEMA_RE.test(schema)
     && !schema.startsWith('pg_') && schema !== 'information_schema', 'schema identifier is invalid');
   check(typeof scope === 'string' && SCOPE_RE.test(scope), 'scope is invalid');
+  let terminalDomain=null;
+  if(options.terminalHistory!==undefined){
+    let h;try{h=TC.own(options.terminalHistory);}catch{fail('terminal history binding invalid');}
+    check(isRecord(h)&&Object.keys(h).sort().join(',')==='householdId,ledgerNamespace'
+      &&/^household-[a-f0-9]{32}$/.test(h.householdId)&&/^ledger-[a-f0-9]{32}$/.test(h.ledgerNamespace),
+    'terminal history binding invalid');
+    terminalDomain=h;
+  }
 
   const q = '"' + schema + '"';
   const T = {
-    head: q + '.doc_head', staged: q + '.doc_staged', journal: q + '.journal', quarantine: q + '.quarantine',
+    head: q + '.doc_head', staged: q + '.doc_staged', journal: q + '.journal', quarantine: q + '.quarantine', terminal:q+'.terminal_history',
   };
   const digest = crypto.createHash('sha256').update(schema + '\0' + scope).digest();
   const lockKeys = [digest.readInt32BE(0), digest.readInt32BE(4)];
@@ -289,6 +306,7 @@ function createSettlementEvidencePostgresAdapter(options) {
         + ' UNION ALL SELECT 3 AS ord, bytes FROM ' + T.journal + ' WHERE scope = $1'
         + ' UNION ALL SELECT 4 AS ord, bytes FROM (SELECT bytes FROM ' + T.quarantine
         + ' WHERE scope = $1 ORDER BY name LIMIT 1) AS qt'
+        + (terminalDomain?' UNION ALL SELECT 5 AS ord, history_bytes AS bytes FROM '+T.terminal+' WHERE scope = $1':'')
         + ') AS traces ORDER BY ord LIMIT 1', 'trace', RECORD_MAX_BYTES);
     },
     async writeTemp(bytes) {
@@ -360,6 +378,82 @@ function createSettlementEvidencePostgresAdapter(options) {
     },
   };
 
+  const terminalSelect='SELECT history_bytes, checkpoint_bytes FROM '+T.terminal+' WHERE scope = $1 LIMIT 2';
+  const certificateStrings=['schema','householdId','ledgerNamespace','operationId','actorId',
+    'kind','generation','reason','expectedDocumentDigest','confirmationDigest'];
+  // TC owns semantic qualification. The native wire boundary additionally forbids
+  // coercible string wrappers, which could compare as distinct operation identities.
+  const primitiveCertificate=c=>isRecord(c)&&certificateStrings.every(k=>typeof c[k]==='string');
+  function terminalRow(res) {
+    if(res.command!=='SELECT'||res.rows.length>1){markLost();fail('terminal history protocol failed; outcome unknown');}
+    check(res.rows.length===1,'terminal history missing; explicit provisioning required');
+    const row=res.rows[0];
+    if(!row||!Buffer.isBuffer(row.history_bytes)||!Buffer.isBuffer(row.checkpoint_bytes)){
+      markLost();fail('terminal history columns malformed; outcome unknown');
+    }
+    check(row.history_bytes.length<=RECORD_MAX_BYTES&&row.checkpoint_bytes.length<=CHECKPOINT_MAX_BYTES,'terminal history exceeds size bound');
+    const historyBytes=Buffer.from(row.history_bytes),checkpointBytes=Buffer.from(row.checkpoint_bytes);
+    let state;try{
+      const history=JSON.parse(historyBytes.toString('utf8'));
+      check(isRecord(history)&&Array.isArray(history.records)&&history.records.every(primitiveCertificate),'terminal certificate strings malformed');
+      state=TC.qualifySnapshot({historyBytes,checkpoint:JSON.parse(checkpointBytes.toString('utf8'))},terminalDomain);
+    }
+    catch{fail('terminal history/checkpoint qualification failed');}
+    return {historyBytes,checkpointBytes,state};
+  }
+  const terminalHistory=terminalDomain?{
+    async readSnapshot(){
+      const holder=als.getStore();readGuard();
+      const fence=()=>check(!lost&&(!holder||isLive(holder)),'terminal history original read holder settled; publication refused');
+      return serial(async()=>{fence();const result=await raw(terminalSelect,[scope]);fence();
+        const pair=terminalRow(result);fence();
+        return {historyBytes:Buffer.from(pair.historyBytes),checkpoint:JSON.parse(JSON.stringify(pair.state.checkpoint))};});
+    },
+    async compareAndAppend(input){
+      const holder=capability();
+      const result=await mutate(()=>{
+        let request;try{request=TC.own(input);}catch{fail('terminal append input malformed');}
+        check(isRecord(request)&&Object.keys(request).sort().join(',')==='certificate,expectedCheckpoint'
+          &&primitiveCertificate(request.certificate)&&TC.isCertificate(request.certificate)&&request.certificate.householdId===terminalDomain.householdId
+          &&request.certificate.ledgerNamespace===terminalDomain.ledgerNamespace,'terminal append input malformed');
+        const e=request.expectedCheckpoint;
+        check(isRecord(e)&&Object.keys(e).sort().join(',')==='digest,householdId,ledgerNamespace,revision,schema'
+          &&e.schema==='terminal-history-checkpoint-1'&&e.householdId===terminalDomain.householdId
+          &&e.ledgerNamespace===terminalDomain.ledgerNamespace&&Number.isSafeInteger(e.revision)&&e.revision>=0
+          &&typeof e.digest==='string'&&/^[a-f0-9]{64}$/.test(e.digest),'terminal append checkpoint malformed');
+        return request;
+      },async(request,fence)=>{
+        const prior=terminalRow(await raw(terminalSelect,[scope]));fence();
+        if(!isDeepStrictEqual(request.expectedCheckpoint,prior.state.checkpoint)
+          ||prior.state.history.records.some(r=>r.operationId===request.certificate.operationId))return null;
+        const payload={schema:prior.state.history.schema,householdId:terminalDomain.householdId,
+          ledgerNamespace:terminalDomain.ledgerNamespace,revision:prior.state.history.revision+1,
+          records:[...prior.state.history.records,request.certificate]};
+        const digest=C.digest(payload),historyBytes=Buffer.from(JSON.stringify({...payload,digest}));
+        const checkpoint={...prior.state.checkpoint,revision:payload.revision,digest};
+        const checkpointBytes=Buffer.from(JSON.stringify(checkpoint));
+        check(historyBytes.length<=RECORD_MAX_BYTES&&checkpointBytes.length<=CHECKPOINT_MAX_BYTES,'terminal append exceeds size bound');
+        // Validate with incumbent rules without advancing the live floor before
+        // COMMIT. A definite CAS miss must not create a fictitious higher floor.
+        TC.qualifySnapshot({historyBytes,checkpoint},{...terminalDomain});fence();
+        const ack=await raw('UPDATE '+T.terminal+' SET history_bytes = $2, checkpoint_bytes = $3'
+          +' WHERE scope = $1 AND history_bytes = $4 AND checkpoint_bytes = $5',
+        [scope,historyBytes,checkpointBytes,prior.historyBytes,prior.checkpointBytes]);fence();
+        check(ack.command==='UPDATE'&&ack.rows.length===0&&(ack.rowCount===0||ack.rowCount===1),'terminal append acknowledgement malformed');
+        return ack.rowCount===1?{historyBytes,checkpoint}:null;
+      });
+      // mutate resolves only after affirmative COMMIT; no automatic reread/retry.
+      // The callback may have settled while COMMIT was in flight. Even an
+      // affirmative reply cannot let that original holder publish true OR false.
+      // A write may have landed: retire, report unknown, never claim no effect.
+      if(!isLive(holder)){markLost();fail('terminal append completion lost original lock holder; outcome unknown');}
+      if(result===null)return false;
+      try{TC.qualifySnapshot(result,terminalDomain);}catch{markLost();fail('terminal append postcommit qualification failed; outcome unknown');}
+      if(!isLive(holder)){markLost();fail('terminal append publication lost original lock holder; outcome unknown');}
+      return true;
+    },
+  }:null;
+
   const lock = {
     async withLock(fn) {
       check(typeof fn === 'function', 'withLock requires a function');
@@ -415,7 +509,8 @@ function createSettlementEvidencePostgresAdapter(options) {
     journalStore: Object.freeze(journalStore),
     quarantine: Object.freeze(quarantine),
     lock: Object.freeze(lock),
-    contract: RELATION_CONTRACT,
+    ...(terminalHistory?{terminalHistory:Object.freeze(terminalHistory)}:{}),
+    contract: terminalHistory?NATIVE_RELATION_CONTRACT:RELATION_CONTRACT,
   });
 }
 

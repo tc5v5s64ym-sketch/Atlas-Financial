@@ -72,11 +72,14 @@ function projectAcl(text, base, acl) {
   const columnReferences=text.includes("NOT has_any_column_privilege(format('%I.%I',$1,t.name),'REFERENCES')");
   if(!columnReferences)assert.ok(text.includes("NOT has_table_privilege(format('%I.%I',$1,t.name),'REFERENCES')"));
   const any=(grants,privilege)=>grants.table.has(privilege)||Object.values(grants.columns).some(p=>p.has(privilege));
-  return {...base,tables:Object.entries(acl).every(([name,g])=>g.table.has('SELECT')&&g.table.has('INSERT')
-    &&g.table.has('UPDATE')===(name!=='quarantine')&&g.table.has('DELETE')===(name!=='quarantine')
+  const native=text.includes("('terminal_history')");
+  const nativeInsert=text.includes("(t.name<>'terminal_history' OR NOT has_any_column_privilege(format('%I.%I',$1,t.name),'INSERT'))");
+  return {...base,tables:Object.entries(acl).every(([name,g])=>g.table.has('SELECT')&&g.table.has('INSERT')===(!native||name!=='terminal_history')
+    &&g.table.has('UPDATE')===(name!=='quarantine')&&g.table.has('DELETE')===(name!=='quarantine'&&(!native||name!=='terminal_history'))
     &&!g.table.has('TRUNCATE')&&!g.table.has('TRIGGER')
     &&!(columnReferences?any(g,'REFERENCES'):g.table.has('REFERENCES'))
-    &&!(columnUpdate&&name==='quarantine'&&any(g,'UPDATE')))};
+    &&!(columnUpdate&&name==='quarantine'&&any(g,'UPDATE'))
+    &&!(nativeInsert&&name==='terminal_history'&&any(g,'INSERT')))};
 }
 function attributeCatalog() {
   return metadata()[3].map(table=>({...table,columns:table.columns.map(c=>({
@@ -423,5 +426,52 @@ test('PK parser boundary: missing reordered extra duplicate and wrong keys still
   for(const [index,keys]of [[0,[]],[3,['name','scope']],[3,['scope','name','bytes']],[3,['scope','scope']],[0,['bytes']]]){
     const w=world({parserBoundary:true});w.rows[3][index].primaryKey=keys;
     await preflightRefused(w,'schema');
+  }
+});
+
+const nativeBinding=()=>({householdId:'household-'+'a'.repeat(32),ledgerNamespace:'ledger-'+'d'.repeat(32)});
+function nativeWorld(options={}) {
+  const w=world(options);w.rows[3].push({name:'terminal_history',kind:'r',persistence:'p',rls:false,forceRls:false,
+    unsafe:false,primaryKeyCount:1,columns:['scope','history_bytes','checkpoint_bytes'].map(name=>({name,
+      type:name==='scope'?'text':'bytea',notNull:true,generated:''})),primaryKey:['scope']});
+  return w;
+}
+test('N connection native opt-in exactly qualifies five relations; default still refuses the fifth',async()=>{
+  const w=nativeWorld();const o=await w.open({terminalHistory:nativeBinding()});
+  assert.equal(typeof o.terminalHistory.readSnapshot,'function');assert.equal(w.queries.length,4);
+  assert.equal(Object.keys(o.contract.relations).length,5);assert.match(w.queries[2].text,/\('terminal_history'\)/);
+  assert.match(w.queries[3].text,/LIMIT 6$/);await o.retire();
+  await preflightRefused(nativeWorld(),'schema');
+});
+test('N connection validates explicit history binding before constructing a Client',async()=>{
+  for(const terminalHistory of [null,true,{},nativeBinding().householdId,{...nativeBinding(),extra:1},
+    {...nativeBinding(),householdId:'household-bad'},{...nativeBinding(),ledgerNamespace:'bad'}]){
+    const w=world();await assert.rejects(w.open({terminalHistory}));assert.equal(w.constructed,0);
+  }
+});
+test('N connection native missing extra generated wrong-type and wrong-key relations refuse at schema',async()=>{
+  for(const mutate of [rows=>rows.pop(),rows=>rows.push({...rows.at(-1),name:'unexpected'}),
+    rows=>{rows.at(-1).columns[1].generated='s';},rows=>{rows.at(-1).columns[2].type='text';},
+    rows=>{rows.at(-1).columns.push({name:'extra',type:'bytea',notNull:true,generated:''});},
+    rows=>{rows.at(-1).primaryKey=['history_bytes'];},rows=>{rows.at(-1).unsafe=true;}]){
+    const w=nativeWorld();mutate(w.rows[3]);await assert.rejects(w.open({terminalHistory:nativeBinding()}),e=>{assert.equal(e.diagnostic.stage,'schema');return true;});assert.equal(w.ends,1);
+  }
+});
+test('N connection native grants SELECT UPDATE only, including effective forbidden column grants',async()=>{
+  const approved=()=>({...approvedAcl(),terminal_history:{table:new Set(['SELECT','UPDATE']),columns:{}}});
+  const good=nativeWorld({acl:approved()});await(await good.open({terminalHistory:nativeBinding()})).retire();
+  for(const [privilege,column]of [['INSERT',false],['DELETE',false],['TRUNCATE',false],['TRIGGER',false],
+    ['REFERENCES',true],['INSERT',true]]){
+    const acl=approved();if(column)acl.terminal_history.columns.history_bytes=new Set([privilege]);else acl.terminal_history.table.add(privilege);
+    const w=nativeWorld({acl});await assert.rejects(w.open({terminalHistory:nativeBinding()}),e=>{assert.equal(e.diagnostic.stage,'privileges');return true;});assert.equal(w.queries.length,3);assert.equal(w.ends,1);
+  }
+});
+test('N connection PG18 native NOT NULL rows pass while unsafe constraints remain prohibited',async()=>{
+  const constraints=()=>({...catalog18(),terminal_history:[{contype:'p',conkey:['scope'],condeferrable:false,convalidated:true,conenforced:true},
+    ...['scope','history_bytes','checkpoint_bytes'].map(name=>({contype:'n',conkey:[name],condeferrable:false,convalidated:true,conenforced:true}))]});
+  const good=nativeWorld({catalog:constraints(),parserBoundary:true});await(await good.open({terminalHistory:nativeBinding()})).retire();
+  for(const change of [c=>c.push({contype:'c',conkey:[],condeferrable:false,convalidated:true,conenforced:true}),c=>{c[0].condeferrable=true;},c=>{c[1].conenforced=false;}]){
+    const catalog=constraints();change(catalog.terminal_history);const w=nativeWorld({catalog});
+    await assert.rejects(w.open({terminalHistory:nativeBinding()}),e=>{assert.equal(e.diagnostic.stage,'schema');return true;});
   }
 });

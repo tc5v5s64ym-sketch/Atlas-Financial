@@ -48,7 +48,7 @@ const eq = (a, b) => assert.deepStrictEqual(a, b);
 function createFakePg() {
   const schemas = new Map();
   const tables = s => {
-    if (!schemas.has(s)) schemas.set(s, { doc_head: new Map(), doc_staged: new Map(), journal: new Map(), quarantine: [] });
+    if (!schemas.has(s)) schemas.set(s, { doc_head: new Map(), doc_staged: new Map(), journal: new Map(), quarantine: [], terminal_history:new Map() });
     return schemas.get(s);
   };
   const advisory = new Map(); // "k1,k2" -> pid
@@ -97,7 +97,7 @@ function createFakePg() {
   }
   function apply(c, fn) { if (c.inTxn) c.pending.push(fn); else fn(); }
   function schemaOf(text) {
-    const m = /"([a-z_][a-z0-9_]*)"\.(doc_head|doc_staged|journal|quarantine)/.exec(text);
+    const m = /"([a-z_][a-z0-9_]*)"\.(doc_head|doc_staged|journal|quarantine|terminal_history)/.exec(text);
     assert.ok(m, 'unexpected SQL: ' + text);
     return tables(m[1]);
   }
@@ -122,9 +122,17 @@ function createFakePg() {
     }
     const t = schemaOf(text);
     const scope = v[0];
+    if (/^SELECT history_bytes, checkpoint_bytes FROM/.test(text)) return ok(rowsOf(t.terminal_history.get(scope)));
+    if (/^UPDATE .*\.terminal_history SET history_bytes = \$2, checkpoint_bytes = \$3 WHERE scope = \$1 AND history_bytes = \$4 AND checkpoint_bytes = \$5$/.test(text)) {
+      c.txnOp='terminal.append'; const prior=t.terminal_history.get(scope);
+      const match=prior&&prior.history_bytes.equals(v[3])&&prior.checkpoint_bytes.equals(v[4]);
+      if(match){const row={history_bytes:Buffer.from(v[1]),checkpoint_bytes:Buffer.from(v[2])};apply(c,()=>t.terminal_history.set(scope,row));}
+      return ok([],match?1:0);
+    }
     if (/UNION ALL/.test(text)) {
       for (const name of ['doc_staged', 'doc_head', 'journal']) if (t[name].has(scope)) return ok(rowsOf(t[name].get(scope)));
       const qrows = t.quarantine.filter(r => r.scope === scope).sort((a, b) => (a.name < b.name ? -1 : 1));
+      if(!qrows.length&&text.includes('.terminal_history')&&t.terminal_history.has(scope))return ok([{bytes:t.terminal_history.get(scope).history_bytes}]);
       return ok(qrows.slice(0, 1));
     }
     let m;
@@ -275,6 +283,162 @@ test('module: no driver, env, network or DDL; construction validates identifiers
   assert.throws(mk({ client, schema: SCHEMA, scope: SCOPE }), /already owned/); // exclusive lifetime ownership
   eq(pg.log.length, 0); // construction issues no SQL
   assert.ok(Object.isFrozen(P.RELATION_CONTRACT) && P.RELATION_CONTRACT.relations.quarantine.grants === 'SELECT, INSERT');
+});
+
+// Native history data/SQL below are OFFLINE doubles, not server qualification.
+const TH = require('./test-settlement-evidence-terminal-certificate');
+function nativeHistory() {
+  const pg=createFakePg(), client=pg.connect(),ledgerNamespace='ledger-'+crypto.randomBytes(16).toString('hex');
+  const initial=TH.encoded([],householdId,ledgerNamespace);
+  const put=s=>pg.t().terminal_history.set(SCOPE,{history_bytes:Buffer.from(s.historyBytes),checkpoint_bytes:Buffer.from(JSON.stringify(s.checkpoint))});
+  put(initial);
+  const adapter=P.createSettlementEvidencePostgresAdapter({client,schema:SCHEMA,scope:SCOPE,terminalHistory:{householdId,ledgerNamespace}});
+  const certificate={schema:'terminal-certificate-2',householdId,ledgerNamespace,operationId:op(777),actorId,
+    kind:'link',generation:'generation-'+'e'.repeat(32),reason:'admission-refused',expectedRevision:0,
+    expectedDocumentDigest:'1'.repeat(64),confirmationDigest:'2'.repeat(64),decidedAt:1};
+  return {pg,client,adapter,initial,put,certificate,input:()=>({expectedCheckpoint:structuredClone(initial.checkpoint),certificate:structuredClone(certificate)})};
+}
+test('N adapter default keys unchanged; native snapshot is fresh coherent and qualified',async()=>{
+  const d=P.createSettlementEvidencePostgresAdapter({client:createFakePg().connect(),schema:SCHEMA,scope:SCOPE});
+  assert.equal(d.terminalHistory,undefined);assert.equal(Object.keys(d.contract.relations).length,4);
+  const n=nativeHistory();assert.equal(Object.keys(n.adapter.contract.relations).length,5);
+  const a=await n.adapter.terminalHistory.readSnapshot();assert.deepEqual(a,n.initial);
+  a.historyBytes.fill(0);a.checkpoint.revision=99;
+  assert.deepEqual(await n.adapter.terminalHistory.readSnapshot(),n.initial);
+  assert.equal(n.pg.log.length,2);assert.equal(n.client.retired,0);
+});
+test('N adapter atomic exact append and false stale/duplicate CAS without mutation',async()=>{
+  const n=nativeHistory();const h=n.adapter.terminalHistory;
+  await assert.rejects(h.compareAndAppend(n.input()),/lock holder/);
+  await n.adapter.lock.withLock(async()=>{
+    const pending=h.compareAndAppend(n.input());assert.equal(n.pg.t().terminal_history.get(SCOPE).history_bytes.equals(n.initial.historyBytes),true);
+    assert.equal(await pending,true);const after=await h.readSnapshot();
+    const records=JSON.parse(after.historyBytes).records;assert.deepEqual(records,[n.certificate]);
+    assert.equal(after.checkpoint.revision,1);assert.equal(after.checkpoint.digest,JSON.parse(after.historyBytes).digest);
+    assert.equal(await h.compareAndAppend(n.input()),false);
+    assert.equal(await h.compareAndAppend({expectedCheckpoint:after.checkpoint,certificate:n.certificate}),false);
+  });
+  assert.equal(n.pg.log.filter(q=>/^UPDATE .*terminal_history/.test(q.text)).length,1);
+  assert.equal(n.pg.log.filter(q=>/^INSERT|^DELETE/.test(q.text)).length,0);
+});
+test('N adapter snapshots caller inputs before queue and serializes unlocked read after COMMIT',async()=>{
+  const n=nativeHistory(),h=n.adapter.terminalHistory;let release,seen;
+  const gate=new Promise(r=>{release=r;}),at=new Promise(r=>{seen=r;});
+  n.pg.hooks.push({match:t=>t==='BEGIN',fn:async()=>{seen();await gate;}});
+  const input=n.input();const work=n.adapter.lock.withLock(async()=>{const p=h.compareAndAppend(input);input.certificate.operationId=op(999);await p;});
+  await at;const read=h.readSnapshot();release();await work;const snapshot=await read;
+  assert.equal(JSON.parse(snapshot.historyBytes).records[0].operationId,n.certificate.operationId);
+  const log=n.pg.log.map(q=>q.text),commit=log.indexOf('COMMIT');
+  assert(log.findIndex((q,i)=>i>commit&&/^SELECT history_bytes/.test(q))>commit);
+});
+test('N adapter valid expected checkpoint CAS miss is definite false and leaves bytes identical',async()=>{
+  const n=nativeHistory();const input=n.input();input.expectedCheckpoint.digest='f'.repeat(64);
+  await n.adapter.lock.withLock(async()=>assert.equal(await n.adapter.terminalHistory.compareAndAppend(input),false));
+  assert.deepEqual(await n.adapter.terminalHistory.readSnapshot(),n.initial);assert.equal(n.client.retired,0);
+});
+test('N adapter missing malformed mismatched and oversized history fail closed, never genesis',async()=>{
+  for(const damage of [row=>null,row=>({...row,history_bytes:null}),row=>({...row,checkpoint_bytes:Buffer.from('{}')}),
+    row=>({...row,history_bytes:Buffer.from('{}')}),row=>({...row,history_bytes:Buffer.alloc(P.RECORD_MAX_BYTES+1)}),
+    row=>({...row,checkpoint_bytes:Buffer.alloc(2049)})]){
+    const n=nativeHistory(),row=damage(n.pg.t().terminal_history.get(SCOPE));
+    if(row===null)n.pg.t().terminal_history.delete(SCOPE);else n.pg.t().terminal_history.set(SCOPE,row);
+    await assert.rejects(n.adapter.terminalHistory.readSnapshot());
+    assert.equal(n.pg.log.filter(q=>/^INSERT|^UPDATE|^DELETE/.test(q.text)).length,0);
+  }
+});
+test('N adapter query/result/COMMIT uncertainty retires once without retry or false acknowledgement',async()=>{
+  for(const [match,mode]of [[t=>/^UPDATE .*terminal_history/.test(t),'reject'],[t=>t==='COMMIT','lost-ack-landed'],[t=>t==='COMMIT','lost-ack-absent']]){
+    const n=nativeHistory();n.pg.faults.push({match,mode});
+    await assert.rejects(n.adapter.lock.withLock(()=>n.adapter.terminalHistory.compareAndAppend(n.input())));
+    assert.equal(n.client.retired,1);const count=n.pg.log.length;await assert.rejects(n.adapter.terminalHistory.readSnapshot());assert.equal(n.pg.log.length,count);
+  }
+});
+test('N adapter observed negative history prefix cannot be rolled back or rewritten',async()=>{
+  const n=nativeHistory(),h=n.adapter.terminalHistory;
+  await n.adapter.lock.withLock(()=>h.compareAndAppend(n.input()));await h.readSnapshot();n.put(n.initial);
+  await assert.rejects(h.readSnapshot());
+  const m=nativeHistory();await m.adapter.lock.withLock(()=>m.adapter.terminalHistory.compareAndAppend(m.input()));
+  await m.adapter.terminalHistory.readSnapshot();m.put(TH.encoded([{...m.certificate,operationId:op(778)},
+    {...m.certificate,operationId:op(779)}],householdId,m.certificate.ledgerNamespace));
+  await assert.rejects(m.adapter.terminalHistory.readSnapshot());
+});
+test('N adapter definite affected-row zero commits no append, malformed update acknowledgement loses session',async()=>{
+  for(const count of [0,undefined,2]){
+    const n=nativeHistory(),original=n.client.query;
+    n.client.query=async(t,v)=>/^UPDATE .*terminal_history/.test(t)?{command:'UPDATE',rows:[],rowCount:count}:original(t,v);
+    if(count===0){await n.adapter.lock.withLock(async()=>assert.equal(await n.adapter.terminalHistory.compareAndAppend(n.input()),false));assert.equal(n.client.retired,0);}
+    else{await assert.rejects(n.adapter.lock.withLock(()=>n.adapter.terminalHistory.compareAndAppend(n.input())));assert.equal(n.client.retired,1);}
+  }
+});
+test('N adapter native history is a durable trace; settled holder cannot append under its successor',async()=>{
+  const n=nativeHistory();assert.deepEqual(await n.adapter.documentStore.readStaged(),n.initial.historyBytes);
+  let resume,old;const gate=new Promise(r=>{resume=r;});
+  await n.adapter.lock.withLock(async()=>{old=gate.then(()=>n.adapter.terminalHistory.compareAndAppend(n.input()));});
+  await n.adapter.lock.withLock(async()=>{const count=n.pg.log.length;resume();await assert.rejects(old,/lock holder/);assert.equal(n.pg.log.length,count);});
+});
+test('N adapter malformed append/certificate/domain inputs refuse without durable dispatch',async()=>{
+  for(const mutate of [r=>{delete r.certificate.confirmationDigest;},r=>{r.certificate.householdId=otherHousehold;},
+    r=>{r.certificate.ledgerNamespace='ledger-'+'f'.repeat(32);},r=>{r.expectedCheckpoint.schema='old';},
+    r=>{r.expectedCheckpoint.revision=-1;},r=>{r.extra=true;}]){
+    const n=nativeHistory(),r=n.input();mutate(r);await n.adapter.lock.withLock(async()=>{
+      const count=n.pg.log.length;await assert.rejects(n.adapter.terminalHistory.compareAndAppend(r));assert.equal(n.pg.log.length,count);});
+  }
+});
+test('N adapter bounded valid negative prefix cannot be truncated to fit one additional certificate',async()=>{
+  const n=nativeHistory(),per=Buffer.byteLength(JSON.stringify(n.certificate))+1;
+  let count=Math.floor((P.RECORD_MAX_BYTES-n.initial.historyBytes.length-12)/per);
+  const records=Array.from({length:count},(_,i)=>({...n.certificate,operationId:op(10000+i)}));
+  let snapshot=TH.encoded(records,householdId,n.certificate.ledgerNamespace);
+  while(snapshot.historyBytes.length>P.RECORD_MAX_BYTES){records.pop();snapshot=TH.encoded(records,householdId,n.certificate.ledgerNamespace);}
+  while(TH.encoded([...records,n.certificate],householdId,n.certificate.ledgerNamespace).historyBytes.length<=P.RECORD_MAX_BYTES){records.push({...n.certificate,operationId:op(10000+records.length)});snapshot=TH.encoded(records,householdId,n.certificate.ledgerNamespace);}
+  n.put(snapshot);const bytes=Buffer.from(snapshot.historyBytes);
+  await n.adapter.lock.withLock(async()=>await assert.rejects(n.adapter.terminalHistory.compareAndAppend({expectedCheckpoint:snapshot.checkpoint,certificate:n.certificate})));
+  assert(n.pg.t().terminal_history.get(SCOPE).history_bytes.equals(bytes));assert(!n.pg.log.some(q=>/^UPDATE .*terminal_history/.test(q.text)));
+});
+test('N adapter nonaffirmative COMMIT tag cannot acknowledge a history append',async()=>{
+  const n=nativeHistory(),query=n.client.query;n.client.query=async(t,v)=>t==='COMMIT'?{command:'ROLLBACK',rows:[]}:query(t,v);
+  await assert.rejects(n.adapter.lock.withLock(()=>n.adapter.terminalHistory.compareAndAppend(n.input())));assert.equal(n.client.retired,1);
+});
+test('R1 wrapped operation ID cannot land then bypass duplicate identity with primitive ID',async()=>{
+  const n=nativeHistory(),h=n.adapter.terminalHistory;
+  await n.adapter.lock.withLock(async()=>{
+    const wrapped=n.input();wrapped.certificate.operationId=[wrapped.certificate.operationId];
+    let first,second;try{first=await h.compareAndAppend(wrapped);}catch{first='refused';}
+    if(first===true){const current=await h.readSnapshot();second=await h.compareAndAppend({expectedCheckpoint:current.checkpoint,certificate:n.certificate});}
+    assert.notDeepEqual([first,second],[true,true],'array and primitive cannot name two distinct negative records');
+    assert.equal(first,'refused');
+    assert.equal(await h.compareAndAppend(n.input()),true,'valid primitive input stays supported');
+  });
+});
+test('R1 all native certificate strings reject wrappers in input and persisted snapshots',async()=>{
+  const fields=['schema','householdId','ledgerNamespace','operationId','actorId','kind','generation','reason','expectedDocumentDigest','confirmationDigest'];
+  for(const field of fields){
+    const n=nativeHistory(),input=n.input();input.certificate[field]=[input.certificate[field]];
+    await n.adapter.lock.withLock(async()=>{const count=n.pg.log.length;await assert.rejects(n.adapter.terminalHistory.compareAndAppend(input),field);assert.equal(n.pg.log.length,count);});
+    const m=nativeHistory(),bad={...m.certificate,[field]:[m.certificate[field]]};
+    m.put(TH.encoded([bad],householdId,m.certificate.ledgerNamespace));await assert.rejects(m.adapter.terminalHistory.readSnapshot(),field);
+  }
+});
+test('R2 native snapshot started inside a holder cannot publish after that holder settles',async()=>{
+  const n=nativeHistory();let release,seen,finish;
+  const rawGate=new Promise(r=>{release=r;}),reached=new Promise(r=>{seen=r;}),callbackGate=new Promise(r=>{finish=r;});
+  n.pg.hooks.push({match:t=>/^SELECT history_bytes/.test(t),fn:async()=>{seen();await rawGate;}});
+  let pending;const locked=n.adapter.lock.withLock(async()=>{pending=n.adapter.terminalHistory.readSnapshot();pending.catch(()=>{});await callbackGate;});
+  await reached;finish();await new Promise(r=>setImmediate(r));release();
+  const result=await pending.then(()=>({published:true}),()=>({published:false}));await locked;
+  assert.equal(result.published,false);assert.equal(n.client.retired,0,'read-only stale result refusal need not claim connection loss');
+});
+for(const applies of [true,false])test('R3 late native COMMIT acknowledgement cannot publish '+(applies?'true':'false')+' after holder loss',async()=>{
+  const n=nativeHistory();let release,seen,finish;
+  const ackGate=new Promise(r=>{release=r;}),reached=new Promise(r=>{seen=r;}),callbackGate=new Promise(r=>{finish=r;});
+  n.pg.hooks.push({match:t=>t==='COMMIT',fn:async()=>{seen();await ackGate;}});
+  const input=n.input();if(!applies)input.expectedCheckpoint.digest='f'.repeat(64);
+  let pending;const locked=n.adapter.lock.withLock(async()=>{pending=n.adapter.terminalHistory.compareAndAppend(input);pending.catch(()=>{});await callbackGate;});
+  await reached;finish();await new Promise(r=>setImmediate(r));release();
+  const result=await pending.then(value=>({value}),error=>({error:error.message}));await locked;
+  assert.match(result.error||'',/outcome unknown/);assert.equal(Object.hasOwn(result,'value'),false);
+  assert.equal(JSON.parse(n.pg.t().terminal_history.get(SCOPE).history_bytes).records.length,applies?1:0,'unknown publication does not assert no write');
+  assert.equal(n.client.retired,1);const count=n.pg.log.length;await assert.rejects(n.adapter.terminalHistory.readSnapshot());assert.equal(n.pg.log.length,count);
 });
 
 test('A1 store constructs over the PG adapter + separately injected pin/backup', () => {

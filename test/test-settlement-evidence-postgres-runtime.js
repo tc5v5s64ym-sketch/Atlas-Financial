@@ -29,6 +29,9 @@ function world(hooks = {}) {
         ({name,type:name==='bytes'?'bytea':'text',notNull:name!=='label',generated:''})),
       primaryKey:name==='quarantine'?['scope','name']:['scope']}))
   ];
+  if(hooks.native)metadata[3].push({name:'terminal_history',kind:'r',persistence:'p',rls:false,forceRls:false,
+    unsafe:false,primaryKeyCount:1,columns:['scope','history_bytes','checkpoint_bytes'].map(name=>({name,
+      type:name==='scope'?'text':'bytea',notNull:true,generated:''})),primaryKey:['scope']});
   class Client extends EventEmitter {
     constructor() { super(); w.clients.push(this); this.connection={stream:{encrypted:true,authorized:true,
       servername:host,getPeerCertificate:()=>({subjectaltname:'DNS:'+host})}};
@@ -45,6 +48,12 @@ function world(hooks = {}) {
       if(/pg_advisory_unlock/.test(text))return result([{unlocked:true}]);
       if(/pg_backend_pid/.test(text))return result([{pid:314}]);
       if(['BEGIN','COMMIT','ROLLBACK'].includes(text))return result();
+      if(/^SELECT history_bytes, checkpoint_bytes FROM/.test(text))return result(w.historyBytes?[{
+        history_bytes:Buffer.from(w.historyBytes),checkpoint_bytes:Buffer.from(JSON.stringify(w.checkpoint))}]:[]);
+      if(/^UPDATE .*\.terminal_history SET history_bytes/.test(text)){
+        const match=w.historyBytes.equals(values[3])&&Buffer.from(JSON.stringify(w.checkpoint)).equals(values[4]);
+        if(match){w.historyBytes=Buffer.from(values[1]);w.checkpoint=JSON.parse(values[2]);}return result([],match?1:0);
+      }
       if(/^SELECT bytes FROM/.test(text)){
         const field=text.includes('.doc_head')?'doc':text.includes('.journal')?'journal':'temp';
         return result(w[field]?[{bytes:Buffer.from(w[field])}]:[]);
@@ -122,6 +131,70 @@ test('EC7 absence preserves configured keys and same-actor receipt without recov
   assert.deepEqual((await http(r,recordedActor).post('/outcome',{operationId})).result,publicReceipt);
   assert.equal((await http(r).post('/outcome',{operationId})).result.status,'unknown');
   await r.retire();
+});
+
+function nativeRuntimeWorld(hooks={}){const w=world({native:true,...hooks});w.options.custody.terminalHistory={mode:'postgres'};return w;}
+test('N runtime native explicit selection is inert and retains default settlement keys',()=>{
+  const w=nativeRuntimeWorld(),r=w.construct();assert.equal(w.clients.length,0);assert.equal(w.queries.length,0);
+  assert.deepEqual(Object.keys(r.settlement).sort(),['acquire','authorize','commitAdmitted','contextReader',
+    'householdId','now','origin','readBase','readDocument','readPin','store']);
+  assert.equal(r.settlement.store.recoveryRead,undefined);
+});
+test('N runtime malformed mixed native selection refuses before Client construction',()=>{
+  for(const selection of [{mode:'other'},{mode:'postgres',readSnapshot(){}},{mode:'postgres',extra:true},
+    {mode:true},'postgres',null]){
+    const w=world();w.options.custody.terminalHistory=selection;assert.throws(w.construct);assert.equal(w.clients.length,0);
+  }
+  let reads=0;const w=world();w.options.custody.terminalHistory=Object.defineProperty({},'mode',{enumerable:true,get(){reads++;return 'postgres';}});
+  assert.throws(w.construct);assert.equal(reads,0);assert.equal(w.clients.length,0);
+});
+test('N runtime real store preserves negative checkpoint/digest, exact generation and positive receipt',async()=>{
+  const w=nativeRuntimeWorld();optIn(w);const r=await w.start(),p=await w.prepare(r);
+  const sealed=await w.seal(r.settlement.store,p);assert.equal(sealed.status,'certified');
+  const snapshot=JSON.parse(w.historyBytes);assert.equal(snapshot.records.length,1);
+  assert.equal(snapshot.records[0].confirmationDigest,p.confirmationDigest);assert.equal(w.checkpoint.digest,snapshot.digest);
+  const negative=await r.settlement.store.recoveryRead({operationId:p.preview.operationId,generation:sealed.certificate.generation});
+  assert.deepEqual(negative,{status:'not-applied',operationId:p.preview.operationId,generation:sealed.certificate.generation,confirmationDigest:p.confirmationDigest});
+  assert.equal((await r.settlement.store.recoveryRead({operationId:p.preview.operationId,generation:'generation-'+'f'.repeat(32)})).status,'unknown');
+  assert.notEqual((await r.settlement.commitAdmitted(w.input(p),()=>true)).status,'committed');
+  const p2=await r.settlement.store.prepare({actorId:recordedActor,operationId:'operation-'+'2'.repeat(32),command:w.command(2)});
+  const receipt=await r.settlement.commitAdmitted(w.input(p2),()=>true);assert.equal(receipt.status,'committed');
+  assert.equal((await r.settlement.store.recoveryRead({operationId:receipt.operationId})).requestDigest,p2.confirmationDigest);
+  assert.equal(w.clients.length,1);assert.equal(w.connects,1);assert(w.queries.some(t=>/^UPDATE .*terminal_history/.test(t)));
+  await r.retire();assert.equal(w.ends,1);
+});
+test('N runtime missing provisioned native history cannot authorize prepare or invent genesis',async()=>{
+  const w=nativeRuntimeWorld();w.historyBytes=null;const r=await w.start();const p=await w.prepare(r);
+  assert.equal(p.status,'unavailable');assert.equal(w.historyBytes,null);
+  assert(!w.queries.some(t=>/^INSERT INTO .*terminal_history|^UPDATE .*terminal_history/.test(t)));await r.retire();
+});
+test('N runtime retirement across native history await suppresses result and retires once',async()=>{
+  const reached=defer(),release=defer();let block=false;
+  const w=nativeRuntimeWorld({query:async text=>{if(block&&/^SELECT history_bytes/.test(text)){reached.resolve();await release.promise;}}});
+  const r=await w.start();block=true;const pending=w.prepare(r);pending.catch(()=>{});await reached.promise;
+  const report=await r.retire();assert.equal(report.close,'confirmed');const count=w.queries.length;release.resolve();
+  await assert.rejects(pending,unavailable);await turn();assert.equal(w.queries.length,count);assert.equal(w.ends,1);
+});
+test('N runtime native negative survives modeled new-client restart and public outcome excludes digest',async()=>{
+  const w=nativeRuntimeWorld();optIn(w);const writer=await w.start(),prepared=await w.prepare(writer);
+  const seal=await w.seal(writer.settlement.store,prepared);assert.equal(seal.status,'certified');await writer.retire();
+  // This is a new modeled session/runtime in this process, NOT real restart or
+  // independent checkpoint custody. The SQL/custody state below is copied.
+  const other=nativeRuntimeWorld();other.historyBytes=Buffer.from(w.historyBytes);other.checkpoint=structuredClone(w.checkpoint);
+  other.doc=Buffer.from(w.doc);other.pin=structuredClone(w.pin);other.backups=new Map(w.backups);
+  other.options.custody.exclusionDomain=w.domain;optIn(other);const reader=await other.start();
+  const selector={operationId:prepared.preview.operationId,generation:seal.certificate.generation};
+  assert.deepEqual((await http(reader).post('/outcome',selector)).result,{status:'not-applied',...selector});
+  assert.equal((await http(reader).post('/outcome',{...selector,generation:'generation-'+'f'.repeat(32)})).result.status,'unknown');
+  assert.equal(other.connects,1);await reader.retire();assert.equal(other.ends,1);
+});
+test('N runtime failed and unconfirmed native close preserve retirement uncertainty',async()=>{
+  for(const close of ['failed','unconfirmed']){
+    const w=nativeRuntimeWorld({end:()=>close==='failed'?Promise.reject(Error(CANARY)):new Promise(()=>{})});
+    const r=await w.start();const report=await r.retire();assert.equal(report.close,close);assert.equal(report.state,'lost');
+    assert.equal(w.ends,1);assert.throws(()=>r.settlement.store.outcome({operationId:'operation-'+'1'.repeat(32),actorId:recordedActor}),unavailable);
+    assert(!JSON.stringify(report).includes(CANARY));
+  }
 });
 test('EC7 validates complete opt-in before Client or callback construction I/O',()=>{
   for(const mutate of [o=>o.recovery=null,o=>o.recovery={},o=>o.recovery.recoveryRead=false,
