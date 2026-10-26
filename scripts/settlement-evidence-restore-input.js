@@ -24,7 +24,7 @@
 //     process rollback floor or domain registry is advanced or touched.
 //
 // Reused primitives: the contract's C.pin (decode + replay + household
-// binding) for the ledger; TC.isCertificate and C.digest for history, under
+// binding) for the ledger; TC.own, TC.isCertificate and C.digest for history, under
 // the same identity/revision/digest/unique-operationId rules as
 // qualifySnapshot. The 4 MiB history byte bound is NEW to this module.
 
@@ -58,10 +58,25 @@ function fieldsOf(value, names, reason) {
   }
   return out;
 }
+// Intrinsic %TypedArray%.prototype accessors and methods, captured at load.
+// They read the internal slots of a real typed array, so caller own
+// properties, getters and overridden methods on the view are never consulted
+// (and getters never execute).
+const TA = Object.getPrototypeOf(Uint8Array.prototype);
+const intrinsic = name => Object.getOwnPropertyDescriptor(TA, name).get;
+const TAG = Object.getOwnPropertyDescriptor(TA, Symbol.toStringTag).get;
+const BUFFER = intrinsic('buffer'), OFFSET = intrinsic('byteOffset'), LENGTH = intrinsic('byteLength');
+const SET = TA.set, apply = Reflect.apply;
 function copyBytes(value, max) {
-  if (!(Buffer.isBuffer(value) || value instanceof Uint8Array)) refuse('input-malformed');
-  if (value.length === 0 || value.length > max) return null;
-  return Buffer.from(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+  // Brand check through the intrinsic tag getter: true only for a real
+  // Uint8Array (Buffer included); never throws, never runs caller code.
+  if (value === null || typeof value !== 'object' || apply(TAG, value, []) !== 'Uint8Array') refuse('input-malformed');
+  const length = apply(LENGTH, value, []);
+  if (length === 0 || length > max) return null;
+  const view = new Uint8Array(apply(BUFFER, value, []), apply(OFFSET, value, []), length);
+  const out = Buffer.alloc(length);
+  apply(SET, out, [view]);
+  return out;
 }
 function deepFreeze(x) {
   if (x && typeof x === 'object') { for (const v of Object.values(x)) deepFreeze(v); Object.freeze(x); }
@@ -107,7 +122,8 @@ function validateLedger(bytes, domain, anchor) {
 function validateHistory(bytes, domain, anchor) {
   if (!bytes) refuse('history-invalid');
   let history;
-  try { history = JSON.parse(bytes.toString('utf8')); } catch { refuse('history-invalid'); }
+  // Same own() depth/data/descriptor rules qualifySnapshot applies.
+  try { history = TC.own(JSON.parse(bytes.toString('utf8'))); } catch { refuse('history-invalid'); }
   if (history === null || typeof history !== 'object' || Array.isArray(history)
     || Object.getPrototypeOf(history) !== Object.prototype) refuse('history-invalid');
   const k = Object.keys(history);
