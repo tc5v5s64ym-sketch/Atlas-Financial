@@ -260,7 +260,7 @@ function receipt(result, authority, operationId) {
 function createSettlementEvidenceConfirmation(deps) {
   if (!record(deps)) throw new TypeError('settlement-confirmation: dependencies required');
   const { householdId, authorize, resolveSelection, resolvePairedSelection, commitAdmitted,
-    store, now, registerRecovery, withdrawalReader, withdrawalLabels } = deps;
+    store, now, registerRecovery, registerPublicationOutcome, withdrawalReader, withdrawalLabels, authorizeRecovery } = deps;
   // Write admission fencing is selected whole at construction: a paired
   // resolver capability AND the store's admission capability, or neither.
   // Exactly one (or a non-function value) is a partial setup and refuses:
@@ -273,6 +273,8 @@ function createSettlementEvidenceConfirmation(deps) {
   if (!matches(HOUSEHOLD, householdId) || typeof authorize !== 'function'
     || typeof resolveSelection !== 'function' || typeof now !== 'function'
     || (registerRecovery !== undefined && typeof registerRecovery !== 'function')
+    || (registerPublicationOutcome !== undefined && typeof registerPublicationOutcome !== 'function')
+    || (authorizeRecovery !== undefined && typeof authorizeRecovery !== 'function')
     || (resolvePairedSelection !== undefined && typeof resolvePairedSelection !== 'function')
     || (commitAdmitted !== undefined && typeof commitAdmitted !== 'function')
     || ((resolvePairedSelection === undefined) !== (commitAdmitted === undefined))
@@ -762,34 +764,157 @@ function createSettlementEvidenceConfirmation(deps) {
     } finally { if (enteredCommit) writeInFlight = false; }
   }
 
-  async function outcome(context, input) {
+  // B4 re-login recovery (default-disabled). The branch exists only when
+  // BOTH halves of the capability are supplied at construction: the
+  // composition's authorizeRecovery policy (a scoped READ grant for one
+  // named operation — never an identity assertion) and the store's opt-in
+  // recoveryRead (which takes no actor input at all). Absent either half
+  // the branch is unreachable and outcome() is byte-identical in behaviour
+  // to the pre-B4 controller. The current actor is never asserted to be
+  // the recorded actor, and the recorded actor appears in no policy input,
+  // policy output or response: it exists only inside the store's private
+  // qualified bundle, consumed by the publication binding below.
+  const recoveryRead = typeof store.recoveryRead === 'function' ? store.recoveryRead : null;
+  const recoveryBranch = typeof authorizeRecovery === 'function' && recoveryRead !== null;
+
+  // One authorizeRecovery decision against the retained frozen full input.
+  // The input's householdId and actorId are server-derived (the configured
+  // household and the CURRENT session authority); operationId/generation
+  // are validated caller input — selectors naming the subject of the grant,
+  // never authority. The policy's answer is accepted only as exactly
+  // {householdId, actorId, operationId} matching the corresponding three
+  // fields of the input (the input may also carry generation; the output
+  // never does, and no whole-input equality is asserted).
+  async function recoveryDecision(retained) {
+    const output = snapshot(await authorizeRecovery(retained));
+    if (!shape(output, ['householdId', 'actorId', 'operationId'])
+      || output.householdId !== retained.householdId || output.actorId !== retained.actorId
+      || output.operationId !== retained.operationId) fail();
+    return output;
+  }
+
+  // The recovery branch proper. Consulted only after both same-actor paths
+  // returned no proof and never under live terminalizing ownership (the
+  // latch check precedes it, and is rechecked after the read — the branch
+  // never overrides latch ownership and never clears uncertainOperation).
+  // A fresh policy decision runs BEFORE the store read; the decision is
+  // rechecked against the retained frozen full input after the read, and
+  // the ordinary authority is rechecked after every await (the #696
+  // discipline). Policy refusal at either decision is reported as
+  // recoveryRefused so the HTTP seam can refuse disclosure with its
+  // incumbent 503; at this layer the result itself is plain unknown —
+  // proof suppressed, never a fabricated refusal shape. Prepare/confirm
+  // are unreachable from here and the read performs no store writes.
+  async function recoveryOutcome(ownedContext, authority, request) {
+    const refused = { result: unknown(request.operationId), binding: null,
+      recoveryRefused: true, recheckRecovery: null };
+    const retained = Object.freeze(Object.hasOwn(request, 'generation')
+      ? { householdId, actorId: authority.actorId, operationId: request.operationId,
+        generation: request.generation }
+      : { householdId, actorId: authority.actorId, operationId: request.operationId });
+    try { await recoveryDecision(retained); } catch { return refused; }
+    const bundle = snapshot(await recoveryRead(Object.hasOwn(request, 'generation')
+      ? { operationId: request.operationId, generation: request.generation }
+      : { operationId: request.operationId }));
+    // Snapshot above happens in the read's own continuation, before any
+    // later await: the bundle judged below is the bundle the store
+    // produced for THIS request, request-local and never cached.
+    try { await recoveryDecision(retained); } catch { return refused; }
+    await sameAuthority(ownedContext, authority);
+    if (previews.get(request.operationId)?.terminalizing) return null;
+    const recheckRecovery = async () => { await recoveryDecision(retained); };
+    if (shape(bundle, ['status', 'operationId', 'actorId', 'revision', 'digest', 'requestDigest'])
+      && bundle.status === 'committed' && bundle.operationId === request.operationId
+      && matches(ACTOR, bundle.actorId) && positive(bundle.revision) && matches(HASH, bundle.digest)
+      && matches(HASH, bundle.requestDigest)) {
+      // Public projection is exactly status + operationId: the recorded
+      // actor and the revision/digest anchors stay inside the private
+      // binding, which only the publication hand-off consumes. The
+      // requestDigest is retained as a sibling of the receipt — never
+      // inside it: the receipt is the strictly-constructed shared shape
+      // the publication path consumes unchanged.
+      return { result: Object.freeze({ status: 'committed', operationId: request.operationId }),
+        binding: Object.freeze({
+          receipt: Object.freeze({ status: 'committed', operationId: request.operationId,
+            revision: bundle.revision, digest: bundle.digest }),
+          actorId: bundle.actorId,
+          requestDigest: bundle.requestDigest }),
+        recoveryRefused: false, recheckRecovery };
+    }
+    if (shape(bundle, ['status', 'operationId', 'generation'])
+      && bundle.status === 'not-applied' && bundle.operationId === request.operationId
+      && Object.hasOwn(request, 'generation') && bundle.generation === request.generation) {
+      return { result: bundle, binding: null, recoveryRefused: false, recheckRecovery };
+    }
+    return null;
+  }
+
+  // The single outcome evaluation behind both public surfaces. `result`
+  // is exactly what outcome() has always returned; the remaining fields
+  // are the internal publication/seam hand-off: `binding` (the loader's
+  // trusted receipt + actor for a committed result — the same-actor
+  // receipt and authority, or the recovery bundle's private binding),
+  // `recoveryRefused` (the recovery policy refused at a decision point;
+  // the HTTP seam maps it to its incumbent refusal), and `recheckRecovery`
+  // (a live closure re-running the recovery decision against the retained
+  // frozen full input, for the seam's final pre-disclosure recheck after
+  // its base/loader acquisition; null whenever no recovery proof is in
+  // play). Nothing here is serialized: the seam returns only `result`
+  // (or a view built from `binding`) to the caller.
+  async function outcomeDetailed(context, input) {
+    const plain = result => ({ result, binding: null, recoveryRefused: false, recheckRecovery: null });
     try {
       const ownedContext = snapshot(context), request = snapshot(input);
       if (!record(ownedContext) || !shape(request, ['operationId'], ['generation'])
         || !matches(OPERATION, request.operationId)
         || Object.hasOwn(request, 'generation') && !matches(/^generation-[a-f0-9]{32}$/, request.generation))
-        return unavailable('invalid-request');
+        return plain(unavailable('invalid-request'));
       const authority = await authorityFor(ownedContext);
       const original = await originalOutcome(ownedContext, authority, request.operationId);
-      if (original) return original;
+      if (original) return { result: original,
+        binding: Object.freeze({ receipt: original, actorId: authority.actorId }),
+        recoveryRefused: false, recheckRecovery: null };
       // Operation-only callers retain their committed-receipt contract. Null
       // originalOutcome is never absence proof. Only the native store's fresh
       // qualified lookup may prove this exact actor/operation/generation.
-      if (!terminalProtocol || !Object.hasOwn(request, 'generation')
-        || previews.get(request.operationId)?.terminalizing) return unknown(request.operationId);
-      const negative = snapshot(await terminalProtocol.lookupCertificate(request.operationId,
-        authority.actorId, { generation: request.generation }));
-      await sameAuthority(ownedContext, authority);
-      // Read only: no retirement, latch cleanup, reconciliation or retry. In
-      // particular a lost seal acknowledgement keeps terminalizing ownership and
-      // suppresses this response, even when its durable certificate exists.
-      if (!previews.get(request.operationId)?.terminalizing
-        && shape(negative, ['status', 'operationId', 'generation']) && negative.status === 'not-applied'
-        && negative.operationId === request.operationId && negative.generation === request.generation)
-        return negative; // No await after the final authority/proof checks.
-      return unknown(request.operationId);
-    } catch { return unavailable('outcome-unavailable'); }
+      if (terminalProtocol && Object.hasOwn(request, 'generation')
+        && !previews.get(request.operationId)?.terminalizing) {
+        const negative = snapshot(await terminalProtocol.lookupCertificate(request.operationId,
+          authority.actorId, { generation: request.generation }));
+        await sameAuthority(ownedContext, authority);
+        // Read only: no retirement, latch cleanup, reconciliation or retry. In
+        // particular a lost seal acknowledgement keeps terminalizing ownership and
+        // suppresses this response, even when its durable certificate exists.
+        if (!previews.get(request.operationId)?.terminalizing
+          && shape(negative, ['status', 'operationId', 'generation']) && negative.status === 'not-applied'
+          && negative.operationId === request.operationId && negative.generation === request.generation)
+          return plain(negative); // No await after the final authority/proof checks.
+      }
+      if (recoveryBranch && !previews.get(request.operationId)?.terminalizing) {
+        const recovered = await recoveryOutcome(ownedContext, authority, request);
+        if (recovered) return recovered;
+      }
+      return plain(unknown(request.operationId));
+    } catch { return plain(unavailable('outcome-unavailable')); }
   }
+
+  async function outcome(context, input) {
+    return (await outcomeDetailed(context, input)).result;
+  }
+
+  // The publication hand-off: the /publication route calls outcome()
+  // itself today and binds the receipt it gets; this private capability
+  // returns the same evaluation with its internal binding and seam
+  // signals attached, so a recovery-committed operation can bind through
+  // the store's private qualified bundle instead of the current session's
+  // actor. Like the settled-uncertainty recovery capability above, it is
+  // exposed ONLY through the optional trusted construction-time
+  // registration callback — never on the public object, whose key set is
+  // part of the shipped contract.
+  async function publicationOutcome(context, input) {
+    return outcomeDetailed(context, input);
+  }
+  if (registerPublicationOutcome) registerPublicationOutcome(publicationOutcome);
   return Object.freeze({ prepare, confirm, outcome, ...(withdrawalReader ? { assignments, prepareWithdrawal } : {}) });
 }
 

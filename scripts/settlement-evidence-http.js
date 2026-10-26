@@ -2,7 +2,11 @@
 
 // Construction only. No environment, provider, storage default, maintenance
 // route or caller-selected authority. Production deliberately supplies nothing.
+const { types: utilTypes } = require('node:util');
 const express = require('express');
+// Captured at load: the refusal handler attaches rejection containment
+// through this intrinsic, never through a verdict's own properties.
+const promiseThen = Promise.prototype.then;
 const { createSettlementEvidenceConfirmation } = require('./settlement-evidence-confirmation');
 const { createSettlementEvidenceResolver } = require('./settlement-evidence-resolver');
 const { createSettlementEvidenceServing, receiptBoundView } = require('./settlement-evidence-serving');
@@ -20,18 +24,25 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
   if (typeof preactivationOnly !== 'boolean' || preactivationOnly && dependency !== undefined)
     throw new TypeError('sealed preactivation rejects settlement dependencies');
   const router = express.Router({ caseSensitive: true, strict: true });
-  let active = false, controller, resolver, serving, authorize, readBase, origin, now;
+  let active = false, controller, resolver, serving, authorize, readBase, origin, now, publicationOutcome = null,
+    householdId = null, finalDisclosureAuthorize = null;
   const catalogues = new Map();
   if (dependency !== undefined) {
     const d = dependency;
     if (!record(d) || !/^household-[a-f0-9]{32}$/.test(d.householdId)
       || ['authorize', 'acquire', 'contextReader', 'readBase', 'now', 'commitAdmitted', 'readDocument', 'readPin']
-        .some(k => typeof d[k] !== 'function')) throw new TypeError('incomplete settlement composition');
+        .some(k => typeof d[k] !== 'function')
+      || (d.authorizeRecovery !== undefined && typeof d.authorizeRecovery !== 'function')
+      || (d.finalDisclosureAuthorize !== undefined && typeof d.finalDisclosureAuthorize !== 'function'))
+      throw new TypeError('incomplete settlement composition');
     const url = new URL(d.origin);
     if (!['http:', 'https:'].includes(url.protocol) || url.origin !== d.origin
       || url.username || url.password) throw new TypeError('invalid configured settlement origin');
     origin = d.origin; now = d.now; readBase = d.readBase;
-    const householdId = d.householdId, policy = d.authorize;
+    householdId = d.householdId;
+    finalDisclosureAuthorize = typeof d.finalDisclosureAuthorize === 'function'
+      ? d.finalDisclosureAuthorize : null;
+    const policy = d.authorize;
     const acquire = d.acquire, contextReader = d.contextReader;
     authorize = async context => {
       const authority = await policy(Object.freeze({ ...context }));
@@ -43,8 +54,14 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
       acquire: () => acquire(contextReader) });
     const withdrawalReader = createWithdrawalTargetReader({ householdId,
       readDocument: d.readDocument, readPin: d.readPin, contextReader });
+    // Private publication-evaluation capability, captured through the
+    // controller's construction-time registration (the registerRecovery
+    // pattern): it never appears on the controller's public object, and
+    // only this mount's /outcome and /publication routes consume it.
     // Exactly one controller for this application lifetime, including all routes.
     controller = createSettlementEvidenceConfirmation({ householdId: d.householdId, authorize,
+      authorizeRecovery: d.authorizeRecovery,
+      registerPublicationOutcome: fn => { publicationOutcome = fn; },
       resolveSelection: resolver.resolveSelection, resolvePairedSelection: resolver.resolvePairedSelection,
       store: d.store, commitAdmitted: d.commitAdmitted, now,
       registerRecovery: d.registerRecovery,
@@ -96,16 +113,68 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     next();
   });
   router.use(express.json({ limit: 4096, strict: true, inflate: false }));
-  const post = (route, valid, run) => router.post(route, async (req, res) => {
+  const post = (route, valid, run, finalCheck) => router.post(route, async (req, res) => {
     if (!valid(req.body)) return res.status(400).json({ status: 'invalid-request' });
     const context = req.settlementContext;
     try {
       const authority = await authorize(context);
-      const result = await run(context, authority, req.body);
+      const gate = {};
+      const result = await run(context, authority, req.body, gate);
       // Cookies remain identity only, and authorization must still hold after
       // asynchronous publication. Never return a view after revocation.
       await authorize(context);
       if (sessionActor(req) !== context.actorId) throw new Error('expired');
+      // A route's final disclosure check runs after EVERY other await in
+      // this helper — including the final authorization above — so a
+      // revocation landing in any earlier await (the B4 recovery-policy
+      // BLOCK, Atlas ts 1792947464) cannot serialize past it. `gate` is a
+      // per-request holder the handler fills during run(); it is never
+      // shared across requests. The check is awaited ONLY when this
+      // request's evaluation armed one (a recovery proof in play): on
+      // incumbent paths the gate is empty, and an await here — after the
+      // session check above, with no re-read after it — would reopen a
+      // post-check expiry window the shipped incumbent boundary never
+      // had (Atlas provisional BLOCK on c6626dfa, ts 1792954819).
+      // Incumbent paths serialize in this same continuation, as shipped.
+      if (finalCheck && gate.recheckRecovery) await finalCheck(gate);
+      // Addendum A final-disclosure boundary. When this request's
+      // evaluation put a recovery proof in play, `gate.finalDisclosure`
+      // holds its retained frozen selectors, and disclosure requires —
+      // in THIS synchronous continuation, after the last await above,
+      // with no acquisition or async callback afterward — the injected
+      // synchronous final predicate FIRST (exact boolean true only; it
+      // judges current ordinary household authority AND the named
+      // recovery grant), then the session-actor re-read, then
+      // serialization. A missing capability, a throw, or any non-true
+      // verdict (false, malformed, Promise/thenable) refuses through
+      // the catch: 503, zero disclosure. Incumbent paths never set the
+      // gate, never call the predicate, and are unchanged.
+      if (gate.finalDisclosure) {
+        if (typeof finalDisclosureAuthorize !== 'function')
+          throw new Error('final-disclosure capability missing');
+        let verdict;
+        try { verdict = finalDisclosureAuthorize(gate.finalDisclosure); }
+        catch { throw new Error('final-disclosure refused'); }
+        if (verdict !== true) {
+          // The verdict refuses — synchronously, whatever it is. A
+          // genuine native Promise verdict (recognized across realms by
+          // util.types.isPromise, which reads no property of the value)
+          // is never awaited or assimilated and its eventual value is
+          // never accepted, but its rejection must not escape as an
+          // unhandled rejection: attach nonthrowing handlers through
+          // the CAPTURED Promise.prototype.then via Reflect.apply, so
+          // a shadowed `.then`/`.catch` property on the value is never
+          // read or invoked. Arbitrary thenables are left entirely
+          // untouched — no property access at all. A failure attaching
+          // the handlers is itself contained; the refusal stands.
+          if (utilTypes.isPromise(verdict)) {
+            try { Reflect.apply(promiseThen, verdict, [() => {}, () => {}]); }
+            catch { /* containment failed; the refusal below stands */ }
+          }
+          throw new Error('final-disclosure refused');
+        }
+        if (sessionActor(req) !== context.actorId) throw new Error('expired');
+      }
       return res.json(result);
     } catch { return fail(res); } // No raw exception, body, token or receipt log.
   });
@@ -142,16 +211,53 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
   const outcomeRequest = body => operation(body)
     || shape(body, ['operationId', 'generation']) && OP.test(body.operationId)
       && /^generation-[a-f0-9]{32}$/.test(body.generation);
-  post('/outcome', outcomeRequest, (context, _authority, body) => controller.outcome(context, body));
-  post('/publication', operation, async (context, authority, body) => {
-    const receipt = await controller.outcome(context, body);
-    if (receipt.status !== 'committed') return receipt;
+  // The B4 final disclosure check, shared by both disclosing routes: it
+  // re-runs the recovery decision captured by THIS request's evaluation,
+  // inside the helper AFTER its final authorization await (see post()).
+  const recoveryGate = async gate => { if (gate.recheckRecovery) await gate.recheckRecovery(); };
+  // The retained frozen selectors for the Addendum A final predicate:
+  // the configured household, this request's session authority actor
+  // (the authorize wrapper forces the evaluation's authority actor to
+  // equal it), and the validated operation/generation selectors the
+  // evaluation itself retained — generation present exactly when the
+  // caller supplied it, never fabricated.
+  const finalSelectors = (context, body) => Object.freeze(Object.hasOwn(body, 'generation')
+    ? { householdId, actorId: context.actorId, operationId: body.operationId,
+      generation: body.generation }
+    : { householdId, actorId: context.actorId, operationId: body.operationId });
+  post('/outcome', outcomeRequest, async (context, _authority, body, gate) => {
+    if (typeof publicationOutcome !== 'function') throw new Error('publication evaluation unavailable');
+    const r = await publicationOutcome(context, body);
+    // A recovery decision refusal anywhere in the evaluation suppresses
+    // disclosure with the seam's incumbent 503 (the helper's catch), never
+    // a locally invented shape. When a recovery proof is in play, its
+    // final recheck is deferred to the helper's gate — after the final
+    // authorization await, immediately before serialization.
+    if (r.recoveryRefused) throw new Error('recovery-refused');
+    gate.recheckRecovery = r.recheckRecovery;
+    if (r.recheckRecovery) gate.finalDisclosure = finalSelectors(context, body);
+    return r.result;
+  }, recoveryGate);
+  post('/publication', operation, async (context, _authority, body, gate) => {
+    if (typeof publicationOutcome !== 'function') throw new Error('publication evaluation unavailable');
+    const r = await publicationOutcome(context, body);
+    if (r.recoveryRefused) throw new Error('recovery-refused');
+    // A recovery negative proof is a disclosure too: its recheck is gated
+    // exactly like the committed path's.
+    gate.recheckRecovery = r.recheckRecovery;
+    if (r.recheckRecovery) gate.finalDisclosure = finalSelectors(context, body);
+    if (r.result.status !== 'committed') return r.result;
     // readBase must supply a complete served object; no ordinary attach or
-    // provider fallback is allowed on this receipt-bound path.
+    // provider fallback is allowed on this receipt-bound path. The binding
+    // is the evaluation's own receipt + actor: the same-actor receipt and
+    // authority on the incumbent path (byte-identical behaviour), or the
+    // store's private qualified bundle when the recovery branch proved the
+    // commit — publication never depends on the current session being the
+    // recorded actor. No acquisition follows the helper's final gate.
     const base = await readBase();
-    const publication = await receiptBoundView(serving, base, receipt, authority.actorId);
+    const publication = await receiptBoundView(serving, base, r.binding.receipt, r.binding.actorId);
     return { status: 'committed', publication: publication.status, data: publication.data };
-  });
+  }, recoveryGate);
   router.use((_req, res) => res.status(404).json({ status: 'unavailable' }));
   router.use((_err, _req, res, _next) => res.status(400).json({ status: 'invalid-request' }));
   app.use('/settlement', router);
