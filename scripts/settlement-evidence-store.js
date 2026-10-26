@@ -144,6 +144,12 @@ function createSettlementEvidenceStore(deps) {
   const terminalHistory = deps.terminalHistory, exclusionEnabled = terminalHistory !== undefined;
   if (exclusionEnabled && (!isRecord(terminalHistory) || typeof terminalHistory.readSnapshot !== 'function'
     || typeof terminalHistory.compareAndAppend !== 'function')) throw new TypeError('terminal history incomplete');
+  // B4 re-login recovery read opt-in: exactly `true` enables the capability
+  // (gated stores only); absence/false leaves it unexposed, and any other
+  // supplied value is malformed configuration, never a silent default.
+  if (deps.recoveryRead !== undefined && deps.recoveryRead !== true && deps.recoveryRead !== false)
+    throw new TypeError('settlement-store: recoveryRead opt-in is malformed');
+  const recoveryEnabled = exclusionEnabled && deps.recoveryRead === true;
   const domain = TC.registerDomain(householdId, deps.exclusionDomain, exclusionEnabled,
     [documentStore, journalStore, pinStore, lock]);
   async function terminalGate(head) {
@@ -1074,6 +1080,72 @@ function createSettlementEvidenceStore(deps) {
   async function outcome(input) {
     return exclusionEnabled ? lock.withLock(() => outcomeLocked(input)) : outcomeLocked(input);
   }
+
+  // B4 re-login recovery read (opt-in capability; exposed only when the
+  // composition supplied recoveryRead === true on a gated store). Judges ONE
+  // named operation from the validated durable state under the shared lock
+  // and returns exactly one of:
+  //   - the private qualified bundle for a committed operation — the
+  //     receiptForOperation shape {status, operationId, actorId, revision,
+  //     digest}. The recorded actor is read from the validated durable
+  //     record itself; it is server-internal and never a disclosure shape.
+  //   - the exact negative proof {status:'not-applied', operationId,
+  //     generation}, only on an exactly matching supplied generation.
+  //   - {status:'unknown', operationId} for every other state.
+  // There is deliberately NO actor input: the request names selectors only
+  // ({operationId} / {operationId, generation}); any other key refuses.
+  // The two proof rules stay distinct, as shipped: the positive rule is
+  // outcomeLocked's (pin/document agreement plus the terminal gate, whose
+  // coexistence refusal no winner survives; a present journal does not
+  // defeat a recorded commit), while the negative rule requires
+  // terminalState readiness in full — pin/document agreement AND a
+  // successfully read ABSENT journal — over the qualified terminal history.
+  // Read-only: no seal, append, reconcile, retire or cleanup path is
+  // reachable from here.
+  async function recoveryReadLocked(input) {
+    const operationId = isRecord(input) ? input.operationId : undefined;
+    if (!isRecord(input) || typeof operationId !== 'string' || !OPERATION_RE.test(operationId)
+      || Object.keys(input).some(k => k !== 'operationId' && k !== 'generation')
+      || (input.generation !== undefined && typeof input.generation !== 'string')) {
+      return { status: 'unknown', operationId };
+    }
+    try {
+      const P = await readPinState();
+      if (P.kind !== 'ok') return { status: 'unknown', operationId };
+      const H = await readDocState();
+      if (H.kind !== 'ok' || !H.bytes) return { status: 'unknown', operationId };
+      const head = docState(H.bytes);
+      if (!head || head.revision !== P.pin.revision || head.digest !== P.pin.digest) {
+        return { status: 'unknown', operationId };
+      }
+      const recorded = head.operations.find(o => o.operationId === operationId);
+      if (recorded) {
+        await terminalGate(head);
+        return receiptForOperation(head, operationId);
+      }
+      const J = await readJournalState();
+      if (J.kind !== 'ok' || J.raw) return { status: 'unknown', operationId };
+      const terminal = await terminalGate(head);
+      const cert = terminal?.history.records.find(r => r.operationId === operationId);
+      if (!cert || input.generation === undefined || cert.generation !== input.generation) {
+        return { status: 'unknown', operationId };
+      }
+      return { status: 'not-applied', operationId, generation: cert.generation };
+    } catch { return { status: 'unknown', operationId }; }
+  }
+
+  async function recoveryRead(input) {
+    // Snapshot the complete request at public entry, BEFORE waiting on the
+    // shared lock, exactly as inspectAttempt does: the caller retains (and
+    // may mutate) the original object across our awaits.
+    let snapshotInput;
+    try {
+      snapshotInput = deepCopy(input);
+    } catch {
+      return { status: 'unknown', operationId: undefined };
+    }
+    return lock.withLock(() => recoveryReadLocked(snapshotInput));
+  }
   // This store-owned seal proof is distinct from P2's unchanged exact-base proof.
   async function terminalState() {
     const P = await readPinState(), H = await readDocState(), J = await readJournalState();
@@ -1155,6 +1227,7 @@ function createSettlementEvidenceStore(deps) {
   }
 
   return { bootstrap, prepare, commit, commitWithoutRecovery, commitAdmitted, outcome, reconcile, inspectAttempt,
+    ...(recoveryEnabled ? { recoveryRead } : {}),
     ...(exclusionEnabled ? { terminalExclusion: Object.freeze({ householdId, ledgerNamespace: domain.ledgerNamespace, sealNegative, lookupCertificate }) } : {}) };
 }
 
