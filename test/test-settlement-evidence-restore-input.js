@@ -263,7 +263,7 @@ test('BLOCK 2: history goes through the same own() depth/data rules as qualifySn
   refused(R.validateRestoreInput(input({ historyBytes: deep.historyBytes, historyAnchor: deep.checkpoint })), 'history-invalid');
 });
 
-test('differential parity: the validator never accepts a history variant that qualifySnapshot rejects', async () => {
+test('differential parity: the validator never accepts a history variant that qualifySnapshot rejects', async (t) => {
   const { ns, snaps, input } = await world();
   const base = JSON.parse(snaps.history[1]), record = base.records[0];
   const variants = [['shipped exact', snaps.history[1], null]];
@@ -285,7 +285,9 @@ test('differential parity: the validator never accepts a history variant that qu
   variants.push(['__proto__ key', Buffer.from(text.replace('{"schema":"terminal-history-1"', '{"__proto__":{},"schema":"terminal-history-1"')), null]);
   variants.push(['fractional expectedRevision', Buffer.from(text.replace(/"expectedRevision":(\d+)/, '"expectedRevision":$1.5')), null]);
   variants.push(['large exponent revision', Buffer.from(text.replace(/"revision":1,/, '"revision":1e0,')), null]);
+  for (const field of ['expectedDocumentDigest', 'confirmationDigest']) add(field + ' nested 1', [{ ...record, [field]: nest(record[field], 1) }]);
   let accepted = 0, rejectedBoth = 0;
+  const stricter = [];
   for (const [name, bytes, checkpoint] of variants) {
     let anchor = checkpoint;
     if (!anchor) { try { const v = JSON.parse(bytes); anchor = { schema: 'terminal-history-checkpoint-1', householdId: v.householdId, ledgerNamespace: v.ledgerNamespace, revision: v.revision, digest: v.digest }; } catch { anchor = null; } }
@@ -298,7 +300,58 @@ test('differential parity: the validator never accepts a history variant that qu
     const mine = v.status === 'valid' || v.reason === 'negative-financial-overlap';
     if (mine) { assert.equal(shipped, true, 'validator accepted a variant qualifySnapshot rejects: ' + name); accepted++; }
     else rejectedBoth += shipped ? 0 : 1;
-    if (shipped) assert.equal(mine, true, 'validator refused a variant qualifySnapshot accepts: ' + name + ' (' + v.reason + ')');
+    if (shipped && !mine) {
+      // Only the labelled STRICTER MALFORMED-TYPE refusal is allowed to differ:
+      // a certificate string field that is not a primitive string.
+      assert.equal(v.reason, 'history-invalid', name);
+      assert.match(name, /^(operationId|actorId|generation|expectedDocumentDigest|confirmationDigest) nested \d+$/, 'validator refused a variant qualifySnapshot accepts: ' + name + ' (' + v.reason + ')');
+      stricter.push(name);
+    }
   }
   assert.ok(accepted >= 3 && rejectedBoth >= 10, `accepted=${accepted} rejectedBoth=${rejectedBoth}`);
+  assert.ok(stricter.length > 0, 'expected labelled stricter malformed-type refusals');
+  for (const name of stricter) assert.ok(!/nested (2[2-9]|3\d)$/.test(name), 'depth-rejected variant should be rejected by both: ' + name);
+  t.diagnostic(`differential: total=${variants.length} acceptedBoth=${accepted} rejectedBoth=${rejectedBoth} stricterMalformedType=${stricter.length} [${stricter.join(', ')}]`);
+});
+
+// ---- Second repair for Atlas #707 re-review (14:46): primitive string certificate fields ----
+
+const CERT_STRING_FIELDS = ['schema', 'householdId', 'ledgerNamespace', 'operationId', 'actorId', 'kind', 'generation', 'reason', 'expectedDocumentDigest', 'confirmationDigest'];
+
+test('array-wrapped negative operationId equal to a ledger operationId cannot bypass the overlap check', async () => {
+  const { ns, snaps, input } = await world();
+  const record = JSON.parse(snaps.history[1]).records[0];
+  const ledgerId = JSON.parse(snaps.ledger[2]).operations[0].operationId;
+  assert.equal(typeof ledgerId, 'string');
+  // Control: the same record with the plain string ID is an overlap refusal.
+  const plain = encoded([{ ...record, operationId: ledgerId }], householdId, ns);
+  refused(R.validateRestoreInput(input({ historyBytes: plain.historyBytes, historyAnchor: plain.checkpoint })), 'negative-financial-overlap');
+  // The single-element array form must not slip past by object identity.
+  const wrapped = encoded([{ ...record, operationId: [ledgerId] }], householdId, ns);
+  refused(R.validateRestoreInput(input({ historyBytes: wrapped.historyBytes, historyAnchor: wrapped.checkpoint })), 'history-invalid');
+});
+
+test('two separately allocated array-wrapped operationIds cannot bypass uniqueness', async () => {
+  const { ns, snaps, input } = await world();
+  const record = JSON.parse(snaps.history[1]).records[0];
+  const twin = encoded([{ ...record, operationId: [op(9)] }, { ...record, operationId: [op(9)], generation: 'generation-' + '9'.repeat(32) }], householdId, ns);
+  refused(R.validateRestoreInput(input({ historyBytes: twin.historyBytes, historyAnchor: twin.checkpoint })), 'history-invalid');
+});
+
+test('every string certificate field must be a primitive string (stricter than qualifySnapshot, labelled)', async () => {
+  const { ns, snaps, input } = await world();
+  const record = JSON.parse(snaps.history[1]).records[0];
+  const stricter = [];
+  for (const field of CERT_STRING_FIELDS) {
+    const e = encoded([{ ...record, [field]: [record[field]] }], householdId, ns);
+    let shipped = true;
+    try { TC.qualifySnapshot({ historyBytes: e.historyBytes, checkpoint: e.checkpoint }, { householdId, ledgerNamespace: ns }); } catch { shipped = false; }
+    const v = R.validateRestoreInput(input({ historyBytes: e.historyBytes, historyAnchor: e.checkpoint }));
+    assert.equal(v.status, 'refused', field);
+    assert.ok(['history-invalid', 'history-domain-mismatch'].includes(v.reason), field + ' ' + v.reason);
+    if (shipped) stricter.push(field);
+  }
+  // STRICTER MALFORMED-TYPE REFUSALS: accepted by qualifySnapshot (regex
+  // coercion), refused here. Pinned so any change is visible.
+  assert.deepEqual(stricter, ['operationId', 'actorId', 'generation', 'expectedDocumentDigest', 'confirmationDigest']);
 });

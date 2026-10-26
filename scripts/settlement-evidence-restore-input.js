@@ -23,6 +23,10 @@
 //   - It never calls TC.qualifySnapshot or TC.registerDomain, so no live
 //     process rollback floor or domain registry is advanced or touched.
 //
+// Certificate string fields are required to be primitive strings before
+// TC.isCertificate and the uniqueness/overlap Sets (stricter than
+// qualifySnapshot, which coerces them through its regex checks).
+//
 // Reused primitives: the contract's C.pin (decode + replay + household
 // binding) for the ledger; TC.own, TC.isCertificate and C.digest for history, under
 // the same identity/revision/digest/unique-operationId rules as
@@ -34,6 +38,12 @@ const TC = require('./settlement-evidence-terminal-certificate');
 const HH = /^household-[a-f0-9]{32}$/, NS = /^ledger-[a-f0-9]{32}$/, HASH = /^[a-f0-9]{64}$/;
 const HISTORY_SCHEMA = 'terminal-history-1', CHECKPOINT_SCHEMA = 'terminal-history-checkpoint-1';
 const MAX_HISTORY_BYTES = 4 * 1024 * 1024;
+// Certificate fields that must be PRIMITIVE strings here. TC.isCertificate's
+// regex checks coerce, so an array-wrapped value would pass it and then defeat
+// Set-based uniqueness/overlap by object identity. Stricter than
+// qualifySnapshot by design (labelled in the tests); TC is unchanged.
+const CERT_STRING_FIELDS = Object.freeze(['schema', 'householdId', 'ledgerNamespace', 'operationId', 'actorId', 'kind',
+  'generation', 'reason', 'expectedDocumentDigest', 'confirmationDigest']);
 const REASONS = Object.freeze(['input-malformed', 'domain-malformed', 'anchor-malformed', 'ledger-invalid',
   'ledger-household-mismatch', 'ledger-anchor-mismatch', 'history-invalid', 'history-domain-mismatch',
   'history-anchor-mismatch', 'negative-financial-overlap']);
@@ -139,6 +149,8 @@ function validateHistory(bytes, domain, anchor) {
   if (recomputed !== digest) refuse('history-invalid');
   const ids = new Set();
   for (const r of history.records) {
+    if (r === null || typeof r !== 'object' || Array.isArray(r)
+      || CERT_STRING_FIELDS.some(f => !Object.hasOwn(r, f) || typeof r[f] !== 'string')) refuse('history-invalid');
     if (!TC.isCertificate(r)) refuse('history-invalid');
     if (r.householdId !== domain.householdId || r.ledgerNamespace !== domain.ledgerNamespace) refuse('history-domain-mismatch');
     if (ids.has(r.operationId)) refuse('history-invalid');
