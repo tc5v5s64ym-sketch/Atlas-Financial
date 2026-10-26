@@ -6,6 +6,8 @@
 const { createSettlementEvidencePostgresConnection } = require('./settlement-evidence-postgres-connection');
 const { createSettlementEvidenceStore } = require('./settlement-evidence-store');
 const TC = require('./settlement-evidence-terminal-certificate');
+const { types: utilTypes } = require('node:util');
+const promiseThen = Promise.prototype.then;
 
 const invalid = () => new TypeError('settlement-postgres-runtime: incomplete configuration');
 function record(value, allowed, required = allowed) {
@@ -48,11 +50,32 @@ function createSettlementEvidencePostgresRuntime(options) {
       } catch { throw unavailable(); }
     };
   }
+  function disclosureFence(fn) {
+    // The HTTP seam requires a synchronous exact-true predicate. Never read or
+    // assimilate supplied thenables through the generic asynchronous fence.
+    return (...args) => {
+      try {
+        check(); const value = fn(...args);
+        if (value !== true && utilTypes.isPromise(value)) {
+          // Match #700's bounded ordinary native-Promise refusal containment.
+          // Do this BEFORE the post-call check: reentrant retirement must not
+          // hide a rejected Promise from the HTTP seam and leave it unhandled.
+          try { Reflect.apply(promiseThen,value,[() => {},() => {}]); }
+          catch { /* refusal stands; hostile constructor/species is out of scope */ }
+        }
+        check(); return value === true;
+      } catch { throw unavailable(); }
+    };
+  }
   const surface = (source,names) => Object.freeze(Object.fromEntries(names.map(name =>
     [name,fence((...args) => source()[name](...args))])));
   let connection;
   if (options !== undefined) {
-    const o = record(options,['connection','custody','application']);
+    const o = record(options,['connection','custody','application','recovery'],['connection','custody','application']);
+    const recovery = o.recovery === undefined ? null
+      : record(o.recovery,['recoveryRead','authorizeRecovery','finalDisclosureAuthorize']);
+    if (recovery && (recovery.recoveryRead !== true || typeof recovery.authorizeRecovery !== 'function'
+      || typeof recovery.finalDisclosureAuthorize !== 'function')) throw invalid();
     const supplied = record(o.connection,['Client','config','schema','scope','timeouts'],['Client','config','schema','scope']);
     const config = record(supplied.config,['host','port','database','user','password','ssl']);
     connection = Object.freeze({...supplied,config:{...config,ssl:record(config.ssl,['rejectUnauthorized','servername'])},
@@ -80,15 +103,18 @@ function createSettlementEvidencePostgresRuntime(options) {
         quarantine:surface(() => owner.quarantine,['put']),lock:surface(() => owner.lock,['withLock']),
         pinStore:surface(() => pin,['read','advance']),backupStore:surface(() => backup,['put','get','list']),
         terminalHistory:surface(() => history,['readSnapshot','compareAndAppend']),
-        exclusionDomain:c.exclusionDomain,now:fence(a.now)});
+        exclusionDomain:c.exclusionDomain,now:fence(a.now),...(recovery ? {recoveryRead:true} : {})});
     } catch { throw invalid(); }
     const exposedStore = {...surface(() => store,['prepare','commitWithoutRecovery','outcome','inspectAttempt']),
+      ...(recovery ? surface(() => store,['recoveryRead']) : {}),
       terminalExclusion:Object.freeze({householdId:a.householdId,
         ledgerNamespace:store.terminalExclusion.ledgerNamespace,
         ...surface(() => store.terminalExclusion,['sealNegative','lookupCertificate'])})};
     settlement = Object.freeze({householdId:a.householdId,origin:a.origin,
       authorize:fence(a.authorize),acquire:fence(a.acquire),contextReader:fence(a.contextReader),
       readBase:fence(a.readBase),now:fence(a.now),store:Object.freeze(exposedStore),
+      ...(recovery ? {authorizeRecovery:fence(recovery.authorizeRecovery),
+        finalDisclosureAuthorize:disclosureFence(recovery.finalDisclosureAuthorize)} : {}),
       commitAdmitted:fence(store.commitAdmitted),
       readDocument:fence(() => owner.documentStore.read()),readPin:fence(() => pin.read())});
   }

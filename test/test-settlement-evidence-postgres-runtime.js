@@ -7,6 +7,7 @@ const { EventEmitter } = require('node:events');
 const path = require('node:path');
 const fs = require('node:fs');
 const Module = require('node:module');
+const vm = require('node:vm');
 const ROOT = process.env.ATLAS_TEST_APP_ROOT || path.resolve(__dirname, '..');
 const { makeExclusionWorld } = require('./test-settlement-evidence-terminal-certificate');
 const load = () => require(path.join(ROOT, 'scripts/settlement-evidence-postgres-runtime'))
@@ -75,6 +76,180 @@ function world(hooks = {}) {
 function unavailable(error) {
   assert.equal(error.code,'SETTLEMENT_RUNTIME_UNAVAILABLE');assert.ok(!JSON.stringify(error).includes(CANARY));return true;
 }
+
+const recordedActor = 'session-'+'b'.repeat(64), laterActor = 'session-'+'c'.repeat(64);
+function optIn(w, overrides = {}) {
+  w.options.recovery = {recoveryRead:true,
+    authorizeRecovery:async ({householdId,actorId,operationId})=>({householdId,actorId,operationId}),
+    finalDisclosureAuthorize:()=>true,...overrides};
+  return w;
+}
+// The REAL HTTP/controller/resolver/store are used. Only Express routing and
+// response serialization are offline doubles; no socket is opened here.
+function http(r, actor = laterActor) {
+  const routes = new Map(), middleware = [];
+  const router={use(fn){middleware.push(fn);},post(route,fn){routes.set(route,fn);},get(){}};
+  const filename=path.join(ROOT,'scripts/settlement-evidence-http.js');
+  const m=new Module(filename,module);m.filename=filename;m.paths=Module._nodeModulePaths(path.dirname(filename));
+  const normal=m.require.bind(m);m.require=id=>id==='express'?{Router:()=>router,json:()=> (_q,_s,next)=>next()}:normal(id);
+  m._compile(fs.readFileSync(filename,'utf8'),filename);
+  const bridge=m.exports.mountSettlementHttp({use(){}},()=>actor,r.settlement);
+  return {bridge,async post(route,body){
+    const req={body,method:'POST',originalUrl:'/settlement'+route,
+      get:name=>({'Origin':r.settlement.origin,'X-Atlas-Settlement':'same-origin',
+        'Sec-Fetch-Site':'same-origin','Content-Type':'application/json'}[name])};
+    let status=200,result,serializations=0;
+    const res={set(){return res;},status(n){status=n;return res;},json(x){
+      serializations++;result=JSON.parse(JSON.stringify(x));return res;}};
+    for(const fn of middleware.filter(fn=>fn.length===3)){
+      let next=false;await fn(req,res,()=>{next=true;});if(!next)return {status,result,serializations};
+    }
+    await routes.get(route)(req,res);return {status,result,serializations};
+  }};
+}
+async function committed(w,r) {
+  const prepared=await w.prepare(r),receipt=await r.settlement.commitAdmitted(w.input(prepared),()=>true);
+  assert.equal(receipt.status,'committed');return {receipt,operationId:receipt.operationId};
+}
+
+test('EC7 absence preserves configured keys and same-actor receipt without recovery',async()=>{
+  const w=world(),r=w.construct();
+  assert.deepEqual(Object.keys(r.settlement).sort(),['acquire','authorize','commitAdmitted','contextReader',
+    'householdId','now','origin','readBase','readDocument','readPin','store']);
+  assert.equal(r.settlement.store.recoveryRead,undefined);assert.equal(w.connects,0);
+  await r.connect();const {receipt,operationId}=await committed(w,r),{actorId,...publicReceipt}=receipt;
+  assert.equal(actorId,recordedActor);
+  assert.deepEqual((await http(r,recordedActor).post('/outcome',{operationId})).result,publicReceipt);
+  assert.equal((await http(r).post('/outcome',{operationId})).result.status,'unknown');
+  await r.retire();
+});
+test('EC7 validates complete opt-in before Client or callback construction I/O',()=>{
+  for(const mutate of [o=>o.recovery=null,o=>o.recovery={},o=>o.recovery.recoveryRead=false,
+    o=>o.recovery.recoveryRead='true',o=>delete o.recovery.authorizeRecovery,
+    o=>delete o.recovery.finalDisclosureAuthorize,o=>o.recovery.authorizeRecovery=true,
+    o=>o.recovery.finalDisclosureAuthorize=null,o=>o.recovery.extra=true,
+    o=>Object.defineProperty(o.recovery,'authorizeRecovery',{get(){throw Error(CANARY);}})]){
+    const w=optIn(world());mutate(w.options);assert.throws(w.construct,TypeError);assert.equal(w.clients.length,0);
+  }
+  let calls=0;const fail=()=>{calls++;throw Error(CANARY);};
+  const w=optIn(world(),{authorizeRecovery:fail,finalDisclosureAuthorize:fail}),r=w.construct();
+  assert.equal(calls,0);assert.equal(w.clients.length,0);assert.equal(w.queries.length,0);
+  assert.equal(typeof r.settlement.store.recoveryRead,'function');
+  assert.equal(r.settlement.store.bootstrap,undefined);assert.equal(r.settlement.store.reconcile,undefined);
+});
+test('EC7 real runtime/store/controller/HTTP recover commit without private receipt fields',async()=>{
+  const calls=[],w=optIn(world(),{authorizeRecovery:async input=>{calls.push(input);
+    const {householdId,actorId,operationId}=input;return {householdId,actorId,operationId};}});
+  w.options.application.readBase=async()=>({meta:{asOf:'2026-10-20'},debts:[],
+    plan:{defaults:{},startingCash:{},income:[],bills:[],obligations:[],commitments:[]}});
+  const r=await w.start();
+  // Mutating the caller's record after construction cannot replace policy.
+  w.options.recovery.authorizeRecovery=()=>{throw Error(CANARY);};
+  const {receipt,operationId}=await committed(w,r),doc=Buffer.from(w.doc),pin={...w.pin},before=w.queries.length;
+  const result=await http(r).post('/outcome',{operationId});
+  assert.deepEqual(result,{status:200,result:{status:'committed',operationId},serializations:1});
+  const publication=await http(r).post('/publication',{operationId});
+  assert.equal(publication.status,200);assert.equal(publication.result.status,'committed');
+  assert.equal(publication.result.publication,'included');
+  assert.equal(publication.result.data.settlementEvidenceStatus.status,'qualified');
+  assert.ok(calls.length>=6);assert.ok(calls.every(x=>x.actorId===laterActor&&x.operationId===operationId));
+  const json=JSON.stringify([result,publication,calls]);
+  for(const secret of [recordedActor,CANARY,receipt.digest])assert.ok(!json.includes(secret));
+  assert.deepEqual(w.doc,doc);assert.deepEqual(w.pin,pin);
+  assert.ok(w.queries.slice(before).every(q=>/^SELECT|^BEGIN|^COMMIT/.test(q)));
+  await r.retire();
+});
+test('EC7 opted-in same-actor receipts and sealed negative recovery retain incumbent shapes',async()=>{
+  const w=optIn(world()),r=await w.start(),{receipt,operationId}=await committed(w,r);
+  const {actorId,...publicReceipt}=receipt;assert.equal(actorId,recordedActor);
+  assert.deepEqual((await http(r,recordedActor).post('/outcome',{operationId})).result,publicReceipt);
+  await r.retire();
+  const negative=optIn(world()),reader=await negative.start(),prepared=await negative.prepare(reader);
+  const claim=negative.claim(prepared);
+  assert.equal((await reader.settlement.store.terminalExclusion.sealNegative(claim)).status,'certified');
+  const input={operationId:prepared.preview.operationId,generation:claim.generation};
+  assert.deepEqual((await http(reader).post('/outcome',input)).result,{status:'not-applied',...input});
+  // The incumbent publication route takes operationId only; do not widen it.
+  assert.equal((await http(reader).post('/publication',input)).status,400);
+  assert.equal((await http(reader).post('/publication',{operationId:input.operationId})).result.status,'unknown');
+  assert.equal((await http(reader).post('/outcome',{...input,generation:'generation-'+'e'.repeat(32)})).result.status,'unknown');
+  await reader.retire();
+});
+test('EC7 HTTP final predicate malformed/throw/Promise verdicts never disclose',async()=>{
+  let touched=0,verdict,throws=false;
+  const w=optIn(world(),{finalDisclosureAuthorize:()=>{if(throws)throw Error(CANARY);return verdict;}});
+  const r=await w.start(),{operationId}=await committed(w,r);
+  for(const make of [()=>false,()=>undefined,()=>1,()=>({}),
+    ()=>Object.defineProperty({},'then',{get(){touched++;throw Error(CANARY);}}),
+    ()=>Promise.resolve(true),()=>Promise.reject(Error(CANARY)),()=>{throws=true;}]){
+    verdict=make();assert.deepEqual(await http(r).post('/outcome',{operationId}),
+      {status:503,result:{status:'unavailable'},serializations:1});
+  }
+  assert.equal(touched,0);await turn();await r.retire();
+});
+for(const state of ['before-connect','retired','session-error','session-end'])
+test('EC7 recovery capabilities refuse '+state,async()=>{
+  let calls=0;const w=optIn(world(),{authorizeRecovery:()=>{calls++;return {};},
+    finalDisclosureAuthorize:()=>{calls++;return true;}}),r=w.construct();
+  if(state!=='before-connect')await r.connect();
+  if(state==='retired')await r.retire();
+  if(state==='session-error')w.clients[0].emit('error',Error(CANARY));
+  if(state==='session-end')w.clients[0].emit('end');
+  assert.throws(()=>r.settlement.store.recoveryRead({}),unavailable);
+  assert.throws(()=>r.settlement.authorizeRecovery({}),unavailable);
+  assert.throws(()=>r.settlement.finalDisclosureAuthorize({}),unavailable);
+  assert.equal(calls,0);await r.retire();
+});
+for(const pending of ['policy','store'])test('EC7 retirement suppresses pending '+pending+' result',async()=>{
+  const gate=defer(),entered=defer(),w=optIn(world());
+  if(pending==='policy')w.options.recovery.authorizeRecovery=()=>{entered.resolve();return gate.promise;};
+  const r=await w.start(),{operationId}=await committed(w,r);
+  if(pending==='store')w.hooks.pinRead=()=>{entered.resolve();return gate.promise;};
+  const result=pending==='policy'?r.settlement.authorizeRecovery({}):r.settlement.store.recoveryRead({operationId});
+  const rejected=assert.rejects(result,unavailable);await entered.promise;await r.retire();
+  const queries=w.queries.length;gate.resolve({...w.pin});await rejected;
+  assert.equal(w.queries.length,queries);assert.equal(w.ends,1);
+});
+test('EC7 retirement across HTTP recovery authorization suppresses serialization',async()=>{
+  const gate=defer(),entered=defer(),w=optIn(world(),{authorizeRecovery:()=>{entered.resolve();return gate.promise;}});
+  const r=await w.start(),{operationId}=await committed(w,r),pending=http(r).post('/outcome',{operationId});
+  await entered.promise;await r.retire();gate.resolve({householdId:w.options.application.householdId,actorId:laterActor,operationId});
+  assert.deepEqual(await pending,{status:503,result:{status:'unavailable'},serializations:1});
+});
+test('EC7 synchronous final predicate accepts only exact true without touching thenables',async()=>{
+  let touched=0,verdict=true;
+  const w=optIn(world(),{finalDisclosureAuthorize:()=>verdict}),r=await w.start();
+  assert.equal(r.settlement.finalDisclosureAuthorize({}),true);
+  for(const invalid of [false,null,undefined,1,'true',{},Object.defineProperty({},'then',{get(){touched++;throw Error(CANARY);}})]){
+    verdict=invalid;assert.notEqual(r.settlement.finalDisclosureAuthorize({}),true);
+  }
+  assert.equal(touched,0);await r.retire();
+});
+test('EC7 native Promise refusal contains rejection without supplied then/catch reads',async()=>{
+  for(const foreign of [false,true])for(const retiring of [false,true]){
+    let r,touched=0;
+    const w=optIn(world(),{finalDisclosureAuthorize:()=>{
+      const value=foreign?vm.runInNewContext('Promise.reject(new Error("PUBLIC-DUMMY-SECRET-CANARY"))')
+        :Promise.reject(Error(CANARY));
+      for(const key of ['then','catch'])Object.defineProperty(value,key,{get(){touched++;throw Error(CANARY);}});
+      if(retiring)r.retire();return value;
+    }});
+    r=await w.start();
+    if(retiring)assert.throws(()=>r.settlement.finalDisclosureAuthorize({}),unavailable);
+    else assert.notEqual(r.settlement.finalDisclosureAuthorize({}),true);
+    await turn();assert.equal(touched,0);await r.retire();assert.equal(w.ends,1);
+  }
+});
+for(const loss of ['retire','error','end'])test('EC7 reentrant '+loss+' in synchronous predicate cannot disclose',async()=>{
+  let r;const w=optIn(world(),{finalDisclosureAuthorize:()=>{
+    if(loss==='retire')r.retire();else w.clients[0].emit(loss,Error(CANARY));return true;}});
+  r=await w.start();const {operationId}=await committed(w,r),queries=w.queries.length;
+  const result=await http(r).post('/outcome',{operationId});
+  assert.deepEqual(result,{status:503,result:{status:'unavailable'},serializations:1});
+  await r.retire();assert.equal(w.ends,1);assert.equal(w.connects,1);
+  const count=w.queries.length;assert.ok(count>=queries);
+  assert.throws(()=>r.settlement.finalDisclosureAuthorize({}),unavailable);assert.equal(w.queries.length,count);
+});
 test('default construction and retirement perform zero I/O and expose no settlement',async()=>{
   const r=load()();assert.equal(r.settlement,undefined);assert.equal(r.status().state,'disconnected');
   assert.deepEqual(Object.keys(r).sort(),['connect','retire','settlement','status']);
