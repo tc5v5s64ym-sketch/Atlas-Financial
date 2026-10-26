@@ -379,6 +379,11 @@ function createSettlementEvidencePostgresAdapter(options) {
   };
 
   const terminalSelect='SELECT history_bytes, checkpoint_bytes FROM '+T.terminal+' WHERE scope = $1 LIMIT 2';
+  const certificateStrings=['schema','householdId','ledgerNamespace','operationId','actorId',
+    'kind','generation','reason','expectedDocumentDigest','confirmationDigest'];
+  // TC owns semantic qualification. The native wire boundary additionally forbids
+  // coercible string wrappers, which could compare as distinct operation identities.
+  const primitiveCertificate=c=>isRecord(c)&&certificateStrings.every(k=>typeof c[k]==='string');
   function terminalRow(res) {
     if(res.command!=='SELECT'||res.rows.length>1){markLost();fail('terminal history protocol failed; outcome unknown');}
     check(res.rows.length===1,'terminal history missing; explicit provisioning required');
@@ -388,20 +393,28 @@ function createSettlementEvidencePostgresAdapter(options) {
     }
     check(row.history_bytes.length<=RECORD_MAX_BYTES&&row.checkpoint_bytes.length<=CHECKPOINT_MAX_BYTES,'terminal history exceeds size bound');
     const historyBytes=Buffer.from(row.history_bytes),checkpointBytes=Buffer.from(row.checkpoint_bytes);
-    let state;try{state=TC.qualifySnapshot({historyBytes,checkpoint:JSON.parse(checkpointBytes.toString('utf8'))},terminalDomain);}
+    let state;try{
+      const history=JSON.parse(historyBytes.toString('utf8'));
+      check(isRecord(history)&&Array.isArray(history.records)&&history.records.every(primitiveCertificate),'terminal certificate strings malformed');
+      state=TC.qualifySnapshot({historyBytes,checkpoint:JSON.parse(checkpointBytes.toString('utf8'))},terminalDomain);
+    }
     catch{fail('terminal history/checkpoint qualification failed');}
     return {historyBytes,checkpointBytes,state};
   }
   const terminalHistory=terminalDomain?{
     async readSnapshot(){
-      readGuard();return serial(async()=>{readGuard();const pair=terminalRow(await raw(terminalSelect,[scope]));
+      const holder=als.getStore();readGuard();
+      const fence=()=>check(!lost&&(!holder||isLive(holder)),'terminal history original read holder settled; publication refused');
+      return serial(async()=>{fence();const result=await raw(terminalSelect,[scope]);fence();
+        const pair=terminalRow(result);fence();
         return {historyBytes:Buffer.from(pair.historyBytes),checkpoint:JSON.parse(JSON.stringify(pair.state.checkpoint))};});
     },
     async compareAndAppend(input){
+      const holder=capability();
       const result=await mutate(()=>{
         let request;try{request=TC.own(input);}catch{fail('terminal append input malformed');}
         check(isRecord(request)&&Object.keys(request).sort().join(',')==='certificate,expectedCheckpoint'
-          &&TC.isCertificate(request.certificate)&&request.certificate.householdId===terminalDomain.householdId
+          &&primitiveCertificate(request.certificate)&&TC.isCertificate(request.certificate)&&request.certificate.householdId===terminalDomain.householdId
           &&request.certificate.ledgerNamespace===terminalDomain.ledgerNamespace,'terminal append input malformed');
         const e=request.expectedCheckpoint;
         check(isRecord(e)&&Object.keys(e).sort().join(',')==='digest,householdId,ledgerNamespace,revision,schema'
@@ -430,8 +443,14 @@ function createSettlementEvidencePostgresAdapter(options) {
         return ack.rowCount===1?{historyBytes,checkpoint}:null;
       });
       // mutate resolves only after affirmative COMMIT; no automatic reread/retry.
+      // The callback may have settled while COMMIT was in flight. Even an
+      // affirmative reply cannot let that original holder publish true OR false.
+      // A write may have landed: retire, report unknown, never claim no effect.
+      if(!isLive(holder)){markLost();fail('terminal append completion lost original lock holder; outcome unknown');}
       if(result===null)return false;
-      TC.qualifySnapshot(result,terminalDomain);return true;
+      try{TC.qualifySnapshot(result,terminalDomain);}catch{markLost();fail('terminal append postcommit qualification failed; outcome unknown');}
+      if(!isLive(holder)){markLost();fail('terminal append publication lost original lock holder; outcome unknown');}
+      return true;
     },
   }:null;
 

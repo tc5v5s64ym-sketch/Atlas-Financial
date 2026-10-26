@@ -399,6 +399,47 @@ test('N adapter nonaffirmative COMMIT tag cannot acknowledge a history append',a
   const n=nativeHistory(),query=n.client.query;n.client.query=async(t,v)=>t==='COMMIT'?{command:'ROLLBACK',rows:[]}:query(t,v);
   await assert.rejects(n.adapter.lock.withLock(()=>n.adapter.terminalHistory.compareAndAppend(n.input())));assert.equal(n.client.retired,1);
 });
+test('R1 wrapped operation ID cannot land then bypass duplicate identity with primitive ID',async()=>{
+  const n=nativeHistory(),h=n.adapter.terminalHistory;
+  await n.adapter.lock.withLock(async()=>{
+    const wrapped=n.input();wrapped.certificate.operationId=[wrapped.certificate.operationId];
+    let first,second;try{first=await h.compareAndAppend(wrapped);}catch{first='refused';}
+    if(first===true){const current=await h.readSnapshot();second=await h.compareAndAppend({expectedCheckpoint:current.checkpoint,certificate:n.certificate});}
+    assert.notDeepEqual([first,second],[true,true],'array and primitive cannot name two distinct negative records');
+    assert.equal(first,'refused');
+    assert.equal(await h.compareAndAppend(n.input()),true,'valid primitive input stays supported');
+  });
+});
+test('R1 all native certificate strings reject wrappers in input and persisted snapshots',async()=>{
+  const fields=['schema','householdId','ledgerNamespace','operationId','actorId','kind','generation','reason','expectedDocumentDigest','confirmationDigest'];
+  for(const field of fields){
+    const n=nativeHistory(),input=n.input();input.certificate[field]=[input.certificate[field]];
+    await n.adapter.lock.withLock(async()=>{const count=n.pg.log.length;await assert.rejects(n.adapter.terminalHistory.compareAndAppend(input),field);assert.equal(n.pg.log.length,count);});
+    const m=nativeHistory(),bad={...m.certificate,[field]:[m.certificate[field]]};
+    m.put(TH.encoded([bad],householdId,m.certificate.ledgerNamespace));await assert.rejects(m.adapter.terminalHistory.readSnapshot(),field);
+  }
+});
+test('R2 native snapshot started inside a holder cannot publish after that holder settles',async()=>{
+  const n=nativeHistory();let release,seen,finish;
+  const rawGate=new Promise(r=>{release=r;}),reached=new Promise(r=>{seen=r;}),callbackGate=new Promise(r=>{finish=r;});
+  n.pg.hooks.push({match:t=>/^SELECT history_bytes/.test(t),fn:async()=>{seen();await rawGate;}});
+  let pending;const locked=n.adapter.lock.withLock(async()=>{pending=n.adapter.terminalHistory.readSnapshot();pending.catch(()=>{});await callbackGate;});
+  await reached;finish();await new Promise(r=>setImmediate(r));release();
+  const result=await pending.then(()=>({published:true}),()=>({published:false}));await locked;
+  assert.equal(result.published,false);assert.equal(n.client.retired,0,'read-only stale result refusal need not claim connection loss');
+});
+for(const applies of [true,false])test('R3 late native COMMIT acknowledgement cannot publish '+(applies?'true':'false')+' after holder loss',async()=>{
+  const n=nativeHistory();let release,seen,finish;
+  const ackGate=new Promise(r=>{release=r;}),reached=new Promise(r=>{seen=r;}),callbackGate=new Promise(r=>{finish=r;});
+  n.pg.hooks.push({match:t=>t==='COMMIT',fn:async()=>{seen();await ackGate;}});
+  const input=n.input();if(!applies)input.expectedCheckpoint.digest='f'.repeat(64);
+  let pending;const locked=n.adapter.lock.withLock(async()=>{pending=n.adapter.terminalHistory.compareAndAppend(input);pending.catch(()=>{});await callbackGate;});
+  await reached;finish();await new Promise(r=>setImmediate(r));release();
+  const result=await pending.then(value=>({value}),error=>({error:error.message}));await locked;
+  assert.match(result.error||'',/outcome unknown/);assert.equal(Object.hasOwn(result,'value'),false);
+  assert.equal(JSON.parse(n.pg.t().terminal_history.get(SCOPE).history_bytes).records.length,applies?1:0,'unknown publication does not assert no write');
+  assert.equal(n.client.retired,1);const count=n.pg.log.length;await assert.rejects(n.adapter.terminalHistory.readSnapshot());assert.equal(n.pg.log.length,count);
+});
 
 test('A1 store constructs over the PG adapter + separately injected pin/backup', () => {
   const b = build();
