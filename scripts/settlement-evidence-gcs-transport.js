@@ -22,6 +22,10 @@
 // this API exposes no deletion, but the mutable-pin principal is NOT delete-free.
 // Retention, lifecycle/other writers, public caching, IAM and provider behavior
 // need separate live qualification. This module qualifies none of them.
+// Each operation checks bucket/project/location before object requests, without
+// caching. This is a point-in-time check, NOT bucket lifetime continuity: the
+// restricted composition must exclude bucket deletion/recreation, relocation or
+// authority/policy changes between requests. No metadata check fences an admin.
 const crypto = require('node:crypto');
 const { performance } = require('node:perf_hooks');
 const { types } = require('node:util');
@@ -102,12 +106,15 @@ function createSettlementEvidenceGcsTransport(options) {
   async function media(k,d){const r=await request('GET',url(objectUrl(k),{alt:'media',generation:d.generation}),'bytes');
     check(r.status===200&&Buffer.isBuffer(r.body)&&r.body.length===d.size
       &&hash(r.body,'md5','base64')===d.md5Hash,'integrity');return r.body;}
-  async function read(k){key(k);const r=await request('GET',url(objectUrl(k),{fields}),'json');
+  async function qualifyTarget(){try{
+    const b=await request('GET',url(root,{fields:'name,projectNumber,location'}),'json');
+    check(b.status===200&&plain(b.body)&&b.body.name===o.bucket&&b.body.projectNumber===o.projectNumber
+      &&b.body.location===o.location,'target');
+  }catch{throw fail('target');}}
+  async function read(k){key(k);await qualifyTarget();const r=await request('GET',url(objectUrl(k),{fields}),'json');
     if(r.status===404){check(plain(r.body?.error)&&r.body.error.code===404&&Array.isArray(r.body.error.errors)
       &&r.body.error.errors.length>0&&r.body.error.errors.every(e=>e.reason==='notFound'));
-      const b=await request('GET',url(root,{fields:'name,projectNumber,location'}),'json');
-      check(b.status===200&&b.body?.name===o.bucket&&b.body.projectNumber===o.projectNumber
-        &&b.body.location===o.location);return null;}
+      return null;}
     check(r.status===200);const d=describe(r.body,k),wire=await media(k,d);
     return {...decode(wire,k),version:d.generation};}
   async function write(k,bytes,expected,metadata){key(k);check(expected==='0'||generation(expected),'input');
@@ -115,6 +122,9 @@ function createSettlementEvidenceGcsTransport(options) {
     check(copy.length<=limits.maxBytes,'bounds');const wire=Buffer.from(JSON.stringify({v:1,key:k,metadata:m,
       bytes:copy.toString('base64'),integrity:hash(copy)}));check(wire.length<=limits.maxWireBytes,'bounds');
     // All validation/snapshots above precede the first asynchronous dispatch.
+    // Qualification is read-only and precedes upload: its failure is a refusal,
+    // not an uncertain application write. Once POST dispatches, uncertainty stays.
+    await qualifyTarget();
     try{const upload='https://storage.googleapis.com/upload/storage/v1/b/'+o.bucket+'/o';
       const r=await request('POST',url(upload,{uploadType:'media',name:k,ifGenerationMatch:expected,fields}),'json',wire);
       if(r.status===412)throw fail('conflict');check(r.status===200);const d=describe(r.body,k);
@@ -126,6 +136,7 @@ function createSettlementEvidenceGcsTransport(options) {
       deadline:performance.now()+limits.scanMs};}
     else check(scan&&typeof cursor==='string'&&cursor===scan.token,'cursor');
     const s=scan;check(s&&++s.pages<=limits.maxPages&&performance.now()<s.deadline,'bounds');
+    await qualifyTarget();stable();check(performance.now()<s.deadline,'bounds');
     const r=await request('GET',url(root+'/o',{prefix:p,maxResults:limits.pageSize,
       fields:'items('+fields+'),nextPageToken,prefixes',...(cursor===null?{}:{pageToken:cursor})}),'json');
     stable();check(performance.now()<s.deadline,'bounds');check(r.status===200&&plain(r.body));

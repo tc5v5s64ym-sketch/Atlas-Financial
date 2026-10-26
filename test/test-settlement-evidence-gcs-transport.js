@@ -12,6 +12,8 @@ const C = require(path.join(ROOT,'scripts/planned-obligation-settlement-contract
 const hash = b => crypto.createHash('sha256').update(b).digest('hex');
 const md5 = b => crypto.createHash('md5').update(b).digest('base64');
 const KEY='candidate/pin.json', CANARY='invented-private-canary-do-not-emit';
+const bucketRequest=q=>new URL(q.url).pathname.endsWith('/b/atlas-offline-candidate');
+const listingRequest=q=>new URL(q.url).pathname.endsWith('/o')&&q.method==='GET';
 function fixture(over={}) {
   const calls=[], objects=new Map(); let generation=9007199254740993n, stable=true;
   let hook=null;
@@ -42,6 +44,49 @@ function fixture(over={}) {
     assertStableNamespace:()=>stable,...over};
   return {calls,objects,options,make:()=>load()(options),setHook:fn=>{hook=fn;},setStable:v=>{stable=v;}};
 }
+const operation=(t,name,version)=>name==='read'?t.read(KEY):name==='create'?t.create('candidate/new',Buffer.from('new'),{})
+  :name==='replace'?t.replace(KEY,Buffer.from('new'),version,{}):t.list('candidate/',null);
+for(const name of ['read','create','replace','list']){
+  for(const [field,wrong] of [['projectNumber','987'],['location','US-EAST1']]){
+    test('configured target '+field+' mismatch refuses '+name+' before object dispatch',async()=>{
+      const f=fixture(),a=await f.make().create(KEY,Buffer.from('seed'),{});f.calls.length=0;
+      const t=load()({...f.options,[field]:wrong});await assert.rejects(operation(t,name,a.version),e=>e.category==='target');
+      assert.equal(f.calls.length,1);assert.ok(bucketRequest(f.calls[0]));
+      assert.equal(f.calls.filter(q=>q.method==='POST').length,0);
+    });
+  }
+  test('matching target qualifies before '+name+' object dispatch',async()=>{
+    const f=fixture(),a=await f.make().create(KEY,Buffer.from('seed'),{});f.calls.length=0;
+    await operation(f.make(),name,a.version);assert.ok(bucketRequest(f.calls[0]));
+    assert.equal(f.calls.filter(bucketRequest).length,1);assert.ok(f.calls.length>1);
+  });
+}
+test('target qualification denied/malformed/unavailable refuses every operation without uploads',async()=>{
+  const bad=[()=>({status:403,body:{message:CANARY}}),()=>({status:404,body:{}}),()=>({status:500,body:{}}),
+    ()=>({status:200,body:{}}),()=>{throw Error(CANARY);}];
+  for(const name of ['read','create','replace','list'])for(const reply of bad){
+    const f=fixture(),a=await f.make().create(KEY,Buffer.from('seed'),{});f.calls.length=0;
+    f.setHook(q=>bucketRequest(q)?reply():undefined);
+    await assert.rejects(operation(f.make(),name,a.version),e=>e.category==='target'&&!String(e.stack).includes(CANARY));
+    assert.equal(f.calls.length,1);assert.ok(bucketRequest(f.calls[0]));
+  }
+});
+test('target qualification is not cached between operations',async()=>{
+  const f=fixture(),t=f.make();await t.create(KEY,Buffer.from('seed'),{});f.calls.length=0;
+  f.setHook(q=>bucketRequest(q)?{status:200,body:{name:f.options.bucket,projectNumber:'987',location:'US-WEST1'}}:undefined);
+  await assert.rejects(t.read(KEY),e=>e.category==='target');
+  assert.equal(f.calls.length,1);assert.ok(bucketRequest(f.calls[0]));
+});
+test('target qualification timeout aborts before uploading and never resumes object dispatch',async()=>{
+  for(const name of ['read','create','replace','list']){
+    const f=fixture({limits:{requestMs:10}}),a=await f.make().create(KEY,Buffer.from('seed'),{});f.calls.length=0;
+    let finish;f.setHook(q=>bucketRequest(q)?new Promise(r=>{finish=r;}):undefined);
+    await assert.rejects(operation(f.make(),name,a.version),e=>e.category==='target');
+    assert.equal(f.calls.length,1);assert.equal(f.calls[0].signal.aborted,true);
+    finish({status:200,body:{name:f.options.bucket,projectNumber:f.options.projectNumber,location:f.options.location}});
+    await new Promise(r=>setImmediate(r));assert.equal(f.calls.length,1);
+  }
+});
 test('disconnected and configured construction have no I/O and exactly four methods',async()=>{
   const f=fixture(), t=f.make();assert.deepEqual(Object.keys(t).sort(),['create','list','read','replace']);assert.equal(f.calls.length,0);
   const off=load()();await assert.rejects(off.read(KEY),e=>e.category==='unconfigured');assert.equal(f.calls.length,0);
@@ -58,7 +103,7 @@ test('target/config validation precedes requests and snapshots target',async()=>
 test('absent-only create/read preserve bytes and scalar metadata',async()=>{
   const f=fixture(),t=f.make(),b=Buffer.from([0,255,3]);const ack=await t.create(KEY,b,{revision:0});
   assert.equal(ack.integrity,hash(b));assert.equal(typeof ack.version,'string');
-  assert.equal(new URL(f.calls[0].url).searchParams.get('ifGenerationMatch'),'0');
+  assert.equal(new URL(f.calls.find(q=>q.method==='POST').url).searchParams.get('ifGenerationMatch'),'0');
   assert.deepEqual(await t.read(KEY),{bytes:b,metadata:{revision:0},version:ack.version});
   await assert.rejects(t.create(KEY,b,{revision:0}),e=>e.code==='conflict');
 });
@@ -96,7 +141,7 @@ test('malformed metadata identity/generation/size/hash refuse',async()=>{
     const f=fixture(),t=f.make();await t.create(KEY,Buffer.from('safe'),{});
     f.setHook((q,{u,name})=>{if(name&&u.searchParams.get('alt')!=='media'){
       const o=f.objects.get(name);return {status:200,body:{bucket:f.options.bucket,name,generation:o.generation,
-        size:String(o.bytes.length),md5Hash:md5(o.bytes),...patch}};}});
+        metageneration:'1',size:String(o.bytes.length),md5Hash:md5(o.bytes),...patch}};}});
     await assert.rejects(t.read(KEY));
   }
 });
@@ -117,10 +162,23 @@ test('unknown writes and bad readback stay unknown with no automatic retry',asyn
     assert.equal(f.calls.filter(q=>q.method==='POST').length,1);
   }
 });
+test('upload readback must equal the intended wire even when its descriptor and checksums are internally valid',async()=>{
+  const f=fixture(),t=f.make();let other;
+  f.setHook((q,{u,name})=>{
+    if(q.method==='POST'){
+      const envelope=JSON.parse(q.body);envelope.metadata.revision=7;other=Buffer.from(JSON.stringify(envelope));
+      return {status:200,body:{bucket:f.options.bucket,name,generation:String(9007199254740993n+1n),metageneration:'1',
+        size:String(other.length),md5Hash:md5(other)}};
+    }
+    if(u.searchParams.get('alt')==='media')return {status:200,body:Buffer.from(other)};
+  });
+  await assert.rejects(t.create(KEY,Buffer.from('same logical bytes'),{revision:0}),e=>e.category==='unknown-write');
+  assert.equal(f.calls.filter(q=>q.method==='POST').length,1);
+});
 test('denied/failed/malformed missing reads throw; only verified object absence returns null',async()=>{
   const f=fixture(),t=f.make();assert.equal(await t.read(KEY),null);assert.equal(f.calls.length,2);
   for(const status of [401,403,500]){const x=fixture();x.setHook(()=>({status,body:{message:CANARY}}));await assert.rejects(x.make().read(KEY));}
-  const x=fixture();x.setHook(()=>({status:404,body:{}}));await assert.rejects(x.make().read(KEY));
+  const x=fixture();x.setHook((q,{name})=>name?{status:404,body:{}}:undefined);await assert.rejects(x.make().read(KEY));
   const y=fixture();y.setHook((q,{name})=>!name?{status:200,body:{name:y.options.bucket,projectNumber:'other',location:'US-WEST1'}}:undefined);
   await assert.rejects(y.make().read(KEY));
 });
@@ -138,14 +196,14 @@ test('empty intermediate list page continues; repeated/malformed cursors and ent
   const f=fixture();let page=0;f.setHook((q,{name})=>!name&&q.url.includes('/o?')?{status:200,body:++page===1?{nextPageToken:'opaque'}:{items:[]}}:undefined);
   const t=f.make(),first=await t.list('candidate/',null);assert.ok(first.nextCursor);assert.deepEqual((await t.list('candidate/',first.nextCursor)).entries,[]);
   for(const body of [{nextPageToken:''},{items:null},{prefixes:['hidden/']},{items:[{name:'foreign/key',generation:'1'}]}]){
-    const x=fixture();x.setHook(()=>({status:200,body}));await assert.rejects(x.make().list('candidate/',null));
+    const x=fixture();x.setHook(q=>listingRequest(q)?{status:200,body}:undefined);await assert.rejects(x.make().list('candidate/',null));
   }
-  const x=fixture();x.setHook(()=>({status:200,body:{nextPageToken:'same'}}));const xt=x.make(),p=await xt.list('candidate/',null);
+  const x=fixture();x.setHook(q=>listingRequest(q)?{status:200,body:{nextPageToken:'same'}}:undefined);const xt=x.make(),p=await xt.list('candidate/',null);
   await assert.rejects(xt.list('candidate/',p.nextCursor));await assert.rejects(xt.list('candidate/','invented'));
 });
 test('list explicitly refuses lost stable-namespace witness, not a provider snapshot claim',async()=>{
   const f=fixture(),t=f.make();f.setStable(false);await assert.rejects(t.list('candidate/',null));assert.equal(f.calls.length,0);
-  f.setStable(true);f.setHook(()=>{f.setStable(false);return {status:200,body:{items:[]}};});await assert.rejects(t.list('candidate/',null));
+  f.setStable(true);f.setHook(q=>{if(listingRequest(q)){f.setStable(false);return {status:200,body:{items:[]}};}});await assert.rejects(t.list('candidate/',null));
   const x=fixture({limits:{pageSize:1}}),xt=x.make();
   await xt.create('candidate/a',Buffer.from('a'),{});await xt.create('candidate/z',Buffer.from('z'),{});
   const first=await xt.list('candidate/',null);
@@ -165,9 +223,9 @@ test('caller input is snapshotted before await and outputs do not alias stored b
 });
 test('finite timeout/bounds and no retry after late request completion',async()=>{
   const f=fixture({limits:{maxBytes:4,requestMs:10}}),t=f.make();await assert.rejects(t.create(KEY,Buffer.alloc(5),{}));assert.equal(f.calls.length,0);
-  let finish;f.setHook(()=>new Promise(resolve=>{finish=resolve;}));
-  await assert.rejects(t.create(KEY,Buffer.from('a'),{}),e=>e.category==='unknown-write');assert.equal(f.calls.length,1);
-  finish({status:200,body:{}});await new Promise(r=>setImmediate(r));assert.equal(f.calls.length,1);
+  let finish;f.setHook(q=>q.method==='POST'?new Promise(resolve=>{finish=resolve;}):undefined);
+  await assert.rejects(t.create(KEY,Buffer.from('a'),{}),e=>e.category==='unknown-write');assert.equal(f.calls.filter(q=>q.method==='POST').length,1);
+  const count=f.calls.length;finish({status:200,body:{}});await new Promise(r=>setImmediate(r));assert.equal(f.calls.length,count);
 });
 test('page/entry/scan caps and repeated keys fail closed',async()=>{
   for(const limits of [{maxPages:1,pageSize:1},{maxEntries:1,pageSize:1}]){
@@ -176,8 +234,8 @@ test('page/entry/scan caps and repeated keys fail closed',async()=>{
     await assert.rejects(t.list('candidate/',p.nextCursor));
   }
   const f=fixture({limits:{requestMs:100,scanMs:10}}),t=f.make();let finish;
-  f.setHook(()=>new Promise(r=>{finish=r;}));await assert.rejects(t.list('candidate/',null));
-  assert.equal(f.calls[0].signal.aborted,true);finish({status:200,body:{items:[]}});
+  f.setHook(q=>listingRequest(q)?new Promise(r=>{finish=r;}):undefined);await assert.rejects(t.list('candidate/',null));
+  assert.equal(f.calls.at(-1).signal.aborted,true);finish({status:200,body:{items:[]}});
   const x=fixture(),xt=x.make();await xt.create(KEY,Buffer.from('a'),{});let page=0;
   x.setHook((q,{name})=>!name&&q.url.includes('/o?')?{status:200,body:{items:[{bucket:x.options.bucket,name:KEY,
     generation:x.objects.get(KEY).generation,metageneration:'1',size:String(x.objects.get(KEY).bytes.length),
