@@ -3,6 +3,7 @@
 // Construction only. No environment, provider, storage default, maintenance
 // route or caller-selected authority. Production deliberately supplies nothing.
 const { types: utilTypes } = require('node:util');
+const crypto = require('node:crypto');
 const express = require('express');
 // Captured at load: the refusal handler attaches rejection containment
 // through this intrinsic, never through a verdict's own properties.
@@ -25,7 +26,7 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     throw new TypeError('sealed preactivation rejects settlement dependencies');
   const router = express.Router({ caseSensitive: true, strict: true });
   let active = false, controller, resolver, serving, authorize, readBase, origin, now, publicationOutcome = null,
-    householdId = null, finalDisclosureAuthorize = null;
+    householdId = null, finalDisclosureAuthorize = null, authorizeRecoveryFinal = null, sessionAuthority = null;
   const catalogues = new Map();
   if (dependency !== undefined) {
     const d = dependency;
@@ -33,7 +34,14 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
       || ['authorize', 'acquire', 'contextReader', 'readBase', 'now', 'commitAdmitted', 'readDocument', 'readPin']
         .some(k => typeof d[k] !== 'function')
       || (d.authorizeRecovery !== undefined && typeof d.authorizeRecovery !== 'function')
-      || (d.finalDisclosureAuthorize !== undefined && typeof d.finalDisclosureAuthorize !== 'function'))
+      || (d.finalDisclosureAuthorize !== undefined && typeof d.finalDisclosureAuthorize !== 'function')
+      || (d.authorizeRecoveryFinal !== undefined && typeof d.authorizeRecoveryFinal !== 'function')
+      || (d.issueRecoveryEligibility !== undefined && typeof d.issueRecoveryEligibility !== 'function')
+      || (d.sessionAuthority !== undefined && typeof d.sessionAuthority !== 'function')
+      // Exactly one final authority: the synchronous disclosure predicate
+      // and the awaited recovery-final authority are alternatives, never
+      // both — more than one final authority is a composition error.
+      || (d.finalDisclosureAuthorize !== undefined && d.authorizeRecoveryFinal !== undefined))
       throw new TypeError('incomplete settlement composition');
     const url = new URL(d.origin);
     if (!['http:', 'https:'].includes(url.protocol) || url.origin !== d.origin
@@ -42,6 +50,14 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     householdId = d.householdId;
     finalDisclosureAuthorize = typeof d.finalDisclosureAuthorize === 'function'
       ? d.finalDisclosureAuthorize : null;
+    // The awaited final authority stays in this seam closure, exactly like
+    // the synchronous predicate: it is never forwarded to the controller,
+    // which has no session access. The session authority is likewise a
+    // seam-only capability (the server's private HMAC session view).
+    authorizeRecoveryFinal = typeof d.authorizeRecoveryFinal === 'function'
+      ? d.authorizeRecoveryFinal : null;
+    sessionAuthority = typeof d.sessionAuthority === 'function'
+      ? d.sessionAuthority : null;
     const policy = d.authorize;
     const acquire = d.acquire, contextReader = d.contextReader;
     authorize = async context => {
@@ -61,6 +77,7 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     // Exactly one controller for this application lifetime, including all routes.
     controller = createSettlementEvidenceConfirmation({ householdId: d.householdId, authorize,
       authorizeRecovery: d.authorizeRecovery,
+      issueRecoveryEligibility: d.issueRecoveryEligibility,
       registerPublicationOutcome: fn => { publicationOutcome = fn; },
       resolveSelection: resolver.resolveSelection, resolvePairedSelection: resolver.resolvePairedSelection,
       store: d.store, commitAdmitted: d.commitAdmitted, now,
@@ -137,6 +154,39 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
       // had (Atlas provisional BLOCK on c6626dfa, ts 1792954819).
       // Incumbent paths serialize in this same continuation, as shipped.
       if (finalCheck && gate.recheckRecovery) await finalCheck(gate);
+      // Opted-in awaited final authority. When this composition supplies
+      // authorizeRecoveryFinal AND this request's evaluation armed a
+      // recovery proof, the handler has armed gate.recoveryFinal with the
+      // retained selectors + credential digest and the acquired proof
+      // view. The decision is awaited HERE — after every other await in
+      // this helper, including the shipped recheck above — and judges ONE
+      // fresh authorization-store read. The session authority input is
+      // captured synchronously BEFORE that await from the server's
+      // HMAC-verified session view (never request JSON, never the
+      // eligibility record); after the await the continuation is purely
+      // synchronous: verdict, session-actor re-read, serialization. A
+      // missing capability, a missing credential, a malformed session
+      // view, a store error, or any non-true verdict refuses through the
+      // catch: 503, zero disclosure. A revocation completing after the
+      // decision's read may let this response finish (owner timing rule);
+      // the next request re-decides. Incumbent and predicate compositions
+      // never arm the gate and are unchanged.
+      if (gate.recoveryFinal) {
+        if (typeof authorizeRecoveryFinal !== 'function' || typeof sessionAuthority !== 'function')
+          throw new Error('recovery-final capability missing');
+        const armed = gate.recoveryFinal;
+        if (!armed.retained || !armed.view) throw new Error('recovery credential missing');
+        const authorityNow = sessionAuthority(req);
+        if (!record(authorityNow) || authorityNow.actorId !== context.actorId
+          || !/^[a-f0-9]{64}$/.test(authorityNow.sidDigest)
+          || !Number.isSafeInteger(authorityNow.expiresAt))
+          throw new Error('recovery session authority unavailable');
+        const retained = Object.freeze({ ...armed.retained,
+          sidDigest: authorityNow.sidDigest, expiresAt: authorityNow.expiresAt });
+        const verdict = await authorizeRecoveryFinal(retained, armed.view);
+        if (verdict !== true) throw new Error('recovery-final refused');
+        if (sessionActor(req) !== context.actorId) throw new Error('expired');
+      }
       // Addendum A final-disclosure boundary. When this request's
       // evaluation put a recovery proof in play, `gate.finalDisclosure`
       // holds its retained frozen selectors, and disclosure requires —
@@ -208,9 +258,19 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
       && /^generation-[a-f0-9]{32}$/.test(body.generation))
     && OP.test(body.operationId) && /^[a-f0-9]{64}$/.test(body.previewToken) && body.confirmed === true,
   (context, _authority, body) => controller.confirm(context, body));
+  // The credential body shape exists ONLY in authorizeRecoveryFinal
+  // compositions: the exact operationId + generation + recoverySecret
+  // triple on both disclosing routes. A secret without its generation is
+  // not the credential path, and no other composition admits the field.
+  const credentialRequest = body => authorizeRecoveryFinal !== null
+    && shape(body, ['operationId', 'generation', 'recoverySecret'])
+    && OP.test(body.operationId) && /^generation-[a-f0-9]{32}$/.test(body.generation)
+    && /^[a-f0-9]{64}$/.test(body.recoverySecret);
   const outcomeRequest = body => operation(body)
     || shape(body, ['operationId', 'generation']) && OP.test(body.operationId)
-      && /^generation-[a-f0-9]{32}$/.test(body.generation);
+      && /^generation-[a-f0-9]{32}$/.test(body.generation)
+    || credentialRequest(body);
+  const publicationRequest = body => operation(body) || credentialRequest(body);
   // The B4 final disclosure check, shared by both disclosing routes: it
   // re-runs the recovery decision captured by THIS request's evaluation,
   // inside the helper AFTER its final authorization await (see post()).
@@ -225,6 +285,30 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     ? { householdId, actorId: context.actorId, operationId: body.operationId,
       generation: body.generation }
     : { householdId, actorId: context.actorId, operationId: body.operationId });
+  // The final authority's proof view, taken ONLY from the evaluation's
+  // acquired private binding: the committed bundle's requestDigest, or the
+  // negative bundle's certificate confirmationDigest. Anything else is no
+  // view, and no view means no decision.
+  const decisionView = r => {
+    const b = r.binding;
+    if (!record(b)) return null;
+    if (b.receipt) return Object.freeze({ status: 'committed', requestDigest: b.requestDigest });
+    if (typeof b.confirmationDigest === 'string')
+      return Object.freeze({ status: 'not-applied', confirmationDigest: b.confirmationDigest });
+    return null;
+  };
+  // Arm the awaited final decision for an opted-in composition: the
+  // retained selectors plus the server-side digest of the presented
+  // credential (the plaintext secret is hashed here and never retained,
+  // logged or forwarded). Without the credential the arm is an explicit
+  // null marker: the helper refuses rather than silently skipping the
+  // decision the composition opted into.
+  const recoveryFinalArm = (context, body, r) => {
+    const view = decisionView(r);
+    if (!view || !Object.hasOwn(body, 'recoverySecret')) return { retained: null, view };
+    return { retained: Object.freeze({ ...finalSelectors(context, body),
+      secretDigest: crypto.createHash('sha256').update(body.recoverySecret).digest('hex') }), view };
+  };
   post('/outcome', outcomeRequest, async (context, _authority, body, gate) => {
     if (typeof publicationOutcome !== 'function') throw new Error('publication evaluation unavailable');
     const r = await publicationOutcome(context, body);
@@ -235,17 +319,26 @@ function mountSettlementHttp(app, sessionActor, dependency, preactivationOnly = 
     // authorization await, immediately before serialization.
     if (r.recoveryRefused) throw new Error('recovery-refused');
     gate.recheckRecovery = r.recheckRecovery;
-    if (r.recheckRecovery) gate.finalDisclosure = finalSelectors(context, body);
+    if (r.recheckRecovery) {
+      // Exactly one final authority judges the armed proof: the awaited
+      // recovery-final decision in opted-in compositions, the synchronous
+      // predicate otherwise — never both gates.
+      if (authorizeRecoveryFinal) gate.recoveryFinal = recoveryFinalArm(context, body, r);
+      else gate.finalDisclosure = finalSelectors(context, body);
+    }
     return r.result;
   }, recoveryGate);
-  post('/publication', operation, async (context, _authority, body, gate) => {
+  post('/publication', publicationRequest, async (context, _authority, body, gate) => {
     if (typeof publicationOutcome !== 'function') throw new Error('publication evaluation unavailable');
     const r = await publicationOutcome(context, body);
     if (r.recoveryRefused) throw new Error('recovery-refused');
     // A recovery negative proof is a disclosure too: its recheck is gated
     // exactly like the committed path's.
     gate.recheckRecovery = r.recheckRecovery;
-    if (r.recheckRecovery) gate.finalDisclosure = finalSelectors(context, body);
+    if (r.recheckRecovery) {
+      if (authorizeRecoveryFinal) gate.recoveryFinal = recoveryFinalArm(context, body, r);
+      else gate.finalDisclosure = finalSelectors(context, body);
+    }
     if (r.result.status !== 'committed') return r.result;
     // readBase must supply a complete served object; no ordinary attach or
     // provider fallback is allowed on this receipt-bound path. The binding
