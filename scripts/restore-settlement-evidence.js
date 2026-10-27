@@ -111,13 +111,19 @@ function result(raw){requireThat(raw!==null&&typeof raw==='object'&&!Array.isArr
  requireThat(rows.every(r=>r!==null&&typeof r==='object'&&!Array.isArray(r)&&Object.getPrototypeOf(r)===Object.prototype),'query','protocol');
  return {command:d.command.value,rows,rowCount:d.rowCount?.value};}
 function one(r,stage){requireThat(r.command==='SELECT'&&r.rows.length===1&&r.rows[0]&&typeof r.rows[0]==='object',stage,'protocol');return r.rows[0];}
-function schemaCheck(rows){requireThat(rows.length===5,'schema','schema');const names=new Set();for(const t of rows){requireThat(Object.hasOwn(PROFILE,t.name)&&!names.has(t.name),'schema','schema');names.add(t.name);
+// Capture refuses accessors; completeness also requires EVERY own array slot.
+// Never use a caller name as an object key until it is a primitive string.
+function dense(list,length){if(!Array.isArray(list)||list.length!==length||Reflect.ownKeys(list).length!==length+1)return false;
+ for(let i=0;i<length;i++)if(!Object.hasOwn(list,String(i)))return false;return true;}
+function schemaCheck(rows){requireThat(dense(rows,5),'schema','schema');const names=new Set();for(const t of rows){requireThat(typeof t.name==='string'&&Object.hasOwn(PROFILE,t.name)&&!names.has(t.name),'schema','schema');names.add(t.name);
  requireThat(t.kind==='r'&&t.persistence==='p'&&t.rls===false&&t.forceRls===false&&t.unsafe===false&&t.primaryKeyCount===1,'schema','schema');
  const cols=t.name==='quarantine'?['scope','name','label','bytes']:t.name==='terminal_history'?['scope','history_bytes','checkpoint_bytes']:['scope','bytes'];
- requireThat(Array.isArray(t.columns)&&t.columns.length===cols.length&&t.columns.every((c,i)=>c.name===cols[i]&&c.type===(['bytes','history_bytes','checkpoint_bytes'].includes(c.name)?'bytea':'text')&&c.notNull===(c.name!=='label')&&c.generated===''),'schema','schema');
- requireThat(Array.isArray(t.primaryKey)&&JSON.stringify(t.primaryKey)===JSON.stringify(t.name==='quarantine'?['scope','name']:['scope']),'schema','schema');}}
-function privileges(rows){requireThat(rows.length===5,'privileges','privileges');const names=new Set();for(const r of rows){requireThat(Object.hasOwn(PROFILE,r.name)&&!names.has(r.name),'privileges','privileges');names.add(r.name);const p=PROFILE[r.name];
- requireThat(r.select===true&&r.insert===p[0]&&r.update===p[1]&&r.delete===p[2]&&r.truncate===false&&r.trigger===false&&r.references===false&&r.anyReferences===false&&r.anyInsert===p[0]&&r.anyUpdate===p[1]&&r.connect===true&&r.schemaUsage===true&&r.databaseCreate===false&&r.schemaCreate===false&&r.functions===true,'privileges','privileges');}}
+ requireThat(dense(t.columns,cols.length)&&t.columns.every((c,i)=>c!==null&&typeof c==='object'&&Object.getPrototypeOf(c)===Object.prototype&&c.name===cols[i]&&c.type===(['bytes','history_bytes','checkpoint_bytes'].includes(c.name)?'bytea':'text')&&c.notNull===(c.name!=='label')&&c.generated===''),'schema','schema');
+ const pk=t.name==='quarantine'?['scope','name']:['scope'];requireThat(dense(t.primaryKey,pk.length)&&t.primaryKey.every((name,i)=>typeof name==='string'&&name===pk[i]),'schema','schema');}
+ requireThat(Object.keys(PROFILE).every(name=>names.has(name)),'schema','schema');}
+function privileges(rows){requireThat(dense(rows,5),'privileges','privileges');const names=new Set();for(const r of rows){requireThat(typeof r.name==='string'&&Object.hasOwn(PROFILE,r.name)&&!names.has(r.name),'privileges','privileges');names.add(r.name);const p=PROFILE[r.name];
+ requireThat(r.select===true&&r.insert===p[0]&&r.update===p[1]&&r.delete===p[2]&&r.truncate===false&&r.trigger===false&&r.references===false&&r.anyReferences===false&&r.anyInsert===p[0]&&r.anyUpdate===p[1]&&r.connect===true&&r.schemaUsage===true&&r.databaseCreate===false&&r.schemaCreate===false&&r.functions===true,'privileges','privileges');}
+ requireThat(Object.keys(PROFILE).every(name=>names.has(name)),'privileges','privileges');}
 async function openOwner(ctx,Client,target,secret,verify){
  requireThat(!ctx.stopped&&performance.now()<ctx.deadline&&performance.now()<ctx.outerDeadline,'connect','timeout');
  requireThat(ctx.clients<2&&ctx.active===0,'connect','ownership');ctx.clients++;let raw;

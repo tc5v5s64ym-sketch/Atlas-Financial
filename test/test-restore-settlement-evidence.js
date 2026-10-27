@@ -157,3 +157,32 @@ test('driver byte ownership uses intrinsic views, not caller-shadowable Buffer m
  let touched=0;const original=Buffer.from('incumbent');const w=driver({query:(_w,c,t)=>{if(c.number===0&&/^SELECT bytes FROM .*doc_head/.test(t)){const bytes=Buffer.from(original);bytes.valueOf=()=>{touched++;throw Error(CANARY);};return {command:'SELECT',rows:[{bytes}]};}}});
  const r=await run(await fixture(),w);assert.equal(r.exit,0);assert.equal(touched,0);assert([...w.quarantine.values()].some(b=>b.equals(original)));
 });
+function malformedQualification(kind){
+ if(kind==='schema-name')return{schema:rows=>Array.from({length:5},()=>({...rows[0],name:['doc_head']}))};
+ if(kind==='columns')return{schema:rows=>rows.map(r=>{if(r.name!=='doc_head')return r;const columns=new Array(r.columns.length);columns[1]=r.columns[1];return {...r,columns};})};
+ return{query:(_w,_c,text)=>{if(!text.includes('owner-privileges'))return;return{command:'SELECT',rows:Array.from({length:5},()=>({name:['doc_head'],select:true,insert:true,update:true,delete:false,truncate:false,trigger:false,references:false,anyInsert:true,anyUpdate:true,anyReferences:false,connect:true,schemaUsage:true,databaseCreate:false,schemaCreate:false,functions:true}))};}};
+}
+for(const kind of ['schema-name','acl-name','columns'])test('#712 BLOCK '+kind+': complete primitive profile before mutation or verifier construction',async()=>{
+ const w=driver(malformedQualification(kind)),r=await run(await fixture(),w);const mutations=w.log.filter(q=>/^(INSERT|UPDATE|DELETE)/.test(q.text)).length;
+ console.log(JSON.stringify({probe:kind,status:r.report.status,mutations,clients:w.clients.length}));
+ assert.notEqual(r.exit,0);assert.equal(mutations,0);assert.equal(w.clients.length,1);assert.equal(w.ends,1);
+ assert.equal(r.report.diagnostic.stage,kind==='acl-name'?'privileges':'schema');
+});
+test('#712 BLOCK class controls: missing/duplicate relations and sparse/reordered/nonprimitive columns or PK fail closed',async()=>{
+ for(const alter of [rows=>rows.slice(1),rows=>rows.map((r,i)=>i===1?rows[0]:r),
+  rows=>rows.map(r=>r.name==='doc_head'?{...r,columns:r.columns.slice().reverse()}:r),
+  rows=>rows.map(r=>r.name==='doc_head'?{...r,primaryKey:new Array(1)}:r),
+  rows=>rows.map(r=>r.name==='quarantine'?{...r,primaryKey:['name','scope']}:r),
+  rows=>rows.map(r=>r.name==='doc_head'?{...r,primaryKey:[['scope']]}:r),
+  rows=>rows.map(r=>r.name==='doc_head'?{...r,columns:[r.columns[0],{...r.columns[1],name:['bytes']}]}:r)]){
+  const w=driver({schema:alter}),r=await run(await fixture(),w);assert.notEqual(r.exit,0);assert.equal(w.clients.length,1);assert(!w.log.some(q=>/^(INSERT|UPDATE|DELETE)/.test(q.text)));
+ }
+});
+test('#712 BLOCK class is rechecked by the fresh verifier, which performs no write or false publication',async()=>{
+ for(const kind of ['schema-name','acl-name','columns']){const bad=malformedQualification(kind),w=driver({query:(world,c,text,values)=>{
+  if(c.number!==1)return;if(text.includes('owner-schema')&&bad.schema)return {command:'SELECT',rows:bad.schema(metadata())};
+  if(bad.query)return bad.query(world,c,text,values);
+ }}),r=await run(await fixture(),w);assert.notEqual(r.exit,0);assert.equal(r.report.status,'unknown');assert.equal(r.report.install.status,'installed-unverified');assert.equal(w.clients.length,2);assert.equal(w.ends,2);
+ assert(!w.log.some(q=>q.number===1&&/^(INSERT|UPDATE|DELETE|BEGIN)/.test(q.text)));assert.equal(r.report.diagnostic.stage,kind==='acl-name'?'privileges':'schema');
+ }
+});
