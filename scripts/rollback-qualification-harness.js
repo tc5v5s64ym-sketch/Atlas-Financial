@@ -48,6 +48,12 @@
 //                               (unknown/session-lost)      -> RQ ERROR
 //     stale-refusal-journal-write  stale install refuses but mutates the
 //                               journal                     -> not preserved
+//     stale-install-then-restore  shipped installer installs the stale
+//                               candidate, then the wrapper restores the saved
+//                               latest bytes and reports a refusal
+//                               (review 5670497511)         -> RQ-4 FAIL
+//     stale-clean-refusal       stale install refused with no write at all
+//                               (control: valid refusal)    -> RQ-4 PASS
 //
 // Scoring rules (review 5670248433):
 //  - 'unknown'/failed authority reads or protocol faults on the ACTUAL decision
@@ -58,6 +64,10 @@
 //  - verifier uncertainty (anything but 'verified' / 'mismatch') is ERROR, and
 //    only a semantic stale refusal (install 'candidate-invalid' with durable
 //    state unchanged) or a fresh-process qualification refusal is detection;
+//  - (review 5670497511) final-state equality alone is not preservation: every
+//    maintenance-session write statement and COMMIT is appended to an
+//    append-only mutation log outside the state file, so write-then-restore
+//    can never be scored as an untouched exact-latest refusal;
 //  - exact-latest preservation compares ALL protected tables (head, staged,
 //    journal, terminal, quarantine; all auth relations), not selected ones.
 
@@ -74,7 +84,14 @@ const AUTH_SCOPE = 'rq-synthetic';
 const MAINT_SCHEMA = 'atlas_rq_settle';
 const MAINT_SCOPE = 'rq-synthetic';
 const NOW = 1_760_000_000_000;
-const SCORING_FAULTS = ['decision-authority-read', 'decision-repair-write', 'stale-verify-transport', 'stale-refusal-journal-write'];
+const SCORING_FAULTS = ['decision-authority-read', 'decision-repair-write', 'stale-verify-transport', 'stale-refusal-journal-write',
+  'stale-install-then-restore', 'stale-clean-refusal'];
+// Append-only maintenance mutation log (review 5670497511), beside the state
+// file; read by the parent, never by the code under test.
+const mutationLog = file => file + '.mutations.jsonl';
+const appendMutation = (file, entry) => fs.appendFileSync(mutationLog(file), JSON.stringify(entry) + '\n');
+const readMutations = file => (fs.existsSync(mutationLog(file))
+  ? fs.readFileSync(mutationLog(file), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)) : []);
 const RQS = ['RQ-1', 'RQ-2', 'RQ-3', 'RQ-4', 'RQ-5', 'RQ-6', 'RQ-7', 'RQ-8'];
 const D = s => crypto.createHash('sha256').update('rq-synthetic:' + s).digest('hex');
 const HOUSEHOLD = 'household-' + 'a'.repeat(32);
@@ -156,7 +173,8 @@ function authSession(file) {
 // retire() before COMMIT discards.
 function maintSession(file, pid, opts = {}) {
   const listeners = { error: [], end: [] };
-  let writeStatements = 0;
+  let writeStatements = 0; let txnWrites = 0;
+  const label = opts.label || 'session-' + pid;
   const empty = () => ({ head: {}, staged: {}, journal: {}, terminal: {}, quarantine: {} });
   let work = null; let ended = false; let locked = false;
   const load = () => (fs.existsSync(file) ? readJson(file) : empty());
@@ -170,9 +188,13 @@ function maintSession(file, pid, opts = {}) {
     let m;
     if (/pg_try_advisory_lock/.test(text)) { locked = true; return res('SELECT', [{ locked: true }]); }
     if (/pg_backend_pid/.test(text)) return res('SELECT', [{ pid }]);
-    if (/^BEGIN/.test(text)) { work = load(); return res('BEGIN', [], null); }
-    if (text === 'COMMIT') { must(work, 'COMMIT outside txn'); writeJson(file, work); work = null; return res('COMMIT', [], null); }
-    if (text === 'ROLLBACK') { work = null; return res('ROLLBACK', [], null); }
+    if (/^BEGIN/.test(text)) { work = load(); txnWrites = 0; return res('BEGIN', [], null); }
+    if (text === 'COMMIT') {
+      must(work, 'COMMIT outside txn');
+      if (txnWrites) appendMutation(file, { session: label, pid: process.pid, event: 'commit', writes: txnWrites });
+      writeJson(file, work); work = null; txnWrites = 0; return res('COMMIT', [], null);
+    }
+    if (text === 'ROLLBACK') { work = null; txnWrites = 0; return res('ROLLBACK', [], null); }
     if ((m = new RegExp('^SELECT bytes FROM ' + q + '(doc_head|doc_staged|journal) WHERE scope = \\$1 LIMIT 2$').exec(text))) {
       const x = db()[TBL[m[1]]][v[0]]; return res('SELECT', x ? [{ bytes: buf(x) }] : []);
     }
@@ -182,7 +204,8 @@ function maintSession(file, pid, opts = {}) {
     if (new RegExp('^SELECT 1 AS present FROM ' + q + 'quarantine WHERE scope = \\$1 AND name = \\$2$').test(text))
       return res('SELECT', Object.hasOwn(db().quarantine, v[0] + '|' + v[1]) ? [{ present: 1 }] : []);
     must(work, 'write outside txn');
-    writeStatements++;
+    writeStatements++; txnWrites++;
+    appendMutation(file, { session: label, pid: process.pid, event: 'write', statement: text.split(/\s+/).slice(0, 3).join(' ') });
     if (new RegExp('^INSERT INTO ' + q + 'quarantine \\(scope, name, label, bytes\\) VALUES').test(text)) {
       work.quarantine[v[0] + '|' + v[1]] = { label: v[2], bytes: b64(v[3]) }; return res('INSERT', [], 1);
     }
@@ -311,12 +334,25 @@ const STEPS = {
       const t = readJson(file); t.journal[MAINT_SCOPE] = Buffer.from('rq-synthetic-journal-residue').toString('base64'); writeJson(file, t);
       return { install: { status: 'refused', reason: 'candidate-invalid', ledgerRevision: null, historyRevision: null }, verify: null, verifyWriteStatements: 0 };
     }
+    if (stale && scoringFault === 'stale-clean-refusal') {
+      // test-only control: a valid semantic refusal that writes nothing.
+      return { install: { status: 'refused', reason: 'candidate-invalid', ledgerRevision: null, historyRevision: null }, verify: null, verifyWriteStatements: 0 };
+    }
     const base = s => ({ session: s, schema: MAINT_SCHEMA, scope: MAINT_SCOPE, domain: fx.domain, anchors: pair.anchors,
       candidate: { ledgerBytes: Buffer.from(pair.ledger, 'base64'), historyBytes: Buffer.from(pair.history, 'base64') } });
-    const install = await M.installRestoreCandidate(base(maintSession(file, 101)));
+    const saved = stale && scoringFault === 'stale-install-then-restore' ? fs.readFileSync(file) : null;
+    const install = await M.installRestoreCandidate(base(maintSession(file, 101, { label: 'install' })));
+    if (saved) {
+      // test-only adversarial wrapper (review 5670497511): the shipped installer
+      // really installed the stale candidate; restore the saved latest bytes and
+      // report a refusal.
+      must(install.status === 'installed-unverified' && !saved.equals(fs.readFileSync(file)), 'stale install did not change durable bytes');
+      fs.writeFileSync(file, saved);
+      return { install: { status: 'refused', reason: 'candidate-invalid', ledgerRevision: null, historyRevision: null }, verify: null, verifyWriteStatements: 0 };
+    }
     let verify = null; let verifyWriteStatements = 0;
     if (install.status === 'installed-unverified') {
-      const vs = maintSession(file, 102, { transportFault: stale && scoringFault === 'stale-verify-transport' });
+      const vs = maintSession(file, 102, { label: 'verify', transportFault: stale && scoringFault === 'stale-verify-transport' });
       verify = await M.verifyRestoreInstall({ ...base(vs), pin: install.ledger.pin });
       verifyWriteStatements = vs.writeStatements;
     }
@@ -452,6 +488,7 @@ async function maintRollback(dir, ctx = {}) {
   must(seedQ.qualifications[0].result === 'qualified', 'exact-latest durable snapshot did not qualify');
   copy(path.join(d, 'maint.json'), path.join(d, 'latest.json'));
   const latestHead = readJson(path.join(d, 'latest.json'));
+  const logBefore = readMutations(path.join(d, 'maint.json')).length;
   // ADVERSARY: shipped restore path with a genuine but STALE anchor set.
   const attack = runChild({ step: 'maint-install', dir: d, which: 'stale', scoringFault: ctx.scoringFault });
   const semanticRefusal = attack.install.status === 'refused' && attack.install.reason === 'candidate-invalid';
@@ -460,9 +497,14 @@ async function maintRollback(dir, ctx = {}) {
   const post = runChild({ step: 'tc-qualify', dir: d, sequence: ['durable'] });
   const now = readJson(path.join(d, 'maint.json'));
   const changed = changedTables(now, latestHead);
+  const attackLog = readMutations(path.join(d, 'maint.json')).slice(logBefore);
+  const installerLog = attackLog.filter(x => x.session !== 'verify');
   return { seedInstall: seed.install.status, seedVerify: seed.verify.status, staleInstall: attack.install,
     staleVerify: attack.verify, verifyWriteStatements: attack.verifyWriteStatements, postInstallQualification: post.qualifications[0],
     protectedTablesChangedByAttack: changed,
+    attackMutationLog: { installerWriteStatements: installerLog.filter(x => x.event === 'write').length,
+      installerCommits: installerLog.filter(x => x.event === 'commit').length,
+      verifyWriteStatements: attackLog.filter(x => x.session === 'verify' && x.event === 'write').length },
     durableStateExactLatestAfterAttack: changed.length === 0, freshProcesses: new Set([seed.pid, seedQ.pid, attack.pid, post.pid]).size === 4 };
 }
 
@@ -473,11 +515,18 @@ function staleOutcome(e) {
     throw new HarnessError('stale verifier uncertain (' + v.status + '/' + v.reason + '): verifier uncertainty is not refusal evidence');
   }
   const installRefused = e.staleInstall.status === 'refused' && e.staleInstall.reason === 'candidate-invalid';
-  const cleanRefusal = installRefused && e.durableStateExactLatestAfterAttack;
+  const log = e.attackMutationLog;
+  must(log, 'attack mutation log missing');
+  // A refusal is clean only if the installer wrote nothing: write-then-restore
+  // that ends byte-equal to exact-latest is a prohibited mutation, not a refusal.
+  const refusalWithInstallerMutation = installRefused && (log.installerWriteStatements > 0 || log.installerCommits > 0);
+  const cleanRefusal = installRefused && !refusalWithInstallerMutation && e.durableStateExactLatestAfterAttack;
   const qualificationRefused = e.postInstallQualification.result === 'refused';
-  const prohibited = (e.verifyWriteStatements || 0) > 0;
+  const prohibitedVerify = (e.verifyWriteStatements || 0) > 0 || log.verifyWriteStatements > 0;
+  const prohibited = prohibitedVerify || refusalWithInstallerMutation;
   return { installRefused, cleanRefusal, qualificationRefused, verifierMismatch: !!(v && v.status === 'mismatch'),
-    prohibitedVerifyWrites: prohibited, detected: !prohibited && (cleanRefusal || qualificationRefused) };
+    prohibitedVerifyWrites: prohibitedVerify, refusalWithInstallerMutation, prohibitedMutation: prohibited,
+    detected: !prohibited && (cleanRefusal || qualificationRefused) };
 }
 
 async function run(ctx = {}) {
@@ -494,7 +543,8 @@ async function run(ctx = {}) {
       must(e.freshProcesses, 'maintenance steps not in distinct processes');
       const o = staleOutcome(e);
       if (o.detected) return verdict('PASS', { ...e, scoring: o, finding: 'stale restore semantically refused with state unchanged, or refused by fresh-process qualification' });
-      return verdict('FAIL', { ...e, scoring: o, finding: o.installRefused ? 'stale restore refused but protected state changed (not fail-closed)'
+      return verdict('FAIL', { ...e, scoring: o, finding: o.refusalWithInstallerMutation ? 'stale restore reported refused but the installer mutated durable state (write-then-restore is not a clean refusal)'
+        : o.installRefused ? 'stale restore refused but protected state changed (not fail-closed)'
         : o.prohibitedVerifyWrites ? 'verifier wrote protected state' : 'stale-anchor restore installed and qualified silently' });
     },
     'RQ-2': async () => {
@@ -518,7 +568,7 @@ async function run(ctx = {}) {
       const rows = Object.entries(attacks).map(([rq, e]) => {
         if (rq === 'RQ-4') {
           const o = staleOutcome(e);
-          return { attack: rq, refused: o.installRefused || o.qualificationRefused, prohibitedMutation: o.prohibitedVerifyWrites,
+          return { attack: rq, refused: o.installRefused || o.qualificationRefused, prohibitedMutation: o.prohibitedMutation,
             durableStateExactLatest: e.durableStateExactLatestAfterAttack, changedTables: e.protectedTablesChangedByAttack };
         }
         return { attack: rq, refused: e.postRestoreDecision === 'refuse', prohibitedMutation: e.decisionPathMutations.length > 0,

@@ -53,6 +53,7 @@ test('RH-1 shipped code: vulnerability reproduced as FAIL, RQ-7/8 NOT EXECUTED, 
   assert.equal(rq4.evidence.staleInstall.historyRevision, 0);
   assert.equal(rq4.evidence.postInstallQualification.result, 'qualified');
   assert.equal(rq4.evidence.freshProcesses, true);
+  assert.ok(rq4.evidence.attackMutationLog.installerWriteStatements > 0, 'real stale install is logged');
   // RQ-2: the in-memory floor works inside one process but not after restart
   assert.equal(r.verdicts['RQ-2'].verdict, 'FAIL');
   assert.equal(r.verdicts['RQ-2'].evidence.inProcessRollbackDetected, true);
@@ -158,4 +159,43 @@ test('RH-9 CLI scoring faults: exit 2 for uncertainty faults, 1 for mutation fau
   assert.equal(cli('--json', '--inject-scoring-fault', 'stale-verify-transport').status, 2);
   assert.equal(cli('--json', '--inject-scoring-fault', 'stale-refusal-journal-write').status, 1);
   assert.equal(cli('--inject-scoring-fault', 'bogus').status, 64);
+});
+
+// Review 5670497511 regressions: write-then-restore is never a clean refusal.
+test('RH-10 shipped installer installs stale then wrapper restores latest bytes and reports refusal: RQ-4 FAIL, RQ-3 maintenance row prohibited', async () => {
+  const r = await H.run({ scoringFault: 'stale-install-then-restore', deciderModule: deciderFile('refuse-all-t', 'async () => false') });
+  assert.equal(r.harness.status, 'ok');
+  assert.equal(r.verdicts['RQ-1'].verdict, 'PASS');
+  assert.equal(r.verdicts['RQ-5'].verdict, 'PASS');
+  const rq4 = r.verdicts['RQ-4'];
+  assert.equal(rq4.verdict, 'FAIL');
+  assert.equal(rq4.evidence.staleInstall.status, 'refused');
+  assert.equal(rq4.evidence.durableStateExactLatestAfterAttack, true, 'bytes were restored to exact-latest');
+  assert.ok(rq4.evidence.attackMutationLog.installerWriteStatements > 0);
+  assert.ok(rq4.evidence.attackMutationLog.installerCommits > 0);
+  assert.equal(rq4.evidence.scoring.cleanRefusal, false);
+  assert.equal(rq4.evidence.scoring.refusalWithInstallerMutation, true);
+  assert.match(rq4.evidence.finding, /write-then-restore/);
+  const row = r.verdicts['RQ-3'].evidence.attacks.find(a => a.attack === 'RQ-4');
+  assert.equal(row.prohibitedMutation, true);
+  assert.equal(r.verdicts['RQ-3'].verdict, 'FAIL');
+  assert.equal(r.exitCode, H.EXIT.NOT_QUALIFIED);
+});
+
+test('RH-11 control: a stale refusal with no write at all still scores RQ-4 PASS and a clean RQ-3 maintenance row', async () => {
+  const r = await H.run({ scoringFault: 'stale-clean-refusal', deciderModule: deciderFile('refuse-all-c', 'async () => false') });
+  assert.equal(r.harness.status, 'ok');
+  const rq4 = r.verdicts['RQ-4'];
+  assert.equal(rq4.verdict, 'PASS');
+  assert.deepEqual(rq4.evidence.attackMutationLog, { installerWriteStatements: 0, installerCommits: 0, verifyWriteStatements: 0 });
+  assert.equal(rq4.evidence.scoring.cleanRefusal, true);
+  const row = r.verdicts['RQ-3'].evidence.attacks.find(a => a.attack === 'RQ-4');
+  assert.deepEqual([row.refused, row.prohibitedMutation, row.durableStateExactLatest], [true, false, true]);
+  assert.equal(r.qualification.status, 'NOT QUALIFIED');
+});
+
+test('RH-12 CLI: install-then-restore exits 1 (FAIL, harness ok) and is never green', () => {
+  const x = cli('--json', '--inject-scoring-fault', 'stale-install-then-restore');
+  assert.equal(x.status, 1);
+  assert.equal(JSON.parse(x.stdout).verdicts['RQ-4'].verdict, 'FAIL');
 });
