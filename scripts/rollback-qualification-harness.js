@@ -37,6 +37,29 @@
 //                        module exporting createDecider({ store, now })
 //   --inject-fault <RQ>  test-only mechanics self-check: make that RQ's check
 //                        throw, to prove errors surface as ERROR / exit 2
+//   --inject-scoring-fault <name>  test-only scoring self-check (review
+//                        5670248433): inject one evidence-changing fault and
+//                        prove it never becomes a green RQ. Names:
+//     decision-authority-read   post-restore decision-path authority read fails
+//                               (diagnostic read still ok)  -> RQ ERROR
+//     decision-repair-write     post-restore decision path writes the revocation
+//                               back (repair)               -> RQ FAIL, not PASS
+//     stale-verify-transport    stale-install verifier loses its session
+//                               (unknown/session-lost)      -> RQ ERROR
+//     stale-refusal-journal-write  stale install refuses but mutates the
+//                               journal                     -> not preserved
+//
+// Scoring rules (review 5670248433):
+//  - 'unknown'/failed authority reads or protocol faults on the ACTUAL decision
+//    path are harness ERROR, never an intended refusal;
+//  - the decision path is read-only: any write statement, non-read store call
+//    or durable-state change during a decision is a prohibited mutation and
+//    can never score PASS;
+//  - verifier uncertainty (anything but 'verified' / 'mismatch') is ERROR, and
+//    only a semantic stale refusal (install 'candidate-invalid' with durable
+//    state unchanged) or a fresh-process qualification refusal is detection;
+//  - exact-latest preservation compares ALL protected tables (head, staged,
+//    journal, terminal, quarantine; all auth relations), not selected ones.
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -51,6 +74,7 @@ const AUTH_SCOPE = 'rq-synthetic';
 const MAINT_SCHEMA = 'atlas_rq_settle';
 const MAINT_SCOPE = 'rq-synthetic';
 const NOW = 1_760_000_000_000;
+const SCORING_FAULTS = ['decision-authority-read', 'decision-repair-write', 'stale-verify-transport', 'stale-refusal-journal-write'];
 const RQS = ['RQ-1', 'RQ-2', 'RQ-3', 'RQ-4', 'RQ-5', 'RQ-6', 'RQ-7', 'RQ-8'];
 const D = s => crypto.createHash('sha256').update('rq-synthetic:' + s).digest('hex');
 const HOUSEHOLD = 'household-' + 'a'.repeat(32);
@@ -130,8 +154,9 @@ function authSession(file) {
 // Maintenance session double for the restore install/verify statements over a
 // JSON file (bytes as base64). BEGIN snapshots; COMMIT persists; ROLLBACK or
 // retire() before COMMIT discards.
-function maintSession(file, pid) {
+function maintSession(file, pid, opts = {}) {
   const listeners = { error: [], end: [] };
+  let writeStatements = 0;
   const empty = () => ({ head: {}, staged: {}, journal: {}, terminal: {}, quarantine: {} });
   let work = null; let ended = false; let locked = false;
   const load = () => (fs.existsSync(file) ? readJson(file) : empty());
@@ -157,6 +182,7 @@ function maintSession(file, pid) {
     if (new RegExp('^SELECT 1 AS present FROM ' + q + 'quarantine WHERE scope = \\$1 AND name = \\$2$').test(text))
       return res('SELECT', Object.hasOwn(db().quarantine, v[0] + '|' + v[1]) ? [{ present: 1 }] : []);
     must(work, 'write outside txn');
+    writeStatements++;
     if (new RegExp('^INSERT INTO ' + q + 'quarantine \\(scope, name, label, bytes\\) VALUES').test(text)) {
       work.quarantine[v[0] + '|' + v[1]] = { label: v[2], bytes: b64(v[3]) }; return res('INSERT', [], 1);
     }
@@ -177,9 +203,14 @@ function maintSession(file, pid) {
   }
   return {
     get locked() { return locked; },
+    get writeStatements() { return writeStatements; },
     on(ev, fn) { (listeners[ev] ||= []).push(fn); },
     retire() { ended = true; work = null; return Promise.resolve(); },
-    async query(text, values) { if (ended) throw new Error('session ended'); return exec(text, values); },
+    async query(text, values) {
+      if (ended) throw new Error('session ended');
+      if (opts.transportFault) throw new Error('injected transport failure');
+      return exec(text, values);
+    },
   };
 }
 
@@ -197,6 +228,41 @@ const committedView = () => ({ status: 'committed', requestDigest: KEY.confirmat
 const authStore = file => require(path.join(ROOT, 'scripts/settlement-evidence-authorization-store.js'))
   .createAuthorizationStore({ session: authSession(file), schema: AUTH_SCHEMA, scope: AUTH_SCOPE });
 
+// Decision-path observation (review 5670248433 finding 1/3): the store handed
+// to the decider is a plain wrapper (the shipped store is frozen) recording
+// every call, every non-'ok' read and every write statement on its session.
+function observedAuthStore(file, { transportFault = false } = {}) {
+  const obs = { calls: [], faults: [], writeStatements: 0 };
+  const inner = authSession(file);
+  const session = {
+    on: (ev, fn) => inner.on(ev, fn),
+    retire: () => inner.retire(),
+    async query(text, values) {
+      if (transportFault) { obs.faults.push('session: injected transport failure'); throw new Error('injected transport failure'); }
+      if (/^(INSERT|UPDATE|DELETE)\b/.test(text)) obs.writeStatements++;
+      try { return await inner.query(text, values); } catch (e) { obs.faults.push('session: query error'); throw e; }
+    },
+  };
+  const store = require(path.join(ROOT, 'scripts/settlement-evidence-authorization-store.js'))
+    .createAuthorizationStore({ session, schema: AUTH_SCHEMA, scope: AUTH_SCOPE });
+  const wrapped = {};
+  for (const name of Object.keys(store)) {
+    const fn = store[name];
+    if (typeof fn !== 'function') { wrapped[name] = fn; continue; }
+    wrapped[name] = (...args) => {
+      obs.calls.push(name);
+      let r;
+      try { r = fn.apply(store, args); } catch (e) { obs.faults.push(name + ': threw'); throw e; }
+      return Promise.resolve(r).then(x => {
+        if (name === 'readAuthorizationState' && !(x && x.state === 'ok')) obs.faults.push(name + ': state ' + (x && x.state));
+        if (name !== 'readAuthorizationState' && !(x && typeof x.outcome === 'string' && x.outcome !== 'unknown')) obs.faults.push(name + ': outcome ' + (x && x.outcome));
+        return x;
+      }, e => { obs.faults.push(name + ': rejected'); throw e; });
+    };
+  }
+  return { store: wrapped, obs };
+}
+
 const STEPS = {
   async 'auth-issue'({ dir }) {
     const r = await authStore(path.join(dir, 'auth.json')).issueEligibility({
@@ -213,32 +279,50 @@ const STEPS = {
     must(r.outcome === 'appended', 'revocation not appended');
     return { appended: r.outcome, kind };
   },
-  async 'auth-decide'({ dir, deciderModule }) {
+  async 'auth-decide'({ dir, deciderModule, phase, kind, scoringFault }) {
     const file = path.join(dir, 'auth.json');
+    const postRestore = phase === 'post-restore';
     // Diagnostic read on a SEPARATE store/session: a double or protocol fault
     // ('unknown') is a harness error, never mistaken for a refusal.
     const probe = await authStore(file).readAuthorizationState({ operationId: KEY.operationId, generation: KEY.generation, sidDigest: KEY.sidDigest });
     must(probe.state === 'ok', 'diagnostic read not ok');
-    const decide = decider(authStore(file), deciderModule);
+    const { store, obs } = observedAuthStore(file, { transportFault: postRestore && scoringFault === 'decision-authority-read' });
+    if (postRestore && scoringFault === 'decision-repair-write') {
+      // test-only: a decision path that "repairs" the rolled-back state.
+      if (kind === 'session') await store.appendSessionRevocation({ sidDigest: KEY.sidDigest, revokedAt: NOW - 500 });
+      else await store.appendRevocation({ operationId: KEY.operationId, generation: KEY.generation, revokedAt: NOW - 500 });
+    }
+    const decide = decider(store, deciderModule);
     const authorized = await decide(retained(), committedView());
     must(typeof authorized === 'boolean', 'decision not boolean');
+    const prohibitedCalls = obs.calls.filter(c => c !== 'readAuthorizationState');
     return { decision: authorized ? 'authorize' : 'refuse',
-      state: { eligibility: probe.eligibility !== null, operationRevoked: probe.operationRevoked, sessionRevoked: probe.sessionRevoked } };
+      state: { eligibility: probe.eligibility !== null, operationRevoked: probe.operationRevoked, sessionRevoked: probe.sessionRevoked },
+      decisionPath: { authorityReads: obs.calls.filter(c => c === 'readAuthorizationState').length,
+        faults: obs.faults, writeStatements: obs.writeStatements, prohibitedCalls } };
   },
-  async 'maint-install'({ dir, which }) {
+  async 'maint-install'({ dir, which, scoringFault }) {
     const M = require(path.join(ROOT, 'scripts/settlement-evidence-restore-install.js'));
     const fx = readJson(path.join(dir, 'fixture.json'));
     const pair = fx[which]; const file = path.join(dir, 'maint.json');
+    const stale = which === 'stale';
+    if (stale && scoringFault === 'stale-refusal-journal-write') {
+      // test-only adversarial restorer: semantic refusal that still mutates.
+      const t = readJson(file); t.journal[MAINT_SCOPE] = Buffer.from('rq-synthetic-journal-residue').toString('base64'); writeJson(file, t);
+      return { install: { status: 'refused', reason: 'candidate-invalid', ledgerRevision: null, historyRevision: null }, verify: null, verifyWriteStatements: 0 };
+    }
     const base = s => ({ session: s, schema: MAINT_SCHEMA, scope: MAINT_SCOPE, domain: fx.domain, anchors: pair.anchors,
       candidate: { ledgerBytes: Buffer.from(pair.ledger, 'base64'), historyBytes: Buffer.from(pair.history, 'base64') } });
     const install = await M.installRestoreCandidate(base(maintSession(file, 101)));
-    let verify = null;
+    let verify = null; let verifyWriteStatements = 0;
     if (install.status === 'installed-unverified') {
-      verify = await M.verifyRestoreInstall({ ...base(maintSession(file, 102)), pin: install.ledger.pin });
+      const vs = maintSession(file, 102, { transportFault: stale && scoringFault === 'stale-verify-transport' });
+      verify = await M.verifyRestoreInstall({ ...base(vs), pin: install.ledger.pin });
+      verifyWriteStatements = vs.writeStatements;
     }
     return { install: { status: install.status, reason: install.reason || null,
       ledgerRevision: install.ledger ? install.ledger.revision : null, historyRevision: install.history ? install.history.revision : null },
-      verify: verify && { status: verify.status, reason: verify.reason || null } };
+      verify: verify && { status: verify.status, reason: verify.reason || null }, verifyWriteStatements };
   },
   async 'tc-qualify'({ dir, sequence }) {
     // Qualify the durable terminal snapshot(s) with the shipped qualifySnapshot
@@ -311,30 +395,55 @@ const verdict = (v, evidence) => ({ verdict: v, evidence });
 async function authRollback(dir, kind, ctx) {
   const d = fs.mkdtempSync(path.join(dir, 'auth-' + kind + '-'));
   runChild({ step: 'auth-issue', dir: d });
-  const baseline = runChild({ step: 'auth-decide', dir: d, deciderModule: ctx.deciderModule });
-  copy(path.join(d, 'auth.json'), path.join(d, 'checkpoint.json')); // adversary checkpoint (pre-revocation)
+  const file = path.join(d, 'auth.json');
+  const baseline = decideObserved(d, 'baseline', kind, ctx);
+  copy(file, path.join(d, 'checkpoint.json')); // adversary checkpoint (pre-revocation)
   runChild({ step: 'auth-revoke', dir: d, kind });
-  const revoked = runChild({ step: 'auth-decide', dir: d, deciderModule: ctx.deciderModule });
-  copy(path.join(d, 'auth.json'), path.join(d, 'latest.json')); // exact-latest pre-attack state
-  copy(path.join(d, 'checkpoint.json'), path.join(d, 'auth.json')); // ADVERSARY: direct state replacement
-  must(sha(path.join(d, 'auth.json')) === sha(path.join(d, 'checkpoint.json')), 'restore did not land');
-  const after = runChild({ step: 'auth-decide', dir: d, deciderModule: ctx.deciderModule });
-  const exactLatest = sha(path.join(d, 'auth.json')) === sha(path.join(d, 'latest.json'));
+  const revoked = decideObserved(d, 'pre-attack', kind, ctx);
+  copy(file, path.join(d, 'latest.json')); // exact-latest pre-attack state
+  copy(path.join(d, 'checkpoint.json'), file); // ADVERSARY: direct state replacement
+  must(sha(file) === sha(path.join(d, 'checkpoint.json')), 'restore did not land');
+  const after = decideObserved(d, 'post-restore', kind, ctx);
+  const exactLatest = sameState(readJson(file), readJson(path.join(d, 'latest.json')));
   const pids = new Set([baseline.pid, revoked.pid, after.pid]);
   must(pids.size === 3, 'decisions did not run in distinct processes');
+  const mutations = [baseline, revoked, after].filter(x => x.mutation).map(x => x.phase);
   return { kind, baselineDecision: baseline.decision, preAttackDecision: revoked.decision,
     preAttackState: revoked.state, postRestoreState: after.state, postRestoreDecision: after.decision,
+    postRestoreDecisionPath: after.decisionPath, decisionPathMutations: mutations,
     restartBetweenRollbackAndDecision: true, durableStateExactLatestAfterAttack: exactLatest };
+}
+
+// Canonical whole-state comparison over every protected table.
+const canon = v => (v && typeof v === 'object' && !Array.isArray(v)
+  ? '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}'
+  : Array.isArray(v) ? '[' + v.map(canon).join(',') + ']' : JSON.stringify(v));
+const sameState = (a, b) => canon(a) === canon(b);
+const changedTables = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => canon(a[k]) !== canon(b[k])).sort();
+
+// One fresh-process decision with decision-path accounting. A fault on the
+// actual decision path (unknown read, protocol/transport error) is a harness
+// ERROR: 'unknown' is never evidence of an intended refusal.
+function decideObserved(d, phase, kind, ctx) {
+  const file = path.join(d, 'auth.json');
+  const before = fs.readFileSync(file);
+  const x = runChild({ step: 'auth-decide', dir: d, deciderModule: ctx.deciderModule, phase, kind, scoringFault: ctx.scoringFault });
+  const changed = !before.equals(fs.readFileSync(file));
+  must(x.decisionPath && Array.isArray(x.decisionPath.faults), 'decision path not observed');
+  if (x.decisionPath.faults.length) throw new HarnessError(phase + ' decision-path authority/protocol failure (' + x.decisionPath.faults.join('; ') + '): unknown is not refusal evidence');
+  const mutation = changed || x.decisionPath.writeStatements > 0 || x.decisionPath.prohibitedCalls.length > 0;
+  return { ...x, phase, durableStateChangedByDecision: changed, mutation };
 }
 
 function judgeAuth(e, rq) {
   // The pre-attack control must refuse, else the scenario is not the RQ's.
   must(e.preAttackDecision === 'refuse', rq + ' pre-attack decision did not refuse');
   if (e.postRestoreDecision === 'authorize') return verdict('FAIL', { ...e, finding: 'revoked permission resurrected after restore + restart' });
-  return verdict('PASS', { ...e, finding: 'post-restore decision refused' });
+  if (e.decisionPathMutations.length) return verdict('FAIL', { ...e, finding: 'decision path attempted prohibited writes/repair (' + e.decisionPathMutations.join(', ') + '); a repaired state is not a refusal' });
+  return verdict('PASS', { ...e, finding: 'post-restore decision refused on a fault-free, read-only decision path' });
 }
 
-async function maintRollback(dir) {
+async function maintRollback(dir, ctx = {}) {
   const d = fs.mkdtempSync(path.join(dir, 'maint-'));
   copy(path.join(dir, 'fixture.json'), path.join(d, 'fixture.json'));
   const seed = runChild({ step: 'maint-install', dir: d, which: 'latest' });
@@ -344,16 +453,31 @@ async function maintRollback(dir) {
   copy(path.join(d, 'maint.json'), path.join(d, 'latest.json'));
   const latestHead = readJson(path.join(d, 'latest.json'));
   // ADVERSARY: shipped restore path with a genuine but STALE anchor set.
-  const attack = runChild({ step: 'maint-install', dir: d, which: 'stale' });
+  const attack = runChild({ step: 'maint-install', dir: d, which: 'stale', scoringFault: ctx.scoringFault });
   const semanticRefusal = attack.install.status === 'refused' && attack.install.reason === 'candidate-invalid';
   must(attack.install.status === 'installed-unverified' || semanticRefusal, 'stale install neither installed nor semantically refused');
   // Post-install qualification step (the only one shipped), fresh process.
   const post = runChild({ step: 'tc-qualify', dir: d, sequence: ['durable'] });
   const now = readJson(path.join(d, 'maint.json'));
-  const exactLatest = JSON.stringify({ head: now.head, terminal: now.terminal }) === JSON.stringify({ head: latestHead.head, terminal: latestHead.terminal });
+  const changed = changedTables(now, latestHead);
   return { seedInstall: seed.install.status, seedVerify: seed.verify.status, staleInstall: attack.install,
-    staleVerify: attack.verify, postInstallQualification: post.qualifications[0],
-    durableStateExactLatestAfterAttack: exactLatest, freshProcesses: new Set([seed.pid, seedQ.pid, attack.pid, post.pid]).size === 4 };
+    staleVerify: attack.verify, verifyWriteStatements: attack.verifyWriteStatements, postInstallQualification: post.qualifications[0],
+    protectedTablesChangedByAttack: changed,
+    durableStateExactLatestAfterAttack: changed.length === 0, freshProcesses: new Set([seed.pid, seedQ.pid, attack.pid, post.pid]).size === 4 };
+}
+
+// Stale-restore scoring on actual refusal/detection evidence only.
+function staleOutcome(e) {
+  const v = e.staleVerify;
+  if (v && v.status !== 'verified' && v.status !== 'mismatch') {
+    throw new HarnessError('stale verifier uncertain (' + v.status + '/' + v.reason + '): verifier uncertainty is not refusal evidence');
+  }
+  const installRefused = e.staleInstall.status === 'refused' && e.staleInstall.reason === 'candidate-invalid';
+  const cleanRefusal = installRefused && e.durableStateExactLatestAfterAttack;
+  const qualificationRefused = e.postInstallQualification.result === 'refused';
+  const prohibited = (e.verifyWriteStatements || 0) > 0;
+  return { installRefused, cleanRefusal, qualificationRefused, verifierMismatch: !!(v && v.status === 'mismatch'),
+    prohibitedVerifyWrites: prohibited, detected: !prohibited && (cleanRefusal || qualificationRefused) };
 }
 
 async function run(ctx = {}) {
@@ -366,12 +490,12 @@ async function run(ctx = {}) {
     'RQ-1': async () => judgeAuth(await once('op', () => authRollback(dir, 'operation', ctx)), 'RQ-1'),
     'RQ-5': async () => judgeAuth(await once('sess', () => authRollback(dir, 'session', ctx)), 'RQ-5'),
     'RQ-4': async () => {
-      const e = await once('maint', () => maintRollback(dir));
+      const e = await once('maint', () => maintRollback(dir, ctx));
       must(e.freshProcesses, 'maintenance steps not in distinct processes');
-      const refused = e.staleInstall.status === 'refused' || (e.staleVerify && e.staleVerify.status !== 'verified')
-        || e.postInstallQualification.result === 'refused';
-      return refused ? verdict('PASS', { ...e, finding: 'stale restore refused or detected before any decision' })
-        : verdict('FAIL', { ...e, finding: 'stale-anchor restore installed, verified and qualified silently' });
+      const o = staleOutcome(e);
+      if (o.detected) return verdict('PASS', { ...e, scoring: o, finding: 'stale restore semantically refused with state unchanged, or refused by fresh-process qualification' });
+      return verdict('FAIL', { ...e, scoring: o, finding: o.installRefused ? 'stale restore refused but protected state changed (not fail-closed)'
+        : o.prohibitedVerifyWrites ? 'verifier wrote protected state' : 'stale-anchor restore installed and qualified silently' });
     },
     'RQ-2': async () => {
       // The only shipped rollback control (qualifySnapshot WeakMap floor):
@@ -390,28 +514,33 @@ async function run(ctx = {}) {
     },
     'RQ-3': async () => {
       const attacks = { 'RQ-1': await once('op', () => authRollback(dir, 'operation', ctx)),
-        'RQ-5': await once('sess', () => authRollback(dir, 'session', ctx)), 'RQ-4': await once('maint', () => maintRollback(dir)) };
+        'RQ-5': await once('sess', () => authRollback(dir, 'session', ctx)), 'RQ-4': await once('maint', () => maintRollback(dir, ctx)) };
       const rows = Object.entries(attacks).map(([rq, e]) => {
-        const refused = rq === 'RQ-4' ? (e.staleInstall.status === 'refused' || e.postInstallQualification.result === 'refused')
-          : e.postRestoreDecision === 'refuse';
-        return { attack: rq, refused, durableStateExactLatest: e.durableStateExactLatestAfterAttack };
+        if (rq === 'RQ-4') {
+          const o = staleOutcome(e);
+          return { attack: rq, refused: o.installRefused || o.qualificationRefused, prohibitedMutation: o.prohibitedVerifyWrites,
+            durableStateExactLatest: e.durableStateExactLatestAfterAttack, changedTables: e.protectedTablesChangedByAttack };
+        }
+        return { attack: rq, refused: e.postRestoreDecision === 'refuse', prohibitedMutation: e.decisionPathMutations.length > 0,
+          durableStateExactLatest: e.durableStateExactLatestAfterAttack };
       });
-      const ok = rows.every(r => r.refused && r.durableStateExactLatest);
+      const ok = rows.every(r => r.refused && !r.prohibitedMutation && r.durableStateExactLatest);
       return verdict(ok ? 'PASS' : 'FAIL', { attacks: rows,
-        finding: ok ? 'every refused rollback left exact-latest durable state'
-          : 'durable state after attack is not exact-latest (older state adopted; no fail-closed refusal)' });
+        finding: ok ? 'every refused rollback left exact-latest durable state (all protected tables) with no prohibited mutation'
+          : 'durable state after attack is not exact-latest on all protected tables, or exact-latest was reached by prohibited mutation' });
     },
     'RQ-6': async () => {
       const d = fs.mkdtempSync(path.join(dir, 'avail-'));
       runChild({ step: 'auth-issue', dir: d });
-      const decide = runChild({ step: 'auth-decide', dir: d, deciderModule: ctx.deciderModule });
+      const decide = decideObserved(d, 'availability', 'operation', ctx);
       const m = fs.mkdtempSync(path.join(dir, 'avail-maint-'));
       copy(path.join(dir, 'fixture.json'), path.join(m, 'fixture.json'));
       const inst = runChild({ step: 'maint-install', dir: m, which: 'latest' });
       const q = runChild({ step: 'tc-qualify', dir: m, sequence: ['durable'] });
       const e = { latestDecisionAfterRestart: decide.decision, latestInstall: inst.install.status,
         latestVerify: inst.verify && inst.verify.status, latestQualificationAfterRestart: q.qualifications[0].result };
-      const ok = decide.decision === 'authorize' && inst.install.status === 'installed-unverified'
+      must(!(inst.verify && inst.verify.status !== 'verified' && inst.verify.status !== 'mismatch'), 'latest verifier uncertain');
+      const ok = decide.decision === 'authorize' && !decide.mutation && inst.install.status === 'installed-unverified'
         && inst.verify && inst.verify.status === 'verified' && q.qualifications[0].result === 'qualified';
       return verdict(ok ? 'PASS' : 'FAIL', { ...e, finding: ok ? 'genuine latest state qualifies and decisions proceed (availability only; no anchor exists to test against)' : 'genuine latest state falsely refused' });
     },
@@ -464,6 +593,7 @@ function parseArgs(argv) {
     if (a === '--json') json = true;
     else if (a === '--decider' && argv[i + 1]) ctx.deciderModule = argv[++i];
     else if (a === '--inject-fault' && RQS.includes(argv[i + 1])) ctx.injectFault = argv[++i];
+    else if (a === '--inject-scoring-fault' && SCORING_FAULTS.includes(argv[i + 1])) ctx.scoringFault = argv[++i];
     else return null;
   }
   return { ctx, json };
@@ -475,7 +605,7 @@ if (require.main === module) {
     childMain(argv).catch(e => { process.stderr.write('child failure: ' + (e && e.message ? e.message.slice(0, 200) : 'unknown') + '\n'); process.exit(3); });
   } else {
     const parsed = parseArgs(argv);
-    if (!parsed) { process.stderr.write('usage: rollback-qualification-harness.js [--json] [--decider <module>] [--inject-fault RQ-n]\n'); process.exit(64); }
+    if (!parsed) { process.stderr.write('usage: rollback-qualification-harness.js [--json] [--decider <module>] [--inject-fault RQ-n] [--inject-scoring-fault <name>]\n'); process.exit(64); }
     run(parsed.ctx).then(report => {
       if (parsed.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
       else {
@@ -490,4 +620,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { run, RQS, EXIT: Object.freeze({ QUALIFIED: 0, NOT_QUALIFIED: 1, HARNESS_ERROR: 2, USAGE: 64 }) };
+module.exports = { run, RQS, SCORING_FAULTS, EXIT: Object.freeze({ QUALIFIED: 0, NOT_QUALIFIED: 1, HARNESS_ERROR: 2, USAGE: 64 }) };

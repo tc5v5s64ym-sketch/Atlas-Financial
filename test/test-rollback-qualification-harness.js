@@ -101,3 +101,61 @@ test('RH-4 CLI exit codes: 1 on current main, 2 on injected fault, 64 on usage e
   assert.equal(f.harness.status, 'error');
   assert.equal(cli('--bogus').status, 64);
 });
+
+// Review 5670248433 regressions: evidence-changing faults never score green.
+test('RH-5 decision-path authority read failure (diagnostic ok) is ERROR / exit 2, never an RQ-1/RQ-5 PASS', async () => {
+  const r = await H.run({ scoringFault: 'decision-authority-read' });
+  assert.equal(r.harness.status, 'error');
+  for (const rq of ['RQ-1', 'RQ-5', 'RQ-3']) assert.equal(r.verdicts[rq].verdict, 'ERROR', rq);
+  assert.ok(r.harness.errors.some(e => e.rq === 'RQ-1' && /decision-path authority\/protocol failure/.test(e.error)));
+  assert.equal(r.verdicts['RQ-6'].verdict, 'PASS', 'availability decision is not on the faulted post-restore path');
+  assert.equal(r.exitCode, H.EXIT.HARNESS_ERROR);
+  assert.equal(r.qualification.status, 'NOT QUALIFIED');
+});
+
+test('RH-6 stale verifier transport failure (unknown/session-lost) is ERROR for RQ-4/RQ-3, never PASS', async () => {
+  const r = await H.run({ scoringFault: 'stale-verify-transport' });
+  assert.equal(r.harness.status, 'error');
+  assert.equal(r.verdicts['RQ-4'].verdict, 'ERROR');
+  assert.equal(r.verdicts['RQ-3'].verdict, 'ERROR');
+  assert.ok(r.harness.errors.some(e => e.rq === 'RQ-4' && /verifier uncertain \(unknown\/session-lost\)/.test(e.error)));
+  assert.equal(r.verdicts['RQ-1'].verdict, 'FAIL');
+  assert.equal(r.exitCode, H.EXIT.HARNESS_ERROR);
+});
+
+test('RH-7 a journal-changing stale refusal is not preservation: RQ-4 and RQ-3 FAIL with journal named', async () => {
+  const r = await H.run({ scoringFault: 'stale-refusal-journal-write', deciderModule: deciderFile('refuse-all-j', 'async () => false') });
+  assert.equal(r.harness.status, 'ok');
+  assert.equal(r.verdicts['RQ-1'].verdict, 'PASS');
+  assert.equal(r.verdicts['RQ-5'].verdict, 'PASS');
+  const e4 = r.verdicts['RQ-4'].evidence;
+  assert.equal(r.verdicts['RQ-4'].verdict, 'FAIL');
+  assert.equal(e4.staleInstall.status, 'refused');
+  assert.deepEqual(e4.protectedTablesChangedByAttack, ['journal']);
+  assert.equal(e4.durableStateExactLatestAfterAttack, false);
+  assert.equal(r.verdicts['RQ-3'].verdict, 'FAIL');
+  assert.equal(r.exitCode, H.EXIT.NOT_QUALIFIED);
+});
+
+test('RH-8 decision-path repair writes that restore exact-latest never score RQ-1/RQ-5/RQ-3 PASS', async () => {
+  const r = await H.run({ scoringFault: 'decision-repair-write', deciderModule: deciderFile('refuse-all-r', 'async () => false') });
+  assert.equal(r.harness.status, 'ok');
+  for (const rq of ['RQ-1', 'RQ-5']) {
+    const e = r.verdicts[rq].evidence;
+    assert.equal(r.verdicts[rq].verdict, 'FAIL', rq);
+    assert.equal(e.postRestoreDecision, 'refuse');
+    assert.equal(e.durableStateExactLatestAfterAttack, true, 'repair reached exact-latest');
+    assert.deepEqual(e.decisionPathMutations, ['post-restore']);
+    assert.ok(e.postRestoreDecisionPath.writeStatements > 0);
+  }
+  assert.equal(r.verdicts['RQ-3'].verdict, 'FAIL');
+  assert.ok(r.verdicts['RQ-3'].evidence.attacks.filter(a => a.attack !== 'RQ-4').every(a => a.prohibitedMutation));
+  assert.equal(r.qualification.status, 'NOT QUALIFIED');
+});
+
+test('RH-9 CLI scoring faults: exit 2 for uncertainty faults, 1 for mutation faults, 64 for unknown fault names', () => {
+  assert.equal(cli('--json', '--inject-scoring-fault', 'decision-authority-read').status, 2);
+  assert.equal(cli('--json', '--inject-scoring-fault', 'stale-verify-transport').status, 2);
+  assert.equal(cli('--json', '--inject-scoring-fault', 'stale-refusal-journal-write').status, 1);
+  assert.equal(cli('--inject-scoring-fault', 'bogus').status, 64);
+});
