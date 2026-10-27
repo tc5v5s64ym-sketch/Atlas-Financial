@@ -80,9 +80,15 @@ function createSettlementEvidencePostgresRuntime(options) {
   if (options !== undefined) {
     const o = record(options,['connection','custody','application','recovery'],['connection','custody','application']);
     const recovery = o.recovery === undefined ? null
-      : record(o.recovery,['recoveryRead','authorizeRecovery','finalDisclosureAuthorize']);
+      : record(o.recovery,['recoveryRead','authorizeRecovery','finalDisclosureAuthorize','authorizeRecoveryFinal','issueRecoveryEligibility'],['recoveryRead','authorizeRecovery']);
     if (recovery && (recovery.recoveryRead !== true || typeof recovery.authorizeRecovery !== 'function'
-      || typeof recovery.finalDisclosureAuthorize !== 'function')) throw invalid();
+      || (recovery.finalDisclosureAuthorize !== undefined && typeof recovery.finalDisclosureAuthorize !== 'function')
+      || (recovery.authorizeRecoveryFinal !== undefined && typeof recovery.authorizeRecoveryFinal !== 'function')
+      || (recovery.issueRecoveryEligibility !== undefined && typeof recovery.issueRecoveryEligibility !== 'function')
+      // Exactly one final authority: the synchronous disclosure predicate
+      // or the awaited recovery-final authority, never both, never neither.
+      || (typeof recovery.finalDisclosureAuthorize === 'function')
+        === (typeof recovery.authorizeRecoveryFinal === 'function'))) throw invalid();
     const supplied = record(o.connection,['Client','config','schema','scope','timeouts'],['Client','config','schema','scope']);
     const config = record(supplied.config,['host','port','database','user','password','ssl']);
     connection = Object.freeze({...supplied,config:{...config,ssl:record(config.ssl,['rejectUnauthorized','servername'])},
@@ -128,7 +134,15 @@ function createSettlementEvidencePostgresRuntime(options) {
       authorize:fence(a.authorize),acquire:fence(a.acquire),contextReader:fence(a.contextReader),
       readBase:fence(a.readBase),now:fence(a.now),store:Object.freeze(exposedStore),
       ...(recovery ? {authorizeRecovery:fence(recovery.authorizeRecovery),
-        finalDisclosureAuthorize:disclosureFence(recovery.finalDisclosureAuthorize)} : {}),
+        // The opted-in awaited authority rides the generic async fence (it
+        // is awaited at the seam's final slot, so thenables are expected);
+        // the incumbent predicate keeps its non-assimilating fence. The
+        // eligibility issuer, when supplied, is fenced the same way.
+        ...(typeof recovery.authorizeRecoveryFinal === 'function'
+          ? {authorizeRecoveryFinal:fence(recovery.authorizeRecoveryFinal)}
+          : {finalDisclosureAuthorize:disclosureFence(recovery.finalDisclosureAuthorize)}),
+        ...(typeof recovery.issueRecoveryEligibility === 'function'
+          ? {issueRecoveryEligibility:fence(recovery.issueRecoveryEligibility)} : {})} : {}),
       commitAdmitted:fence(store.commitAdmitted),
       readDocument:fence(() => owner.documentStore.read()),readPin:fence(() => pin.read())});
   }

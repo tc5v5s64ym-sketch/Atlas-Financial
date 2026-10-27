@@ -212,6 +212,24 @@ function sessionActor(req) {
       || typeof payload.sid !== 'string' || !/^[0-9a-f]{64}$/.test(payload.sid)) return null;
   return `session-${payload.sid}`;
 }
+// The recovery final authority's private session view: the same
+// HMAC-verified payload sessionActor trusts, projected to exactly what
+// the final decision may see — the session actor, the DIGEST of the
+// session id (never the id itself), and the verified expiry. A legacy
+// expiry-only cookie supplies no recovery authority here either. Built
+// only inside this module; the settlement seam receives it as an opaque
+// capability and the controller never sees it.
+function sessionAuthority(req) {
+  let token;
+  try { token = readCookie(req, 'hfd_session'); } catch { return null; }
+  if (typeof token !== 'string' || token.split('.').length !== 2) return null;
+  const payload = verify(token);
+  if (!payload || !Number.isSafeInteger(payload.exp)
+      || typeof payload.sid !== 'string' || !/^[0-9a-f]{64}$/.test(payload.sid)) return null;
+  return Object.freeze({ actorId: `session-${payload.sid}`,
+    sidDigest: crypto.createHash('sha256').update(payload.sid).digest('hex'),
+    expiresAt: payload.exp });
+}
 function assistantConfigured() {
   return Assistant.tokenConfigured({ ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN });
 }
@@ -342,7 +360,12 @@ app.post('/logout', (req, res) => {
 // literal string "ok" and reads nothing, so this widens no data surface.
 app.get('/healthz', (_req, res) => res.type('text/plain').send('ok'));
 
-const settlementHttp = require('./scripts/settlement-evidence-http').mountSettlementHttp(app, sessionActor, options.settlement, preactivationOnly);
+// The server's private session authority rides along with any supplied
+// settlement composition; it is never caller-supplied, so a composition
+// cannot substitute its own view of the caller's session.
+const settlementDependency = options.settlement === undefined ? undefined
+  : Object.freeze({ ...options.settlement, sessionAuthority });
+const settlementHttp = require('./scripts/settlement-evidence-http').mountSettlementHttp(app, sessionActor, settlementDependency, preactivationOnly);
 
 // OAuth protected-resource discovery is public metadata. It contains no token,
 // credential, or household data. The authorization server itself is external;
@@ -870,7 +893,96 @@ function createPreactivationApplication(options = {}) {
   return createApplication({ ...options, [PREACTIVATION_BOOT]: true });
 }
 
-module.exports = { createApplication, createPreactivationApplication };
+// ---------------------------------------------------------------------
+// B4 recovery composition factories. Pure compositions over an injected
+// authorization store: no environment, no provisioning, no wiring of
+// their own in this slice — the production composition supplies the
+// store and the clock. Both fail closed on any malformed input, unknown
+// outcome, or store error.
+const RECOVERY_HOUSEHOLD = /^household-[a-f0-9]{32}$/;
+const RECOVERY_OPERATION = /^operation-[a-f0-9]{32}$/;
+const RECOVERY_GENERATION = /^generation-[a-f0-9]{32}$/;
+const RECOVERY_HASH = /^[a-f0-9]{64}$/;
+const recoveryRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+  && Object.getPrototypeOf(value) === Object.prototype;
+
+// Adapts the controller's issuance call to the authorization store: the
+// issuance is durable exactly when the store resolves issued or
+// reissued-identical; every other outcome (refused, unknown, or a store
+// rejection, which propagates) is a refusal the prepare path surfaces as
+// prepare-unavailable with no preview installed.
+function createRecoveryEligibilityIssuer(options) {
+  if (!recoveryRecord(options) || !options.authorizationStore
+    || typeof options.authorizationStore.issueEligibility !== 'function'
+    || typeof options.now !== 'function')
+    throw new TypeError('recovery eligibility issuer: incomplete composition');
+  const { authorizationStore, now } = options;
+  return async input => {
+    if (!recoveryRecord(input) || !RECOVERY_HOUSEHOLD.test(input.householdId)
+      || !RECOVERY_OPERATION.test(input.operationId) || !RECOVERY_GENERATION.test(input.generation)
+      || !RECOVERY_HASH.test(input.confirmationDigest) || !RECOVERY_HASH.test(input.secretDigest))
+      throw new TypeError('recovery eligibility issuer: invalid issuance input');
+    const outcome = await authorizationStore.issueEligibility({ householdId: input.householdId,
+      operationId: input.operationId, generation: input.generation,
+      confirmationDigest: input.confirmationDigest, secretDigest: input.secretDigest,
+      issuedAt: now() });
+    if (!recoveryRecord(outcome)
+      || (outcome.outcome !== 'issued' && outcome.outcome !== 'reissued-identical'))
+      throw new Error('recovery eligibility issuance not durable');
+  };
+}
+
+// The awaited final authority: ONE fresh authorization-store read
+// supplies the eligibility record and both revocation tombstones for the
+// exact operation/generation, judged against the retained server-derived
+// input and the acquired proof view. Session expiry is judged before AND
+// after the read, so an expiry landing during the store wait refuses.
+// Nothing is cached and nothing is replayed: every call re-reads. A
+// judgement failure returns false; only a store error propagates (the
+// seam refuses either way).
+function createRecoveryFinalAuthority(options) {
+  if (!recoveryRecord(options) || !options.authorizationStore
+    || typeof options.authorizationStore.readAuthorizationState !== 'function'
+    || typeof options.now !== 'function')
+    throw new TypeError('recovery final authority: incomplete composition');
+  const { authorizationStore, now } = options;
+  const digestEqual = (a, b) => {
+    if (typeof a !== 'string' || typeof b !== 'string'
+      || !RECOVERY_HASH.test(a) || !RECOVERY_HASH.test(b)) return false;
+    const x = Buffer.from(a, 'hex'), y = Buffer.from(b, 'hex');
+    return x.length === y.length && crypto.timingSafeEqual(x, y);
+  };
+  return async (retained, view) => {
+    if (!recoveryRecord(retained) || !recoveryRecord(view)
+      || !RECOVERY_HOUSEHOLD.test(retained.householdId)
+      || !RECOVERY_OPERATION.test(retained.operationId)
+      || !RECOVERY_GENERATION.test(retained.generation)
+      || !RECOVERY_HASH.test(retained.secretDigest) || !RECOVERY_HASH.test(retained.sidDigest)
+      || !Number.isSafeInteger(retained.expiresAt)
+      || typeof retained.actorId !== 'string' || retained.actorId.length === 0) return false;
+    if (retained.expiresAt <= now()) return false;
+    const state = await authorizationStore.readAuthorizationState({
+      operationId: retained.operationId, generation: retained.generation,
+      sidDigest: retained.sidDigest });
+    if (retained.expiresAt <= now()) return false;
+    if (!recoveryRecord(state) || state.state !== 'ok') return false;
+    if (state.operationRevoked !== false || state.sessionRevoked !== false) return false;
+    const eligibility = state.eligibility;
+    if (!recoveryRecord(eligibility)) return false;
+    // The trusted household comes from the retained composition input;
+    // the eligibility record must agree with it, never substitute it.
+    if (eligibility.householdId !== retained.householdId
+      || eligibility.operationId !== retained.operationId
+      || eligibility.generation !== retained.generation) return false;
+    if (!digestEqual(eligibility.secretDigest, retained.secretDigest)) return false;
+    if (view.status === 'committed') return digestEqual(eligibility.confirmationDigest, view.requestDigest);
+    if (view.status === 'not-applied') return digestEqual(eligibility.confirmationDigest, view.confirmationDigest);
+    return false;
+  };
+}
+
+module.exports = { createApplication, createPreactivationApplication,
+  createRecoveryEligibilityIssuer, createRecoveryFinalAuthority };
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
   createPreactivationApplication().listen(PORT, () => {

@@ -287,10 +287,16 @@ const THEME_KEY = 'hfd-theme';
 
 // Only operation/generation correlation and bounded phase cross a restart. The HttpOnly
 // signed cookie remains inaccessible here. A preview token is memory only.
+// GATE-1 exception, opted-in compositions only: the prepared response's
+// recovery secret crosses the restart WITH its marker, bound to the exact
+// generation, so a later login in this browser can present it to the
+// server's final recovery decision. It is never put in a URL, a log or an
+// export; the server retains only its digest.
 const SettlementSave = (() => {
   const KEY = 'atlas-settlement-pending-v1';
   const OP = /^operation-[a-f0-9]{32}$/;
   const GENERATION = /^generation-[a-f0-9]{32}$/;
+  const HASH = /^[a-f0-9]{64}$/;
   const bootContexts = new WeakMap();
   const record = value => value && typeof value === 'object' && !Array.isArray(value);
   const canLock = () => typeof globalThis.navigator?.locks?.request === 'function';
@@ -302,11 +308,16 @@ const SettlementSave = (() => {
   }
   function parsePending(raw) {
     if (raw === null) return null;
-    if (typeof raw !== 'string' || raw.length > 160) throw new Error('settlement-reconciliation');
+    if (typeof raw !== 'string' || raw.length > 256) throw new Error('settlement-reconciliation');
     const value = JSON.parse(raw);
-    if (!record(value) || Object.keys(value).length !== (Object.hasOwn(value, 'generation') ? 3 : 2)
+    if (!record(value) || Object.keys(value).length
+        !== 2 + (Object.hasOwn(value, 'generation') ? 1 : 0) + (Object.hasOwn(value, 'recoverySecret') ? 1 : 0)
       || !OP.test(value.operationId)
       || Object.hasOwn(value, 'generation') && !GENERATION.test(value.generation)
+      // The recovery secret is only meaningful bound to its exact
+      // generation; a secret without one, or a malformed one, is no marker.
+      || Object.hasOwn(value, 'recoverySecret')
+        && !(Object.hasOwn(value, 'generation') && HASH.test(value.recoverySecret))
       || !['preview', 'dispatched'].includes(value.phase)) throw new Error('settlement-reconciliation');
     return value;
   }
@@ -327,16 +338,21 @@ const SettlementSave = (() => {
         || value.bootClassification !== 'preactivation-only') throw new Error('settlement-reconciliation');
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   }
-  function persist(operationId, phase, generation) {
+  function persist(operationId, phase, generation, recoverySecret) {
     return mutateMarker(() => {
       const previous = pending();
       if (!GENERATION.test(generation)) throw new Error('settlement-reconciliation');
+      if (recoverySecret !== undefined && !HASH.test(recoverySecret)) throw new Error('settlement-reconciliation');
       // A prepared response cannot replace any existing operation or roll a
       // dispatched marker back to preview. Only its own live preview advances.
       if (phase === 'preview' ? previous !== null
         : phase !== 'dispatched' || previous?.operationId !== operationId || previous.generation !== generation || previous.phase !== 'preview')
         throw new Error('settlement-reconciliation');
-      const raw = JSON.stringify({ operationId, phase, generation });
+      // The secret, when the composition issued one, is written with the
+      // marker in BOTH phases and covered by the same read-back verify:
+      // a marker that did not durably retain it prevents dispatch.
+      const raw = JSON.stringify({ operationId, phase, generation,
+        ...(recoverySecret ? { recoverySecret } : {}) });
       localStorage.setItem(KEY, raw);
       if (localStorage.getItem(KEY) !== raw) throw new Error('settlement-persistence');
     });
@@ -407,7 +423,8 @@ const SettlementSave = (() => {
     if (!marker) return ordinary();
     if (marker.phase !== 'dispatched') throw new Error('settlement-reconciliation');
     const outcome = await post('outcome', { operationId: marker.operationId,
-      ...(marker.generation ? { generation: marker.generation } : {}) }, signal);
+      ...(marker.generation ? { generation: marker.generation } : {}),
+      ...(marker.recoverySecret ? { recoverySecret: marker.recoverySecret } : {}) }, signal);
     if (record(outcome) && Object.keys(outcome).length === 3 && outcome.status === 'not-applied'
       && outcome.operationId === marker.operationId && outcome.generation === marker.generation
       && GENERATION.test(marker.generation)) {
@@ -422,7 +439,9 @@ const SettlementSave = (() => {
     }
     if (outcome.status !== 'committed' || outcome.operationId !== marker.operationId)
       throw new Error('settlement-reconciliation');
-    const view = await post('publication', { operationId: marker.operationId }, signal);
+    const view = await post('publication', { operationId: marker.operationId,
+      ...(marker.recoverySecret
+        ? { generation: marker.generation, recoverySecret: marker.recoverySecret } : {}) }, signal);
     if (view.status !== 'committed' || !['included', 'unavailable'].includes(view.publication)
       || !record(view.data) || !record(view.data.plan) || !record(view.data.meta)
       || !record(view.data.plan.defaults) || !record(view.data.plan.startingCash)
@@ -534,16 +553,17 @@ const SettlementSave = (() => {
                 if (preview.status !== 'prepared' || preview.operationId !== operationId
                   || !/^[a-f0-9]{64}$/.test(preview.previewToken) || preview.assignedCents !== assignedCents
                   || !GENERATION.test(preview.generation)
+                  || Object.hasOwn(preview, 'recoverySecret') && !HASH.test(preview.recoverySecret)
                   || preview.currency !== 'cad' || !Number.isSafeInteger(preview.expiresAt)
                   || typeof preview.date !== 'string' || !record(preview.labels)) throw new Error('preview');
-                await persist(operationId, 'preview', preview.generation);
+                await persist(operationId, 'preview', preview.generation, preview.recoverySecret);
                 text('Assign ' + money2(preview.assignedCents / 100) + ' ' + preview.currency.toUpperCase()
                   + ' from ' + preview.labels.payment + ' (' + preview.date + ') to ' + preview.labels.goal
                   + '. Preview expires ' + new Date(preview.expiresAt).toISOString() + '. ');
                 button('Confirm assignment', async event => {
                   event.currentTarget.disabled = true;
                   // Failure to persist or verify the marker PREVENTS dispatch.
-                  try { await persist(operationId, 'dispatched', preview.generation); }
+                  try { await persist(operationId, 'dispatched', preview.generation, preview.recoverySecret); }
                   catch { text('Confirmation was not sent: pending state could not be saved. Reload to continue.'); return; }
                   try {
                     const outcome = await post('confirm', { operationId, previewToken: preview.previewToken,
@@ -589,17 +609,18 @@ const SettlementSave = (() => {
                 if (preview.status !== 'prepared' || preview.operationId !== operationId
                   || !/^[a-f0-9]{64}$/.test(preview.previewToken) || preview.currency !== 'cad'
                   || !GENERATION.test(preview.generation)
+                  || Object.hasOwn(preview, 'recoverySecret') && !HASH.test(preview.recoverySecret)
                   || !Number.isSafeInteger(preview.assignedCents) || preview.assignedCents <= 0
                   || !Number.isSafeInteger(preview.expiresAt) || typeof preview.date !== 'string'
                   || typeof preview.labels?.goal !== 'string') throw new Error('preview');
-                await persist(operationId, 'preview', preview.generation);
+                await persist(operationId, 'preview', preview.generation, preview.recoverySecret);
                 text('Withdraw the whole assignment of ' + money2(preview.assignedCents / 100)
                   + ' CAD to ' + preview.labels.goal + ' (' + preview.date + '). This does not move money;'
                   + ' recorded reversals remain. A new assignment requires a separate confirmation. Preview expires '
                   + new Date(preview.expiresAt).toISOString() + '. ');
                 button('Confirm withdrawal', async event => {
                   event.currentTarget.disabled = true;
-                  try { await persist(operationId, 'dispatched', preview.generation); }
+                  try { await persist(operationId, 'dispatched', preview.generation, preview.recoverySecret); }
                   catch { text('Confirmation was not sent: pending state could not be saved. Reload to continue.'); return; }
                   try {
                     const outcome = await post('confirm', { operationId, previewToken: preview.previewToken,

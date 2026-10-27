@@ -103,6 +103,7 @@ const suites = [
   ['settlement evidence B4 re-login recovery: default-disabled policy-gated cross-login outcome/publication recovery with private bundle binding (ATLAS-080)', 'test-settlement-evidence-b4-recovery.js'],
   ['settlement evidence authorization store: disconnected append-only authorization state over an exclusively owned dedicated session, scope-keyed eligibility/revocation records and one-statement state reads (ATLAS-080)', 'test-settlement-evidence-authorization-store.js'],
   ['settlement evidence authorization connection: disconnected connection ownership, TLS and catalog preflight over exactly the three authorization relations, constructing the authorization store inside over a bounded dedicated session (offline injected Client)', 'test-settlement-evidence-authorization-connection.js'],
+  ['settlement evidence recovery-to-server integration: durable eligibility issuance inside prepare, the recovery-secret credential on both disclosing routes, and the opt-in awaited final authority authorizeRecoveryFinal judged on one fresh store read (planner-trial Lane 1, ATLAS-082)', 'test-settlement-evidence-recovery-integration.js'],
   ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],

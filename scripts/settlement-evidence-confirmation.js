@@ -260,7 +260,8 @@ function receipt(result, authority, operationId) {
 function createSettlementEvidenceConfirmation(deps) {
   if (!record(deps)) throw new TypeError('settlement-confirmation: dependencies required');
   const { householdId, authorize, resolveSelection, resolvePairedSelection, commitAdmitted,
-    store, now, registerRecovery, registerPublicationOutcome, withdrawalReader, withdrawalLabels, authorizeRecovery } = deps;
+    store, now, registerRecovery, registerPublicationOutcome, withdrawalReader, withdrawalLabels, authorizeRecovery,
+    issueRecoveryEligibility } = deps;
   // Write admission fencing is selected whole at construction: a paired
   // resolver capability AND the store's admission capability, or neither.
   // Exactly one (or a non-function value) is a partial setup and refuses:
@@ -275,6 +276,7 @@ function createSettlementEvidenceConfirmation(deps) {
     || (registerRecovery !== undefined && typeof registerRecovery !== 'function')
     || (registerPublicationOutcome !== undefined && typeof registerPublicationOutcome !== 'function')
     || (authorizeRecovery !== undefined && typeof authorizeRecovery !== 'function')
+    || (issueRecoveryEligibility !== undefined && typeof issueRecoveryEligibility !== 'function')
     || (resolvePairedSelection !== undefined && typeof resolvePairedSelection !== 'function')
     || (commitAdmitted !== undefined && typeof commitAdmitted !== 'function')
     || ((resolvePairedSelection === undefined) !== (commitAdmitted === undefined))
@@ -534,12 +536,30 @@ function createSettlementEvidenceConfirmation(deps) {
       if (tick() >= preview.expiresAt) return rejected('preview-expired');
       if (uncertainOperation) return unavailable('outcome-unresolved');
       if (handleEntry(authority, request.assignmentHandle) !== retained) return rejected('assignment-changed');
-      const previewToken = crypto.randomBytes(32).toString('hex');
       const generation = 'generation-' + crypto.randomBytes(16).toString('hex');
+      // Opted-in compositions only: recovery eligibility is DURABLY issued,
+      // bound to this generation and the preview's confirmation digest,
+      // before any usable preview exists. The plaintext secret exists only
+      // in this frame and the prepared response; the issuer receives its
+      // digest. Issuance is an await, so the full recheck block repeats
+      // after it — a refusal anywhere installs no preview.
+      let recoverySecret;
+      if (issueRecoveryEligibility) {
+        recoverySecret = crypto.randomBytes(32).toString('hex');
+        await issueRecoveryEligibility({ householdId, operationId: request.operationId, generation,
+          confirmationDigest: result.confirmationDigest,
+          secretDigest: crypto.createHash('sha256').update(recoverySecret).digest('hex') });
+        await sameAuthority(ownedContext, authority);
+        if (tick() >= preview.expiresAt) return rejected('preview-expired');
+        if (uncertainOperation) return unavailable('outcome-unresolved');
+        if (handleEntry(authority, request.assignmentHandle) !== retained) return rejected('assignment-changed');
+      }
+      const previewToken = crypto.randomBytes(32).toString('hex');
       preparing.delete(request.operationId);
       previews.set(request.operationId, { kind: 'withdrawal', authority, withdrawal: retained, request, preview,
         confirmationDigest: result.confirmationDigest, previewToken, generation, attempted: false });
       return snapshot({ status: 'prepared', operationId: request.operationId, previewToken, generation,
+        ...(recoverySecret ? { recoverySecret } : {}),
         assignedCents: retained.target.assignedCents, currency: 'cad', date: retained.target.effectiveDate,
         labels: { goal: retained.label }, expiresAt: preview.expiresAt });
     } catch { return unavailable('prepare-unavailable'); }
@@ -636,14 +656,33 @@ function createSettlementEvidenceConfirmation(deps) {
       await sameAuthority(ownedContext, authority);
       if (tick() >= preview.expiresAt) return rejected('preview-expired');
       if (uncertainOperation) return unavailable('outcome-unresolved');
-      const previewToken = crypto.randomBytes(32).toString('hex');
       const generation = 'generation-' + crypto.randomBytes(16).toString('hex');
+      // Opted-in compositions only: recovery eligibility is DURABLY issued,
+      // bound to this generation and the preview's confirmation digest,
+      // before any usable preview exists. The plaintext secret exists only
+      // in this frame and the prepared response; the issuer receives its
+      // digest. Issuance is an await, so the full recheck block repeats
+      // after it — a refusal anywhere installs no preview. A lost
+      // acknowledgement simply leaves the issuance orphaned and unreachable;
+      // a re-prepare is a NEW issuance under a new generation.
+      let recoverySecret;
+      if (issueRecoveryEligibility) {
+        recoverySecret = crypto.randomBytes(32).toString('hex');
+        await issueRecoveryEligibility({ householdId, operationId: request.operationId, generation,
+          confirmationDigest: result.confirmationDigest,
+          secretDigest: crypto.createHash('sha256').update(recoverySecret).digest('hex') });
+        await sameAuthority(ownedContext, authority);
+        if (tick() >= preview.expiresAt) return rejected('preview-expired');
+        if (uncertainOperation) return unavailable('outcome-unresolved');
+      }
+      const previewToken = crypto.randomBytes(32).toString('hex');
       // Convert the reservation to a live entry without counting both slots.
       preparing.delete(request.operationId);
       previews.set(request.operationId, { authority, selection, request, preview,
         confirmationDigest: result.confirmationDigest, previewToken, generation, attempted: false });
       return snapshot({ status: 'prepared', operationId: request.operationId,
         previewToken, generation,
+        ...(recoverySecret ? { recoverySecret } : {}),
         selection: request.selection, assignedCents: command.assignedCents,
         currency: command.evidence.currency, date: command.evidence.date, asOf: command.asOf,
         operation: { version: 1, kind: 'link' }, expiresAt: preview.expiresAt });
@@ -874,9 +913,13 @@ function createSettlementEvidenceConfirmation(deps) {
     const plain = result => ({ result, binding: null, recoveryRefused: false, recheckRecovery: null });
     try {
       const ownedContext = snapshot(context), request = snapshot(input);
-      if (!record(ownedContext) || !shape(request, ['operationId'], ['generation'])
+      if (!record(ownedContext) || !shape(request, ['operationId'], ['generation', 'recoverySecret'])
         || !matches(OPERATION, request.operationId)
-        || Object.hasOwn(request, 'generation') && !matches(/^generation-[a-f0-9]{32}$/, request.generation))
+        || Object.hasOwn(request, 'generation') && !matches(/^generation-[a-f0-9]{32}$/, request.generation)
+        // The recovery credential is admitted so the HTTP seam can carry it
+        // to the final authority; the controller itself never judges it.
+        // A malformed value is an invalid request, never a silent drop.
+        || Object.hasOwn(request, 'recoverySecret') && !matches(HASH, request.recoverySecret))
         return plain(unavailable('invalid-request'));
       const authority = await authorityFor(ownedContext);
       const original = await originalOutcome(ownedContext, authority, request.operationId);
