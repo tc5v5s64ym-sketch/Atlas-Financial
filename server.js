@@ -283,6 +283,20 @@ async function buildCurrentAssistantPacket(req, res) {
     sourceCheck: { check: capturedCheck, attemptedAt: new Date().toISOString() },
   });
 }
+// Install the opted-in awaited append before the incumbent synchronous logout
+// handler. A failed append still reaches that handler's cookie/Talk cleanup,
+// with a bounded refusal instead of an acknowledged logout redirect.
+if (options[SESSION_REVOCATION]) {
+  const revokeSession = options[SESSION_REVOCATION];
+  app.post('/logout', async (req, _res, next) => {
+    const authority = sessionAuthority(req);
+    if (authority) {
+      try { await revokeSession(authority.sidDigest); }
+      catch { req.settlementLogoutUnavailable = true; }
+    }
+    next();
+  });
+}
 // Secure is mandatory in production (Render is always HTTPS) but must be
 // omitted over plain http, or a local test session can never be sent back.
 function secureFlag(req) {
@@ -347,20 +361,12 @@ app.post('/login', (req, res) => {
   res.redirect('/');
 });
 
-app.post('/logout', async (req, res) => {
+app.post('/logout', (req, res) => {
   let token;
   try { token = readCookie(req, 'hfd_session'); } catch { /* malformed cookie has no signed identity */ }
   if (token) talkSessions.clear(talkSessions.keyFromToken(token));
-  let unavailable = false;
-  if (options[SESSION_REVOCATION]) {
-    const authority = sessionAuthority(req);
-    if (authority) {
-      try { await options[SESSION_REVOCATION](authority.sidDigest); }
-      catch { unavailable = true; }
-    }
-  }
   res.set('Set-Cookie', `hfd_session=; HttpOnly;${secureFlag(req)} SameSite=Lax; Path=/; Max-Age=0`);
-  if (unavailable) return res.status(503).json({ status: 'unavailable' });
+  if (req.settlementLogoutUnavailable === true) return res.status(503).json({ status: 'unavailable' });
   res.redirect('/login');
 });
 
