@@ -49,6 +49,7 @@ const TalkStream = require('./scripts/talk-stream.js');
 const TalkWhy = require('./scripts/talk-why.js');
 
 const PREACTIVATION_BOOT = Symbol('sealed-preactivation-boot');
+const SESSION_REVOCATION = Symbol('composed-session-revocation');
 // General construction is history-unknown even without settlement dependencies.
 function createApplication(options = {}) {
 const environment = options.env || process.env;
@@ -282,6 +283,20 @@ async function buildCurrentAssistantPacket(req, res) {
     sourceCheck: { check: capturedCheck, attemptedAt: new Date().toISOString() },
   });
 }
+// Install the opted-in awaited append before the incumbent synchronous logout
+// handler. A failed append still reaches that handler's cookie/Talk cleanup,
+// with a bounded refusal instead of an acknowledged logout redirect.
+if (options[SESSION_REVOCATION]) {
+  const revokeSession = options[SESSION_REVOCATION];
+  app.post('/logout', async (req, _res, next) => {
+    const authority = sessionAuthority(req);
+    if (authority) {
+      try { await revokeSession(authority.sidDigest); }
+      catch { req.settlementLogoutUnavailable = true; }
+    }
+    next();
+  });
+}
 // Secure is mandatory in production (Render is always HTTPS) but must be
 // omitted over plain http, or a local test session can never be sent back.
 function secureFlag(req) {
@@ -347,9 +362,11 @@ app.post('/login', (req, res) => {
 });
 
 app.post('/logout', (req, res) => {
-  const token = readCookie(req, 'hfd_session');
+  let token;
+  try { token = readCookie(req, 'hfd_session'); } catch { /* malformed cookie has no signed identity */ }
   if (token) talkSessions.clear(talkSessions.keyFromToken(token));
   res.set('Set-Cookie', `hfd_session=; HttpOnly;${secureFlag(req)} SameSite=Lax; Path=/; Max-Age=0`);
+  if (req.settlementLogoutUnavailable === true) return res.status(503).json({ status: 'unavailable' });
   res.redirect('/login');
 });
 
@@ -515,7 +532,9 @@ app.get('/data.json', async (req, res) => {
       },
     }), served => { if (!res.destroyed) res.json(served); });
   } catch (err) {
-    if (err.code === 'settlement-browser-unavailable') {
+    if (err.code === 'SETTLEMENT_RUNTIME_UNAVAILABLE' || err.code === 'SETTLEMENT_COMPOSITION_UNAVAILABLE') {
+      if (!res.destroyed) res.status(503).json({ error: 'data unavailable' });
+    } else if (err.code === 'settlement-browser-unavailable') {
       if (!res.destroyed) res.status(err.status === 401 ? 401 : 503)
         .json({ error: err.status === 401 ? 'not authenticated' : 'data unavailable' });
     } else {
@@ -981,11 +1000,253 @@ function createRecoveryFinalAuthority(options) {
   };
 }
 
+// ATLAS-083: the explicit, inactive-by-default startup consumer. This config is
+// supplied by a trusted host, never request JSON or ambient database variables.
+// It confers no activation, provisioning, driver/Linux or independent-custody
+// qualification. Bootstrap/reconcile remain maintenance-owned OUTSIDE startup:
+// neither is on the existing runtime surface, and neither may be invented here.
+const COMPOSITION_TRUST = /^(?:PG.*|NODE_OPTIONS|NODE_TLS_REJECT_UNAUTHORIZED|NODE_EXTRA_CA_CERTS|NODE_USE_SYSTEM_CA|SSL_CERT_FILE|SSL_CERT_DIR|OPENSSL_.*)$/i;
+function compositionError() {
+  const error = new Error('settlement composition unavailable; interrupted outcomes remain unknown');
+  error.code = 'SETTLEMENT_COMPOSITION_UNAVAILABLE'; return error;
+}
+function compositionRecord(value, allowed, required = allowed) {
+  if (!value || Object.getPrototypeOf(value) !== Object.prototype) throw compositionError();
+  const fields = Object.getOwnPropertyDescriptors(value);
+  if (!Reflect.ownKeys(fields).every(k => typeof k === 'string' && allowed.includes(k)
+    && Object.hasOwn(fields[k], 'value')) || !required.every(k => Object.hasOwn(fields,k))) throw compositionError();
+  return Object.freeze(Object.fromEntries(Object.entries(fields).map(([k,d]) => [k,d.value])));
+}
+function compositionConnection(value) {
+  // The two factories intentionally have no exported validate-only API. Validate
+  // BOTH closed profiles here before either factory can construct a client; each
+  // factory still owns its TLS/catalog checks and bounded session lifecycle.
+  const o = compositionRecord(value,['Client','config','schema','scope','timeouts'],['Client','config','schema','scope']);
+  const c = compositionRecord(o.config,['host','port','database','user','password','ssl']);
+  const ssl = compositionRecord(c.ssl,['rejectUnauthorized','servername']);
+  if (typeof o.Client !== 'function' || typeof c.host !== 'string' || c.host.length > 253
+    || !c.host.includes('.') || require('node:net').isIP(c.host) || c.host.includes('-pooler')
+    || !c.host.split('.').every(x => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(x))
+    || !Number.isInteger(c.port) || c.port < 1 || c.port > 65535
+    || !['database','user'].every(k => typeof c[k] === 'string' && /^[a-z_][a-z0-9_]{0,62}$/.test(c[k]))
+    || typeof c.password !== 'string' || !c.password.length || c.password.length > 1024 || c.password.includes('\0')
+    || ssl.rejectUnauthorized !== true || ssl.servername !== c.host
+    || typeof o.schema !== 'string' || !/^[a-z_][a-z0-9_]{0,62}$/.test(o.schema)
+    || o.schema.startsWith('pg_') || o.schema === 'information_schema'
+    || typeof o.scope !== 'string' || !/^[a-z0-9][a-z0-9-]{0,127}$/.test(o.scope)) throw compositionError();
+  try { Reflect.construct(Object,[],o.Client); } catch { throw compositionError(); }
+  const maxima = {connect:10000,preflight:10000,query:7000,close:2000};
+  const timeouts = o.timeouts === undefined ? {} : compositionRecord(o.timeouts,Object.keys(maxima),[]);
+  if (Object.entries(timeouts).some(([k,v]) => !Number.isInteger(v) || v <= 0 || v > maxima[k])) throw compositionError();
+  return Object.freeze({...o,config:Object.freeze({...c,ssl}),timeouts});
+}
+async function startServer(options = {}) {
+  const o = compositionRecord(options,['env','host','port','baseSource','settlement'],[]);
+  const environment = o.settlement === undefined ? o.env || process.env
+    : compositionRecord(o.env,Object.keys(o.env || {}));
+  if (o.settlement !== undefined && Object.values(environment).some(v => typeof v !== 'string')) throw compositionError();
+  const port = o.port ?? environment.PORT ?? 3000;
+  if (!(Number.isInteger(port) && port >= 0 && port <= 65535
+    || typeof port === 'string' && /^\d{1,5}$/.test(port) && Number(port) <= 65535)
+    || o.host !== undefined && (typeof o.host !== 'string' || !o.host.length)) throw compositionError();
+  let phase = o.settlement === undefined ? 'inactive' : 'configuring';
+  let runtime = null, authorization = null, authOpening = null, authFailure = null;
+  let retirement = null, closing = null, reports = null, server = null, app;
+  let recover = null, highWater = 0, previousContext = null;
+  const seenClients = new WeakSet();
+  const notOpened = () => Object.freeze({state:'retired',close:'not-opened',primary:null,closeDiagnostic:null});
+  function retire() {
+    if (retirement) return retirement;
+    phase = 'retiring'; // Fence synchronously before any close or callback.
+    retirement = Promise.resolve().then(async () => {
+      const financial = runtime ? runtime.retire() : Promise.resolve(notOpened());
+      // The authorization factory owns any in-progress allocation and returns
+      // its own close proof on failure. Never race it with another close.
+      if (authOpening) { try { await authOpening; } catch { /* captured below */ } }
+      const auth = authorization ? authorization.retire() : Promise.resolve(authFailure || notOpened());
+      const [f,a] = await Promise.all([financial,auth]);
+      reports = Object.freeze({financial:f,authorization:a});
+      phase = [f,a].every(r => r.state === 'retired') ? 'retired' : 'lost';
+      return reports;
+    });
+    return retirement;
+  }
+  function checkReady() {
+    if (phase !== 'ready' || runtime.status().state !== 'ready' || authorization.status().state !== 'ready') {
+      void retire(); throw compositionError();
+    }
+  }
+  function observe(Client) {
+    // Observe loss only; no client/session/query escapes either existing owner.
+    return class ObservedClient {
+      constructor(config) {
+        const raw = new Client(config);
+        if (!raw || seenClients.has(raw)) throw compositionError();
+        seenClients.add(raw);
+        if (typeof raw.on === 'function') {
+          raw.on('error', () => { void retire(); });
+          raw.on('end', () => { void retire(); });
+        }
+        return raw;
+      }
+    };
+  }
+  function close() {
+    if (closing) return closing;
+    const retired = retire();
+    const stopped = new Promise(resolve => {
+      if (!server?.listening) return resolve();
+      server.close(resolve); server.closeIdleConnections();
+    });
+    closing = Promise.all([retired,stopped]).then(([result]) => result);
+    return closing;
+  }
+  try {
+    if (o.settlement === undefined) {
+      app = createPreactivationApplication({env:environment,...(o.baseSource ? {baseSource:o.baseSource} : {})});
+    } else {
+      if (o.baseSource !== undefined || o.env === undefined
+        || Object.keys(process.env).some(k => COMPOSITION_TRUST.test(k))) throw compositionError();
+      const s = compositionRecord(o.settlement,['connection','authorization','custody','application']);
+      const financial = compositionConnection(s.connection), auth = compositionConnection(s.authorization);
+      if (financial.config.host === auth.config.host && financial.config.database === auth.config.database
+        && (financial.config.user === auth.config.user || financial.schema === auth.schema)) throw compositionError();
+      const a = compositionRecord(s.application,['householdId','origin','authorize','authorizeRecovery','contextReader','now']);
+      if (!RECOVERY_HOUSEHOLD.test(a.householdId) || ['authorize','authorizeRecovery','contextReader','now']
+        .some(k => typeof a[k] !== 'function') || require('node:util').types.isAsyncFunction(a.authorize)) throw compositionError();
+      const custody = compositionRecord(s.custody,['pinStore','backupStore','terminalHistory','exclusionDomain']);
+      function context() {
+        try {
+        if (!['configuring','opening','ready'].includes(phase)) throw compositionError();
+        const c = compositionRecord(a.contextReader(),['canonical','env','domain','contextRevision']);
+        if (!c.canonical || Object.getPrototypeOf(c.canonical) !== Object.prototype
+          || !c.env || Object.getPrototypeOf(c.env) !== Object.prototype
+          || typeof c.domain !== 'string' || !c.domain.length || c.domain.length > 128
+          || !Number.isSafeInteger(c.contextRevision) || c.contextRevision <= 0 || c.contextRevision < highWater)
+          throw compositionError();
+        const e = compositionRecord(c.env,Object.keys(c.env));
+        if (Object.values(e).some(v => typeof v !== 'string')
+          || e.SITE_PASSWORD !== environment.SITE_PASSWORD || e.SESSION_SECRET !== environment.SESSION_SECRET) throw compositionError();
+        const captured = Object.freeze({...c,canonical:structuredClone(c.canonical),env:e});
+        // Content equality is an extra misuse check, never a replacement for
+        // the authority's revision. Unobserved ABA requires that trusted owner
+        // to advance its revision; startup cannot manufacture rollback proof.
+        if (previousContext && c.contextRevision === highWater
+          && !require('node:util').isDeepStrictEqual(captured,previousContext)) throw compositionError();
+        highWater = c.contextRevision; previousContext = captured; return captured;
+        } catch { void retire(); throw compositionError(); }
+      }
+      context(); // Validate the full initial reader before either client.
+      const sameContext = (before,after) => before.domain === after.domain && before.contextRevision === after.contextRevision;
+      const now = () => { try {const tick=a.now();if(!Number.isSafeInteger(tick)||tick<=0)throw compositionError();return tick;}
+        catch {void retire();throw compositionError();} };
+      now();
+      function authorize(input) {
+        checkReady(); const before=context(), value=a.authorize(Object.freeze({...input}));
+        // Ordinary household policy MUST be synchronous: the final SQL
+        // authority rechecks it without adding another awaited authority.
+        if (require('node:util').types.isPromise(value)) {
+          Reflect.apply(Promise.prototype.then,value,[() => {},() => {}]); throw compositionError();
+        }
+        const result=compositionRecord(value,['householdId','actorId']);
+        checkReady();
+        if (result.householdId !== a.householdId || result.actorId !== input.actorId
+          || !sameContext(before,context())) throw compositionError();
+        return result;
+      }
+      const authStore = Object.freeze(Object.fromEntries(['issueEligibility','readAuthorizationState','appendSessionRevocation']
+        .map(name => [name, async (...args) => {
+          checkReady(); const value=await authorization.authorizationStore[name](...args);checkReady();return value;
+        }])));
+      const final = createRecoveryFinalAuthority({authorizationStore:authStore,now});
+      const guardedCustody = (source,names) => Object.freeze(Object.fromEntries(names.map(name => {
+        const methods=compositionRecord(source,names);
+        if (typeof methods[name] !== 'function') throw compositionError();
+        const method=methods[name].bind(source);
+        return [name,async(...args) => {try {checkReady();const value=await method(...args);checkReady();return value;}
+          catch {void retire();throw compositionError();}}];
+      })));
+      const nativeHistory = custody.terminalHistory && Object.hasOwn(custody.terminalHistory,'mode');
+      const history = nativeHistory ? compositionRecord(custody.terminalHistory,['mode'])
+        : guardedCustody(custody.terminalHistory,['readSnapshot','compareAndAppend']);
+      // Keep the registry's visibility of the ACTUAL injected pin surface;
+      // observation wrappers must not hide aliases under another domain.
+      require('./scripts/settlement-evidence-terminal-certificate')
+        .registerDomain(a.householdId,custody.exclusionDomain,true,[custody.pinStore]);
+      // Constructing the real runtime validates store/domain/history rules with
+      // no I/O. Readiness below means session/catalog readiness ONLY.
+      runtime = require('./scripts/settlement-evidence-postgres-runtime').createSettlementEvidencePostgresRuntime({
+        connection:{...financial,Client:observe(financial.Client)},
+        custody:{pinStore:guardedCustody(custody.pinStore,['read','advance']),
+          backupStore:guardedCustody(custody.backupStore,['put','get','list']),
+          terminalHistory:history,exclusionDomain:custody.exclusionDomain},
+        application:{householdId:a.householdId,origin:a.origin,authorize,now,
+          contextReader:() => {checkReady();const c=context();return Object.freeze({domain:c.domain,contextRevision:c.contextRevision});},
+          acquire:async() => {
+            try {
+            checkReady();const before=context();
+            const paired=await ServerLiveRefresh.acquireSettlementWithWitness(before.canonical,before.env,{contextReader:context});
+            checkReady();if(!sameContext(before,context()))throw compositionError();
+            return {...paired.acquisition,witness:paired.witness};
+            } catch {void retire();throw compositionError();}
+          },
+          readBase:async() => {try {checkReady();const before=context();const base=await ServerLiveRefresh.serve(before.canonical,before.env);
+            checkReady();if(!sameContext(before,context()))throw compositionError();return base;}
+            catch {void retire();throw compositionError();}}
+        },
+        recovery:{recoveryRead:true,issueRecoveryEligibility:createRecoveryEligibilityIssuer({authorizationStore:authStore,now}),
+          authorizeRecovery:async input => {authorize({actorId:input.actorId});const before=context();
+            const grant=await a.authorizeRecovery(input);authorize({actorId:input.actorId});
+            if(!sameContext(before,context()))throw compositionError();return grant;},
+          authorizeRecoveryFinal:async(retained,view) => {
+            authorize({actorId:retained.actorId});const before=context();
+            const admitted=await final(retained,view);
+            // No await after the final snapshot: ordinary policy, household,
+            // runtime and context checks are synchronous. The HTTP seam then
+            // revalidates its private signed identity/expiry before serializing.
+            authorize({actorId:retained.actorId});
+            return admitted === true && retained.householdId === a.householdId && sameContext(before,context());
+          }}
+      });
+      // Exactly one application/controller lifetime. M2: retain the PRIVATE
+      // settled-uncertainty capability, never reset/recreate its controller or
+      // discard a latch/marker/journal at startup. No public maintenance route.
+      app = createApplication({env:environment,baseSource:runtime.settlement.readBase,
+        settlement:{...runtime.settlement,registerRecovery:fn => {recover=fn;}},
+        [SESSION_REVOCATION]:async sidDigest => {
+          try {
+            const result=await authStore.appendSessionRevocation({sidDigest,revokedAt:now()});
+            if (!['appended','already-present'].includes(result?.outcome)) throw compositionError();
+          } catch {void retire();throw compositionError();}
+        }});
+      phase='opening';await runtime.connect();
+      if(phase!=='opening')throw compositionError();
+      authOpening=require('./scripts/settlement-evidence-authorization-connection')
+        .createSettlementEvidenceAuthorizationConnection({...auth,Client:observe(auth.Client)})
+        .then(owner => {authorization=owner;return owner;},error => {
+          authFailure=error.retirement || Object.freeze({state:'lost',close:'unconfirmed',primary:null,closeDiagnostic:null});
+          throw compositionError();
+        });
+      await authOpening;if(phase!=='opening')throw compositionError();phase='ready';checkReady();
+    }
+    await new Promise((resolve,reject) => {
+      server=app.listen({port:Number(port),...(o.host ? {host:o.host} : {})},resolve);
+      server.once('error',reject);
+    });
+    if(o.settlement!==undefined)checkReady();
+    return Object.freeze({app,server,close,status:() => Object.freeze({state:phase,
+      ...(runtime ? {financial:runtime.status(),authorization:authorization?.status() || null} : {})}),
+      recoverSettledUncertainty:async() => {checkReady();return recover ? recover() : Object.freeze({status:'blocked'});}});
+  } catch {
+    const error=compositionError();error.retirement=await close();throw error;
+  }
+}
+
 module.exports = { createApplication, createPreactivationApplication,
-  createRecoveryEligibilityIssuer, createRecoveryFinalAuthority };
+  createRecoveryEligibilityIssuer, createRecoveryFinalAuthority, startServer };
 if (require.main === module) {
-  const PORT = process.env.PORT || 3000;
-  createPreactivationApplication().listen(PORT, () => {
-    console.log(`Household finance dashboard listening on ${PORT}`);
-  });
+  startServer().then(owner => {
+    console.log(`Household finance dashboard listening on ${owner.server.address().port}`);
+    for (const signal of ['SIGINT','SIGTERM']) process.once(signal,() => {void owner.close();});
+  }).catch(() => {console.error('FATAL: server startup unavailable.');process.exitCode=1;});
 }
