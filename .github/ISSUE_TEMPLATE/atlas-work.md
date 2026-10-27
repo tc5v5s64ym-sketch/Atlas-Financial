@@ -50,15 +50,22 @@ and which owner visibility applies before merge.>
 <Filled in at handback: commands run, exit codes, counts, PR/issue links,
 exact-head SHA reviewed, and the reviewer's verdict reference.>
 
-Closing language: "Closes #N" records issue completion only. It does not
-imply deployment, activation, or qualification completion.
+Closing language: use "Closes #N" only when merging fulfills the issue's
+complete acceptance. If deployment, qualification, or any gated acceptance
+item remains, use "Refs #N" and close the issue later on evidence. "Closes #N"
+records issue completion only; it does not imply deployment, activation, or
+qualification completion.
 
 <!--
-Provenance note (pilot rule, consensus 2026-10-27):
+Provenance note (pilot rule, issued Plan #3, issue #718 comment 6445228346):
 
-- An assignment counts when the issue is authored by tc5v5s64ym-sketch
-  (Muse, posting via Dale's fine-grained PAT) and links the solidified plan
-  or approval that authorizes it. A lane label alone is not an assignment.
+- All three lanes post from the shared account tc5v5s64ym-sketch, so every
+  lane comment/PR body opens with "From Muse" / "From Grok" / "From Atlas".
+  Attribution is not verification and never grants owner-only permissions.
+- An assignment is valid only when it matches the named lane and scope in the
+  issued plan, linked to its dispatch record. A lane label alone is not an
+  assignment. Conflicting or ambiguous provenance is resolved with Muse
+  (dispatcher) before starting.
 - A review verdict counts when recorded on the PR/issue by the
   reviewer-of-record lane (for ChatGPT-built PRs: Muse; for Claude/Grok-built
   PRs: ChatGPT Systems Review), naming the full reviewed head SHA. A new head
