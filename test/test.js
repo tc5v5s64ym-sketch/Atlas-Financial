@@ -93,6 +93,7 @@ const suites = [
   ['settlement evidence terminal certificate: irreversible operation seal, certificate-after-seal and modelled atomic fencing (ATLAS-080)', 'test-settlement-evidence-terminal-certificate.js'],
   ['settlement evidence restore input: disconnected non-mutating exact-anchor pair validator, no install or listing authority (ATLAS-080)', 'test-settlement-evidence-restore-input.js'],
   ['settlement evidence restore install: disconnected maintenance quarantine-then-install and fresh-session readback over SQL doubles, installed-unverified only (ATLAS-080)', 'test-settlement-evidence-restore-install.js'],
+  ['settlement evidence owner restore command: explicit private inputs, qualified dedicated maintenance sessions, confirmed closure and fresh read-only verification (ATLAS-080)', 'test-restore-settlement-evidence.js'],
   ['settlement evidence resolver foundation: pure identity/binding foundation — txRef v1, BIND bindings, canonical-row crosswalk and handles (ATLAS-080)', 'test-settlement-evidence-resolver.js'],
   ['settlement evidence crosswalk exporter: same-pass tuple provenance from the incumbent sanitizer pass (ATLAS-080)', 'test-settlement-evidence-crosswalk.js'],
   ['settlement evidence refresh acquisition: memory-replay-only private acquisition through the refresh worker/lifecycle (ATLAS-080)', 'test-settlement-evidence-refresh-acquisition.js'],
