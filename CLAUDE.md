@@ -59,6 +59,11 @@ ChatGPT does two separate things, and they should not be confused.
 2. **The Atlas Contract / Systems Review** reads a triggered pull request. It is
    the one required review lane, defined below.
 
+The decision desk is accountable for usable completion. It owns the
+distance-to-live path (below) and finishes or formally retires the missing
+links on it; reviewing for danger does not discharge that accountability, and
+inactive foundations must not accumulate without an owner and a next action.
+
 **Use one name for the lane everywhere.** Two names for one lane read as two
 lanes.
 
@@ -174,7 +179,14 @@ boundaries, and bridge cleanup. Correct-but-improvable work receives `PASS`; any
 improvement notes go to the optional audit.
 
 If the review returns `BLOCKING`, repair only the named blockers and prove those
-repairs with targeted tests plus the normal applicable checks. Then request
+repairs with targeted tests plus the normal applicable checks.
+
+A repair also inspects the same failure class across the surface it touches,
+and its tests distinguish the class, not only the reported example. Unrelated
+refactoring stays out of scope. When the blocker-after-blocker stop below
+triggers, the builder records the disposition in the pull request as three
+short lines — invariant, cause, affected boundary — and waits for the desk's
+reassessment instead of pushing another repair. Then request
 bounded re-review on the new exact head. The follow-up reads that head, verifies
 the named fixes, and checks the high-risk surface changed by those repairs. It
 does **not** reopen the untouched artifact for an unlimited new review. A new
@@ -508,6 +520,19 @@ For an authority defect prefer **replace**, **derive**, **delete** — in that
 order. Permanent reconciliation between two authorities is not a fix; it is the
 defect with maintenance attached.
 
+## Distance to live
+
+For any multi-slice capability the household cannot yet use, the backlog holds
+one ordered path to live. Every remaining step on the path names one
+accountable owner and one next action. Progress is reported as distance
+remaining on that path; a merged slice is not delivered capability and is
+never reported as such. No new foundation work starts outside the path. A
+slice proposed for the path names the launch gap it closes, its exact live
+consumer, its owner, and its immediate integration step — the Closed-Loop
+naming duties applied at selection time, before any code is written. When the
+path changes materially, the owner hears it in the owner-decision format
+below: what changed, and how far remains.
+
 ## Finding disposition
 
 Anything found along the way takes exactly one disposition, recorded in the
@@ -600,6 +625,12 @@ Routine analysis, tests, refactors, derivable wording, advisory disposition and
 clean merges are **not** owner stops. Do not stop merely to report that a pull
 request is ready to merge.
 
+An owner decision reaches the owner as one short isolated message, labelled
+as a decision: the single ask, the recommendation, the cost / access
+consequences, and what it unblocks. Owner decisions are not buried inside
+review threads and are not combined into packets. A decision the owner has
+settled is recorded as settled and is not re-asked.
+
 ## Absolute data safety
 
 - **Read-only against every bank and other financial institution.** No
@@ -641,6 +672,13 @@ behaviour visible without a password.
 
 A test should prove the failure cannot recur through the path a household
 actually reads — not only through the helper that was just written.
+
+Every automated check names the concrete failure it detects and the release
+decision its result can change. A check whose result can change no decision
+is removed or demoted to advisory. Duplicated coverage of one failure is
+consolidated, not repeated. A false positive is a defect in the check: repair
+the check narrowly; never weaken the protection it implements because it
+misfired once.
 
 ## What not to build
 
