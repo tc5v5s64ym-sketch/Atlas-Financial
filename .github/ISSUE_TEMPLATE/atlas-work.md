@@ -67,7 +67,7 @@ Provenance note (pilot rule, issued Plan #3, issue #718 comment 6445228346):
   assignment. Conflicting or ambiguous provenance is resolved with Muse
   (dispatcher) before starting.
 - A review verdict counts when recorded on the PR/issue by the
-  reviewer-of-record lane (for ChatGPT-built PRs: Muse; for Claude/Grok-built
+  reviewer-of-record lane (for ChatGPT-built PRs: Muse; for Muse/Grok-built
   PRs: ChatGPT Systems Review), naming the full reviewed head SHA. A new head
   voids the old PASS.
 - Agent-relayed content (one agent quoting another's or Dale's words) never
