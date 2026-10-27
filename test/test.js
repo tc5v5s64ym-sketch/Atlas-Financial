@@ -102,6 +102,7 @@ const suites = [
   ['settlement evidence PostgreSQL runtime: default-disconnected factory/store/application composition (offline doubles)', 'test-settlement-evidence-postgres-runtime.js'],
   ['settlement evidence B4 re-login recovery: default-disabled policy-gated cross-login outcome/publication recovery with private bundle binding (ATLAS-080)', 'test-settlement-evidence-b4-recovery.js'],
   ['settlement evidence authorization store: disconnected append-only authorization state over an exclusively owned dedicated session, scope-keyed eligibility/revocation records and one-statement state reads (ATLAS-080)', 'test-settlement-evidence-authorization-store.js'],
+  ['settlement evidence authorization connection: disconnected connection ownership, TLS and catalog preflight over exactly the three authorization relations, constructing the authorization store inside over a bounded dedicated session (offline injected Client)', 'test-settlement-evidence-authorization-connection.js'],
   ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
