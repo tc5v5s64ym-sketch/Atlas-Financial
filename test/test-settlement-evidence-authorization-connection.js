@@ -42,6 +42,26 @@
 // every preflight-failure case below (AC-6..AC-17 assert exactly one
 // end() and an attached retirement report); the store-throw trigger
 // itself is the unexercised delta, recorded here rather than simulated.
+//
+// REPAIR (Systems Review BLOCKING on PR #710 head a0ec2d58, review
+// 5661207579): AC-29..AC-37 are this repair's failing-before
+// discriminators, run against that head's unmodified production blob
+// before the fix: 30 pass / 9 fail — exactly AC-29..AC-37 fail, no
+// other case moves. (1) rows() reread result.rows, so an accessor
+// yielding a genuine Array first and a non-array array-like second
+// published a ready owner through single() — AC-29..AC-31 (identity,
+// role, privileges) fail as 'factory must reject' (an owner WAS
+// published); AC-32 (schema) fails on the diagnostic stage, the old
+// code rejecting only via an incidental TypeError surfaced as
+// client-setup/other rather than schema/protocol. (2) schemaMatches()
+// accepted incomplete profiles: relation names that merely COERCE to a
+// contract key — a boxed String (AC-33), an Array (AC-34), and three
+// eligibility-shaped rows under distinct coercing names with both
+// revocation relations absent (AC-37) — all published a ready owner;
+// and sparse column / primary-key arrays passed because every() skips
+// holes (AC-35, AC-36). After the consolidated repair (own-data
+// capture in rows(); primitive exact names and dense complete column /
+// PK arrays in schemaMatches()) all 39 cases pass.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -142,9 +162,10 @@ function world(options = {}) {
     role: { canLogin: true, superuser: false, createDb: false, createRole: false, inherit: false,
       replication: false, bypassRls: false, connectionLimit: 1, memberships: 0, ownedObjects: 0 },
     grants: defaultGrants(), relations: defaultRelations(), db: createFakeDatabase(),
-    hooks: [], faults: [] };
+    hooks: [], faults: [], substitutes: [] };
   w.hookOnce = (match, fn) => w.hooks.push({ match, fn });
   w.faultOnce = (match, code) => w.faults.push({ match, code });
+  w.substituteOnce = (match, make) => w.substitutes.push({ match, make });
   const key3 = (s, a, b) => s + '\0' + a + '\0' + b;
   const key2 = (s, a) => s + '\0' + a;
 
@@ -229,6 +250,8 @@ function world(options = {}) {
       if (hi >= 0) { const h = w.hooks.splice(hi, 1)[0]; await h.fn({ text, values }); }
       const fi = w.faults.findIndex(f => f.match(text, values));
       if (fi >= 0) { const f = w.faults.splice(fi, 1)[0]; throw driverError(f.code); }
+      const si = w.substitutes.findIndex(s => s.match(text, values));
+      if (si >= 0) { const s = w.substitutes.splice(si, 1)[0]; return s.make(text, values); }
       // Route by content; PRIVILEGES first because its text also contains
       // current_database() (inside has_database_privilege).
       if (text.includes('has_table_privilege')) return { command: 'SELECT', rows: [projectPrivileges(text, w.grants)] };
@@ -236,7 +259,7 @@ function world(options = {}) {
       if (text.includes('pg_roles')) return { command: 'SELECT', rows: [{ ...w.role }] };
       if (text.includes('pg_class')) {
         assert.ok(/LIMIT 4\b/.test(text), 'SCHEMA must probe with LIMIT 4');
-        return { command: 'SELECT', rows: w.relations.map(r => ({ ...r, columns: r.columns.map(c => ({ ...c })), primaryKey: [...r.primaryKey] })) };
+        return { command: 'SELECT', rows: w.relations.map(r => ({ ...r, columns: r.columns.map(c => ({ ...c })), primaryKey: r.primaryKey.slice() })) };
       }
       // Data plane: statements must stay parameterized.
       assert.ok(Array.isArray(values), 'values must always be an array');
@@ -813,4 +836,113 @@ test('AC-28 retirement closes admission synchronously, from either side', async 
     assert.equal(report.primary, null);
     assert.equal(w.ends, 1);
   }
+});
+
+// --- Repair discriminators: captured envelopes, exact schema profile ---------
+// A hostile result whose rows accessor yields a genuine Array on the
+// first read and a non-array array-like ({0: row, length}) on the
+// second. The module must capture the envelope/rows as own data — the
+// accessor is never invoked, and only the capture is ever consumed.
+function accessorResult(validRows) {
+  let reads = 0;
+  const result = { command: 'SELECT' };
+  Object.defineProperty(result, 'rows', { enumerable: true,
+    get() { reads++; return reads === 1 ? validRows : { 0: validRows[0], length: validRows.length }; } });
+  return { result, reads: () => reads };
+}
+const schemaRowsOf = w => w.relations.map(r => ({ ...r,
+  columns: r.columns.map(c => ({ ...c })), primaryKey: r.primaryKey.slice() }));
+
+test('AC-29 an accessor-substituted identity result rejects at stage identity and the accessor is never invoked', async () => {
+  const w = world();
+  const hostile = accessorResult([{ ...w.identity }]);
+  w.substituteOnce(t => t.includes('current_database() AS database'), () => hostile.result);
+  const e = await rejection(w.open());
+  assert.equal(e.diagnostic.stage, 'identity');
+  assert.equal(e.diagnostic.category, 'protocol');
+  assert.equal(hostile.reads(), 0, 'the rows accessor is never invoked');
+  assert.equal(w.ends, 1);
+});
+
+test('AC-30 an accessor-substituted role result rejects at stage role and the accessor is never invoked', async () => {
+  const w = world();
+  const hostile = accessorResult([{ ...w.role }]);
+  w.substituteOnce(t => t.includes('pg_roles'), () => hostile.result);
+  const e = await rejection(w.open());
+  assert.equal(e.diagnostic.stage, 'role');
+  assert.equal(e.diagnostic.category, 'protocol');
+  assert.equal(hostile.reads(), 0, 'the rows accessor is never invoked');
+  assert.equal(w.queries.length, 2);
+  assert.equal(w.ends, 1);
+});
+
+test('AC-31 an accessor-substituted privileges result rejects at stage privileges and the accessor is never invoked', async () => {
+  const w = world();
+  let hostile;
+  w.substituteOnce(t => t.includes('has_table_privilege'),
+    text => { hostile = accessorResult([projectPrivileges(text, w.grants)]); return hostile.result; });
+  const e = await rejection(w.open());
+  assert.equal(e.diagnostic.stage, 'privileges');
+  assert.equal(e.diagnostic.category, 'protocol');
+  assert.equal(hostile.reads(), 0, 'the rows accessor is never invoked');
+  assert.equal(w.queries.length, 3);
+  assert.equal(w.ends, 1);
+});
+
+test('AC-32 an accessor-substituted schema result rejects at stage schema and the accessor is never invoked', async () => {
+  const w = world();
+  const hostile = accessorResult(schemaRowsOf(w));
+  w.substituteOnce(t => t.includes('pg_class'), () => hostile.result);
+  const e = await rejection(w.open());
+  assert.equal(e.diagnostic.stage, 'schema');
+  assert.equal(e.diagnostic.category, 'protocol');
+  assert.equal(hostile.reads(), 0, 'the rows accessor is never invoked');
+  assert.equal(w.ends, 1);
+});
+
+test('AC-33 a boxed-String relation name rejects at stage schema', async () => {
+  const w = world();
+  w.relations[1].name = new String('auth_revocation');
+  const e = await rejection(w.open());
+  assert.equal(e.diagnostic.stage, 'schema');
+  assert.equal(w.ends, 1);
+});
+
+test('AC-34 an Array relation name rejects at stage schema', async () => {
+  const w = world();
+  w.relations[2].name = ['auth_session_revocation'];
+  const e = await rejection(w.open());
+  assert.equal(e.diagnostic.stage, 'schema');
+  assert.equal(w.ends, 1);
+});
+
+test('AC-35 a sparse columns array rejects at stage schema', async () => {
+  const w = world();
+  delete w.relations[0].columns[6];
+  assert.equal(w.relations[0].columns.length, 7, 'the array keeps its length; only the element is a hole');
+  const e = await rejection(w.open());
+  assert.equal(e.diagnostic.stage, 'schema');
+  assert.equal(w.ends, 1);
+});
+
+test('AC-36 a sparse primary-key array rejects at stage schema', async () => {
+  const w = world();
+  delete w.relations[0].primaryKey[1];
+  assert.equal(w.relations[0].primaryKey.length, 3, 'the array keeps its length; only the element is a hole');
+  const e = await rejection(w.open());
+  assert.equal(e.diagnostic.stage, 'schema');
+  assert.equal(w.ends, 1);
+});
+
+test('AC-37 three eligibility-shaped rows under distinct coercing names do not stand in for the absent revocation relations', async () => {
+  const w = world();
+  const shape = w.relations[0];
+  w.relations = [
+    { ...shape, name: new String('auth_eligibility') },
+    { ...shape, name: ['auth_eligibility'] },
+    { ...shape, name: new String('auth_eligibility') },
+  ];
+  const e = await rejection(w.open());
+  assert.equal(e.diagnostic.stage, 'schema');
+  assert.equal(w.ends, 1);
 });

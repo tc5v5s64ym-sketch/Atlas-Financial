@@ -155,9 +155,29 @@ const RELATIONS = Object.freeze({
     primaryKey: ['scope','sid_digest'] }),
 });
 
+// A genuine dense Array: an own data value at every index. Iteration
+// helpers such as every() skip holes, so density is proven by explicit
+// per-index own-property presence, never by iteration semantics.
+function dense(value) {
+  if (!Array.isArray(value)) return false;
+  for (let i = 0; i < value.length; i++) {
+    const d = Object.getOwnPropertyDescriptor(value, i);
+    if (!d || !Object.hasOwn(d, 'value')) return false;
+  }
+  return true;
+}
 function rows(result, stage) {
-  check(result && !Array.isArray(result) && result.command === 'SELECT' && Array.isArray(result.rows), stage,'protocol');
-  return result.rows;
+  check(result && !Array.isArray(result), stage, 'protocol');
+  // Capture the envelope and the rows exactly once, as own data. An
+  // accessor is never invoked, so a substituted second read can reach
+  // neither validation nor any consumer; only the capture is consumed.
+  const command = Object.getOwnPropertyDescriptor(result, 'command');
+  const captured = Object.getOwnPropertyDescriptor(result, 'rows');
+  check(command && Object.hasOwn(command, 'value') && command.value === 'SELECT', stage, 'protocol');
+  check(captured && Object.hasOwn(captured, 'value') && dense(captured.value), stage, 'protocol');
+  const list = captured.value;
+  for (let i = 0; i < list.length; i++) check(list[i] && typeof list[i] === 'object', stage, 'protocol');
+  return list;
 }
 function single(result, stage) { const r=rows(result,stage);check(r.length===1 && r[0] && typeof r[0]==='object',stage,'protocol');return r[0]; }
 function schemaMatches(result) {
@@ -165,16 +185,29 @@ function schemaMatches(result) {
   // At most four non-index relations: the fourth proves unexpected extra state.
   check(tables.length===3,'schema','schema');
   const names=new Set();
-  for (const t of tables) {
-    const contract=RELATIONS[t.name];
-    check(contract !== undefined && !names.has(t.name), 'schema','schema'); names.add(t.name);
+  for (let i = 0; i < tables.length; i++) {
+    const t=tables[i];
+    // Relation names are primitive strings, unique and exact. A boxed
+    // String or an Array merely coerces to a contract key; it is not
+    // one, and never stands in for a present relation. Three unique
+    // contract keys over exactly three rows mean each expected
+    // relation is present exactly once.
+    const name=t.name;
+    check(typeof name === 'string', 'schema','schema');
+    const contract=RELATIONS[name];
+    check(contract !== undefined && !names.has(name), 'schema','schema'); names.add(name);
     check(t.kind==='r' && t.persistence==='p' && t.rls===false && t.forceRls===false
       && t.unsafe===false && t.primaryKeyCount===1, 'schema','schema');
-    check(Array.isArray(t.columns) && t.columns.length===contract.columns.length
-      && t.columns.every((c,i)=>c.name===contract.columns[i][0] && c.type===contract.columns[i][1]
-        && c.notNull===true && c.generated===''),'schema','schema');
-    check(Array.isArray(t.primaryKey) && t.primaryKey.length===contract.primaryKey.length
-      && t.primaryKey.every((c,i)=>c===contract.primaryKey[i]),'schema','schema');
+    const columns=t.columns, primaryKey=t.primaryKey;
+    check(dense(columns) && columns.length===contract.columns.length,'schema','schema');
+    for (let j = 0; j < contract.columns.length; j++) {
+      const c=columns[j];
+      check(c && typeof c === 'object' && c.name===contract.columns[j][0] && c.type===contract.columns[j][1]
+        && c.notNull===true && c.generated==='', 'schema','schema');
+    }
+    check(dense(primaryKey) && primaryKey.length===contract.primaryKey.length,'schema','schema');
+    for (let j = 0; j < contract.primaryKey.length; j++)
+      check(primaryKey[j]===contract.primaryKey[j],'schema','schema');
   }
 }
 
