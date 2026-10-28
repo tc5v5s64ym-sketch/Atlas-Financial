@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto = require('crypto');
+
 // Settlement evidence authorization-state store (ATLAS-080, B4 re-login
 // recovery) — the durable authorization state behind the recovery policy:
 // eligibility, operation revocation and session revocation records.
@@ -102,6 +104,22 @@
 // or expiry permission; the final joint decision is a later integration
 // boundary, not this module.
 //
+// Frontier reads (anchor/epoch S2) are additive and read-only. Nothing
+// here advances an anchor, and these methods are not on the decision or
+// connection path. Each is one statement on the same serial queue:
+//   readCombinedSnapshot — readState's facts plus the revocation frontier
+//   readAuthorizationFrontier — frontier only, for the advance protocol
+//   readCanonicalRevocationSet — the same frontier object, for
+//     reconciliation's canonical set
+// Eligibility is not part of the frontier. Encoding version is the
+// UTF-8 literal "1" (a later change is a new version, never a silent
+// edit). The digest is SHA-256 of the §2.1.1 preimage, computed here
+// over the rows that one statement returned — no SQL hash extension.
+// A failed or malformed read resolves { state: 'unknown' } and retires
+// the store. It never invents an empty frontier or a zero digest.
+// The three methods are own properties but not enumerable: the shipped
+// enumerable surface is pinned outside this slice. Callers use the name.
+//
 // NOT established by this module: real PostgreSQL concurrency or
 // durability qualification (its suite qualifies the protocol against
 // injected doubles only), two-connection ordering, rollback protection
@@ -198,6 +216,72 @@ function captureFields(input, keys) {
   return out;
 }
 
+// §2.1.1 canonical frontier. encodingVersion "1". Digest fields that
+// the design holds as lowercase hex are framed as their raw 32 bytes;
+// text fields are framed UTF-8; revokedAt and the entry count are
+// bare u64be. Incarnation is a digest (the genesis-event digest), so
+// it takes the raw-32-byte rule even though this store does not hold
+// the incarnation row.
+const FRONTIER_ENCODING_VERSION = '1';
+
+function u32be(n) {
+  const b = Buffer.alloc(4);
+  b.writeUInt32BE(n, 0);
+  return b;
+}
+function u64beNonNeg(n) {
+  if (!Number.isSafeInteger(n) || n < 0) return null;
+  const b = Buffer.alloc(8);
+  b.writeBigUInt64BE(BigInt(n), 0);
+  return b;
+}
+function frameBytes(bytes) {
+  if (!Buffer.isBuffer(bytes) || bytes.length > 0xffffffff) return null;
+  return Buffer.concat([u32be(bytes.length), bytes]);
+}
+function frameText(text) {
+  if (typeof text !== 'string') return null;
+  return frameBytes(Buffer.from(text, 'utf8'));
+}
+function frameHash(hex) {
+  if (!isHash(hex)) return null;
+  const raw = Buffer.from(hex, 'hex');
+  if (raw.length !== 32) return null;
+  return frameBytes(raw);
+}
+function encodeOperationEntry(operationId, generation, revokedAt) {
+  if (!isPattern(OPERATION_RE, operationId) || !isPattern(GENERATION_RE, generation) || !isTick(revokedAt)) {
+    return null;
+  }
+  const parts = [frameText('oprev'), frameText(operationId), frameText(generation), u64beNonNeg(revokedAt)];
+  if (parts.some(p => p == null)) return null;
+  return Buffer.concat(parts);
+}
+function encodeSessionEntry(sidDigest, revokedAt) {
+  if (!isHash(sidDigest) || !isTick(revokedAt)) return null;
+  const parts = [frameText('sesrev'), frameHash(sidDigest), u64beNonNeg(revokedAt)];
+  if (parts.some(p => p == null)) return null;
+  return Buffer.concat(parts);
+}
+function asJsonArray(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return null;
+  let parsed;
+  try { parsed = JSON.parse(value); } catch { return null; }
+  return Array.isArray(parsed) ? parsed : null;
+}
+function captureTuple(tuple, width) {
+  if (!Array.isArray(tuple) || tuple.length !== width) return null;
+  const out = [];
+  try {
+    for (let i = 0; i < width; i++) {
+      if (!Object.hasOwn(tuple, i)) return null;
+      out.push(tuple[i]);
+    }
+  } catch { return null; }
+  return out;
+}
+
 function createAuthorizationStore(options) {
   if (!isRecord(options)) badInput('options are required');
   const { session, schema, scope } = options;
@@ -260,6 +344,30 @@ function createAuthorizationStore(options) {
       + ' ON r.scope = $1 AND r.operation_id = $2 AND r.generation = $3'
       + ' LEFT JOIN ' + T.sessionRevocation + ' s'
       + ' ON s.scope = $1 AND s.sid_digest = $4',
+    // One statement: the shipped fact joins, plus both revocation
+    // relations. Subqueries share this statement's snapshot. json_agg
+    // order is undefined; canonical order is the encoded-byte sort.
+    readCombined: 'SELECT e.household_id AS household_id, e.operation_id AS operation_id,'
+      + ' e.generation AS generation, e.confirmation_digest AS confirmation_digest,'
+      + ' e.secret_digest AS secret_digest, e.issued_at AS issued_at,'
+      + ' (r.operation_id IS NOT NULL) AS operation_revoked,'
+      + ' (s.sid_digest IS NOT NULL) AS session_revoked,'
+      + ' COALESCE((SELECT json_agg(json_build_array(rv.operation_id, rv.generation, rv.revoked_at))'
+      + ' FROM ' + T.revocation + ' rv WHERE rv.scope = $1), \'[]\'::json) AS frontier_operation_revocations,'
+      + ' COALESCE((SELECT json_agg(json_build_array(sv.sid_digest, sv.revoked_at))'
+      + ' FROM ' + T.sessionRevocation + ' sv WHERE sv.scope = $1), \'[]\'::json) AS frontier_session_revocations'
+      + ' FROM (VALUES (1)) AS one (x)'
+      + ' LEFT JOIN ' + T.eligibility + ' e'
+      + ' ON e.scope = $1 AND e.operation_id = $2 AND e.generation = $3'
+      + ' LEFT JOIN ' + T.revocation + ' r'
+      + ' ON r.scope = $1 AND r.operation_id = $2 AND r.generation = $3'
+      + ' LEFT JOIN ' + T.sessionRevocation + ' s'
+      + ' ON s.scope = $1 AND s.sid_digest = $4',
+    readRevocationSet: 'SELECT'
+      + ' COALESCE((SELECT json_agg(json_build_array(rv.operation_id, rv.generation, rv.revoked_at))'
+      + ' FROM ' + T.revocation + ' rv WHERE rv.scope = $1), \'[]\'::json) AS frontier_operation_revocations,'
+      + ' COALESCE((SELECT json_agg(json_build_array(sv.sid_digest, sv.revoked_at))'
+      + ' FROM ' + T.sessionRevocation + ' sv WHERE sv.scope = $1), \'[]\'::json) AS frontier_session_revocations',
   });
 
   CLAIMED.add(session);
@@ -533,6 +641,158 @@ function createAuthorizationStore(options) {
     });
   }
 
+  function frontierDigest(incarnation, entries) {
+    const chunks = [
+      frameText('atlas-auth-frontier'), frameText(FRONTIER_ENCODING_VERSION),
+      frameText(schema), frameText(scope), frameHash(incarnation), u64beNonNeg(entries.length),
+    ];
+    if (chunks.some(c => c == null)) protocolFail();
+    return crypto.createHash('sha256').update(Buffer.concat(chunks.concat(entries))).digest('hex');
+  }
+
+  // One statement's revocation rows → the canonical frontier. A hole,
+  // a duplicate key, or a malformed field is a protocol failure, never
+  // a shorter set and never a digest over a guessed empty set.
+  function projectRevocationSet(row, incarnation) {
+    if (!isRecord(row) || !isHash(incarnation)) protocolFail();
+    if (!Object.hasOwn(row, 'frontier_operation_revocations')
+      || !Object.hasOwn(row, 'frontier_session_revocations')) protocolFail();
+    let opRaw; let sesRaw;
+    try {
+      opRaw = row.frontier_operation_revocations;
+      sesRaw = row.frontier_session_revocations;
+    } catch { protocolFail(); }
+    const ops = asJsonArray(opRaw);
+    const sessions = asJsonArray(sesRaw);
+    if (!ops || !sessions) protocolFail();
+    const seenOp = new Set();
+    const seenSes = new Set();
+    const encoded = [];
+    for (const tuple of ops) {
+      const fields = captureTuple(tuple, 3);
+      if (!fields) protocolFail();
+      const revokedAt = asTick(fields[2]);
+      if (!isPattern(OPERATION_RE, fields[0]) || !isPattern(GENERATION_RE, fields[1]) || revokedAt === null) {
+        protocolFail();
+      }
+      const key = fields[0] + '\0' + fields[1];
+      if (seenOp.has(key)) protocolFail();
+      seenOp.add(key);
+      const entry = encodeOperationEntry(fields[0], fields[1], revokedAt);
+      if (!entry) protocolFail();
+      encoded.push(entry);
+    }
+    for (const tuple of sessions) {
+      const fields = captureTuple(tuple, 2);
+      if (!fields) protocolFail();
+      const revokedAt = asTick(fields[1]);
+      if (!isHash(fields[0]) || revokedAt === null) protocolFail();
+      if (seenSes.has(fields[0])) protocolFail();
+      seenSes.add(fields[0]);
+      const entry = encodeSessionEntry(fields[0], revokedAt);
+      if (!entry) protocolFail();
+      encoded.push(entry);
+    }
+    encoded.sort((a, b) => Buffer.compare(a, b));
+    for (let i = 1; i < encoded.length; i++) {
+      if (Buffer.compare(encoded[i - 1], encoded[i]) === 0) protocolFail();
+    }
+    const entries = Object.freeze(encoded.map(entry => Buffer.from(entry)));
+    return Object.freeze({
+      count: entries.length,
+      encodingVersion: FRONTIER_ENCODING_VERSION,
+      schema, scope, incarnation, entries,
+      frontierDigest: frontierDigest(incarnation, entries),
+    });
+  }
+
+  function projectCombinedFacts(row, key) {
+    if (!isRecord(row)) protocolFail();
+    const captured = {};
+    for (const column of [...READ_ELIGIBILITY_COLUMNS, 'operation_revoked', 'session_revoked']) {
+      if (!Object.hasOwn(row, column)) protocolFail();
+      captured[column] = row[column];
+    }
+    if (typeof captured.operation_revoked !== 'boolean'
+      || typeof captured.session_revoked !== 'boolean') protocolFail();
+    const nullColumns = READ_ELIGIBILITY_COLUMNS.filter(c => captured[c] === null).length;
+    let eligibility = null;
+    if (nullColumns === 0) {
+      eligibility = projectEligibilityRow({
+        scope, household_id: captured.household_id, operation_id: captured.operation_id,
+        generation: captured.generation, confirmation_digest: captured.confirmation_digest,
+        secret_digest: captured.secret_digest, issued_at: captured.issued_at,
+      }, key.operationId, key.generation);
+    } else if (nullColumns !== READ_ELIGIBILITY_COLUMNS.length) {
+      protocolFail();
+    }
+    return {
+      eligibility,
+      operationRevoked: captured.operation_revoked,
+      sessionRevoked: captured.session_revoked,
+    };
+  }
+
+  function readCombinedSnapshot(input) {
+    if (!isRecord(input) || !exactKeys(input,
+      ['operationId', 'generation', 'sidDigest', 'incarnation'])) {
+      badInput('read input shape is invalid');
+    }
+    const fields = captureFields(input, ['operationId', 'generation', 'sidDigest', 'incarnation']);
+    if (!isPattern(OPERATION_RE, fields.operationId)) badInput('operationId is malformed');
+    if (!isPattern(GENERATION_RE, fields.generation)) badInput('generation is malformed');
+    if (!isHash(fields.sidDigest)) badInput('sidDigest is malformed');
+    if (!isHash(fields.incarnation)) badInput('incarnation is malformed');
+    const key = Object.freeze({ ...fields });
+    return serial(async () => {
+      if (!accepting()) return UNKNOWN_READ;
+      try {
+        const res = await statement(SQL.readCombined,
+          [scope, key.operationId, key.generation, key.sidDigest], 'SELECT');
+        if (res.rows.length !== 1) protocolFail();
+        const facts = projectCombinedFacts(res.rows[0], key);
+        const frontier = projectRevocationSet(res.rows[0], key.incarnation);
+        if (!accepting()) return UNKNOWN_READ;
+        return Object.freeze({
+          state: 'ok',
+          eligibility: facts.eligibility,
+          operationRevoked: facts.operationRevoked,
+          sessionRevoked: facts.sessionRevoked,
+          frontier,
+        });
+      } catch {
+        markLost();
+        return UNKNOWN_READ;
+      }
+    });
+  }
+
+  // Frontier-only and the canonical-set read are the two protocol
+  // surfaces (advance, reconciliation). Both execute this one
+  // revocation-set statement and return the same frontier object, so
+  // the set and the digest cannot drift apart.
+  function readRevocationFrontier(input) {
+    if (!isRecord(input) || !exactKeys(input, ['incarnation'])) {
+      badInput('read input shape is invalid');
+    }
+    const fields = captureFields(input, ['incarnation']);
+    if (!isHash(fields.incarnation)) badInput('incarnation is malformed');
+    const incarnation = fields.incarnation;
+    return serial(async () => {
+      if (!accepting()) return UNKNOWN_READ;
+      try {
+        const res = await statement(SQL.readRevocationSet, [scope], 'SELECT');
+        if (res.rows.length !== 1) protocolFail();
+        const frontier = projectRevocationSet(res.rows[0], incarnation);
+        if (!accepting()) return UNKNOWN_READ;
+        return Object.freeze({ state: 'ok', frontier });
+      } catch {
+        markLost();
+        return UNKNOWN_READ;
+      }
+    });
+  }
+
   function retire() {
     // Closes admission synchronously; idempotent; the exact session is
     // retired at most once across loss and retire().
@@ -544,10 +804,23 @@ function createAuthorizationStore(options) {
     return Object.freeze({ retired: closed || sessionRetired, accepting: accepting() });
   }
 
-  return Object.freeze({
+  const api = {
     issueEligibility, appendRevocation, appendSessionRevocation,
     readAuthorizationState, retire, status,
-  });
+  };
+  // Not enumerable: the connection suite pins Object.keys of this
+  // object, and that suite is outside S2's file boundary. The methods
+  // are still own, frozen, and called by name.
+  for (const [name, fn] of [
+    ['readCombinedSnapshot', readCombinedSnapshot],
+    ['readAuthorizationFrontier', readRevocationFrontier],
+    ['readCanonicalRevocationSet', readRevocationFrontier],
+  ]) {
+    Object.defineProperty(api, name, {
+      value: fn, writable: false, enumerable: false, configurable: false,
+    });
+  }
+  return Object.freeze(api);
 }
 
 module.exports = { createAuthorizationStore, RELATION_CONTRACT };
