@@ -43,6 +43,7 @@ const CiOutput = require('../scripts/ci-output');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['INT-3 offline session lifecycle and sanitized retirement', 'test-settlement-evidence-int3-session.js'],
   ['signed per-login session identity and legacy read compatibility', 'test-session-identity.js'],
   ['shared read-only transaction review presentation and privacy boundary', 'test-transaction-review.js'],
   ['public CI output and synthetic privacy canaries', 'test-ci-output.js'],
