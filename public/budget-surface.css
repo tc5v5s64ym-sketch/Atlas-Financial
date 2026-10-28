@@ -331,7 +331,7 @@
 .budget-goal-paid-figures > span { min-width:0; overflow-wrap:anywhere; }
 .budget-goal-paid-figures small { color:var(--text-secondary); font-size:11px; }
 .budget-goal-paid-amount { font-weight:650; }
-.budget-goal-paid.is-paid .budget-goal-paid-amount[data-budget-goal-unpaid] { color:var(--success-text); }
+.budget-goal-paid.is-paid .budget-goal-paid-amount[data-budget-goal-still-to-fund] { color:var(--success-text); }
 .budget-savings-accounts { margin:20px 0; padding:16px; border:1px solid var(--border); border-radius:14px; }
 .budget-savings-accounts > summary { cursor:pointer; color:var(--text-secondary); font-size:13px; }
 .budget-savings-accounts > summary:focus-visible { outline:2px solid var(--s1); outline-offset:4px; }

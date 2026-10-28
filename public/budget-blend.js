@@ -2051,7 +2051,7 @@
       // ATLAS-024: carry plan.js's printed Paid / Still to fund text onto
       // the visible face verbatim (published commitmentCost facts; Unknown
       // stays Unknown). No amount is parsed or recomputed here.
-      [['data-budget-goal-paid', 'Paid', 'blend-goal-paid'], ['data-budget-goal-unpaid', 'Still to fund', 'blend-goal-unpaid']].forEach(([attr, label, cls]) => {
+      [['data-budget-goal-paid', 'Paid', 'blend-goal-paid'], ['data-budget-goal-still-to-fund', 'Still to fund', 'blend-goal-unpaid']].forEach(([attr, label, cls]) => {
         const source = row.querySelector('[' + attr + ']');
         if (!source) return;
         const line = document.createElement('span');
@@ -2073,8 +2073,22 @@
       // required), distinct from missing evidence; it never divides.
       const savedValue = stampedAmount(row.getAttribute('data-budget-goal-saved-amount'));
       const requiredValue = stampedAmount(row.getAttribute('data-budget-goal-required-amount'));
+      // ATLAS-024: the visible bar reflects paid + saved against the
+      // published original cost, from the typed stamps on plan.js's paid
+      // progress block. A goal whose published state is paid renders full
+      // and green. Rows without that published geometry keep the saved /
+      // required band below, unchanged.
+      const progressBlock = row.querySelector('[data-budget-goal-paid-progress]');
+      const paidValue = stampedAmount(progressBlock?.getAttribute('data-budget-goal-paid-amount'));
+      const originalValue = stampedAmount(progressBlock?.getAttribute('data-budget-goal-original-amount'));
       let band = 'is-unknown';
-      if (savedValue != null && requiredValue != null && requiredValue >= 0) {
+      if (progressBlock?.getAttribute('data-budget-goal-paid-progress') === 'paid') {
+        band = 'is-paid';
+      } else if (paidValue != null && originalValue != null && originalValue > 0 && savedValue != null) {
+        const ratio = (paidValue + savedValue) / originalValue;
+        band = ratio >= 1 ? 'is-full' : ratio >= 0.25 ? 'is-amber' : 'is-red';
+        bar.style.setProperty('--w', Math.max(0, Math.min(1, ratio)).toFixed(4));
+      } else if (savedValue != null && requiredValue != null && requiredValue >= 0) {
         if (requiredValue === 0) band = 'is-no-funding-required';
         else {
           const ratio = savedValue / requiredValue;
