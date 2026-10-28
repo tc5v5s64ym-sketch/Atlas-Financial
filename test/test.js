@@ -97,6 +97,7 @@ const suites = [
   ['settlement evidence restore install: disconnected maintenance quarantine-then-install and fresh-session readback over SQL doubles, installed-unverified only (ATLAS-080)', 'test-settlement-evidence-restore-install.js'],
   ['settlement evidence owner restore command: explicit private inputs, qualified dedicated maintenance sessions, confirmed closure and fresh read-only verification (ATLAS-080)', 'test-restore-settlement-evidence.js'],
   ['settlement evidence INT-3 maintenance profile: offline declared-manifest requirements validator bound to the owner restore contract, compatibility never qualification (ATLAS-080)', 'test-settlement-evidence-int3-maintenance-profile.js'],
+  ['settlement evidence INT-3 restore request: offline custody binding, stale substitution refusal and owner command contract, never qualification (ATLAS-080)', 'test-settlement-evidence-int3-restore-request.js'],
   ['settlement evidence resolver foundation: pure identity/binding foundation — txRef v1, BIND bindings, canonical-row crosswalk and handles (ATLAS-080)', 'test-settlement-evidence-resolver.js'],
   ['settlement evidence crosswalk exporter: same-pass tuple provenance from the incumbent sanitizer pass (ATLAS-080)', 'test-settlement-evidence-crosswalk.js'],
   ['settlement evidence refresh acquisition: memory-replay-only private acquisition through the refresh worker/lifecycle (ATLAS-080)', 'test-settlement-evidence-refresh-acquisition.js'],
