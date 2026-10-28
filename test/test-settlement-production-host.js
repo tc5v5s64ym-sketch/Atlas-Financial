@@ -1,0 +1,714 @@
+'use strict';
+// Settlement production host (Plan #5 assembly): the composition root
+// that wires P1's owners into startServer, the GAP-2 read-only
+// authorization facade lifecycle, the canonical-file context adapter,
+// the activation-off default, and the assembly-owned custody
+// prerequisites from PR #772 (custody session/catalog preflight and
+// confirmed custody connection closure).
+//
+// SQL/TLS, household policy and refresh/provider acquisition below are
+// explicitly OFFLINE SYNTHETIC DOUBLES in the exact shape of the
+// production-composition suite's world (test-settlement-production-
+// composition.js): the pg driver is stubbed in this process only, so
+// the host binds the synthetic Client exactly where production binds
+// require('pg').Client. The custody world models GAP-1's two custody
+// relations and the catalog state the host preflight validates.
+// Labelled doubles, not live qualification.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const http = require('node:http');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const util = require('node:util');
+const { EventEmitter } = require('node:events');
+
+const householdId = 'household-' + 'a'.repeat(32);
+const FIN_USER = 'settlement_financial';
+const AUTH_USER = 'settlement_auth';
+const CUSTODY_USER = 'settlement_custody';
+const exclusionDomain = {
+  ledgerNamespace: 'ledger-' + '1'.repeat(32),
+  serializationAuthority: 'authority-' + '2'.repeat(32),
+  historyAuthority: 'authority-' + '3'.repeat(32),
+};
+const syntheticPassword = 'synthetic-host-password';
+const syntheticSessionSecret = 'synthetic-host-session-secret';
+const appEnv = { SITE_PASSWORD: syntheticPassword,
+  SESSION_SECRET: syntheticSessionSecret, ATLAS_LIVE_OVERLAY: 'live' };
+const canary = 'SYNTHETIC-CONFIG-SECRET-CANARY';
+const hash = x => crypto.createHash('sha256').update(x).digest('hex');
+const clone = x => structuredClone(x);
+const C = require('../scripts/planned-obligation-settlement-contract');
+// GAP-1 suite's own synthetic encryption pattern: a labelled test
+// double, never a production cipher.
+const syntheticEncrypt = async bytes =>
+  Buffer.concat([Buffer.from('SYNTHETIC-CIPHER:'), Buffer.from(bytes)]);
+
+// --- Synthetic pg world (adapted from the composition suite) --------
+let active = null;
+function metadata(kind) {
+  const tables = kind === 'financial' ? ['doc_head', 'doc_staged', 'journal', 'quarantine'].map(name => ({ name, kind: 'r', persistence: 'p',
+      rls: false, forceRls: false, unsafe: false, primaryKeyCount: 1,
+      columns: (name === 'quarantine' ? ['scope', 'name', 'label', 'bytes'] : ['scope', 'bytes']).map(name =>
+        ({ name, type: name === 'bytes' ? 'bytea' : 'text', notNull: name !== 'label', generated: '' })),
+      primaryKey: name === 'quarantine' ? ['scope', 'name'] : ['scope'] }))
+    : Object.entries({ auth_eligibility: [['scope', 'text'], ['household_id', 'text'], ['operation_id', 'text'],
+        ['generation', 'text'], ['confirmation_digest', 'text'], ['secret_digest', 'text'], ['issued_at', 'bigint']],
+      auth_revocation: [['scope', 'text'], ['operation_id', 'text'], ['generation', 'text'], ['revoked_at', 'bigint']],
+      auth_session_revocation: [['scope', 'text'], ['sid_digest', 'text'], ['revoked_at', 'bigint']] })
+      .map(([name, columns]) => ({ name, kind: 'r', persistence: 'p', rls: false, forceRls: false, unsafe: false, primaryKeyCount: 1,
+        columns: columns.map(([name, type]) => ({ name, type, notNull: true, generated: '' })),
+        primaryKey: name === 'auth_session_revocation' ? ['scope', 'sid_digest'] : ['scope', 'operation_id', 'generation'] }));
+  if (kind === 'financial' && active && active.nativeHistory) {
+    tables.push({ name: 'terminal_history', kind: 'r', persistence: 'p',
+      rls: false, forceRls: false, unsafe: false, primaryKeyCount: 1,
+      columns: [['scope', 'text'], ['history_bytes', 'bytea'], ['checkpoint_bytes', 'bytea']]
+        .map(([name, type]) => ({ name, type, notNull: true, generated: '' })),
+      primaryKey: ['scope'] });
+  }
+  return [
+    [{ database: 'synthetic', user: kind + '_app', pid: kind === 'financial' ? 301 : 302, searchPath: 'pg_catalog' }],
+    [{ canLogin: true, superuser: false, createDb: false, createRole: false, inherit: false,
+      replication: false, bypassRls: false, connectionLimit: 1, memberships: 0, ownedObjects: 0 }],
+    [{ connect: true, schemaUsage: true, databaseCreate: false, schemaCreate: false, tables: true, functions: true }],
+    tables,
+  ];
+}
+function custodySchemaRows(w) {
+  const col = (name, type) => ({ name, type, notNull: true, generated: '' });
+  const pin = { name: 'custody_pin', kind: 'r', persistence: 'p', rls: false, forceRls: false,
+    unsafe: false, primaryKeyCount: 1,
+    columns: [col('scope', 'text'), col('household', 'text'), col('bytes', 'bytea')],
+    primaryKey: ['scope'] };
+  const backup = { name: 'custody_backup', kind: 'r', persistence: 'p', rls: false, forceRls: false,
+    unsafe: false, primaryKeyCount: 1,
+    columns: [col('scope', 'text'), col('household', 'text'), col('revision', 'text'),
+      col('digest', 'text'), col('bytes', 'bytea'), col('integrity', 'text')],
+    primaryKey: ['scope', 'revision', 'digest'] };
+  switch (w.custodySchemaMode) {
+    case 'unlogged': return [{ ...backup }, { ...pin, persistence: 'u' }];
+    case 'rls': return [{ ...backup }, { ...pin, rls: true }];
+    case 'missing': return [{ ...pin }];
+    case 'extra': return [{ ...backup }, { ...pin }, { ...pin, name: 'surprise' }];
+    default: return [{ ...backup }, { ...pin }];
+  }
+}
+function custodyQuery(w, text, values) {
+  const result = (rows = [], rowCount = 0) => ({ command: text.split(' ')[0], rows, rowCount });
+  if (text.startsWith('SELECT current_database()')) {
+    return result([{ database: 'atlas', user: CUSTODY_USER, pid: 303, searchPath: 'pg_catalog' }]);
+  }
+  if (text.includes('pg_roles')) {
+    return result([{ canLogin: true, superuser: false, createDb: false, createRole: false,
+      inherit: false, replication: false, bypassRls: false, connectionLimit: 1,
+      memberships: 0, ownedObjects: 0 }]);
+  }
+  if (text.includes('has_database_privilege')) {
+    return result([{ connect: true, schemaUsage: true, databaseCreate: false,
+      schemaCreate: false, tables: w.custodyGrantsOk !== false }]);
+  }
+  if (text.includes('pg_class')) return result(custodySchemaRows(w));
+  if (text.includes('custody_pin')) {
+    if (text.startsWith('SELECT')) {
+      return result(w.pinRow ? [{ household: w.pinRow.household, bytes: w.pinRow.bytes }] : []);
+    }
+    if (text.startsWith('INSERT')) {
+      if (w.pinRow) { const e = new Error('duplicate key'); e.code = '23505'; throw e; }
+      w.pinRow = { household: values[1], bytes: Buffer.from(values[2]) };
+      return result([], 1);
+    }
+    if (text.startsWith('UPDATE')) {
+      if (w.pinRow && w.pinRow.household === values[2] && w.pinRow.bytes.equals(values[3])) {
+        w.pinRow = { household: values[2], bytes: Buffer.from(values[1]) };
+        return result([], 1);
+      }
+      return result([], 0);
+    }
+  }
+  if (text.includes('custody_backup')) {
+    if (text.startsWith('INSERT')) {
+      const key = values[2] + '|' + values[3];
+      if (w.backups.has(key)) return result([], 0);
+      w.backups.set(key, { household: values[1], revision: values[2], digest: values[3],
+        bytes: Buffer.from(values[4]), integrity: values[5] });
+      return result([], 1);
+    }
+    if (text.startsWith('SELECT') && text.includes('revision = $2')) {
+      const e = w.backups.get(values[1] + '|' + values[2]);
+      return result(e ? [{ ...e }] : []);
+    }
+    if (text.startsWith('SELECT')) return result([...w.backups.values()].map(e => ({ ...e })));
+  }
+  throw Error('unmodelled synthetic custody SQL');
+}
+class SyntheticClient extends EventEmitter {
+  constructor(config) {
+    super();
+    this.kind = config.user === AUTH_USER ? 'authorization'
+      : config.user === CUSTODY_USER ? 'custody' : 'financial';
+    this.config = config; this.ends = 0; this.count = 0;
+    this.connection = { stream: { encrypted: true, authorized: true, servername: 'db.example.test',
+      getPeerCertificate: () => ({ subjectaltname: 'DNS:db.example.test' }) } };
+    active.clients.push(this); active.events.push('construct:' + this.kind);
+  }
+  async connect() { active.events.push('connect:' + this.kind); if (active.hooks.connect) await active.hooks.connect(this.kind); }
+  async end() {
+    this.ends++; active.events.push('end:' + this.kind);
+    if (this.kind === 'custody' && active.endModeArmed) {
+      if (active.custodyEndMode === 'rejects') throw Error(canary);
+      if (active.custodyEndMode === 'hangs') return new Promise(() => {});
+    }
+    if (active.hooks.end) await active.hooks.end(this.kind); this.emit('end');
+  }
+  async query(text, values = []) {
+    const w = active; w.sql.push({ kind: this.kind, text, values });
+    if (w.hooks.query) { const v = await w.hooks.query(this.kind, text, values); if (v !== undefined) return v; }
+    if (this.kind === 'custody') return custodyQuery(w, text, values);
+    if (this.count++ < 4) {
+      // The identity row reports THIS session's own configured
+      // database/user — the factories check it against the profile.
+      return { command: 'SELECT', rows: this.count === 1
+        ? [{ database: this.config.database, user: this.config.user,
+            pid: this.kind === 'financial' ? 301 : 302, searchPath: 'pg_catalog' }]
+        : metadata(this.kind)[this.count - 1] };
+    }
+    const result = (rows = [], rowCount = 0) => ({ command: text.split(' ')[0], rows, rowCount });
+    if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(text)) return result();
+    if (this.kind === 'authorization') {
+      const key = values[1] + '|' + values[2];
+      if (text.startsWith('SELECT e.household_id')) {
+        const e = w.eligibility.get(key);
+        const rows = [e ? { household_id: e.householdId, operation_id: e.operationId, generation: e.generation,
+          confirmation_digest: e.confirmationDigest, secret_digest: e.secretDigest, issued_at: String(e.issuedAt),
+          operation_revoked: w.revoked.has(key), session_revoked: w.sessions.has(values[3]) }
+          : { household_id: null, operation_id: null, generation: null, confirmation_digest: null, secret_digest: null, issued_at: null,
+            operation_revoked: w.revoked.has(key), session_revoked: w.sessions.has(values[3]) }];
+        if (w.hooks.snapshot) await w.hooks.snapshot(rows[0], values);
+        return result(rows);
+      }
+      if (text.startsWith('SELECT scope, household_id')) {
+        const e = w.eligibility.get(key); return result(e ? [{ scope: values[0], household_id: e.householdId,
+          operation_id: e.operationId, generation: e.generation, confirmation_digest: e.confirmationDigest,
+          secret_digest: e.secretDigest, issued_at: String(e.issuedAt) }] : []);
+      }
+      if (text.startsWith('SELECT revoked_at')) return result((text.includes('auth_session_revocation')
+        ? w.sessions.has(values[1]) : w.revoked.has(key)) ? [{ revoked_at: '1' }] : []);
+      if (text.startsWith('INSERT INTO')) {
+        if (text.includes('auth_eligibility')) w.eligibility.set(values[2] + '|' + values[3], {
+          householdId: values[1], operationId: values[2], generation: values[3], confirmationDigest: values[4],
+          secretDigest: values[5], issuedAt: values[6] });
+        else if (text.includes('auth_session_revocation')) w.sessions.add(values[1]);
+        else w.revoked.add(key);
+        return result([], 1);
+      }
+    } else {
+      if (text.includes('pg_try_advisory_lock')) return result([{ locked: true }]);
+      if (text.includes('pg_advisory_unlock')) return result([{ unlocked: true }]);
+      if (text.includes('pg_backend_pid')) return result([{ pid: 301 }]);
+      if (text.includes('.terminal_history')) {
+        if (text.startsWith('SELECT history_bytes')) {
+          return result(w.terminalRow ? [{ history_bytes: w.terminalRow.historyBytes,
+            checkpoint_bytes: w.terminalRow.checkpointBytes }] : []);
+        }
+        if (text.startsWith('UPDATE')) {
+          if (w.terminalRow && w.terminalRow.historyBytes.equals(values[3])
+            && w.terminalRow.checkpointBytes.equals(values[4])) {
+            w.terminalRow = { historyBytes: Buffer.from(values[1]),
+              checkpointBytes: Buffer.from(values[2]) };
+            return result([], 1);
+          }
+          return result([], 0);
+        }
+      }
+      if (text.startsWith('SELECT bytes FROM')) {
+        const field = text.includes('.doc_head') ? 'doc' : text.includes('.journal') ? 'journal' : 'temp';
+        return result(w[field] ? [{ bytes: Buffer.from(w[field]) }] : []);
+      }
+      if (text.startsWith('WITH s AS')) { w.doc = w.temp; w.temp = null; return result([], 1); }
+      if (text.startsWith('INSERT INTO')) {
+        if (text.includes('.quarantine')) throw Error('synthetic maintenance forbidden');
+        w[text.includes('.doc_staged') ? 'temp' : 'journal'] = Buffer.from(values[1]); return result([], 1);
+      }
+      if (text.startsWith('DELETE FROM')) { w[text.includes('.journal') ? 'journal' : 'temp'] = null; return result([], 1); }
+    }
+    throw Error('unmodelled synthetic SQL');
+  }
+}
+// The host binds require('pg').Client; stub the driver in THIS process
+// before the host (or anything binding it) is loaded.
+const pgPath = require.resolve('pg', { paths: [path.join(__dirname, '..')] });
+require.cache[pgPath] = { id: pgPath, filename: pgPath, loaded: true,
+  exports: { Client: SyntheticClient } };
+
+const Refresh = require('../scripts/server-live-refresh');
+const Server = require('../server');
+const { startServer } = Server;
+const { createSettlementProductionHost } = require('../scripts/settlement-production-host');
+const Owners = require('../scripts/settlement-production-owners');
+const { op } = require('./test-settlement-evidence-terminal-certificate');
+
+function makeWorld() {
+  const w = { time: Date.now(), clients: [], sql: [], events: [], hooks: {},
+    eligibility: new Map(), revoked: new Set(), sessions: new Set(),
+    doc: null, journal: null, temp: null,
+    pinRow: null, backups: new Map(), custodySchemaMode: 'ok',
+    custodyGrantsOk: true, custodyEndMode: 'ok', endModeArmed: false,
+    nativeHistory: false,
+    servedTitles: [], acquireCalls: 0, witnessCalls: 0, allowed: true };
+  // The provisioned genesis terminal-history row native mode requires
+  // (explicit provisioning is maintenance-owned outside startup; the
+  // world models it as already provisioned).
+  const genesisBody = { schema: 'terminal-history-1', householdId,
+    ledgerNamespace: exclusionDomain.ledgerNamespace, revision: 0, records: [] };
+  const genesisDigest = C.digest(genesisBody);
+  w.terminalRow = {
+    historyBytes: Buffer.from(JSON.stringify({ ...genesisBody, digest: genesisDigest })),
+    checkpointBytes: Buffer.from(JSON.stringify({
+      schema: 'terminal-history-checkpoint-1', householdId,
+      ledgerNamespace: exclusionDomain.ledgerNamespace,
+      revision: 0, digest: genesisDigest })),
+  };
+  const fixture = require('./fixtures/savings-daily-consumer-data')();
+  fixture.plan.savingsEarmarks.pools[0].goalRefs = [{ kind: 'commitment', id: 'near' }];
+  w.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-host-suite-'));
+  w.canonicalFile = path.join(w.dir, 'data.json');
+  fs.writeFileSync(w.canonicalFile, JSON.stringify(fixture));
+  w.base = JSON.parse(fs.readFileSync(w.canonicalFile, 'utf8'));
+  const packet = clone(w.base.liveOverlay.currentPeriodActuals);
+  packet.transactions = [{ id: 'synthetic-row', date: '2026-10-03', amount: 60, currency: 'cad', pending: false,
+    categoryLabel: 'Groceries', merchantKnown: true, atlasAccountId: 'chequing-a', accountRole: 'household-cash',
+    displayedPayee: 'Synthetic recorded payment' }];
+  packet.transactionWindow = { startDate: '2026-10-02', endDate: '2026-10-05', complete: true, hasMore: false, truncated: false };
+  w.acquisition = { packet, plan: clone(w.base.plan), join: [{ localId: 'synthetic-row',
+    providerAccountId: 'SYNTHETIC-ACCOUNT', transactionId: 'SYNTHETIC-TRANSACTION' }],
+    map: { mappings: [{ providerAccountId: 'SYNTHETIC-ACCOUNT', canonical: { id: 'chequing-a', collection: 'cash' } }] } };
+  return w;
+}
+
+// Labelled provider/refresh DOUBLES, the composition suite's pattern:
+// serve replays the context canonical; acquisition pairs the fixture
+// packet with a witness bound to the issuing context revision.
+function installDoubles(t, w) {
+  const serve = Refresh.serve, acquire = Refresh.acquireSettlementWithWitness;
+  Refresh.serve = async c => { w.servedTitles.push(c && c.meta ? c.meta.title : null); return clone(c); };
+  Refresh.acquireSettlementWithWitness = async (c, e, o) => {
+    w.acquireCalls++; assert.equal(typeof o.contextReader, 'function');
+    const captured = clone(o.contextReader());
+    assert.deepEqual(c, captured.canonical); assert.deepEqual(e, captured.env);
+    return { acquisition: clone(w.acquisition), witness: () => { w.witnessCalls++;
+      const cur = o.contextReader();
+      return cur.contextRevision === captured.contextRevision && cur.domain === captured.domain; } };
+  };
+  t.after(() => { Refresh.serve = serve; Refresh.acquireSettlementWithWitness = acquire; });
+}
+
+function request(w, urlPath, body, cookie = w.cookie) {
+  return new Promise((resolve, reject) => {
+    const bytes = body === undefined ? null : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
+    const req = http.request(w.url + urlPath, { method: bytes ? 'POST' : 'GET', agent: false, headers: {
+      ...(cookie ? { Cookie: cookie } : {}), ...(bytes ? { 'Content-Type': typeof body === 'string' ? 'application/x-www-form-urlencoded' : 'application/json',
+        'Content-Length': bytes.length, Origin: 'https://atlas.example.test', 'X-Atlas-Settlement': 'same-origin', 'Sec-Fetch-Site': 'same-origin' } : {}) } }, res => {
+      let raw = ''; res.setEncoding('utf8'); res.on('data', x => { raw += x; }); res.on('end', () => {
+        let value; try { value = JSON.parse(raw); } catch { value = raw; } resolve({ status: res.statusCode, headers: res.headers, value }); });
+    });
+    req.setTimeout(5000, () => req.destroy(Error('synthetic request deadline'))); req.on('error', reject); req.end(bytes);
+  });
+}
+async function login(w) {
+  const r = await request(w, '/login', 'password=' + appEnv.SITE_PASSWORD, null);
+  assert.equal(r.status, 302); return r.headers['set-cookie'][0].split(';')[0];
+}
+const sidOf = cookie => JSON.parse(Buffer.from(cookie.split('=')[1].split('.')[0], 'base64url')).sid;
+async function prepared(w, n = 1) {
+  const catalogue = (await request(w, '/settlement/selections', {})).value;
+  assert.equal(catalogue.status, 'available');
+  const r = (await request(w, '/settlement/prepare', { operationId: op(n), selection: {
+    transaction: catalogue.transactions[0].handle,
+    commitment: catalogue.commitments.find(x => x.label.includes('first')).handle }, assignedCents: 2500 })).value;
+  assert.equal(r.status, 'prepared'); assert.match(r.recoverySecret, /^[a-f0-9]{64}$/); return r;
+}
+const confirm = (w, p) => request(w, '/settlement/confirm',
+  { operationId: p.operationId, previewToken: p.previewToken, generation: p.generation, confirmed: true });
+const credential = p => ({ operationId: p.operationId, generation: p.generation, recoverySecret: p.recoverySecret });
+
+// Maintenance bootstrap, the production pattern: genesis is written
+// OUTSIDE startup by composing the shipped connection factory and the
+// evidence store directly over the same custody — the server runtime
+// deliberately exposes no bootstrap. Labelled synthetic world, same
+// factories a maintenance tool composes.
+async function bootstrapCustody(profile, custody, now) {
+  const { createSettlementEvidencePostgresConnection } =
+    require('../scripts/settlement-evidence-postgres-connection');
+  const { createSettlementEvidenceStore } = require('../scripts/settlement-evidence-store');
+  const owner = await createSettlementEvidencePostgresConnection(profile);
+  try {
+    const store = createSettlementEvidenceStore({ householdId,
+      documentStore: owner.documentStore, journalStore: owner.journalStore,
+      quarantine: owner.quarantine, lock: owner.lock,
+      pinStore: custody.pinStore, backupStore: custody.backupStore,
+      terminalHistory: custody.terminalHistory.mode === 'postgres'
+        ? owner.terminalHistory : custody.terminalHistory,
+      exclusionDomain: custody.exclusionDomain, now });
+    assert.equal((await store.bootstrap()).status, 'bootstrapped');
+  } finally { await owner.retire(); }
+}
+
+function hostConfig(w, overrides = {}) {
+  return { ...appEnv,
+    SETTLEMENT_FINANCIAL_DB_HOST: 'db.example.test', SETTLEMENT_FINANCIAL_DB_PORT: '5432',
+    SETTLEMENT_FINANCIAL_DB_NAME: 'atlas', SETTLEMENT_FINANCIAL_DB_USER: FIN_USER,
+    SETTLEMENT_FINANCIAL_DB_PASSWORD: canary, SETTLEMENT_FINANCIAL_DB_SCHEMA: 'settlement_financial',
+    SETTLEMENT_FINANCIAL_DB_SCOPE: 'synthetic-scope',
+    SETTLEMENT_AUTH_DB_HOST: 'db.example.test', SETTLEMENT_AUTH_DB_PORT: '5432',
+    SETTLEMENT_AUTH_DB_NAME: 'atlas', SETTLEMENT_AUTH_DB_USER: AUTH_USER,
+    SETTLEMENT_AUTH_DB_PASSWORD: canary, SETTLEMENT_AUTH_DB_SCHEMA: 'settlement_auth',
+    SETTLEMENT_AUTH_DB_SCOPE: 'synthetic-scope',
+    SETTLEMENT_HOUSEHOLD_ID: householdId, SETTLEMENT_ORIGIN: 'https://atlas.example.test',
+    SETTLEMENT_CONTEXT_DOMAIN: 'synthetic-household-authority',
+    SETTLEMENT_EXCLUSION_LEDGER_NAMESPACE: exclusionDomain.ledgerNamespace,
+    SETTLEMENT_EXCLUSION_SERIALIZATION_AUTHORITY: exclusionDomain.serializationAuthority,
+    SETTLEMENT_EXCLUSION_HISTORY_AUTHORITY: exclusionDomain.historyAuthority,
+    canonicalFile: w.canonicalFile, ...overrides };
+}
+function custodyConfig(overrides = {}) {
+  return {
+    SETTLEMENT_CUSTODY_DB_HOST: 'db.example.test', SETTLEMENT_CUSTODY_DB_PORT: '5432',
+    SETTLEMENT_CUSTODY_DB_NAME: 'atlas', SETTLEMENT_CUSTODY_DB_USER: CUSTODY_USER,
+    SETTLEMENT_CUSTODY_DB_PASSWORD: canary, SETTLEMENT_CUSTODY_DB_SCHEMA: 'settlement_custody',
+    SETTLEMENT_CUSTODY_DB_SCOPE: 'custody-scope', ...overrides };
+}
+const profileFor = user => ({ Client: SyntheticClient,
+  config: { host: 'db.example.test', port: 5432, database: 'atlas', user, password: canary,
+    ssl: { rejectUnauthorized: true, servername: 'db.example.test' } },
+  schema: user === AUTH_USER ? 'settlement_auth' : 'settlement_financial', scope: 'synthetic-scope' });
+
+test('host is inactive with no settlement values; the entry path stays preactivation', async t => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost({ ...appEnv });
+  assert.equal(host.active, false); assert.equal(host.settlement, null);
+  const owner = await startServer({ env: { ...appEnv }, host: '127.0.0.1', port: 0,
+    baseSource: async () => clone(w.base) });
+  t.after(() => owner.close());
+  const url = 'http://127.0.0.1:' + owner.server.address().port;
+  const cookie = await login({ url });
+  const capability = await request({ url, cookie }, '/settlement/capability');
+  assert.equal(capability.value.status, 'inactive');
+  assert.equal(w.clients.length, 0);
+});
+
+test('host refuses partial or malformed configuration by field name, before any client exists', () => {
+  const w = makeWorld(); active = w;
+  const cases = [];
+  const without = key => { const c = hostConfig(w); delete c[key];
+    cases.push([c, key]); };
+  without('SETTLEMENT_HOUSEHOLD_ID');
+  without('SETTLEMENT_AUTH_DB_PASSWORD');
+  without('SETTLEMENT_EXCLUSION_HISTORY_AUTHORITY');
+  without('SETTLEMENT_FINANCIAL_DB_SCOPE');
+  cases.push([hostConfig(w, { SETTLEMENT_HOUSEHOLD_ID: 'household-xyz' }), 'SETTLEMENT_HOUSEHOLD_ID']);
+  cases.push([hostConfig(w, { SETTLEMENT_FINANCIAL_DB_HOST: 'db-pooler.example.test' }), 'SETTLEMENT_FINANCIAL_DB_HOST']);
+  cases.push([hostConfig(w, { SETTLEMENT_FINANCIAL_DB_HOST: 'localhost' }), 'SETTLEMENT_FINANCIAL_DB_HOST']);
+  cases.push([hostConfig(w, { SETTLEMENT_AUTH_DB_USER: FIN_USER,
+    SETTLEMENT_AUTH_DB_SCHEMA: 'settlement_financial' }), 'SETTLEMENT_AUTH_DB_USER']);
+  cases.push([hostConfig(w, { SETTLEMENT_ORIGIN: 'https://atlas.example.test/path' }), 'SETTLEMENT_ORIGIN']);
+  cases.push([hostConfig(w, { SETTLEMENT_FINANCIAL_DB_SSL_SERVERNAME: 'other.example.test' }),
+    'SETTLEMENT_FINANCIAL_DB_SSL_SERVERNAME']);
+  cases.push([hostConfig(w, { SETTLEMENT_FINANCIAL_DB_PORT: '70000' }), 'SETTLEMENT_FINANCIAL_DB_PORT']);
+  // The custody profile is a group: any part of it requires all of it,
+  // under its own schema and scope.
+  const partialCustody = { ...hostConfig(w), ...custodyConfig() };
+  delete partialCustody.SETTLEMENT_CUSTODY_DB_SCOPE;
+  cases.push([partialCustody, 'SETTLEMENT_CUSTODY_DB_SCOPE']);
+  cases.push([{ ...hostConfig(w), ...custodyConfig({ SETTLEMENT_CUSTODY_DB_SCHEMA: 'settlement_financial' }) },
+    'SETTLEMENT_CUSTODY_DB_SCHEMA']);
+  cases.push([{ ...hostConfig(w), ...custodyConfig({ SETTLEMENT_CUSTODY_DB_SCOPE: 'synthetic-scope' }) },
+    'SETTLEMENT_CUSTODY_DB_SCOPE']);
+  for (const [config, field] of cases) {
+    assert.throws(() => createSettlementProductionHost(config, { encrypt: syntheticEncrypt }),
+      new RegExp('settlement-production-host: invalid configuration — ' + field), field);
+  }
+  // Durable custody without the injected encryption function refuses
+  // by name rather than composing unencrypted backups.
+  assert.throws(() => createSettlementProductionHost({ ...hostConfig(w), ...custodyConfig() }),
+    /settlement-production-host: durable custody requires the injected encryption function/);
+  assert.equal(w.clients.length, 0);
+});
+
+test('host builds the exact closed settlement record from P1 owners and constructs nothing', () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  assert.equal(host.active, true);
+  assert.deepEqual(Object.keys(host).sort(),
+    ['active', 'close', 'prepare', 'retireCustody', 'settlement', 'startContextAdapter']);
+  const s = host.settlement;
+  assert.deepEqual(Object.keys(s).sort(), ['application', 'authorization', 'connection', 'custody']);
+  for (const profile of [s.connection, s.authorization]) {
+    assert.deepEqual(Object.keys(profile).sort(), ['Client', 'config', 'schema', 'scope']);
+    assert.equal(profile.Client, SyntheticClient);
+    assert.deepEqual(Object.keys(profile.config).sort(),
+      ['database', 'host', 'password', 'port', 'ssl', 'user']);
+    assert.equal(profile.config.port, 5432);
+    assert.deepEqual(profile.config.ssl, { rejectUnauthorized: true, servername: 'db.example.test' });
+  }
+  assert.equal(s.connection.config.user, FIN_USER);
+  assert.equal(s.authorization.config.user, AUTH_USER);
+  assert.deepEqual(Object.keys(s.custody).sort(),
+    ['backupStore', 'exclusionDomain', 'pinStore', 'terminalHistory']);
+  assert.deepEqual(s.custody.exclusionDomain, exclusionDomain);
+  assert.deepEqual(Object.keys(s.application).sort(),
+    ['authorize', 'authorizeRecovery', 'contextReader', 'householdId', 'now', 'origin']);
+  assert.equal(s.application.householdId, householdId);
+  assert.equal(s.application.origin, 'https://atlas.example.test');
+  assert.equal(util.types.isAsyncFunction(s.application.authorize), false);
+  // advanceContext is host-private: it appears on neither the record
+  // handed to startServer nor the host handle.
+  assert.equal('advanceContext' in s.application, false);
+  assert.equal('advanceContext' in host, false);
+  // Composing is wiring, not activation: no client was constructed and
+  // nothing is listening until the entry calls startServer.
+  assert.equal(w.clients.length, 0);
+  host.close();
+});
+
+test('GAP-2 facade: refuses before binding and after retirement, delegates to the composition\u2019s own guarded read while ready', async t => {
+  const w = makeWorld(); active = w; installDoubles(t, w);
+  const authorization = profileFor(AUTH_USER);
+  const facade = Server.createSettlementAuthorizationReadFacade(authorization);
+  assert.equal(typeof facade.readAuthorizationState, 'function');
+  assert.throws(() => Server.createSettlementAuthorizationReadFacade(authorization), /composition/);
+  const owners = Owners.createSettlementProductionOwners({ householdId,
+    authorizationStore: facade,
+    context: { canonical: clone(w.base), env: { ...appEnv }, domain: 'synthetic-household-authority' } });
+  const custody = Owners.createSettlementProductionCustody(
+    { householdId, exclusionDomain, now: () => w.time });
+  const settlement = { connection: profileFor(FIN_USER), authorization,
+    custody: { pinStore: custody.pinStore, backupStore: custody.backupStore,
+      terminalHistory: custody.terminalHistory, exclusionDomain: custody.exclusionDomain },
+    application: { householdId, origin: 'https://atlas.example.test',
+      authorize: owners.authorize, authorizeRecovery: owners.authorizeRecovery,
+      contextReader: owners.contextReader, now: () => w.time } };
+  const probe = { operationId: op(9), generation: 'generation-' + '9'.repeat(32), sidDigest: 'e'.repeat(64) };
+  // Before binding: both the facade and P1's preliminary policy refuse,
+  // and the refusal does not touch or retire any composition.
+  await assert.rejects(facade.readAuthorizationState(probe), /composition/);
+  await assert.rejects(owners.authorizeRecovery({ householdId,
+    actorId: 'session-' + 'b'.repeat(64), operationId: op(9), generation: probe.generation }), /refused/);
+  await bootstrapCustody(profileFor(FIN_USER), custody, () => w.time);
+  const start = () => startServer({ env: { ...appEnv }, host: '127.0.0.1', port: 0, settlement });
+  t.after(async () => { if (w.owner) await w.owner.close().catch(() => {}); });
+  let owner = await start();
+  w.owner = owner; w.url = 'http://127.0.0.1:' + owner.server.address().port; w.cookie = await login(w);
+  const actorId = 'session-' + sidOf(w.cookie);
+  const p = await prepared(w);
+  // While ready, the facade delegates to the composition's own guarded
+  // store read: live eligibility for the issued operation is visible,
+  // and P1's preliminary admission resolves from that same read.
+  const state = await facade.readAuthorizationState(
+    { operationId: p.operationId, generation: p.generation, sidDigest: hash(sidOf(w.cookie)) });
+  assert.equal(state.state, 'ok');
+  assert.equal(state.eligibility.householdId, householdId);
+  const grant = await owners.authorizeRecovery({ householdId, actorId,
+    operationId: p.operationId, generation: p.generation });
+  assert.deepEqual(grant, { householdId, actorId, operationId: p.operationId });
+  await owner.close();
+  // After retirement the facade refuses at once — no stale generation
+  // is retained and nothing is replayed from a cache.
+  await assert.rejects(facade.readAuthorizationState(
+    { operationId: p.operationId, generation: p.generation, sidDigest: hash(sidOf(w.cookie)) }), /composition/);
+  await assert.rejects(owners.authorizeRecovery({ householdId, actorId,
+    operationId: p.operationId, generation: p.generation }), /refused/);
+  // A fresh composition over the same profile rebinds the same facade
+  // to the NEW composition's guarded read.
+  owner = await start();
+  w.owner = owner; w.url = 'http://127.0.0.1:' + owner.server.address().port; w.cookie = await login(w);
+  const grant2 = await owners.authorizeRecovery({ householdId,
+    actorId: 'session-' + sidOf(w.cookie), operationId: p.operationId, generation: p.generation });
+  assert.equal(grant2.operationId, p.operationId);
+  await owner.close();
+});
+
+test('host composition serves the settlement journey end to end', async t => {
+  const w = makeWorld(); active = w; installDoubles(t, w);
+  const config = hostConfig(w);
+  const host = createSettlementProductionHost(config);
+  await bootstrapCustody(host.settlement.connection, host.settlement.custody, () => Date.now());
+  const mark = w.events.length;
+  const owner = await startServer({ env: config, host: '127.0.0.1', port: 0, settlement: host.settlement });
+  t.after(async () => { host.close(); await owner.close(); });
+  w.owner = owner; w.url = 'http://127.0.0.1:' + owner.server.address().port; w.cookie = await login(w);
+  assert.equal(owner.status().state, 'ready');
+  assert.deepEqual(w.events.slice(mark, mark + 4),
+    ['construct:financial', 'connect:financial', 'construct:authorization', 'connect:authorization']);
+  const p = await prepared(w);
+  const r = await confirm(w, p);
+  assert.equal(r.value.status, 'committed');
+  assert.equal(JSON.parse(w.doc).revision, 1);
+  const later = await login(w);
+  const recovered = await request(w, '/settlement/outcome', credential(p), later);
+  assert.deepEqual(recovered.value, { status: 'committed', operationId: p.operationId });
+  assert.equal((await request(w, '/data.json')).value.settlementEvidenceStatus.status, 'qualified');
+});
+
+test('canonical adapter advances the trusted context on file change, including an ABA return', async t => {
+  const w = makeWorld(); active = w; installDoubles(t, w);
+  const config = hostConfig(w);
+  const host = createSettlementProductionHost(config);
+  await bootstrapCustody(host.settlement.connection, host.settlement.custody, () => Date.now());
+  const owner = await startServer({ env: config, host: '127.0.0.1', port: 0, settlement: host.settlement });
+  t.after(async () => { host.close(); await owner.close(); });
+  w.owner = owner; w.url = 'http://127.0.0.1:' + owner.server.address().port; w.cookie = await login(w);
+  host.startContextAdapter();
+  const v1 = fs.readFileSync(w.canonicalFile, 'utf8');
+  const title1 = JSON.parse(v1).meta.title;
+  const v2 = JSON.stringify({ ...JSON.parse(v1), meta: { ...JSON.parse(v1).meta,
+    title: title1 + ' (revised)' } });
+  const title2 = JSON.parse(v2).meta.title;
+  const served = async () => { await request(w, '/data.json'); return w.servedTitles.at(-1); };
+  const until = async want => {
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      if (await served() === want) return;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    throw Error('canonical change was not adopted: ' + want);
+  };
+  assert.equal(await served(), title1);
+  fs.writeFileSync(w.canonicalFile, v2);
+  await until(title2);
+  assert.equal(owner.status().state, 'ready');
+  // ABA: the file returns to the exact earlier bytes; the fingerprint
+  // still moves (ctime/mtime), the revision advances again, and the
+  // composition adopts the returned contents without retiring.
+  fs.writeFileSync(w.canonicalFile, v1);
+  await until(title1);
+  assert.equal(owner.status().state, 'ready');
+});
+
+test('an unwired context reader fails closed on the first canonical change', async t => {
+  const w = makeWorld(); active = w; installDoubles(t, w);
+  const custody = Owners.createSettlementProductionCustody(
+    { householdId, exclusionDomain, now: () => w.time });
+  // The pre-P1 pattern the adapter replaces: a reader backed directly
+  // by the mutable file at a fixed revision. server.js's context guard
+  // must retire the composition when the contents move underneath it.
+  const settlement = { connection: profileFor(FIN_USER), authorization: profileFor(AUTH_USER),
+    custody: { pinStore: custody.pinStore, backupStore: custody.backupStore,
+      terminalHistory: custody.terminalHistory, exclusionDomain: custody.exclusionDomain },
+    application: { householdId, origin: 'https://atlas.example.test',
+      authorize: c => ({ householdId, actorId: c.actorId }),
+      authorizeRecovery: async c => ({ householdId, actorId: c.actorId, operationId: c.operationId }),
+      contextReader: () => ({ canonical: JSON.parse(fs.readFileSync(w.canonicalFile, 'utf8')),
+        env: { ...appEnv }, domain: 'synthetic-household-authority', contextRevision: 1 }),
+      now: () => w.time } };
+  const owner = await startServer({ env: { ...appEnv }, host: '127.0.0.1', port: 0, settlement });
+  t.after(() => owner.close());
+  w.owner = owner; w.url = 'http://127.0.0.1:' + owner.server.address().port; w.cookie = await login(w);
+  assert.equal((await request(w, '/data.json')).status, 200);
+  const v1 = JSON.parse(fs.readFileSync(w.canonicalFile, 'utf8'));
+  fs.writeFileSync(w.canonicalFile,
+    JSON.stringify({ ...v1, meta: { ...v1.meta, title: v1.meta.title + ' (revised)' } }));
+  assert.equal((await request(w, '/data.json')).status, 503);
+  assert.notEqual(owner.status().state, 'ready');
+});
+
+test('durable custody: preflight gates the binding, the journey runs over GAP-1 stores and native history, closure is confirmed', async t => {
+  const w = makeWorld(); active = w; w.nativeHistory = true; installDoubles(t, w);
+  const config = { ...hostConfig(w), ...custodyConfig() };
+  // Before prepare() runs the preflight, no custody client can be
+  // constructed at all: a custody operation on a fresh durable host
+  // refuses (probed on a throwaway host — GAP-1 fences a lost session
+  // permanently, exactly as designed).
+  const probe = createSettlementProductionHost(config, { encrypt: syntheticEncrypt });
+  await assert.rejects(probe.settlement.custody.pinStore.read(), /custody|unavailable/);
+  const host = createSettlementProductionHost(config, { encrypt: syntheticEncrypt });
+  assert.deepEqual(host.settlement.custody.terminalHistory, { mode: 'postgres' });
+  await host.prepare();
+  await bootstrapCustody({ ...host.settlement.connection,
+    terminalHistory: { householdId, ledgerNamespace: exclusionDomain.ledgerNamespace } },
+    host.settlement.custody, () => Date.now());
+  const owner = await startServer({ env: config, host: '127.0.0.1', port: 0, settlement: host.settlement });
+  t.after(async () => { await owner.close(); await host.retireCustody(); host.close(); });
+  w.owner = owner; w.url = 'http://127.0.0.1:' + owner.server.address().port; w.cookie = await login(w);
+  assert.equal(owner.status().state, 'ready');
+  const p = await prepared(w);
+  const r = await confirm(w, p);
+  assert.equal(r.value.status, 'committed');
+  assert.equal(JSON.parse(w.doc).revision, 1);
+  const later = await login(w);
+  const recovered = await request(w, '/settlement/outcome', credential(p), later);
+  assert.deepEqual(recovered.value, { status: 'committed', operationId: p.operationId });
+  assert.equal((await request(w, '/data.json')).value.settlementEvidenceStatus.status, 'qualified');
+  // The durable surfaces really were used: the pin advanced over the
+  // custody session, backups landed in custody_backup, and the native
+  // terminal-history gate was read and qualified through the financial
+  // session on the journey's own operations (a missing or malformed
+  // provisioned row fails those operations as unavailable). Positive
+  // commits do not append certificates — only negative seals do, a
+  // path the terminal-certificate suites own — so the provisioned
+  // genesis row correctly remains at revision 0.
+  assert.ok(w.pinRow, 'pin row exists in the custody schema');
+  assert.ok(w.backups.size > 0, 'document backups landed in custody_backup');
+  assert.ok(w.sql.some(e => e.kind === 'financial' && e.text.includes('.terminal_history')
+    && e.text.startsWith('SELECT history_bytes')), 'native terminal history read on the journey');
+  assert.equal(JSON.parse(w.terminalRow.historyBytes.toString('utf8')).revision, 0);
+  await owner.close();
+  // The composition root's closure receipt: confirmed, because the
+  // custody session's underlying end() actually resolved.
+  assert.deepEqual(await host.retireCustody(), { state: 'retired', close: 'confirmed' });
+});
+
+test('custody preflight refuses when the schema check fails or cannot be performed', async () => {
+  for (const mode of ['unlogged', 'rls', 'missing', 'extra']) {
+    const w = makeWorld(); active = w; w.custodySchemaMode = mode;
+    const host = createSettlementProductionHost(
+      { ...hostConfig(w), ...custodyConfig() }, { encrypt: syntheticEncrypt });
+    await assert.rejects(host.prepare(),
+      /settlement-production-host: custody preflight failed/, mode);
+    // The gate never opened, so custody operations stay unavailable.
+    await assert.rejects(host.settlement.custody.pinStore.read(),
+      /custody|unavailable/, mode);
+  }
+  // Grants short of the relation contract refuse too.
+  const wg = makeWorld(); active = wg; wg.custodyGrantsOk = false;
+  const grantHost = createSettlementProductionHost(
+    { ...hostConfig(wg), ...custodyConfig() }, { encrypt: syntheticEncrypt });
+  await assert.rejects(grantHost.prepare(),
+    /settlement-production-host: custody preflight failed — privileges/);
+  // Cannot be performed: the custody session cannot even connect.
+  const w = makeWorld(); active = w;
+  w.hooks.connect = kind => { if (kind === 'custody') throw Error(canary); };
+  const host = createSettlementProductionHost(
+    { ...hostConfig(w), ...custodyConfig() }, { encrypt: syntheticEncrypt });
+  await assert.rejects(host.prepare(),
+    /settlement-production-host: custody preflight failed/);
+});
+
+test('composition root surfaces custody closure it cannot confirm', async () => {
+  // Not started: prepared but no custody operation ever ran — no
+  // session exists, and the receipt says so honestly.
+  const w0 = makeWorld(); active = w0;
+  const host0 = createSettlementProductionHost(
+    { ...hostConfig(w0), ...custodyConfig() }, { encrypt: syntheticEncrypt });
+  await host0.prepare();
+  assert.deepEqual(await host0.retireCustody(), { state: 'retired', close: 'not-started' });
+  // Failed: the session's end() rejects. GAP-1's retire() suppresses
+  // that by design (local fencing only); the composition root's
+  // observing wrapper records it and the receipt surfaces the failure.
+  const w1 = makeWorld(); active = w1;
+  const host1 = createSettlementProductionHost(
+    { ...hostConfig(w1), ...custodyConfig() }, { encrypt: syntheticEncrypt });
+  await host1.prepare();
+  w1.endModeArmed = true; w1.custodyEndMode = 'rejects';
+  assert.equal(await host1.settlement.custody.pinStore.read(), null);
+  assert.deepEqual(await host1.retireCustody(), { state: 'lost', close: 'failed' });
+  // Unconfirmed: the session's end() never settles within the bound.
+  const w2 = makeWorld(); active = w2;
+  const host2 = createSettlementProductionHost(
+    { ...hostConfig(w2), ...custodyConfig() }, { encrypt: syntheticEncrypt });
+  await host2.prepare();
+  w2.endModeArmed = true; w2.custodyEndMode = 'hangs';
+  assert.equal(await host2.settlement.custody.pinStore.read(), null);
+  assert.deepEqual(await host2.retireCustody(), { state: 'lost', close: 'unconfirmed' });
+});

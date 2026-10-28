@@ -1040,6 +1040,38 @@ function compositionConnection(value) {
   if (Object.entries(timeouts).some(([k,v]) => !Number.isInteger(v) || v <= 0 || v > maxima[k])) throw compositionError();
   return Object.freeze({...o,config:Object.freeze({...c,ssl}),timeouts});
 }
+// GAP-2 startup seam (issue #765; Atlas 6479329564, accepted dispatch
+// 6480076295). The production host's preliminary recovery owner (P1)
+// must read authorization state through THIS composition's own guarded
+// read (authStore, inside startServer) — never through a separate
+// host-owned authorization connection, which would be a second
+// authorization lifetime outside this owner's observe / checkReady /
+// retire / close ownership. The seam is a stable read-only facade
+// keyed by the exact authorization profile object the host hands to
+// startServer: the host creates the facade before composing, the
+// composition binds it to the guarded read once the phase is ready,
+// and retirement unbinds it before any close begins. The facade
+// exposes readAuthorizationState only: no raw client or store escapes,
+// no result is cached, no grant is minted here, and the final
+// authority's store is never substituted. Unbound calls — before
+// binding and after retirement — refuse at once, without touching the
+// composition. The seam implements no reconnect; the owner/generation
+// contract (6475054955) still governs recovery. Controller, preview
+// and unknown-write state are the runtime's own and are untouched.
+const authorizationReadFacades = new WeakMap();
+function createSettlementAuthorizationReadFacade(authorizationProfile) {
+  if (!authorizationProfile || typeof authorizationProfile !== 'object'
+    || authorizationReadFacades.has(authorizationProfile)) throw compositionError();
+  const cell = { bound: null };
+  authorizationReadFacades.set(authorizationProfile, cell);
+  return Object.freeze({
+    readAuthorizationState: async input => {
+      const bound = cell.bound;
+      if (!bound) throw compositionError();
+      return bound(input);
+    },
+  });
+}
 async function startServer(options = {}) {
   const o = compositionRecord(options,['env','host','port','baseSource','settlement'],[]);
   const environment = o.settlement === undefined ? o.env || process.env
@@ -1052,12 +1084,13 @@ async function startServer(options = {}) {
   let phase = o.settlement === undefined ? 'inactive' : 'configuring';
   let runtime = null, authorization = null, authOpening = null, authFailure = null;
   let retirement = null, closing = null, reports = null, server = null, app;
-  let recover = null, highWater = 0, previousContext = null;
+  let recover = null, highWater = 0, previousContext = null, facadeCell = null;
   const seenClients = new WeakSet();
   const notOpened = () => Object.freeze({state:'retired',close:'not-opened',primary:null,closeDiagnostic:null});
   function retire() {
     if (retirement) return retirement;
     phase = 'retiring'; // Fence synchronously before any close or callback.
+    if (facadeCell) facadeCell.bound = null; // GAP-2: the facade refuses from the fence.
     retirement = Promise.resolve().then(async () => {
       const financial = runtime ? runtime.retire() : Promise.resolve(notOpened());
       // The authorization factory owns any in-progress allocation and returns
@@ -1108,6 +1141,7 @@ async function startServer(options = {}) {
       if (o.baseSource !== undefined || o.env === undefined
         || Object.keys(process.env).some(k => COMPOSITION_TRUST.test(k))) throw compositionError();
       const s = compositionRecord(o.settlement,['connection','authorization','custody','application']);
+      facadeCell = authorizationReadFacades.get(s.authorization) || null;
       const financial = compositionConnection(s.connection), auth = compositionConnection(s.authorization);
       if (financial.config.host === auth.config.host && financial.config.database === auth.config.database
         && (financial.config.user === auth.config.user || financial.schema === auth.schema)) throw compositionError();
@@ -1228,6 +1262,15 @@ async function startServer(options = {}) {
           throw compositionError();
         });
       await authOpening;if(phase!=='opening')throw compositionError();phase='ready';checkReady();
+      // GAP-2: bind the host's read facade to this composition's own
+      // guarded authorization read — after readiness, before listen,
+      // so no request can observe an unbound or half-bound facade. A
+      // facade already bound to a live composition refuses the bind
+      // (and with it this composition) rather than being shared.
+      if (facadeCell) {
+        if (facadeCell.bound) throw compositionError();
+        facadeCell.bound = input => authStore.readAuthorizationState(input);
+      }
     }
     await new Promise((resolve,reject) => {
       server=app.listen({port:Number(port),...(o.host ? {host:o.host} : {})},resolve);
@@ -1243,10 +1286,45 @@ async function startServer(options = {}) {
 }
 
 module.exports = { createApplication, createPreactivationApplication,
-  createRecoveryEligibilityIssuer, createRecoveryFinalAuthority, startServer };
+  createRecoveryEligibilityIssuer, createRecoveryFinalAuthority, startServer,
+  createSettlementAuthorizationReadFacade };
 if (require.main === module) {
-  startServer().then(owner => {
+  // Production composition root (Plan #5 assembly): the host wires the
+  // settlement composition from process.env values only. Inactive (no
+  // settlement values) → startServer() exactly as before. A partial or
+  // malformed settlement configuration throws the host's named error
+  // here, before anything listens — a boot failure, never a degraded
+  // composition. The host's canonical context adapter starts only once
+  // the composed server is up, and closes with it.
+  const host = require('./scripts/settlement-production-host')
+    .createSettlementProductionHost(process.env);
+  const starting = (async () => {
+    // Assembly-owned custody preflight (PR #772 contracts): when a
+    // custody profile is configured, prepare() discharges the custody
+    // session/catalog preflight before the composition exists; a
+    // failed preflight is a boot failure and nothing listens.
+    await host.prepare();
+    return host.active
+      ? startServer({ env: process.env, settlement: host.settlement })
+      : startServer();
+  })();
+  starting.then(owner => {
+    host.startContextAdapter();
     console.log(`Household finance dashboard listening on ${owner.server.address().port}`);
-    for (const signal of ['SIGINT','SIGTERM']) process.once(signal,() => {void owner.close();});
-  }).catch(() => {console.error('FATAL: server startup unavailable.');process.exitCode=1;});
+    for (const signal of ['SIGINT','SIGTERM']) process.once(signal,() => {
+      // The composition root owns confirmed custody closure: GAP-1's
+      // retire() is local fencing only, so the host's retireCustody()
+      // report is the closure receipt — a failed or unconfirmed close
+      // is surfaced, never silently assumed.
+      void owner.close()
+        .then(() => host.retireCustody(), () => host.retireCustody())
+        .then(report => {
+          host.close();
+          if (report && report.close !== 'confirmed' && report.close !== 'not-started') {
+            console.error(`FATAL: custody connection closure ${report.close}.`);
+            process.exitCode = 1;
+          }
+        }, () => host.close());
+    });
+  }).catch(() => {host.close();console.error('FATAL: server startup unavailable.');process.exitCode=1;});
 }

@@ -45,3 +45,78 @@ services:
       # Lunch Money, MCP, Grok, or any other existing secret.
       - key: ATLAS_TALK_GEMINI_API_KEY
         sync: false
+      # Settlement production composition (Plan #5 assembly). NAMES ONLY:
+      # every value is owner-supplied at activation and stays unset until
+      # then — with none set, the host is inactive and the app serves its
+      # current behaviour. Direct-session Postgres profiles for the Free
+      # Neon target; never a transaction-pooler endpoint. The household
+      # ID is assigned by the owner; the key ceremony and activation
+      # approval remain owner decisions.
+      - key: SETTLEMENT_FINANCIAL_DB_HOST
+        sync: false
+      - key: SETTLEMENT_FINANCIAL_DB_PORT
+        sync: false
+      - key: SETTLEMENT_FINANCIAL_DB_NAME
+        sync: false
+      - key: SETTLEMENT_FINANCIAL_DB_USER
+        sync: false
+      - key: SETTLEMENT_FINANCIAL_DB_PASSWORD
+        sync: false
+      - key: SETTLEMENT_FINANCIAL_DB_SSL_SERVERNAME
+        sync: false
+      - key: SETTLEMENT_FINANCIAL_DB_SCHEMA
+        sync: false
+      - key: SETTLEMENT_FINANCIAL_DB_SCOPE
+        sync: false
+      - key: SETTLEMENT_AUTH_DB_HOST
+        sync: false
+      - key: SETTLEMENT_AUTH_DB_PORT
+        sync: false
+      - key: SETTLEMENT_AUTH_DB_NAME
+        sync: false
+      - key: SETTLEMENT_AUTH_DB_USER
+        sync: false
+      - key: SETTLEMENT_AUTH_DB_PASSWORD
+        sync: false
+      - key: SETTLEMENT_AUTH_DB_SSL_SERVERNAME
+        sync: false
+      - key: SETTLEMENT_AUTH_DB_SCHEMA
+        sync: false
+      - key: SETTLEMENT_AUTH_DB_SCOPE
+        sync: false
+      - key: SETTLEMENT_HOUSEHOLD_ID
+        sync: false
+      - key: SETTLEMENT_ORIGIN
+        sync: false
+      - key: SETTLEMENT_CONTEXT_DOMAIN
+        sync: false
+      - key: SETTLEMENT_EXCLUSION_LEDGER_NAMESPACE
+        sync: false
+      - key: SETTLEMENT_EXCLUSION_SERIALIZATION_AUTHORITY
+        sync: false
+      - key: SETTLEMENT_EXCLUSION_HISTORY_AUTHORITY
+        sync: false
+      - key: SETTLEMENT_ANCHOR_PREFIX
+        sync: false
+      - key: SETTLEMENT_ANCHOR_SCHEMA
+        sync: false
+      # Durable custody profile (GAP-1 stores): its OWN direct-session
+      # profile, schema and scope — never the adapter schema above.
+      # Names only; values are owner-supplied at activation. With none
+      # set, custody stays on the preparatory P1 binding.
+      - key: SETTLEMENT_CUSTODY_DB_HOST
+        sync: false
+      - key: SETTLEMENT_CUSTODY_DB_PORT
+        sync: false
+      - key: SETTLEMENT_CUSTODY_DB_NAME
+        sync: false
+      - key: SETTLEMENT_CUSTODY_DB_USER
+        sync: false
+      - key: SETTLEMENT_CUSTODY_DB_PASSWORD
+        sync: false
+      - key: SETTLEMENT_CUSTODY_DB_SSL_SERVERNAME
+        sync: false
+      - key: SETTLEMENT_CUSTODY_DB_SCHEMA
+        sync: false
+      - key: SETTLEMENT_CUSTODY_DB_SCOPE
+        sync: false
