@@ -5207,7 +5207,9 @@ function budgetDailyNeededHtml(row, periodContext = false) {
 // unavailable fact prints Unknown, never 0, and the row is never hidden.
 // Fill geometry is ratio-only against the published original cost (the
 // same ratio-only rule as the v3 presentation) and draws nothing when a
-// point fact it needs is not published.
+// point fact it needs is not published. A row that carries no published
+// commitmentCost at all (legacy / pre-policy rows) keeps its prior face:
+// no Paid / Still to fund block is added.
 const budgetGoalCostFact = fact => fact && fact.status === 'known'
   ? (typeof fact.amount === 'number' && Number.isFinite(fact.amount) ? { amount: fact.amount }
     : fact.range && Number.isFinite(fact.range.min) && Number.isFinite(fact.range.max) ? { range: fact.range } : null)
@@ -5218,6 +5220,7 @@ const budgetGoalRatio = (part, whole) => Math.max(0, Math.min(1, part / whole)).
 
 function budgetGoalPaidProgressHtml(row) {
   const cost = row?.commitmentCost;
+  if (!cost) return '';
   const paid = budgetGoalCostFact(cost?.confirmedLinkedPaid);
   const unpaid = budgetGoalCostFact(cost?.unpaidCost);
   const original = budgetGoalCostFact(cost?.originalCost);
