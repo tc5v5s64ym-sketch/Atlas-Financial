@@ -530,8 +530,11 @@ function createAnchoredAppend(deps) {
   // stays on the existing completion path.
   async function gateActualWitnessHead(replay) {
     let read;
-    try { read = await witnessStore.readHead({ scope }); } catch { return null; }
-    if (!read || read.state !== 'ok' || !read.head) return null;
+    try { read = await witnessStore.readHead({ scope }); } catch {
+      return mark('unknown', 'actual-head-unreadable');
+    }
+    if (!read || read.state !== 'ok') return mark('unknown', 'actual-head-unknown');
+    if (!read.head) return mark('unproven', 'witness-head-absent');
     const witnessed = read.head;
     if (witnessed.incarnation !== replay.head.incarnation) {
       return mark('unverifiable', 'witness head names a foreign incarnation');

@@ -1577,3 +1577,80 @@ test('S3-25 mixed-incarnation W3: foreign actual head B/0 refuses before missing
   assert.deepEqual(await durableSurface(fx), before);
   assert.equal(keyCount(fx.transport, '.ack.json'), 0);
 });
+
+// Failed actual-head read (review W3 fail-open on PR #769). A valid A
+// epoch-1 transition lacks ack/observation; retained observations are A/0
+// followed by foreign B/0. listObservations succeeds, then the actual
+// readHead is uncertain. The gate must refuse before any Phase O write.
+// Proven absence of a head is a distinct unproven refusal under the
+// existing empty-witness contract (confirmClean's witness-head-absent).
+test('S3-26 failed-head-read W3: readHead throws refuses before any provenance write', async () => {
+  const fx = await composerFixture();
+  const lineage = nonceForLineageBelow(FOREIGN_B);
+  await fx.seedGenesis(lineage.nonce);
+  await fx.plant(opEntry(1, tick()), { advance: true, ack: false, witnessEpoch: false });
+  await fx.witnessStore.appendObservation({
+    scope: SCOPE, incarnation: FOREIGN_B, epoch: 0,
+    frontierDigest: H64('foreign-b-frontier'), recordHash: H64('foreign-b-record'),
+    eventId: H64('foreign-b-event'), observedAt: tick(),
+  });
+  const throwingStore = {
+    appendObservation: fx.witnessStore.appendObservation.bind(fx.witnessStore),
+    listObservations: fx.witnessStore.listObservations.bind(fx.witnessStore),
+    readHead: async () => { throw new Error('readHead lost'); },
+    retire: fx.witnessStore.retire.bind(fx.witnessStore),
+    status: fx.witnessStore.status.bind(fx.witnessStore),
+  };
+  const throwingWitness = { witnessStore: throwingStore, retire: () => throwingStore.retire(), status: () => throwingStore.status() };
+  const before = await durableSurface(fx);
+  const owner = await fx.w.open({ anchorStore: fx.anchor, witness: throwingWitness });
+  assert.equal(owner.anchoredAppend.status().status, 'unknown');
+  assert.equal(owner.anchoredAppend.status().reason, 'actual-head-unreadable');
+  assert.equal(owner.anchoredAppend.status().serving, false);
+  assert.deepEqual(await durableSurface(fx), before);
+  assert.equal(keyCount(fx.transport, '.ack.json'), 0);
+});
+
+test('S3-27 failed-head-read W3: readHead returns state unknown refuses before any provenance write', async () => {
+  const fx = await composerFixture();
+  const lineage = nonceForLineageBelow(FOREIGN_B);
+  await fx.seedGenesis(lineage.nonce);
+  await fx.plant(opEntry(1, tick()), { advance: true, ack: false, witnessEpoch: false });
+  await fx.witnessStore.appendObservation({
+    scope: SCOPE, incarnation: FOREIGN_B, epoch: 0,
+    frontierDigest: H64('foreign-b-frontier'), recordHash: H64('foreign-b-record'),
+    eventId: H64('foreign-b-event'), observedAt: tick(),
+  });
+  const unknownStore = {
+    appendObservation: fx.witnessStore.appendObservation.bind(fx.witnessStore),
+    listObservations: fx.witnessStore.listObservations.bind(fx.witnessStore),
+    readHead: async () => ({ state: 'unknown' }),
+    retire: fx.witnessStore.retire.bind(fx.witnessStore),
+    status: fx.witnessStore.status.bind(fx.witnessStore),
+  };
+  const unknownWitness = { witnessStore: unknownStore, retire: () => unknownStore.retire(), status: () => unknownStore.status() };
+  const before = await durableSurface(fx);
+  const owner = await fx.w.open({ anchorStore: fx.anchor, witness: unknownWitness });
+  assert.equal(owner.anchoredAppend.status().status, 'unknown');
+  assert.equal(owner.anchoredAppend.status().reason, 'actual-head-unknown');
+  assert.equal(owner.anchoredAppend.status().serving, false);
+  assert.deepEqual(await durableSurface(fx), before);
+  assert.equal(keyCount(fx.transport, '.ack.json'), 0);
+});
+
+test('S3-28 failed-head-read W3: readHead returns missing null head where required refuses before any provenance write', async () => {
+  const fx = await composerFixture();
+  const lineage = nonceForLineageBelow(FOREIGN_B);
+  await fx.seedGenesis(lineage.nonce);
+  await fx.plant(opEntry(1, tick()), { advance: true, ack: false, witnessEpoch: false });
+  // Proven absence: clear observations so head is null where the epoch-1 transition requires one.
+  fx.ws.rows.length = 0;
+  const before = await durableSurface(fx);
+  const owner = await fx.openOwner();
+  assert.equal(owner.anchoredAppend.status().status, 'unproven');
+  assert.equal(owner.anchoredAppend.status().reason, 'witness-head-absent');
+  assert.equal(owner.anchoredAppend.status().serving, false);
+  assert.deepEqual(await durableSurface(fx), before);
+  assert.equal(keyCount(fx.transport, '.ack.json'), 0);
+});
+
