@@ -25,7 +25,7 @@ function relation(name) {
     primaryKey: name === 'quarantine' ? ['scope', 'name'] : ['scope'],
   };
 }
-function grant([i, u, d]) { return { select: true, insert: !!i, update: !!u, delete: !!d, truncate: false, trigger: false, references: false }; }
+function grant([i, u, d]) { return { select: true, insert: !!i, update: !!u, delete: !!d, truncate: false, trigger: false, references: false, anyInsert: !!i, anyUpdate: !!u, anyReferences: false }; }
 function good() {
   return {
     schema: 'settlement-int3-maintenance-profile-manifest-1',
@@ -193,4 +193,62 @@ test('C1: validator is offline and inert (no I/O, network, driver, process or re
   const requires = [...src.matchAll(/require\(\s*['"]([^'"]+)['"]\s*\)/g)].map(m => m[1]);
   assert.deepEqual(requires, []);
   assert.doesNotMatch(src, /process\.|child_process|globalThis|\bfetch\(|eval\(|Function\(/);
+});
+
+// Repair round 1 (Atlas review 5677824520 on f2bf46dd): P1 column-level
+// privileges, P2 mutable exported contract, P2 duplicate columns.
+test('C1 repair P1: effective column-level privileges are validated exactly (restore anyInsert/anyUpdate/anyReferences)', () => {
+  const cases = [
+    [m => { m.privileges.relations.journal.anyUpdate = true; }, [], ['privilege:journal:column-update']],
+    [m => { m.privileges.relations.doc_staged.anyReferences = true; }, [], ['privilege:doc_staged:column-references']],
+    [m => { m.privileges.relations.quarantine.anyUpdate = true; m.privileges.relations.journal.anyInsert = true; }, [], ['privilege:journal:column-insert', 'privilege:quarantine:column-update']],
+    [m => { m.privileges.relations.doc_head.anyInsert = false; m.privileges.relations.terminal_history.anyUpdate = false; }, ['privilege:doc_head:column-insert', 'privilege:terminal_history:column-update'], []],
+  ];
+  for (const [mutate, missing, excess] of cases) {
+    const m = good(); mutate(m); const r = v(m);
+    assert.equal(r.status, 'incompatible'); assert.equal(r.qualified, false);
+    assert.deepEqual([...r.missing], missing);
+    assert.deepEqual([...r.excess], excess);
+  }
+  // Missing column-privilege evidence is malformed, never compatible.
+  for (const k of ['anyInsert', 'anyUpdate', 'anyReferences']) {
+    const m = good(); delete m.privileges.relations.journal[k]; const r = v(m);
+    assert.equal(r.status, 'invalid'); assert.deepEqual([...r.refused], ['manifest:shape']);
+  }
+  // Contract guard: the restore command still demands exactly these predicates.
+  const src = fs.readFileSync(COMMAND, 'utf8');
+  for (const k of ['INSERT', 'UPDATE', 'REFERENCES']) assert.match(src, new RegExp(`has_any_column_privilege\\(format\\('%I\\.%I',\\$1,t\\.name\\),'${k}'\\) AS "any${k[0] + k.slice(1).toLowerCase()}"`));
+  assert.match(src, /r\.anyReferences===false&&r\.anyInsert===p\[0\]&&r\.anyUpdate===p\[1\]/);
+});
+
+test('C1 repair P2: exported requirements are deeply immutable and consumer mutation cannot change a verdict', () => {
+  const R = P.REQUIRED_RELATIONS;
+  const frozen = o => Object.isFrozen(o) && Object.values(o).every(x => x === null || typeof x !== 'object' || frozen(x));
+  assert.ok(frozen(R)); assert.ok(frozen(P.REQUIRED_RUNTIME)); assert.ok(frozen(P.COMMAND_LIMITS));
+  const excessUpdate = good(); excessUpdate.privileges.relations.journal.update = true; excessUpdate.privileges.relations.journal.anyUpdate = true;
+  const before = [...v(excessUpdate).excess];
+  assert.deepEqual(before, ['privilege:journal:column-update', 'privilege:journal:update']);
+  assert.throws(() => { R.journal.privileges[1] = true; }, TypeError);
+  assert.throws(() => { R.doc_head.columns.push('extra'); }, TypeError);
+  assert.throws(() => { R.quarantine.primaryKey[1] = 'label'; }, TypeError);
+  assert.equal(R.journal.privileges[1], false);
+  assert.deepEqual([...v(excessUpdate).excess], before);
+  assert.equal(v(good()).status, 'compatible');
+});
+
+test('C1 repair P2: duplicate column names are rejected, identical or conflicting (exact cardinality)', () => {
+  const identical = good(); identical.relations[0].columns.push({ name: 'bytes', type: 'bytea', notNull: true, generated: '' });
+  let r = v(identical);
+  assert.equal(r.status, 'incompatible');
+  assert.deepEqual([...r.excess], ['relation:doc_head:duplicate-column:bytes']);
+  // A conflicting duplicate must not mask the malformed first descriptor.
+  const conflicting = good(); conflicting.relations[0].columns[0].type = 'bytea'; conflicting.relations[0].columns.push({ name: 'scope', type: 'text', notNull: true, generated: '' });
+  r = v(conflicting);
+  assert.equal(r.status, 'incompatible');
+  assert.ok(r.excess.includes('relation:doc_head:duplicate-column:scope'));
+  assert.ok(r.missing.includes('relation:doc_head:column:scope:type-text'));
+  const dupFirst = good(); dupFirst.relations[3].columns.unshift({ name: 'scope', type: 'text', notNull: true, generated: '' });
+  r = v(dupFirst);
+  assert.equal(r.status, 'incompatible');
+  assert.ok(r.excess.includes('relation:quarantine:duplicate-column:scope'));
 });

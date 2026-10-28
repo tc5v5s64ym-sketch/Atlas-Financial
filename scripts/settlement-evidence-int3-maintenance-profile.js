@@ -16,12 +16,15 @@ const VERDICT_ID = 'settlement-int3-maintenance-profile-verdict-1';
 // Native-history relations and privilege profile demanded by the restore
 // command (PROFILE/schemaCheck/privileges in restore-settlement-evidence.js).
 // Privilege tuple order: [insert, update, delete]; select is always required.
-const RELATIONS = Object.freeze({
-  doc_head: Object.freeze({ columns: ['scope', 'bytes'], primaryKey: ['scope'], privileges: [true, true, false] }),
-  doc_staged: Object.freeze({ columns: ['scope', 'bytes'], primaryKey: ['scope'], privileges: [false, false, true] }),
-  journal: Object.freeze({ columns: ['scope', 'bytes'], primaryKey: ['scope'], privileges: [false, false, true] }),
-  quarantine: Object.freeze({ columns: ['scope', 'name', 'label', 'bytes'], primaryKey: ['scope', 'name'], privileges: [true, false, false] }),
-  terminal_history: Object.freeze({ columns: ['scope', 'history_bytes', 'checkpoint_bytes'], primaryKey: ['scope'], privileges: [true, true, false] }),
+// The whole contract is deep-frozen: the exported REQUIRED_RELATIONS is the
+// same object evaluation trusts, so no consumer mutation can alter a verdict.
+function deepFreeze(o) { for (const v of Object.values(o)) if (v !== null && typeof v === 'object') deepFreeze(v); return Object.freeze(o); }
+const RELATIONS = deepFreeze({
+  doc_head: { columns: ['scope', 'bytes'], primaryKey: ['scope'], privileges: [true, true, false] },
+  doc_staged: { columns: ['scope', 'bytes'], primaryKey: ['scope'], privileges: [false, false, true] },
+  journal: { columns: ['scope', 'bytes'], primaryKey: ['scope'], privileges: [false, false, true] },
+  quarantine: { columns: ['scope', 'name', 'label', 'bytes'], primaryKey: ['scope', 'name'], privileges: [true, false, false] },
+  terminal_history: { columns: ['scope', 'history_bytes', 'checkpoint_bytes'], primaryKey: ['scope'], privileges: [true, true, false] },
 });
 const BYTEA = new Set(['bytes', 'history_bytes', 'checkpoint_bytes']);
 const NULLABLE = new Set(['label']);
@@ -29,6 +32,9 @@ const RUNTIME = Object.freeze({ node: 'v24.22.1', pg: '8.16.3', serverMin: 18000
 const LIMITS = Object.freeze({ connect: 10000, preflight: 10000, query: 7000, close: 2000, dispatch: 120000, outer: 150000, queries: 128, parameters: 64 * 1024 * 1024 });
 const ROLE_FALSE = Object.freeze(['superuser', 'createDb', 'createRole', 'inherit', 'replication', 'bypassRls']);
 const TABLE_FALSE = Object.freeze(['truncate', 'trigger', 'references']);
+// Effective column-level predicates (restore PRIVILEGES: has_any_column_privilege
+// INSERT/UPDATE/REFERENCES must equal [insert, update, false]).
+const COLUMN_PRIVS = Object.freeze(['anyInsert', 'anyUpdate', 'anyReferences']);
 const IDENT = /^[a-z_][a-z0-9_]{0,62}$/;
 const SCOPE = /^[a-z0-9][a-z0-9-]{0,127}$/;
 const MAX_RELATIONS = 64, MAX_COLUMNS = 64;
@@ -89,7 +95,7 @@ function capture(m) {
   const rp = exact(pv.relations, Reflect.ownKeys(pv.relations).map(k => (check(typeof k === 'string' && IDENT.test(k)), k)));
   const privileges = { database: { connect: bool(db.connect), create: bool(db.create) }, schema: { usage: bool(sc.usage), create: bool(sc.create) }, functions: { advisoryLock: bool(fn.advisoryLock), backendPid: bool(fn.backendPid) }, relations: {} };
   for (const k of Object.keys(rp)) {
-    const t = exact(rp[k], ['select', 'insert', 'update', 'delete', ...TABLE_FALSE]);
+    const t = exact(rp[k], ['select', 'insert', 'update', 'delete', ...TABLE_FALSE, ...COLUMN_PRIVS]);
     privileges.relations[k] = {};
     for (const p of Object.keys(t)) privileges.relations[k][p] = bool(t[p]);
   }
@@ -125,16 +131,25 @@ function evaluate(p) {
     if (r.rowSecurity) excess.push(`relation:${name}:row-security`);
     if (r.forceRowSecurity) excess.push(`relation:${name}:force-row-security`);
     if (r.unsafe) excess.push(`relation:${name}:rules-triggers-or-nonprimary-constraints`);
-    const got = new Map(r.columns.map(c => [c.name, c]));
+    // Exact cardinality and uniqueness, as the restore command's dense
+    // length + positional check: duplicates are never collapsed or masked.
+    const seen = new Set();
+    for (const c of r.columns) { if (seen.has(c.name)) excess.push(`relation:${name}:duplicate-column:${c.name}`); seen.add(c.name); }
     want.columns.forEach((col, i) => {
-      const c = got.get(col);
-      if (!c) { missing.push(`relation:${name}:column:${col}`); return; }
-      if (r.columns[i]?.name !== col) missing.push(`relation:${name}:column:${col}:position`);
+      const at = r.columns.findIndex(c => c.name === col);
+      if (at < 0) { missing.push(`relation:${name}:column:${col}`); return; }
+      const c = r.columns[at];
+      if (at !== i) missing.push(`relation:${name}:column:${col}:position`);
       if (c.type !== (BYTEA.has(col) ? 'bytea' : 'text')) missing.push(`relation:${name}:column:${col}:type-${BYTEA.has(col) ? 'bytea' : 'text'}`);
       if (c.notNull !== !NULLABLE.has(col)) missing.push(`relation:${name}:column:${col}:${NULLABLE.has(col) ? 'nullable' : 'not-null'}`);
       if (c.generated !== '') excess.push(`relation:${name}:column:${col}:generated`);
     });
     for (const c of r.columns) if (!want.columns.includes(c.name)) excess.push(`relation:${name}:extra-column:${c.name}`);
+    // Final guard: compatible only if columns match the contract exactly.
+    if (r.columns.length !== want.columns.length || r.columns.some((c, i) => c.name !== want.columns[i])) {
+      const before = missing.length + excess.length;
+      check(before > 0);
+    }
     if (r.primaryKey.length !== want.primaryKey.length || r.primaryKey.some((k, i) => k !== want.primaryKey[i])) missing.push(`relation:${name}:primary-key:${want.primaryKey.join('+')}`);
   }
   // Ownership: exactly one owner for the schema and every native relation,
@@ -174,6 +189,11 @@ function evaluate(p) {
       if (!v && g[k]) excess.push(`privilege:${name}:${k}`);
     }
     for (const k of TABLE_FALSE) if (g[k]) excess.push(`privilege:${name}:${k}`);
+    const col = { anyInsert: [want.privileges[0], 'column-insert'], anyUpdate: [want.privileges[1], 'column-update'], anyReferences: [false, 'column-references'] };
+    for (const [k, [v, label]] of Object.entries(col)) {
+      if (v && !g[k]) missing.push(`privilege:${name}:${label}`);
+      if (!v && g[k]) excess.push(`privilege:${name}:${label}`);
+    }
   }
   for (const name of Object.keys(pv.relations)) if (!Object.hasOwn(RELATIONS, name)) excess.push(`privilege:${name}:undeclared-relation`);
   // Runtime compatibility and version.
