@@ -254,3 +254,52 @@ test('concurrent run calls share one scenario and one submission', async () => {
   assert.deepEqual(a, b); assert.equal(f.calls.filter(x => x[0] === 'submit').length, 1);
   assert.equal(c.snapshot().status, 'evidence-complete');
 });
+
+// Synchronous work that blocks the event loop past timeoutMs lets the read's
+// promise settle before the timer callback runs; the result is still overdue.
+function blockFor(ms) { const until = Date.now() + ms; while (Date.now() < until) { /* synthetic overrun */ } }
+const tight = { budget: { maxObservations: 2, maxReconciliations: 1, timeoutMs: 10, totalMs: 5000 } };
+
+test('an identity read that blocks past its deadline is rejected and dependents never run', async () => {
+  const f = fixture({ plan: tight });
+  f.reads.identity = async query => { f.calls.push(['identity', query]); blockFor(60); return f.identityReply(); };
+  const c = f.make();
+  const result = await c.run();
+  assert.equal(result.status, 'identity-unverified');
+  assert.equal(result.reason, 'post-operation-identity-unverified');
+  assert.deepEqual(result.postOperationIdentity, { status: 'unverified', operationId: null, evidenceId: null });
+  assert.equal(result.dependents, null);
+  assert.ok(f.calls.some(x => x[0] === 'identity'));
+  assert.ok(!f.calls.some(x => x[0] === 'dependents'), 'dependents must not be invoked after an overdue identity');
+  assert.equal(f.calls.filter(x => x[0] === 'submit').length, 1);
+  assert.equal(c.snapshot(), result); assert.equal(await c.run(), result);
+  invariant(result);
+});
+
+test('a dependent read that blocks past its deadline is rejected with no accepted rows', async () => {
+  const f = fixture({ plan: tight });
+  f.reads.dependents = async query => { f.calls.push(['dependents', query]); blockFor(60);
+    return query.checks.map((check, i) => ({ check, outcome: i ? 'fail' : 'pass', evidenceId: 'dep-ev-' + i })); };
+  const c = f.make();
+  const result = await c.run();
+  assert.equal(result.status, 'evidence-incomplete');
+  assert.equal(result.reason, 'dependent-outcomes-incomplete');
+  assert.equal(result.postOperationIdentity.status, 'matched');
+  assert.equal(result.dependents, null);
+  assert.equal(f.calls.filter(x => x[0] === 'submit').length, 1);
+  assert.equal(c.snapshot(), result); assert.equal(await c.run(), result);
+  invariant(result);
+});
+
+test('timely reads under a tight budget still complete, and hung reads still time out', async () => {
+  const ok = await fixture({ plan: tight }).make().run();
+  assert.equal(ok.status, 'evidence-complete'); invariant(ok);
+  const hungIdentity = fixture({ plan: tight });
+  hungIdentity.reads.identity = () => new Promise(() => {});
+  const a = await hungIdentity.make().run();
+  assert.equal(a.status, 'identity-unverified'); assert.ok(!hungIdentity.calls.some(x => x[0] === 'dependents')); invariant(a);
+  const hungDependents = fixture({ plan: tight });
+  hungDependents.reads.dependents = () => new Promise(() => {});
+  const b = await hungDependents.make().run();
+  assert.equal(b.status, 'evidence-incomplete'); assert.equal(b.dependents, null); invariant(b);
+});

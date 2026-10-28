@@ -7,6 +7,7 @@
 // complete scenario is evidence completeness only: the live proof stays
 // unexecuted and nothing produced here is provider or application qualification.
 const { createHash } = require('node:crypto');
+const { performance } = require('node:perf_hooks');
 const { createProviderOperation } = require('./settlement-evidence-int3-provider-operation');
 
 const PLAN = ['schema', 'caseId', 'attemptId', 'target', 'evidenceDestination', 'source', 'recoveryUnits',
@@ -109,11 +110,16 @@ function createProviderRestoreCase(options) {
       qualified: false, liveProof: 'unexecuted', providerQualification: 'not-qualified', caseResult: 'not-scored' });
   }
   function end(s, r) { status = s; reason = r; final = snapshot(); return final; }
+  // Each read has its own monotonic deadline, fixed before the capability runs.
+  // A result observed at/after it is overdue even if blocking work delayed the timer.
   async function bounded(invoke) {
+    const deadline = performance.now() + plan.budget.timeoutMs;
     let timer;
     try {
-      return await Promise.race([Promise.resolve().then(invoke),
+      const result = await Promise.race([Promise.resolve().then(invoke),
         new Promise((_, reject) => { timer = setTimeout(() => reject(null), plan.budget.timeoutMs); })]);
+      if (performance.now() >= deadline) throw null;
+      return result;
     } finally { clearTimeout(timer); }
   }
 
