@@ -44,6 +44,7 @@ const ROOT = path.join(__dirname, '..');
 
 const suites = [
   ['INT-3 offline provider-operation lifecycle and uncertainty', 'test-settlement-evidence-int3-provider-operation.js'],
+  ['INT-3 offline RQ8 provider restore scenario composing B, never qualification', 'test-settlement-evidence-int3-provider-restore-case.js'],
   ['INT-3 offline session lifecycle and sanitized retirement', 'test-settlement-evidence-int3-session.js'],
   ['signed per-login session identity and legacy read compatibility', 'test-session-identity.js'],
   ['shared read-only transaction review presentation and privacy boundary', 'test-transaction-review.js'],
