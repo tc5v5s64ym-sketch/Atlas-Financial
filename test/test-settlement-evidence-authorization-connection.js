@@ -69,6 +69,8 @@ const { EventEmitter } = require('node:events');
 const path = require('node:path');
 const ROOT = process.env.ATLAS_TEST_APP_ROOT || path.resolve(__dirname, '..');
 const M = require(path.join(ROOT, 'scripts/settlement-evidence-authorization-connection'));
+const A = require(path.join(ROOT, 'scripts/settlement-evidence-anchor-store'));
+const Cross = require(path.join(ROOT, 'scripts/settlement-evidence-cross-witness'));
 const open = M.createSettlementEvidenceAuthorizationConnection;
 
 const host = 'db.example.test';
@@ -201,6 +203,35 @@ function world(options = {}) {
         assert.ok(this.inTxn, 'ROLLBACK outside a transaction');
         this.staged = null; this.inTxn = false; return ok();
       }
+      if (text.includes('frontier_operation_revocations')) {
+        const scope = values[0];
+        const ops = [];
+        const sessions = [];
+        for (const row of this.view('auth_revocation').values()) {
+          if (row.scope === scope) ops.push([row.operation_id, row.generation, String(row.revoked_at)]);
+        }
+        for (const row of this.view('auth_session_revocation').values()) {
+          if (row.scope === scope) sessions.push([row.sid_digest, String(row.revoked_at)]);
+        }
+        const facts = {};
+        if (text.includes('LEFT JOIN')) {
+          const [, o, g, sid] = values;
+          const e = this.view('auth_eligibility').get(key3(scope, o, g));
+          const r = this.view('auth_revocation').get(key3(scope, o, g));
+          const s = this.view('auth_session_revocation').get(key2(scope, sid));
+          Object.assign(facts, {
+            household_id: e ? e.household_id : null, operation_id: e ? e.operation_id : null,
+            generation: e ? e.generation : null, confirmation_digest: e ? e.confirmation_digest : null,
+            secret_digest: e ? e.secret_digest : null, issued_at: e ? e.issued_at : null,
+            operation_revoked: !!r, session_revoked: !!s,
+          });
+        }
+        return ok([{
+          ...facts,
+          frontier_operation_revocations: ops,
+          frontier_session_revocations: sessions,
+        }], 1);
+      }
       if (text.startsWith('INSERT INTO')) {
         const rel = /auth_(eligibility|revocation|session_revocation)/.exec(text)[1];
         const name = 'auth_' + rel;
@@ -246,6 +277,7 @@ function world(options = {}) {
     }
     async query(text, values) {
       w.queries.push({ text, values });
+      if (w.tap) w.tap(text);
       const hi = w.hooks.findIndex(h => h.match(text, values));
       if (hi >= 0) { const h = w.hooks.splice(hi, 1)[0]; await h.fn({ text, values }); }
       const fi = w.faults.findIndex(f => f.match(text, values));
@@ -945,4 +977,511 @@ test('AC-37 three eligibility-shaped rows under distinct coercing names do not s
   const e = await rejection(w.open());
   assert.equal(e.diagnostic.stage, 'schema');
   assert.equal(w.ends, 1);
+});
+
+// --- S3 composer (anchor/epoch §2.3.2–§2.3.3), injected doubles only -----
+const H64 = n => crypto.createHash('sha256').update(String(n)).digest('hex');
+function makeTransport() {
+  const objects = new Map();
+  let seq = 0;
+  const calls = [];
+  const faults = [];
+  const conflict = () => Object.assign(new Error('conflict'), { code: 'conflict' });
+  return {
+    objects, calls,
+    failWhen(pred, mode) { faults.push({ pred, mode }); },
+    async read(key) {
+      calls.push({ method: 'read', key });
+      const o = objects.get(key);
+      if (!o) return null;
+      return { bytes: Buffer.from(o.bytes), version: o.version, metadata: { ...o.metadata } };
+    },
+    async create(key, bytes, metadata) {
+      calls.push({ method: 'create', key });
+      const idx = faults.findIndex(f => f.pred(key));
+      const fault = idx >= 0 ? faults.splice(idx, 1)[0] : null;
+      const perform = () => {
+        if (objects.has(key)) throw conflict();
+        const version = 'v' + (++seq);
+        objects.set(key, { bytes: Buffer.from(bytes), version, metadata: { ...(metadata || {}) } });
+        return { version, integrity: crypto.createHash('sha256').update(bytes).digest('hex') };
+      };
+      if (fault && fault.mode === 'throw') throw new Error('create lost');
+      if (fault && fault.mode === 'throw-landed') { perform(); throw new Error('create lost landed'); }
+      if (fault && fault.mode === 'conflict') throw conflict();
+      return perform();
+    },
+    async replace() { throw new Error('replace is unused by the authorization anchor'); },
+    async list(prefix, cursor) {
+      calls.push({ method: 'list', key: prefix });
+      const keys = [...objects.keys()].filter(k => k.startsWith(prefix)).sort();
+      const start = cursor == null ? 0 : keys.findIndex(k => k > cursor);
+      const from = start < 0 ? keys.length : start;
+      const page = keys.slice(from, from + 50);
+      return {
+        entries: page.map(k => ({ key: k, metadata: { ...objects.get(k).metadata } })),
+        nextCursor: from + page.length < keys.length ? page[page.length - 1] : null,
+      };
+    },
+  };
+}
+function witnessSession(order) {
+  const rows = [];
+  const calls = [];
+  const listeners = { error: new Set(), end: new Set() };
+  let failInsert = false;
+  return {
+    rows, calls,
+    failInsert() { failInsert = true; },
+    async query(text, values) {
+      calls.push(text);
+      if (text.startsWith('INSERT INTO') && order) order.push('witness');
+      if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { command: text, rows: [], rowCount: 0 };
+      if (text.startsWith('INSERT INTO')) {
+        if (failInsert) { failInsert = false; throw Object.assign(new Error('lost'), { code: '57P01' }); }
+        const [sc, incarnation, epoch, frontierDigest, recordHash, eventId, observedAt] = values;
+        rows.push({
+          scope: sc, incarnation, epoch, frontier_digest: frontierDigest,
+          record_hash: recordHash, event_id: eventId, observed_at: observedAt,
+        });
+        return { command: 'INSERT', rows: [], rowCount: 1 };
+      }
+      if (text.includes('incarnation = $2')) {
+        const [sc, incarnation, epoch] = values;
+        const found = rows.filter(r => r.scope === sc && r.incarnation === incarnation && r.epoch === epoch);
+        return { command: 'SELECT', rows: found.map(r => ({ ...r })), rowCount: found.length };
+      }
+      const found = rows.filter(r => r.scope === values[0]);
+      return { command: 'SELECT', rows: found.map(r => ({ ...r })), rowCount: found.length };
+    },
+    on(event, fn) { listeners[event].add(fn); },
+    retire() { return Promise.resolve(); },
+    emit(event) { for (const fn of listeners[event]) fn(); },
+  };
+}
+function keyCount(transport, suffix) {
+  return [...transport.objects.keys()].filter(k => k.endsWith(suffix)).length;
+}
+function genCount(transport) {
+  return [...transport.objects.keys()].filter(k => k.includes('/gen-')).length;
+}
+async function composerFixture() {
+  const w = world();
+  const order = [];
+  const transport = makeTransport();
+  const anchor = A.createSettlementEvidenceAnchorStore({ transport, prefix: 'anchor-test', schema: SCHEMA });
+  const ws = witnessSession(order);
+  const witnessStore = Cross.createSettlementEvidenceCrossWitness({ session: ws, schema: 'atlas_witness_synthetic' });
+  const witness = { witnessStore, retire: () => witnessStore.retire(), status: () => witnessStore.status() };
+  async function seedGenesis() {
+    assert.equal(await anchor.genesisAuthorization(SCOPE, { nonce: 's3-nonce', updatedAt: tick() }), true);
+    const record = await anchor.readAuthorization(SCOPE);
+    const gens = await anchor.listAuthorizationGenerations(SCOPE);
+    await witnessStore.appendObservation({
+      scope: SCOPE, incarnation: record.incarnation, epoch: 0,
+      frontierDigest: record.frontierDigest, recordHash: gens[0].recordHash,
+      eventId: record.lastEventId, observedAt: tick(),
+    });
+    return record;
+  }
+  async function observed() {
+    return (await witnessStore.listObservations({ scope: SCOPE })).observations;
+  }
+  function seedOp(operationId, generation, revokedAt) {
+    w.db.tables.auth_revocation.set(SCOPE + '\0' + operationId + '\0' + generation, {
+      scope: SCOPE, operation_id: operationId, generation, revoked_at: revokedAt,
+    });
+  }
+  async function plant(entry, opts = {}) {
+    const row = opts.row === undefined ? !!opts.advance : opts.row;
+    const { advance = false, ack = false, witnessEpoch = false } = opts;
+    const admission = await anchor.openAuthorizationIntent(
+      { scope: SCOPE, ...entry }, { witnessObservations: await observed() });
+    assert.equal(admission.status, 'admitted');
+    if (row && entry.kind === 'oprev') seedOp(entry.operationId, entry.generation, entry.revokedAt);
+    if (!advance) return admission;
+    const current = await anchor.readAuthorization(SCOPE);
+    const replay = await anchor.replayAuthorization(SCOPE);
+    const prior = replay.anchoredEntries.map(h => Buffer.from(h, 'hex'));
+    const entries = prior.concat([Buffer.from(admission.entry.entry, 'hex')]);
+    const next = {
+      scope: SCOPE, incarnation: current.incarnation, epoch: current.epoch + 1,
+      revocationCount: entries.length,
+      frontierDigest: A.computeFrontierDigest({
+        schema: SCHEMA, scope: SCOPE, incarnation: current.incarnation, entries,
+      }),
+      priorDigest: current.frontierDigest, lastEventId: admission.eventId, updatedAt: tick(),
+    };
+    assert.equal(await anchor.advanceAuthorization(SCOPE, current, next), true);
+    const gens = await anchor.listAuthorizationGenerations(SCOPE);
+    const landed = gens[gens.length - 1];
+    if (ack) await anchor.writeAckAuthorization(SCOPE, admission.eventId, landed.generation, landed.recordHash);
+    if (witnessEpoch) {
+      await witnessStore.appendObservation({
+        scope: SCOPE, incarnation: landed.record.incarnation, epoch: landed.record.epoch,
+        frontierDigest: landed.record.frontierDigest, recordHash: landed.recordHash,
+        eventId: admission.eventId, observedAt: tick(),
+      });
+    }
+    return admission;
+  }
+  async function openOwner() {
+    return w.open({ anchorStore: anchor, witness });
+  }
+  return { w, transport, anchor, witnessStore, ws, order, seedGenesis, observed, seedOp, plant, openOwner };
+}
+const opEntry = (n, revokedAt) => ({ kind: 'oprev', operationId: op(n), generation: gen(n), revokedAt });
+
+test('S3-1 a composer append reports success only after ack and witness, in protocol order', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  assert.deepEqual(Object.keys(owner).sort(), ['authorizationStore', 'retire', 'status']);
+  assert.equal(owner.anchoredAppend.status().serving, true);
+  const order = fx.order;
+  const orig = fx.transport.create;
+  fx.transport.create = async (key, bytes, metadata) => {
+    order.push(key.endsWith('.intent.json') ? 'intent' : key.includes('/gen-') ? 'cas' : key.endsWith('.ack.json') ? 'ack' : 'create');
+    return orig(key, bytes, metadata);
+  };
+  fx.w.tap = text => {
+    if (text.startsWith('INSERT INTO') && text.includes('auth_revocation') && !text.includes('session')) order.push('append');
+    if (text.includes('frontier_operation_revocations')) order.push('frontier');
+  };
+  order.length = 0;
+  const result = await owner.anchoredAppend.appendRevocation(opEntry(1, tick()));
+  assert.equal(result.outcome, 'appended');
+  assert.equal(result.state, 'W5');
+  assert.deepEqual(order, ['intent', 'append', 'frontier', 'cas', 'ack', 'witness']);
+  const head = await fx.witnessStore.readHead({ scope: SCOPE });
+  assert.equal(head.head.epoch, 1);
+  assert.equal(head.head.eventId, result.eventId);
+});
+
+test('S3-1b an identical retry reports the already-durable success and does not advance again', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  const input = opEntry(1, tick());
+  const first = await owner.anchoredAppend.appendRevocation(input);
+  assert.equal(first.outcome, 'appended');
+  const epoch = (await fx.anchor.readAuthorization(SCOPE)).epoch;
+  const second = await owner.anchoredAppend.appendRevocation(input);
+  assert.equal(second.outcome, 'appended');
+  assert.equal(second.state, 'W5');
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, epoch);
+  assert.equal(genCount(fx.transport), 2);
+});
+
+test('S3-2 a session revocation uses the same protocol', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  const result = await owner.anchoredAppend.appendSessionRevocation({ sidDigest: D('sid-1'), revokedAt: tick() });
+  assert.equal(result.outcome, 'appended');
+  assert.equal(result.state, 'W5');
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, 1);
+  assert.equal((await fx.witnessStore.readHead({ scope: SCOPE })).head.epoch, 1);
+});
+
+test('S3-3 C0 store-append uncertainty leaves the intent open and does not report success', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  fx.w.faultOnce(text => text.startsWith('INSERT INTO') && text.includes('auth_revocation'), '57P01');
+  const result = await owner.anchoredAppend.appendRevocation(opEntry(1, tick()));
+  assert.equal(result.outcome, 'unknown');
+  assert.notEqual(result.state, 'W5');
+  assert.equal(genCount(fx.transport), 1);
+  assert.equal(keyCount(fx.transport, '.intent.json'), 1);
+  assert.equal(keyCount(fx.transport, '.ack.json'), 0);
+  assert.equal(fx.w.db.tables.auth_revocation.size, 0);
+});
+
+test('S3-4 C1 after a committed append a frontier failure is committed-unanchored and does not CAS', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  fx.w.faultOnce(text => text.includes('frontier_operation_revocations'), '57P01');
+  const result = await owner.anchoredAppend.appendRevocation(opEntry(1, tick()));
+  assert.equal(result.outcome, 'unknown');
+  assert.equal(result.state, 'W2');
+  assert.equal(result.committedUnanchored, true);
+  assert.equal(genCount(fx.transport), 1);
+  assert.equal(fx.w.db.tables.auth_revocation.size, 1);
+  assert.equal(keyCount(fx.transport, '.ack.json'), 0);
+});
+
+test('S3-5 C2 a CAS that throws without landing stays unanchored after the one retry', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  const pred = key => key.includes('/gen-');
+  fx.transport.failWhen(pred, 'throw');
+  fx.transport.failWhen(pred, 'throw');
+  const result = await owner.anchoredAppend.appendRevocation(opEntry(1, tick()));
+  assert.equal(result.outcome, 'unknown');
+  assert.equal(result.state, 'W2');
+  assert.equal(result.committedUnanchored, true);
+  assert.equal(genCount(fx.transport), 1);
+});
+
+test('S3-6 C2 a CAS that lands and loses its ack is finished as W5 without a second advance', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  fx.transport.failWhen(key => key.includes('/gen-'), 'throw-landed');
+  const result = await owner.anchoredAppend.appendRevocation(opEntry(1, tick()));
+  assert.equal(result.outcome, 'appended');
+  assert.equal(result.state, 'W5');
+  assert.equal(genCount(fx.transport), 2);
+  assert.equal((await fx.witnessStore.readHead({ scope: SCOPE })).head.epoch, 1);
+});
+
+test('S3-7 C3 a landed advance whose ack write fails is not reported as success', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  fx.transport.failWhen(key => key.endsWith('.ack.json'), 'throw');
+  const result = await owner.anchoredAppend.appendRevocation(opEntry(1, tick()));
+  assert.equal(result.outcome, 'unknown');
+  assert.equal(result.state, 'W3');
+  assert.equal(genCount(fx.transport), 2);
+  assert.equal(keyCount(fx.transport, '.ack.json'), 0);
+  assert.equal((await fx.witnessStore.readHead({ scope: SCOPE })).head.epoch, 0);
+});
+
+test('S3-8 C4 an acked advance whose witness write fails is not reported as success', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  fx.ws.failInsert();
+  const result = await owner.anchoredAppend.appendRevocation(opEntry(1, tick()));
+  assert.equal(result.outcome, 'unknown');
+  assert.equal(result.state, 'W4');
+  assert.equal(keyCount(fx.transport, '.ack.json'), 1);
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, 1);
+  // A lost witness insert is session loss: the store retires and a later
+  // head read is unknown. The observation itself is proven absent on the
+  // double — genesis only, no epoch-1 row.
+  assert.deepEqual(await fx.witnessStore.readHead({ scope: SCOPE }), { state: 'unknown' });
+  assert.equal(fx.witnessStore.status().accepting, false);
+  assert.equal(fx.ws.rows.length, 1);
+  assert.equal(fx.ws.rows[0].epoch, 0);
+});
+
+test('S3-9 a second append is not admitted while an intent is open', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  const blockerAt = tick();
+  await fx.anchor.openAuthorizationIntent(
+    { scope: SCOPE, ...opEntry(9, blockerAt) },
+    { witnessObservations: await fx.observed() });
+  const result = await owner.anchoredAppend.appendRevocation(opEntry(1, tick()));
+  assert.equal(result.outcome, 'unknown');
+  assert.equal(result.reason, 'anchor-intent-open');
+  assert.equal(fx.w.db.tables.auth_revocation.size, 0);
+  assert.equal(keyCount(fx.transport, '.intent.json'), 1);
+  assert.equal(genCount(fx.transport), 1);
+});
+
+test('S3-10 successor-proof failure attempts no CAS and surfaces anchor-mismatch-unproven', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  assert.equal((await owner.anchoredAppend.appendRevocation(opEntry(1, tick()))).outcome, 'appended');
+  const epoch = (await fx.anchor.readAuthorization(SCOPE)).epoch;
+  const gens = genCount(fx.transport);
+  fx.w.db.tables.auth_revocation.clear();
+  const result = await owner.anchoredAppend.appendRevocation(opEntry(2, tick()));
+  assert.equal(result.outcome, 'unknown');
+  assert.equal(result.reason, 'anchor-mismatch-unproven');
+  assert.equal(genCount(fx.transport), gens);
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, epoch);
+  assert.equal(owner.anchoredAppend.status().serving, false);
+});
+
+test('S3-11 a duplicate append with a different revokedAt closes duplicate-satisfied and never advances', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  const firstAt = tick();
+  assert.equal((await owner.anchoredAppend.appendRevocation(opEntry(1, firstAt))).outcome, 'appended');
+  const epoch = (await fx.anchor.readAuthorization(SCOPE)).epoch;
+  const result = await owner.anchoredAppend.appendRevocation(opEntry(1, tick()));
+  assert.equal(result.outcome, 'duplicate-satisfied');
+  assert.equal(result.state, 'T-DUP');
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, epoch);
+  assert.equal(keyCount(fx.transport, '.dup.json'), 1);
+  assert.equal(keyCount(fx.transport, '.ack.json'), 1);
+});
+
+test('S3-12 open reconciliation closes W3 and W4 with no anchor movement', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const revokedAt = tick();
+  await fx.plant(opEntry(1, revokedAt), { advance: true });
+  const epoch = (await fx.anchor.readAuthorization(SCOPE)).epoch;
+  const gens = genCount(fx.transport);
+  const owner = await fx.openOwner();
+  assert.equal(owner.anchoredAppend.status().status, 'clean');
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, epoch);
+  assert.equal(genCount(fx.transport), gens);
+  assert.equal(keyCount(fx.transport, '.ack.json'), 1);
+  assert.equal((await fx.witnessStore.readHead({ scope: SCOPE })).head.epoch, 1);
+});
+
+test('S3-13 open reconciliation closes acked-unwitnessed W4 with no anchor movement', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  await fx.plant(opEntry(1, tick()), { advance: true, ack: true });
+  const gens = genCount(fx.transport);
+  const owner = await fx.openOwner();
+  assert.equal(owner.anchoredAppend.status().status, 'clean');
+  assert.equal(genCount(fx.transport), gens);
+  assert.equal((await fx.witnessStore.readHead({ scope: SCOPE })).head.epoch, 1);
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, 1);
+});
+
+test('S3-14 open reconciliation voids an intent whose append never committed', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  await fx.plant(opEntry(1, tick()), { advance: false });
+  const owner = await fx.openOwner();
+  assert.equal(owner.anchoredAppend.status().status, 'clean');
+  assert.equal(keyCount(fx.transport, '.void.json'), 1);
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, 0);
+  assert.equal(genCount(fx.transport), 1);
+});
+
+test('S3-15 open reconciliation advances a genuinely-new W2 exactly once', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  await fx.plant(opEntry(1, tick()), { row: true, advance: false });
+  const owner = await fx.openOwner();
+  assert.equal(owner.anchoredAppend.status().status, 'clean');
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, 1);
+  assert.equal(genCount(fx.transport), 2);
+  assert.equal(keyCount(fx.transport, '.ack.json'), 1);
+  assert.equal((await fx.witnessStore.readHead({ scope: SCOPE })).head.epoch, 1);
+});
+
+test('S3-16 a foreign generation is UNPROVEN and the anchor is not moved', async () => {
+  const fx = await composerFixture();
+  const current = await fx.seedGenesis();
+  assert.equal(await fx.anchor.advanceAuthorization(SCOPE, current, {
+    scope: SCOPE, incarnation: current.incarnation, epoch: 1, revocationCount: 0,
+    frontierDigest: current.frontierDigest, priorDigest: current.frontierDigest,
+    lastEventId: H64('foreign-generation'), updatedAt: tick(),
+  }), true);
+  const before = fx.transport.objects.size;
+  const owner = await fx.openOwner();
+  assert.equal(owner.anchoredAppend.status().status, 'unproven');
+  assert.equal(owner.anchoredAppend.status().serving, false);
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, 1);
+  assert.equal(fx.transport.objects.size, before);
+  const refused = await owner.anchoredAppend.appendRevocation(opEntry(1, tick()));
+  assert.equal(refused.outcome, 'unknown');
+  assert.equal(genCount(fx.transport), 2);
+});
+
+test('S3-17 a duplicate intent is closed at open once its owner is anchored', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const revokedAt = tick();
+  await fx.plant(opEntry(1, revokedAt), { advance: true, ack: true, witnessEpoch: true });
+  await fx.anchor.openAuthorizationIntent(
+    { scope: SCOPE, ...opEntry(1, tick()) }, { witnessObservations: await fx.observed() });
+  const gens = genCount(fx.transport);
+  const owner = await fx.openOwner();
+  assert.equal(owner.anchoredAppend.status().status, 'clean');
+  assert.equal(genCount(fx.transport), gens);
+  assert.equal(keyCount(fx.transport, '.dup.json'), 1);
+});
+
+test('S3-18 reconciliation refuses a rolled-back anchored revocation without moving the anchor', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  assert.equal((await owner.anchoredAppend.appendRevocation(opEntry(1, tick()))).outcome, 'appended');
+  const epoch = (await fx.anchor.readAuthorization(SCOPE)).epoch;
+  const before = fx.transport.objects.size;
+  fx.w.db.tables.auth_revocation.clear();
+  const report = await owner.anchoredAppend.reconcile();
+  assert.equal(report.status, 'unproven');
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, epoch);
+  assert.equal(fx.transport.objects.size, before);
+  assert.equal(owner.anchoredAppend.status().serving, false);
+});
+
+test('S3-19 an unexplained store entry is UNPROVEN and is not adopted', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  const before = fx.transport.objects.size;
+  fx.seedOp(op(4), gen(4), tick());
+  const report = await owner.anchoredAppend.reconcile();
+  assert.equal(report.status, 'unproven');
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, 0);
+  assert.equal(fx.transport.objects.size, before);
+});
+
+test('S3-20 an ack for a transition that never landed is UNPROVEN', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const genesisKey = [...fx.transport.objects.keys()].find(k => k.endsWith('.genesis.json'));
+  const eventId = H64('false-ack');
+  const key = genesisKey.slice(0, genesisKey.lastIndexOf('/') + 1) + eventId + '.ack.json';
+  fx.transport.objects.set(key, {
+    bytes: Buffer.from(JSON.stringify({
+      v: 1, kind: 'ack', eventId, generation: 1, recordHash: H64('no-such-record'), status: 'ack',
+    })),
+    version: 'planted', metadata: {},
+  });
+  const before = fx.transport.objects.size;
+  const owner = await fx.openOwner();
+  assert.equal(owner.anchoredAppend.status().status, 'unproven');
+  assert.equal(fx.transport.objects.size, before);
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, 0);
+});
+
+test('S3-21 a witness head ahead of the anchor is unverifiable and writes nothing', async () => {
+  const fx = await composerFixture();
+  const current = await fx.seedGenesis();
+  const before = fx.transport.objects.size;
+  await fx.witnessStore.appendObservation({
+    scope: SCOPE, incarnation: current.incarnation, epoch: 4,
+    frontierDigest: H64('ahead'), recordHash: H64('ahead-record'),
+    eventId: H64('ahead-event'), observedAt: tick(),
+  });
+  const owner = await fx.openOwner();
+  assert.equal(owner.anchoredAppend.status().status, 'unverifiable');
+  assert.equal(owner.anchoredAppend.status().serving, false);
+  assert.equal(fx.transport.objects.size, before);
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, 0);
+});
+
+test('S3-22 a clean scope reconciles with no writes', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const objects = fx.transport.objects.size;
+  const rows = fx.ws.rows.length;
+  const owner = await fx.openOwner();
+  assert.equal(owner.anchoredAppend.status().status, 'clean');
+  assert.equal(owner.anchoredAppend.status().serving, true);
+  assert.equal(fx.transport.objects.size, objects);
+  assert.equal(fx.ws.rows.length, rows);
+  assert.equal((await fx.anchor.readAuthorization(SCOPE)).epoch, 0);
+});
+
+test('S3-23 a generation-race conflict retries the CAS once and does not adopt a second value', async () => {
+  const fx = await composerFixture();
+  await fx.seedGenesis();
+  const owner = await fx.openOwner();
+  fx.transport.failWhen(key => key.includes('/gen-'), 'conflict');
+  const result = await owner.anchoredAppend.appendRevocation(opEntry(1, tick()));
+  assert.equal(result.outcome, 'appended');
+  assert.equal(result.state, 'W5');
+  assert.equal(genCount(fx.transport), 2);
 });
