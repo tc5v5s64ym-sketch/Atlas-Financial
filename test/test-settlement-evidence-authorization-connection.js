@@ -1073,8 +1073,8 @@ async function composerFixture() {
   const ws = witnessSession(order);
   const witnessStore = Cross.createSettlementEvidenceCrossWitness({ session: ws, schema: 'atlas_witness_synthetic' });
   const witness = { witnessStore, retire: () => witnessStore.retire(), status: () => witnessStore.status() };
-  async function seedGenesis() {
-    assert.equal(await anchor.genesisAuthorization(SCOPE, { nonce: 's3-nonce', updatedAt: tick() }), true);
+  async function seedGenesis(nonce = 's3-nonce') {
+    assert.equal(await anchor.genesisAuthorization(SCOPE, { nonce, updatedAt: tick() }), true);
     const record = await anchor.readAuthorization(SCOPE);
     const gens = await anchor.listAuthorizationGenerations(SCOPE);
     await witnessStore.appendObservation({
@@ -1484,4 +1484,96 @@ test('S3-23 a generation-race conflict retries the CAS once and does not adopt a
   assert.equal(result.outcome, 'appended');
   assert.equal(result.state, 'W5');
   assert.equal(genCount(fx.transport), 2);
+});
+
+// Mixed-incarnation witness head (review trace on PR #769). Lineage A is a
+// real genesis incarnation chosen strictly below B = '2'.repeat(64), so the
+// cross-witness high-watermark (greatest incarnation, epoch) is B/0 while
+// S1's greatest-epoch selection stays on A. Reconciliation must refuse
+// before any CAS, provenance write, witness write, or anchor movement.
+const FOREIGN_B = '2'.repeat(64);
+function nonceForLineageBelow(ceiling) {
+  for (let i = 0; i < 256; i++) {
+    const nonce = 's3-mixed-lineage-' + i;
+    const incarnation = A.computeGenesisIncarnation({ scope: SCOPE, schema: SCHEMA, nonce });
+    if (incarnation < ceiling) return { nonce, incarnation };
+  }
+  assert.fail('no genesis nonce produced a lineage below the foreign head');
+}
+async function durableSurface(fx) {
+  const head = await fx.anchor.readAuthorization(SCOPE);
+  return {
+    epoch: head.epoch,
+    incarnation: head.incarnation,
+    objects: fx.transport.objects.size,
+    keys: [...fx.transport.objects.keys()].sort(),
+    gens: genCount(fx.transport),
+    acks: keyCount(fx.transport, '.ack.json'),
+    creates: fx.transport.calls.filter(c => c.method === 'create').length,
+    witnessRows: fx.ws.rows.map(r => r.incarnation + '/' + r.epoch).sort(),
+    witnessInserts: fx.ws.calls.filter(t => t.startsWith('INSERT INTO')).length,
+  };
+}
+
+test('S3-24 mixed-incarnation W2: foreign actual head B/0 refuses before any reconciliation write', async () => {
+  const fx = await composerFixture();
+  const lineage = nonceForLineageBelow(FOREIGN_B);
+  await fx.seedGenesis(lineage.nonce);
+  await fx.plant(opEntry(1, tick()), { advance: true, ack: true, witnessEpoch: true });
+  await fx.plant(opEntry(2, tick()), { row: true, advance: false });
+  await fx.witnessStore.appendObservation({
+    scope: SCOPE, incarnation: FOREIGN_B, epoch: 0,
+    frontierDigest: H64('foreign-b-frontier'), recordHash: H64('foreign-b-record'),
+    eventId: H64('foreign-b-event'), observedAt: tick(),
+  });
+  const observed = await fx.observed();
+  const byEpoch = observed.reduce((a, b) => (b.epoch > a.epoch ? b : a));
+  const actual = await fx.witnessStore.readHead({ scope: SCOPE });
+  assert.equal(byEpoch.incarnation, lineage.incarnation);
+  assert.equal(byEpoch.epoch, 1);
+  assert.equal(actual.head.incarnation, FOREIGN_B);
+  assert.equal(actual.head.epoch, 0);
+  const replay = await fx.anchor.replayAuthorization(SCOPE);
+  assert.equal(replay.status, 'verified');
+  assert.equal(replay.head.incarnation, lineage.incarnation);
+  assert.equal(replay.head.epoch, 1);
+  assert.equal(replay.anchoredEntries.length, 1);
+  const before = await durableSurface(fx);
+  const owner = await fx.openOwner();
+  assert.equal(owner.anchoredAppend.status().status, 'unverifiable');
+  assert.equal(owner.anchoredAppend.status().reason, 'witness head names a foreign incarnation');
+  assert.equal(owner.anchoredAppend.status().serving, false);
+  assert.deepEqual(await durableSurface(fx), before);
+});
+
+test('S3-25 mixed-incarnation W3: foreign actual head B/0 refuses before missing ack or observation writes', async () => {
+  const fx = await composerFixture();
+  const lineage = nonceForLineageBelow(FOREIGN_B);
+  await fx.seedGenesis(lineage.nonce);
+  await fx.plant(opEntry(1, tick()), { advance: true, ack: false, witnessEpoch: false });
+  await fx.witnessStore.appendObservation({
+    scope: SCOPE, incarnation: FOREIGN_B, epoch: 0,
+    frontierDigest: H64('foreign-b-frontier'), recordHash: H64('foreign-b-record'),
+    eventId: H64('foreign-b-event'), observedAt: tick(),
+  });
+  const observed = await fx.observed();
+  const byEpoch = observed.reduce((a, b) => (b.epoch > a.epoch ? b : a));
+  const actual = await fx.witnessStore.readHead({ scope: SCOPE });
+  assert.equal(byEpoch.incarnation, lineage.incarnation);
+  assert.equal(byEpoch.epoch, 0);
+  assert.equal(actual.head.incarnation, FOREIGN_B);
+  assert.equal(actual.head.epoch, 0);
+  const replay = await fx.anchor.replayAuthorization(SCOPE);
+  assert.equal(replay.status, 'verified');
+  assert.equal(replay.head.incarnation, lineage.incarnation);
+  assert.equal(replay.head.epoch, 1);
+  assert.equal(keyCount(fx.transport, '.ack.json'), 0);
+  const before = await durableSurface(fx);
+  assert.deepEqual(before.witnessRows, [lineage.incarnation + '/0', FOREIGN_B + '/0'].sort());
+  const owner = await fx.openOwner();
+  assert.equal(owner.anchoredAppend.status().status, 'unverifiable');
+  assert.equal(owner.anchoredAppend.status().reason, 'witness head names a foreign incarnation');
+  assert.equal(owner.anchoredAppend.status().serving, false);
+  assert.deepEqual(await durableSurface(fx), before);
+  assert.equal(keyCount(fx.transport, '.ack.json'), 0);
 });

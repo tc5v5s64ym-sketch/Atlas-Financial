@@ -521,6 +521,31 @@ function createAnchoredAppend(deps) {
     }
     return markClean();
   }
+  // Actual head is the cross-witness high-watermark: greatest
+  // (incarnation, epoch). S1's witnessGate selects greatest epoch, so a
+  // foreign head at a lower epoch passes Phase O and Phase A and is
+  // noticed only by confirmClean, after the writes. Lineage disagreement
+  // and anchor regression against this head refuse first (design §2.3.3
+  // trace 14, §2.3.5). A same-incarnation head at or behind the anchor
+  // stays on the existing completion path.
+  async function gateActualWitnessHead(replay) {
+    let read;
+    try { read = await witnessStore.readHead({ scope }); } catch { return null; }
+    if (!read || read.state !== 'ok' || !read.head) return null;
+    const witnessed = read.head;
+    if (witnessed.incarnation !== replay.head.incarnation) {
+      return mark('unverifiable', 'witness head names a foreign incarnation');
+    }
+    if (witnessed.epoch > replay.head.epoch) {
+      return mark('unverifiable', 'anchor is behind the witness head');
+    }
+    if (witnessed.epoch === replay.head.epoch
+      && (witnessed.frontierDigest !== replay.head.frontierDigest
+        || witnessed.recordHash !== replay.headRecordHash)) {
+      return mark('unverifiable', 'witness head disagrees with the anchor head');
+    }
+    return null;
+  }
   async function reconcileBody() {
     let observed;
     try { observed = await observations(); } catch { observed = null; }
@@ -532,6 +557,8 @@ function createAnchoredAppend(deps) {
     if (!replay || replay.status !== 'verified') {
       return mark('unproven', (replay && replay.reason) || 'replay-unproven');
     }
+    const refused = await gateActualWitnessHead(replay);
+    if (refused) return refused;
     let completed;
     try {
       completed = await anchorStore.completeAuthorizationProvenance(scope, {
