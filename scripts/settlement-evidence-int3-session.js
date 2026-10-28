@@ -57,7 +57,7 @@ async function runInt3Session(options) {
     retirement[name]='unconfirmed';
     let expired=false;
     try {
-      return await bounded(()=>Promise.resolve().then(invoke).then(value=>{
+      return await bounded(()=>Promise.resolve().then(()=>{guard(); return invoke();}).then(value=>{
         if(expired) { void close(name,value); throw null; }
         return value;
       }));
@@ -99,11 +99,11 @@ async function runInt3Session(options) {
     // Exactly two existing named roles; no arbitrary SQL or setup callback.
     for(const [role,password] of [[manifest.financialRole,passwords.financialPassword],
       [manifest.authorizationRole,passwords.authorizationPassword]]) {
-      guard(); const result=await bounded(()=>rotate.call(owner,role,password)); guard();
+      guard(); const result=await bounded(()=>{guard(); return rotate.call(owner,role,password);}); guard();
       if(own(result,'acknowledged')!==true) throw null;
     }
     stage='commit'; commit='unknown';
-    const ack=await bounded(()=>acknowledge.call(owner)); guard();
+    const ack=await bounded(()=>{guard(); return acknowledge.call(owner);}); guard();
     if(own(ack,'acknowledged')!==true) throw null;
     commit='acknowledged';
     stage='owner-close'; await close('owner',owner); guard();
@@ -116,7 +116,7 @@ async function runInt3Session(options) {
     config.password=null; config=null; guard(); ready(authorization); ready(financial);
     passwords=null;
     stage='case'; guard();
-    const result=await bounded(()=>dependencies.runCase(Object.freeze({financial,authorization}),manifest.caseId,callback));
+    const result=await bounded(()=>{guard(); return dependencies.runCase(Object.freeze({financial,authorization}),manifest.caseId,callback);});
     guard(); ready(financial); ready(authorization);
     const state=own(result,'state');
     caseResult=['pass','refused','unavailable','unknown'].includes(state)?state:'unknown';

@@ -104,6 +104,15 @@ test('runtime loss before case and malformed case results fail closed', async ()
     assert.equal((await g.run()).state,'blocked');
   }
 });
+test('unexpected callback queued immediately before invocation prevents case admission', async () => {
+  const f=fixture(); let count=0;
+  f.dependencies.runCase=async()=>{f.calls.push('case');return {state:'pass'};};
+  f.dependencies.createFinancial=async (_,callback)=>({retire:async()=>({close:'confirmed'}),status:()=>{
+    if(++count===2) queueMicrotask(()=>callback(secret));
+    return {state:'ready'};
+  }});
+  const r=await f.run(); assert.equal(r.state,'blocked'); assert.ok(!f.calls.includes('case'));
+});
 test('canary never reaches outputs, errors, files, argv or environment', async () => {
   const beforeEnv=JSON.stringify(process.env), beforeArgv=JSON.stringify(process.argv);
   const files=['scripts/settlement-evidence-int3-session.js','test/test.js'];
