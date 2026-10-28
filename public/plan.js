@@ -5200,6 +5200,43 @@ function budgetDailyNeededHtml(row, periodContext = false) {
     : budgetSavingsMoney(row.needed, row.neededTrust ?? row.trust, periodContext);
 }
 
+// ATLAS-024 Paid / Still to fund, read only from the commitmentCost facts
+// Forecast publishes on the goal row (confirmedLinkedPaid, unpaidCost,
+// originalCost). Nothing is subtracted or recomputed here: a fact prints
+// only when its published status is 'known'; a missing, unconfigured or
+// unavailable fact prints Unknown, never 0, and the row is never hidden.
+// Fill geometry is ratio-only against the published original cost (the
+// same ratio-only rule as the v3 presentation) and draws nothing when a
+// point fact it needs is not published.
+const budgetGoalCostFact = fact => fact && fact.status === 'known'
+  ? (typeof fact.amount === 'number' && Number.isFinite(fact.amount) ? { amount: fact.amount }
+    : fact.range && Number.isFinite(fact.range.min) && Number.isFinite(fact.range.max) ? { range: fact.range } : null)
+  : null;
+const budgetGoalCostText = fact => !fact ? '<span class="budget-v3-unknown">Unknown</span>'
+  : fact.range ? `${money2(fact.range.min)} - ${money2(fact.range.max)}` : money2(fact.amount);
+const budgetGoalRatio = (part, whole) => Math.max(0, Math.min(1, part / whole)).toFixed(4);
+
+function budgetGoalPaidProgressHtml(row) {
+  const cost = row?.commitmentCost;
+  const paid = budgetGoalCostFact(cost?.confirmedLinkedPaid);
+  const unpaid = budgetGoalCostFact(cost?.unpaidCost);
+  const original = budgetGoalCostFact(cost?.originalCost);
+  const geometry = paid?.amount != null && original?.amount > 0;
+  const fullyPaid = geometry && unpaid?.amount === 0 && paid.amount > 0;
+  const state = fullyPaid ? 'paid' : geometry && unpaid ? 'funding' : 'unknown';
+  const saved = budgetV3Known(row.saved, row.savedTrust) ? row.saved : null;
+  const fill = state === 'paid'
+    ? '<span class="budget-goal-bar-paid" data-budget-goal-bar-paid style="--goal-paid:1"></span>'
+    : state === 'funding'
+      ? `${paid.amount > 0 ? `<span class="budget-goal-bar-paid" data-budget-goal-bar-paid style="--goal-paid:${budgetGoalRatio(paid.amount, original.amount)}"></span>` : ''}${saved > 0 ? `<span class="budget-goal-bar-saved" data-budget-goal-bar-saved style="--goal-saved:${budgetGoalRatio(saved, original.amount)}"></span>` : ''}`
+      : '';
+  const stamp = (name, fact) => fact?.amount != null ? ` data-budget-goal-${name}-amount="${fact.amount}"` : '';
+  return `<div class="budget-goal-paid is-${state}" data-budget-goal-paid-progress="${state}"${stamp('paid', paid)}${stamp('unpaid', unpaid)}>
+        <span class="budget-goal-bar" data-budget-goal-bar aria-hidden="true">${fill}</span>
+        <span class="budget-goal-paid-figures" data-budget-goal-paid-figures><span><small>Paid</small> <span class="budget-goal-paid-amount" data-budget-goal-paid>${budgetGoalCostText(paid)}</span></span><span><small>Still to fund</small> <span class="budget-goal-paid-amount" data-budget-goal-unpaid>${budgetGoalCostText(unpaid)}</span></span></span>
+      </div>`;
+}
+
 
 // The Travel Visa annual fee is a bill, not a savings goal. Forecast still
 // publishes its yearly-bill funding row (the reserve protection is unchanged),
@@ -7335,6 +7372,7 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
       return `<li data-budget-savings-goal="${budgetV3Escape(row.key)}"${savedStamp}${requiredStamp}><button type="button" class="budget-goal-row" data-budget-goal-open="${budgetV3Escape(row.key)}" aria-haspopup="dialog">
       <div class="budget-goal-heading"><strong>${budgetV3Escape(group ? group.title : row.label)}</strong></div>
       <div class="budget-goal-amounts"><span><span class="budget-goal-amount">${value(row.saved, row.savedTrust)}</span><small>Saved</small></span><span aria-hidden="true">/</span><span><span class="budget-goal-amount">${budgetDailyNeededHtml(row, projected)}</span><small>Needed</small></span></div>
+      ${budgetGoalPaidProgressHtml(row)}
       <p class="budget-goal-context">${value(row.thisPeriod, row.thisPeriodTrust)} this period<span class="budget-goal-evidence">Info <span aria-hidden="true">></span></span></p>${members}
     </button></li>`;
     }).join('');

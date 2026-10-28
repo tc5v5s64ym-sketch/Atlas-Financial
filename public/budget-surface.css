@@ -321,6 +321,17 @@
 .budget-goal-amounts small { display:block; margin-top:3px; color:var(--text-secondary); font-size:11px; }
 .budget-savings-goals li .budget-goal-context { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; font-size:11px; margin-top:10px; }
 .budget-goal-evidence { color:var(--s1); white-space:nowrap; margin-left:auto; }
+/* ATLAS-024 Paid / Still to fund: ratio-only fill of published facts. */
+.budget-goal-paid { margin-top:10px; min-width:0; }
+.budget-goal-bar { display:flex; height:6px; width:100%; overflow:hidden; border-radius:99px; background:color-mix(in srgb,var(--muted) 18%,var(--surface-1)); }
+.budget-goal-bar-paid { flex:0 0 calc(var(--goal-paid,0) * 100%); background:var(--good); }
+.budget-goal-bar-saved { flex:0 0 calc(var(--goal-saved,0) * 100%); background:color-mix(in srgb,var(--s1) 70%,var(--surface-1)); }
+.budget-goal-paid.is-unknown .budget-goal-bar { background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--muted) 18%,var(--surface-1)) 0 4px,transparent 4px 8px); }
+.budget-goal-paid-figures { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; margin-top:6px; font-size:12px; min-width:0; }
+.budget-goal-paid-figures > span { min-width:0; overflow-wrap:anywhere; }
+.budget-goal-paid-figures small { color:var(--text-secondary); font-size:11px; }
+.budget-goal-paid-amount { font-weight:650; }
+.budget-goal-paid.is-paid .budget-goal-paid-amount[data-budget-goal-unpaid] { color:var(--success-text); }
 .budget-savings-accounts { margin:20px 0; padding:16px; border:1px solid var(--border); border-radius:14px; }
 .budget-savings-accounts > summary { cursor:pointer; color:var(--text-secondary); font-size:13px; }
 .budget-savings-accounts > summary:focus-visible { outline:2px solid var(--s1); outline-offset:4px; }

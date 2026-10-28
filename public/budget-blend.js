@@ -2048,6 +2048,19 @@
         appendPrintedAmount(needed, neededNode);
         stack.appendChild(needed);
       }
+      // ATLAS-024: carry plan.js's printed Paid / Still to fund text onto
+      // the visible face verbatim (published commitmentCost facts; Unknown
+      // stays Unknown). No amount is parsed or recomputed here.
+      [['data-budget-goal-paid', 'Paid', 'blend-goal-paid'], ['data-budget-goal-unpaid', 'Still to fund', 'blend-goal-unpaid']].forEach(([attr, label, cls]) => {
+        const source = row.querySelector('[' + attr + ']');
+        if (!source) return;
+        const line = document.createElement('span');
+        line.className = 'blend-goal-needed ' + cls;
+        line.setAttribute(attr + '-face', '');
+        line.appendChild(document.createTextNode(label + ' '));
+        appendPrintedAmount(line, source);
+        stack.appendChild(line);
+      });
       const bar = document.createElement('span');
       bar.className = 'blend-g-bar';
       bar.setAttribute('aria-hidden', 'true');
