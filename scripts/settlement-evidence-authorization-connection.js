@@ -25,6 +25,7 @@ const tls = require('node:tls');
 const net = require('node:net');
 const { performance } = require('node:perf_hooks');
 const { createAuthorizationStore } = require('./settlement-evidence-authorization-store');
+const { decodeRevocationEntry } = require('./settlement-evidence-anchor-store');
 
 const MAX = Object.freeze({ connect:10000, preflight:10000, query:7000, close:2000 });
 const CLAIMED = new WeakSet();
@@ -63,7 +64,7 @@ function record(value, allowed, required = allowed) {
   return Object.fromEntries(Object.entries(fields).map(([k,d]) => [k,d.value]));
 }
 function validate(options) {
-  const o = record(options, ['Client','config','schema','scope','timeouts'], ['Client','config','schema','scope']);
+  const o = record(options, ['Client','config','schema','scope','timeouts','anchorStore','witness'], ['Client','config','schema','scope']);
   const c = record(o.config, ['host','port','database','user','password','ssl']);
   const ssl = record(c.ssl, ['rejectUnauthorized','servername']);
   check(typeof o.Client === 'function', 'config','invalid-config');
@@ -84,7 +85,29 @@ function validate(options) {
   const times = { ...MAX, ...(o.timeouts === undefined ? {} : record(o.timeouts,Object.keys(MAX),[])) };
   for (const k of Object.keys(MAX)) check(Number.isInteger(times[k]) && times[k] > 0 && times[k] <= MAX[k], 'config','invalid-config');
   check(!Object.keys(process.env).some(k => TRUST.test(k)), 'environment','environment');
-  return { ...o, times, config:{ host:c.host, port:c.port, database:c.database, user:c.user,
+  const hasAnchor = Object.hasOwn(o, 'anchorStore');
+  const hasWitness = Object.hasOwn(o, 'witness');
+  if (hasAnchor !== hasWitness) throw failure('config', 'invalid-config');
+  let composer = null;
+  if (hasAnchor) {
+    const anchorStore = o.anchorStore;
+    const witness = o.witness;
+    check(anchorStore && Object.getPrototypeOf(anchorStore) === Object.prototype, 'config', 'invalid-config');
+    check(witness && Object.getPrototypeOf(witness) === Object.prototype, 'config', 'invalid-config');
+    const witnessStore = witness.witnessStore;
+    check(witnessStore && typeof witnessStore === 'object', 'config', 'invalid-config');
+    for (const name of ['readAuthorization', 'advanceAuthorization', 'listAuthorizationGenerations',
+      'openAuthorizationIntent', 'writeAckAuthorization', 'writeVoidAuthorization',
+      'writeDuplicateSatisfiedAuthorization', 'replayAuthorization', 'classifyAuthorization',
+      'completeAuthorizationProvenance', 'listProvenanceAuthorization']) {
+      check(typeof anchorStore[name] === 'function', 'config', 'invalid-config');
+    }
+    for (const name of ['appendObservation', 'readHead', 'listObservations']) {
+      check(typeof witnessStore[name] === 'function', 'config', 'invalid-config');
+    }
+    composer = { anchorStore, witnessStore };
+  }
+  return { ...o, times, composer, config:{ host:c.host, port:c.port, database:c.database, user:c.user,
     password:c.password, ssl:{rejectUnauthorized:true,servername:c.host},
     application_name:'atlas-settlement-authorization', connectionTimeoutMillis:times.connect,
     query_timeout:times.query, statement_timeout:5000, lock_timeout:1000,
@@ -211,6 +234,473 @@ function schemaMatches(result) {
   }
 }
 
+function revocationKey(decoded) {
+  return decoded.kind === 'oprev'
+    ? 'oprev:' + decoded.operationId + '/' + decoded.generation
+    : 'sesrev:' + decoded.sidDigest;
+}
+function unknownOutcome(reason, state, extra) {
+  return Object.freeze({ outcome: 'unknown', reason, state, ...(extra || {}) });
+}
+
+// §2.3.2 composer. Appends are admitted only while reconciliation has
+// left the scope clean. Durable success is reported only after the ack
+// and the witness observation are both durable. The authorization
+// connection's enumerable owner stays { authorizationStore, retire, status }.
+function createAnchoredAppend(deps) {
+  const { authorizationStore, anchorStore, witnessStore, schema, scope } = deps;
+  let serving = false;
+  let last = Object.freeze({ status: 'unreconciled', reason: null, serving: false });
+  let tail = Promise.resolve();
+  let clock = 1700000000000;
+  function nowTick() {
+    clock = Math.max(clock + 1, Date.now());
+    return clock;
+  }
+  function serial(fn) {
+    const run = tail.then(fn, fn);
+    tail = run.then(() => {}, () => {});
+    return run;
+  }
+  function mark(status, reason) {
+    serving = false;
+    last = Object.freeze({ status, reason, serving: false });
+    return last;
+  }
+  function markClean() {
+    serving = true;
+    last = Object.freeze({ status: 'clean', reason: null, serving: true });
+    return last;
+  }
+  function hexesOf(frontier) {
+    return frontier.entries.map(entry => Buffer.from(entry).toString('hex'));
+  }
+  async function observations() {
+    const listed = await witnessStore.listObservations({ scope });
+    if (!listed || listed.state !== 'ok' || !Array.isArray(listed.observations)) return null;
+    return listed.observations;
+  }
+  async function readFrontier(incarnation) {
+    const read = await authorizationStore.readCanonicalRevocationSet({ incarnation });
+    if (!read || read.state !== 'ok' || !read.frontier) return null;
+    if (read.frontier.schema !== schema || read.frontier.scope !== scope) return null;
+    if (read.frontier.incarnation !== incarnation) return null;
+    return read.frontier;
+  }
+  function sameAnchor(a, b) {
+    if (!a || !b) return false;
+    return a.scope === b.scope && a.incarnation === b.incarnation && a.epoch === b.epoch
+      && a.revocationCount === b.revocationCount && a.frontierDigest === b.frontierDigest
+      && a.priorDigest === b.priorDigest && a.lastEventId === b.lastEventId
+      && a.updatedAt === b.updatedAt;
+  }
+  function intendedLanded(landed, next, eventId) {
+    return !!landed && landed.scope === scope && landed.incarnation === next.incarnation
+      && landed.epoch === next.epoch && landed.revocationCount === next.revocationCount
+      && landed.frontierDigest === next.frontierDigest && landed.priorDigest === next.priorDigest
+      && landed.lastEventId === eventId;
+  }
+  async function sinkObservation(obs) {
+    const result = await witnessStore.appendObservation({ ...obs, observedAt: nowTick() });
+    if (!result || (result.outcome !== 'appended' && result.outcome !== 'already-present')) {
+      throw new Error('witness observation was not durable');
+    }
+  }
+  async function finishLanded(eventId) {
+    let gens;
+    try { gens = await anchorStore.listAuthorizationGenerations(scope); } catch {
+      return unknownOutcome('ack-unknown', 'W3');
+    }
+    const landed = [...gens].reverse().find(g => g.record && g.record.lastEventId === eventId);
+    if (!landed) return unknownOutcome('ack-unknown', 'W3');
+    let prov;
+    try { prov = await anchorStore.listProvenanceAuthorization(scope); } catch {
+      return unknownOutcome('ack-unknown', 'W3');
+    }
+    const acked = prov.some(e => e.kind === 'ack' && e.eventId === eventId);
+    if (!acked) {
+      try {
+        await anchorStore.writeAckAuthorization(scope, eventId, landed.generation, landed.recordHash);
+      } catch {
+        return unknownOutcome('ack-unknown', 'W3');
+      }
+    }
+    const listed = await observations();
+    const witnessed = listed && listed.some(o => o.scope === scope
+      && o.incarnation === landed.record.incarnation && o.epoch === landed.record.epoch
+      && o.eventId === eventId);
+    if (!witnessed) {
+      let result;
+      try {
+        result = await witnessStore.appendObservation({
+          scope, incarnation: landed.record.incarnation, epoch: landed.record.epoch,
+          frontierDigest: landed.record.frontierDigest, recordHash: landed.recordHash,
+          eventId, observedAt: nowTick(),
+        });
+      } catch { result = null; }
+      if (!result || (result.outcome !== 'appended' && result.outcome !== 'already-present')) {
+        return unknownOutcome('witness-unknown', 'W4');
+      }
+    }
+    return Object.freeze({
+      outcome: 'appended', state: 'W5', eventId,
+      generation: landed.generation, recordHash: landed.recordHash,
+    });
+  }
+  async function successorProof(intentHex) {
+    let replay; let current;
+    try {
+      replay = await anchorStore.replayAuthorization(scope);
+      current = await anchorStore.readAuthorization(scope);
+    } catch {
+      return { ok: false, reason: 'anchor-mismatch-unproven' };
+    }
+    if (!replay || replay.status !== 'verified' || !current) {
+      return { ok: false, reason: 'anchor-mismatch-unproven' };
+    }
+    if (current.incarnation !== replay.head.incarnation || current.epoch !== replay.head.epoch
+      || current.frontierDigest !== replay.head.frontierDigest
+      || current.lastEventId !== replay.head.lastEventId
+      || current.revocationCount !== replay.head.revocationCount) {
+      return { ok: false, reason: 'anchor-mismatch-unproven' };
+    }
+    const frontier = await readFrontier(current.incarnation);
+    if (!frontier) return { ok: false, reason: 'frontier-unknown' };
+    const anchored = new Set(replay.anchoredEntries);
+    const candidate = hexesOf(frontier);
+    if (candidate.length !== frontier.count) return { ok: false, reason: 'anchor-mismatch-unproven' };
+    for (const hex of anchored) {
+      if (!candidate.includes(hex)) return { ok: false, reason: 'anchor-mismatch-unproven' };
+    }
+    const delta = candidate.filter(hex => !anchored.has(hex));
+    if (delta.length !== 1 || delta[0] !== intentHex) {
+      return { ok: false, reason: 'anchor-mismatch-unproven' };
+    }
+    return {
+      ok: true, intentHex, current, next: {
+        scope, incarnation: current.incarnation, epoch: current.epoch + 1,
+        revocationCount: frontier.count, frontierDigest: frontier.frontierDigest,
+        priorDigest: current.frontierDigest, updatedAt: nowTick(),
+      },
+    };
+  }
+  async function afterUncertain(expected, next, eventId, intentHex, retriesLeft) {
+    let landed;
+    try { landed = await anchorStore.readAuthorization(scope); } catch {
+      return unknownOutcome('anchor-reread-unknown', 'W2', { committedUnanchored: true });
+    }
+    if (intendedLanded(landed, next, eventId)) return finishLanded(eventId);
+    if (sameAnchor(landed, expected)) {
+      if (retriesLeft <= 0) {
+        return unknownOutcome('anchor-cas-uncertain', 'W2', { committedUnanchored: true });
+      }
+      const proof = await successorProof(intentHex);
+      if (!proof.ok) {
+        return unknownOutcome(proof.reason, proof.reason === 'frontier-unknown' ? 'W2' : 'W2',
+          { committedUnanchored: true });
+      }
+      return attemptCas(proof, eventId, retriesLeft - 1);
+    }
+    return unknownOutcome('anchor-conflict-unproven', 'UNPROVEN');
+  }
+  async function attemptCas(proof, eventId, retriesLeft) {
+    const next = { ...proof.next, lastEventId: eventId };
+    let advanced;
+    try {
+      advanced = await anchorStore.advanceAuthorization(scope, proof.current, next);
+    } catch {
+      return afterUncertain(proof.current, next, eventId, proof.intentHex, retriesLeft);
+    }
+    if (advanced === true) return finishLanded(eventId);
+    if (advanced === false) return afterUncertain(proof.current, next, eventId, proof.intentHex, retriesLeft);
+    return unknownOutcome('anchor-cas-uncertain', 'W2', { committedUnanchored: true });
+  }
+  async function findOwning(intentHex, candidateHexes) {
+    let decoded;
+    try { decoded = decodeRevocationEntry(Buffer.from(intentHex, 'hex')); } catch { return null; }
+    const key = revocationKey(decoded);
+    const ownerHex = candidateHexes.find(hex => {
+      if (hex === intentHex) return false;
+      try { return revocationKey(decodeRevocationEntry(Buffer.from(hex, 'hex'))) === key; } catch { return false; }
+    });
+    if (!ownerHex) return null;
+    const prov = await anchorStore.listProvenanceAuthorization(scope);
+    const owner = prov.find(e => e.kind === 'intent' && e.entry === ownerHex);
+    return owner ? { eventId: owner.eventId, hex: ownerHex } : null;
+  }
+  async function closeDuplicate(eventId, intentHex) {
+    const current = await anchorStore.readAuthorization(scope);
+    if (!current) return unknownOutcome('anchor-mismatch-unproven', 'UNPROVEN');
+    const frontier = await readFrontier(current.incarnation);
+    if (!frontier) return unknownOutcome('frontier-unknown', 'W1');
+    const hexes = hexesOf(frontier);
+    if (hexes.includes(intentHex)) {
+      return unknownOutcome('anchor-mismatch-unproven', 'W2', { committedUnanchored: true });
+    }
+    const owner = await findOwning(intentHex, hexes);
+    if (!owner) return unknownOutcome('anchor-mismatch-unproven', 'UNPROVEN');
+    const replay = await anchorStore.replayAuthorization(scope);
+    if (!replay || replay.status !== 'verified' || !replay.anchoredEntries.includes(owner.hex)) {
+      return unknownOutcome('duplicate-owner-unanchored', 'W1');
+    }
+    try {
+      await anchorStore.writeDuplicateSatisfiedAuthorization(scope, eventId, owner.eventId);
+    } catch {
+      return unknownOutcome('duplicate-unknown', 'W1');
+    }
+    return Object.freeze({
+      outcome: 'duplicate-satisfied', state: 'T-DUP', eventId, owningEventId: owner.eventId,
+    });
+  }
+  async function resume(admission) {
+    const eventId = admission.eventId;
+    const prov = await anchorStore.listProvenanceAuthorization(scope);
+    const terminal = prov.find(e => e.eventId === eventId
+      && (e.kind === 'ack' || e.kind === 'void' || e.kind === 'duplicate-satisfied'));
+    if (terminal && terminal.kind === 'void') return unknownOutcome('void', 'T-VOID');
+    if (terminal && terminal.kind === 'duplicate-satisfied') {
+      return Object.freeze({
+        outcome: 'duplicate-satisfied', state: 'T-DUP', eventId, owningEventId: terminal.owningEventId,
+      });
+    }
+    const gens = await anchorStore.listAuthorizationGenerations(scope);
+    const landed = [...gens].reverse().find(g => g.record && g.record.lastEventId === eventId);
+    if ((terminal && terminal.kind === 'ack') || landed) return finishLanded(eventId);
+    return null;
+  }
+  async function advanceIntent(eventId, intentHex) {
+    const proof = await successorProof(intentHex);
+    if (!proof.ok) {
+      return unknownOutcome(proof.reason, 'W2', { committedUnanchored: true });
+    }
+    return attemptCas(proof, eventId, 1);
+  }
+  async function confirmClean() {
+    let replay;
+    try { replay = await anchorStore.replayAuthorization(scope); } catch {
+      return mark('unknown', 'replay-unknown');
+    }
+    if (!replay || replay.status !== 'verified') {
+      return mark('unproven', (replay && replay.reason) || 'replay-unproven');
+    }
+    const frontier = await readFrontier(replay.head.incarnation);
+    if (!frontier) return mark('unknown', 'frontier-unknown');
+    const storeSet = new Set(hexesOf(frontier));
+    const anchored = new Set(replay.anchoredEntries);
+    if (storeSet.size !== anchored.size) return mark('unproven', 'store-anchor-disagreement');
+    for (const hex of anchored) if (!storeSet.has(hex)) return mark('unproven', 'store-anchor-disagreement');
+    let head;
+    try { head = await witnessStore.readHead({ scope }); } catch { head = null; }
+    if (!head || head.state !== 'ok' || !head.head) return mark('unproven', 'witness-head-absent');
+    let gens;
+    try { gens = await anchorStore.listAuthorizationGenerations(scope); } catch {
+      return mark('unknown', 'generations-unknown');
+    }
+    const top = gens[gens.length - 1];
+    const witnessed = head.head;
+    if (witnessed.incarnation !== replay.head.incarnation) {
+      return mark('unverifiable', 'witness head names a foreign incarnation');
+    }
+    if (witnessed.epoch !== replay.head.epoch || witnessed.frontierDigest !== replay.head.frontierDigest
+      || witnessed.recordHash !== top.recordHash || witnessed.eventId !== replay.head.lastEventId) {
+      return mark('unproven', 'witness head does not equal the anchor head');
+    }
+    const observed = await observations();
+    if (!observed) return mark('unknown', 'witness-unknown');
+    let classified;
+    try {
+      classified = await anchorStore.classifyAuthorization(scope, {
+        storeEntries: [...storeSet], witnessObservations: observed,
+      });
+    } catch {
+      return mark('unknown', 'classify-unknown');
+    }
+    if (!classified || classified.status !== 'complete') {
+      return mark(classified && classified.status === 'unverifiable' ? 'unverifiable' : 'unproven',
+        (classified && classified.reason) || 'not-complete');
+    }
+    return markClean();
+  }
+  // Actual head is the cross-witness high-watermark: greatest
+  // (incarnation, epoch). S1's witnessGate selects greatest epoch, so a
+  // foreign head at a lower epoch passes Phase O and Phase A and is
+  // noticed only by confirmClean, after the writes. Lineage disagreement
+  // and anchor regression against this head refuse first (design §2.3.3
+  // trace 14, §2.3.5). A same-incarnation head at or behind the anchor
+  // stays on the existing completion path.
+  async function gateActualWitnessHead(replay) {
+    let read;
+    try { read = await witnessStore.readHead({ scope }); } catch {
+      return mark('unknown', 'actual-head-unreadable');
+    }
+    if (!read || read.state !== 'ok') return mark('unknown', 'actual-head-unknown');
+    if (!read.head) return mark('unproven', 'witness-head-absent');
+    const witnessed = read.head;
+    if (witnessed.incarnation !== replay.head.incarnation) {
+      return mark('unverifiable', 'witness head names a foreign incarnation');
+    }
+    if (witnessed.epoch > replay.head.epoch) {
+      return mark('unverifiable', 'anchor is behind the witness head');
+    }
+    if (witnessed.epoch === replay.head.epoch
+      && (witnessed.frontierDigest !== replay.head.frontierDigest
+        || witnessed.recordHash !== replay.headRecordHash)) {
+      return mark('unverifiable', 'witness head disagrees with the anchor head');
+    }
+    return null;
+  }
+  async function reconcileBody() {
+    let observed;
+    try { observed = await observations(); } catch { observed = null; }
+    if (!observed) return mark('unknown', 'witness-unknown');
+    let replay;
+    try { replay = await anchorStore.replayAuthorization(scope); } catch {
+      return mark('unknown', 'replay-unknown');
+    }
+    if (!replay || replay.status !== 'verified') {
+      return mark('unproven', (replay && replay.reason) || 'replay-unproven');
+    }
+    const refused = await gateActualWitnessHead(replay);
+    if (refused) return refused;
+    let completed;
+    try {
+      completed = await anchorStore.completeAuthorizationProvenance(scope, {
+        witnessObservations: observed,
+        appendObservation: obs => sinkObservation(obs),
+      });
+    } catch {
+      return mark('unknown', 'phase-o-unknown');
+    }
+    if (!completed || completed.status === 'unverifiable') {
+      return mark('unverifiable', (completed && completed.reason) || 'unverifiable');
+    }
+    if (completed.status !== 'completed') return mark('unproven', completed.reason || 'phase-o-unproven');
+    let observedAfter;
+    try { observedAfter = await observations(); } catch { observedAfter = null; }
+    if (!observedAfter) return mark('unknown', 'witness-unknown');
+    const frontier = await readFrontier(replay.head.incarnation);
+    if (!frontier) return mark('unknown', 'frontier-unknown');
+    let classified;
+    try {
+      classified = await anchorStore.classifyAuthorization(scope, {
+        storeEntries: hexesOf(frontier), witnessObservations: observedAfter,
+      });
+    } catch {
+      return mark('unknown', 'classify-unknown');
+    }
+    if (!classified || classified.status === 'unverifiable') {
+      return mark('unverifiable', (classified && classified.reason) || 'unverifiable');
+    }
+    if (classified.status === 'unproven') return mark('unproven', classified.reason || 'unproven');
+    if (classified.status === 'open') {
+      const intent = classified.intent;
+      if (!intent) return mark('unproven', 'open-intent-missing');
+      if (intent.state === 'W1') {
+        try { await anchorStore.writeVoidAuthorization(scope, intent.eventId); } catch {
+          return mark('unknown', 'void-unknown');
+        }
+      } else if (intent.state === 'duplicate-satisfiable') {
+        let prov;
+        try { prov = await anchorStore.listProvenanceAuthorization(scope); } catch {
+          return mark('unknown', 'provenance-unknown');
+        }
+        const row = prov.find(e => e.kind === 'intent' && e.eventId === intent.eventId);
+        if (!row) return mark('unproven', 'duplicate-intent-missing');
+        const closed = await closeDuplicate(intent.eventId, row.entry);
+        if (!closed || closed.outcome !== 'duplicate-satisfied') {
+          return mark('unproven', (closed && closed.reason) || 'duplicate-unproven');
+        }
+      } else if (intent.state === 'W2') {
+        let prov;
+        try { prov = await anchorStore.listProvenanceAuthorization(scope); } catch {
+          return mark('unknown', 'provenance-unknown');
+        }
+        const row = prov.find(e => e.kind === 'intent' && e.eventId === intent.eventId);
+        if (!row || typeof row.entry !== 'string') return mark('unproven', 'new-intent-missing');
+        const advanced = await advanceIntent(row.eventId, row.entry);
+        if (!advanced || advanced.outcome !== 'appended') {
+          const reason = (advanced && advanced.reason) || 'phase-a-unknown';
+          const status = reason === 'anchor-conflict-unproven' || reason === 'anchor-mismatch-unproven'
+            ? 'unproven' : 'unknown';
+          return mark(status, reason);
+        }
+      } else {
+        return mark('unproven', 'landed-transition-still-open');
+      }
+    } else if (classified.status !== 'complete') {
+      return mark('unproven', classified.reason || 'unclassified');
+    }
+    return confirmClean();
+  }
+  async function appendKind(kind, input) {
+    if (!serving) return unknownOutcome(last.reason || 'reconciliation-refused', last.status || 'UNPROVEN');
+    const intentInput = kind === 'oprev'
+      ? { scope, kind, operationId: input.operationId, generation: input.generation, revokedAt: input.revokedAt }
+      : { scope, kind, sidDigest: input.sidDigest, revokedAt: input.revokedAt };
+    let observed;
+    try { observed = await observations(); } catch { observed = null; }
+    if (!observed) return unknownOutcome('witness-unknown', 'W0');
+    let admission;
+    try {
+      admission = await anchorStore.openAuthorizationIntent(intentInput, { witnessObservations: observed });
+    } catch {
+      return unknownOutcome('intent-unknown', 'W0');
+    }
+    if (!admission || admission.status !== 'admitted') {
+      return unknownOutcome((admission && admission.reason) || 'anchor-intent-open', 'W0');
+    }
+    const eventId = admission.eventId;
+    const intentHex = admission.entry && admission.entry.entry;
+    if (typeof intentHex !== 'string') return unknownOutcome('intent-malformed', 'W1');
+    if (admission.resumed) {
+      try {
+        const resumed = await resume(admission);
+        if (resumed) return resumed;
+      } catch {
+        return unknownOutcome('resume-unknown', 'W1');
+      }
+    }
+    const appended = kind === 'oprev'
+      ? await authorizationStore.appendRevocation({
+        operationId: input.operationId, generation: input.generation, revokedAt: input.revokedAt,
+      })
+      : await authorizationStore.appendSessionRevocation({
+        sidDigest: input.sidDigest, revokedAt: input.revokedAt,
+      });
+    if (!appended || appended.outcome === 'unknown') return unknownOutcome('store-unknown', 'W1');
+    if (appended.outcome === 'already-present') {
+      const current = await anchorStore.readAuthorization(scope);
+      const frontier = current && await readFrontier(current.incarnation);
+      if (!frontier) return unknownOutcome('frontier-unknown', 'W1');
+      if (!hexesOf(frontier).includes(intentHex)) return closeDuplicate(eventId, intentHex);
+    } else if (appended.outcome !== 'appended') {
+      return unknownOutcome('store-unknown', 'W1');
+    }
+    const advanced = await advanceIntent(eventId, intentHex);
+    if (advanced && advanced.outcome === 'unknown' && advanced.reason === 'anchor-mismatch-unproven') {
+      try { await reconcileBody(); } catch { mark('unknown', 'reconciliation-threw'); }
+    }
+    return advanced;
+  }
+  function guardedAppend(kind) {
+    return input => serial(async () => {
+      try { return await appendKind(kind, input); } catch {
+        return unknownOutcome('append-threw', serving ? 'W1' : (last.status || 'UNPROVEN'));
+      }
+    });
+  }
+  async function runReconcile() {
+    try { return await reconcileBody(); } catch { return mark('unknown', 'reconciliation-threw'); }
+  }
+  const api = Object.freeze({
+    appendRevocation: guardedAppend('oprev'),
+    appendSessionRevocation: guardedAppend('sesrev'),
+    reconcile: () => serial(runReconcile),
+    status: () => last,
+  });
+  return { api, reconcile: () => serial(runReconcile) };
+}
+
 async function createSettlementEvidenceAuthorizationConnection(options) {
   let o;
   try {o=validate(options);} catch(error){throw sanitize(error,'config');}
@@ -320,7 +810,18 @@ async function createSettlementEvidenceAuthorizationConnection(options) {
     };
     const authorizationStore=createAuthorizationStore({session:client,schema:o.schema,scope:o.scope});
     state='ready';
-    return Object.freeze({authorizationStore,retire,status});
+    const published={authorizationStore,retire,status};
+    if(o.composer){
+      const composer=createAnchoredAppend({
+        authorizationStore, anchorStore:o.composer.anchorStore,
+        witnessStore:o.composer.witnessStore, schema:o.schema, scope:o.scope,
+      });
+      await composer.reconcile();
+      Object.defineProperty(published,'anchoredAppend',{
+        value:composer.api, enumerable:false, writable:false, configurable:false,
+      });
+    }
+    return Object.freeze(published);
   } catch(error) {
     if(!connectStarted)connectSettled();
     const safe=sanitize(error,'client-setup');lose(safe);
