@@ -819,3 +819,161 @@ test('malformed advance inputs throw before any write', async () => {
     /incarnation/);
   assert.equal(transport.objects.size, before);
 });
+
+test('Phase O completion refuses before any write when the witness disagrees (trace 14)', async () => {
+  const transport = makeTransport();
+  const store = makeStore(transport);
+  const incarnation = await genesisAll(store);
+  const storeSet = new Set();
+  // Land generation 1 and lose the ack (W3): the advance is durable,
+  // the provenance completion is not.
+  const opened = await store.openAuthorizationIntent(opRev(1, tick(50)),
+    { witnessObservations: [] });
+  assert.equal(opened.status, 'admitted');
+  storeSet.add(A.encodeRevocationEntry(opRev(1, tick(50))).toString('hex'));
+  const current = await store.readAuthorization(scope);
+  const next = nextAuthRecord(current, {
+    eventId: opened.eventId, entries: [...storeSet], updatedAt: tick(11),
+  });
+  assert.equal(await store.advanceAuthorization(scope, current, next), true);
+  const gens = await store.listAuthorizationGenerations(scope);
+  const landed = gens[1];
+  const sinkCalls = [];
+  const sink = async obs => { sinkCalls.push(obs); return true; };
+  const provBefore = (await store.listProvenanceAuthorization(scope)).length;
+  // (a) A witness head in a foreign incarnation: unverifiable, and
+  // the Phase L refusal precedes every write — no ack, no sink call.
+  // A later sink refusal could never undo an ack already written.
+  const foreign = [{
+    scope, incarnation: hashOf('foreign-incarnation'), epoch: 1,
+    frontierDigest: next.frontierDigest, recordHash: landed.recordHash, eventId: opened.eventId,
+  }];
+  const refusedForeign = await store.completeAuthorizationProvenance(scope,
+    { witnessObservations: foreign, appendObservation: sink });
+  assert.equal(refusedForeign.status, 'unverifiable');
+  assert.match(refusedForeign.reason, /foreign incarnation/);
+  assert.equal(sinkCalls.length, 0);
+  assert.equal((await store.listProvenanceAuthorization(scope)).length, provBefore);
+  assert.equal((await store.listProvenanceAuthorization(scope))
+    .some(e => e.eventId === opened.eventId && e.kind === 'ack'), false);
+  // (b) A same-lineage witness head ahead of the anchor (epoch 2
+  // over a generation-1 head): the anchor has regressed against the
+  // high-watermark — likewise unverifiable before any write.
+  const ahead = [{
+    scope, incarnation, epoch: 2,
+    frontierDigest: hashOf('ahead-frontier'), recordHash: hashOf('ahead-record'),
+    eventId: hashOf('ahead-event'),
+  }];
+  const refusedAhead = await store.completeAuthorizationProvenance(scope,
+    { witnessObservations: ahead, appendObservation: sink });
+  assert.equal(refusedAhead.status, 'unverifiable');
+  assert.match(refusedAhead.reason, /behind the witness head/);
+  assert.equal(sinkCalls.length, 0);
+  assert.equal((await store.listProvenanceAuthorization(scope)).length, provBefore);
+  // (c) Retained behaviour: with no witness disagreement, the same
+  // W3 gap completes exactly as before — the ack from the landed
+  // generation plus the missing observation, anchor untouched.
+  const witness = makeWitness();
+  const completed = await store.completeAuthorizationProvenance(scope,
+    { witnessObservations: witness.observations, appendObservation: witness.appendObservation });
+  assert.equal(completed.status, 'completed');
+  assert.deepEqual(completed.acksWritten, [opened.eventId]);
+  assert.deepEqual(completed.observationsWritten, [opened.eventId]);
+  const prov = await store.listProvenanceAuthorization(scope);
+  const ack = prov.find(e => e.eventId === opened.eventId && e.kind === 'ack');
+  assert.equal(ack.generation, landed.generation);
+  assert.equal(ack.recordHash, landed.recordHash);
+  assert.equal((await store.readAuthorization(scope)).epoch, 1);
+});
+
+test('a repeated event in the generation chain is unproven — never completed or certified', async () => {
+  const transport = makeTransport();
+  const store = makeStore(transport);
+  const witness = makeWitness();
+  await genesisAll(store);
+  const storeSet = new Set();
+  const r1 = await runRevocation(store, storeSet, witness, 1, tick(50));
+  const r2 = await runRevocation(store, storeSet, witness, 2, tick(51));
+  // Forge generation 3 naming E1 again: adjacent-event validation
+  // admits it (only the immediately preceding event is excluded),
+  // and its count/digest honestly describe the multiset [R1, R2, R1].
+  const current = await store.readAuthorization(scope);
+  const forgedNext = {
+    scope, incarnation: current.incarnation, epoch: 3, revocationCount: 3,
+    frontierDigest: A.computeFrontierDigest({
+      schema, scope, incarnation: current.incarnation,
+      entries: [r1.entryHex, r2.entryHex, r1.entryHex],
+    }),
+    priorDigest: current.frontierDigest, lastEventId: r1.eventId, updatedAt: tick(99),
+  };
+  assert.equal(await store.advanceAuthorization(scope, current, forgedNext), true);
+  const gens = await store.listAuthorizationGenerations(scope);
+  const forgedGen = gens[3];
+  // Even with a witness observation supplied for the forged
+  // generation, no surface may certify the repeated-event history:
+  // two acks must never certify three transitions.
+  const observations = [...witness.observations, {
+    scope, incarnation: current.incarnation, epoch: 3,
+    frontierDigest: forgedNext.frontierDigest, recordHash: forgedGen.recordHash,
+    eventId: r1.eventId,
+  }];
+  const replay = await store.replayAuthorization(scope);
+  assert.equal(replay.status, 'unproven');
+  const classified = await store.classifyAuthorization(scope,
+    { storeEntries: [...storeSet], witnessObservations: observations });
+  assert.equal(classified.status, 'unproven');
+  const audit = await store.auditAuthorization(scope, { witnessObservations: observations });
+  assert.equal(audit.status, 'unproven');
+  // Completion refuses with zero writes and zero sink calls.
+  const sinkCalls = [];
+  const provBefore = (await store.listProvenanceAuthorization(scope)).length;
+  const completed = await store.completeAuthorizationProvenance(scope, {
+    witnessObservations: witness.observations,
+    appendObservation: async obs => { sinkCalls.push(obs); return true; },
+  });
+  assert.equal(completed.status, 'unproven');
+  assert.equal(sinkCalls.length, 0);
+  assert.equal((await store.listProvenanceAuthorization(scope)).length, provBefore);
+});
+
+test('a chain landing the same revocation key twice (distinct duplicate event) is unproven', async () => {
+  const transport = makeTransport();
+  const store = makeStore(transport);
+  const witness = makeWitness();
+  await genesisAll(store);
+  const storeSet = new Set();
+  const r1 = await runRevocation(store, storeSet, witness, 1, tick(50));
+  const r2 = await runRevocation(store, storeSet, witness, 2, tick(51));
+  // A second revocation of R1's key at a different tick is a
+  // distinct event with distinct entry bytes. Admit its intent,
+  // then land it as generation 3: the anchored set would hold the
+  // key twice, which no store set (one row per key) can ever equal.
+  const dup = await store.openAuthorizationIntent(opRev(1, tick(77)),
+    { witnessObservations: witness.observations });
+  assert.equal(dup.status, 'admitted');
+  const dupHex = A.encodeRevocationEntry(opRev(1, tick(77))).toString('hex');
+  const current = await store.readAuthorization(scope);
+  const forgedNext = {
+    scope, incarnation: current.incarnation, epoch: 3, revocationCount: 3,
+    frontierDigest: A.computeFrontierDigest({
+      schema, scope, incarnation: current.incarnation,
+      entries: [r1.entryHex, r2.entryHex, dupHex],
+    }),
+    priorDigest: current.frontierDigest, lastEventId: dup.eventId, updatedAt: tick(99),
+  };
+  assert.equal(await store.advanceAuthorization(scope, current, forgedNext), true);
+  const replay = await store.replayAuthorization(scope);
+  assert.equal(replay.status, 'unproven');
+  // Completion must not ack the duplicate's transition either.
+  const sinkCalls = [];
+  const provBefore = (await store.listProvenanceAuthorization(scope)).length;
+  const completed = await store.completeAuthorizationProvenance(scope, {
+    witnessObservations: witness.observations,
+    appendObservation: async obs => { sinkCalls.push(obs); return true; },
+  });
+  assert.equal(completed.status, 'unproven');
+  assert.equal(sinkCalls.length, 0);
+  assert.equal((await store.listProvenanceAuthorization(scope)).length, provBefore);
+  assert.equal((await store.listProvenanceAuthorization(scope))
+    .some(e => e.eventId === dup.eventId && e.kind === 'ack'), false);
+});

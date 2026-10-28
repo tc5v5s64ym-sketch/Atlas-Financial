@@ -952,6 +952,9 @@ function createSettlementEvidenceAnchorStore(deps) {
     }
     const accumulated = [];
     const transitions = [];
+    const consumedEvents = new Set();
+    const consumedEntries = new Set();
+    const consumedKeys = new Set();
     for (let i = 1; i < generations.length; i++) {
       const { record, recordHash } = generations[i];
       if (record.scope !== scope || record.incarnation !== incarnation) {
@@ -963,6 +966,29 @@ function createSettlementEvidenceAnchorStore(deps) {
       }
       const intent = intentOf(entries, record.lastEventId);
       if (!intent) return unproven('generation names an event with no recorded intent');
+      // Unique consumption: a transition consumes its intent, its
+      // entry and its revocation key exactly once. A repeated event
+      // (E1-E2-E1), a repeated entry, or a second landing of the
+      // same revocation key is malformed retained history — the
+      // anchored set is a set, so no later phase may certify it.
+      if (consumedEvents.has(record.lastEventId)) {
+        return unproven('generation repeats an earlier transition event');
+      }
+      if (consumedEntries.has(intent.entry)) {
+        return unproven('generation repeats an entry already anchored');
+      }
+      let entryKey;
+      try {
+        entryKey = entryKeyString(decodeRevocationEntry(Buffer.from(intent.entry, 'hex')));
+      } catch {
+        return unproven('generation entry cannot be decoded');
+      }
+      if (consumedKeys.has(entryKey)) {
+        return unproven('generation repeats a revocation key already anchored');
+      }
+      consumedEvents.add(record.lastEventId);
+      consumedEntries.add(intent.entry);
+      consumedKeys.add(entryKey);
       accumulated.push(Buffer.from(intent.entry, 'hex'));
       if (record.revocationCount !== accumulated.length) {
         return unproven('generation revocation count disagrees with the replayed set');
@@ -975,10 +1001,13 @@ function createSettlementEvidenceAnchorStore(deps) {
         generation: i, epoch: record.epoch, eventId: record.lastEventId, recordHash, record,
       });
     }
-    // Ack cross-check (audit only): every ack must be consumed by the
-    // replay, bound to the generation it names.
+    // Ack cross-check (audit only): every ack must be consumed by
+    // exactly one replayed transition, bound to the generation it
+    // names. Transition events are unique (above), so the binding
+    // is exact — one ack can never certify two transitions.
+    const transitionsByEvent = new Map(transitions.map(t => [t.eventId, t]));
     for (const ack of entries.filter(e => e.kind === 'ack')) {
-      const transition = transitions.find(t => t.eventId === ack.eventId);
+      const transition = transitionsByEvent.get(ack.eventId);
       if (!transition || ack.generation !== transition.generation
         || ack.recordHash !== transition.recordHash) {
         return unproven('an ack entry is not consumed by the replay');
@@ -990,6 +1019,27 @@ function createSettlementEvidenceAnchorStore(deps) {
       head: head.record, headRecordHash: head.recordHash,
       anchoredEntries: accumulated.map(b => b.toString('hex')).sort(),
     };
+  }
+  // The Phase L witness gate (design section 2.3.3, trace 14): a
+  // witness head in a foreign lineage, or ahead of the anchor, is
+  // unverifiable — not reconciliation's to repair — and wherever
+  // reconciliation writes, the refusal precedes every write.
+  function witnessGate(observations, scope, head, headRecordHash) {
+    const scoped = observations.filter(o => isRecord(o) && o.scope === scope);
+    if (scoped.length === 0) return null;
+    const witnessHead = scoped.reduce((a, b) => (b.epoch > a.epoch ? b : a));
+    if (witnessHead.incarnation !== head.incarnation) {
+      return { status: 'unverifiable', reason: 'witness head names a foreign incarnation' };
+    }
+    if (witnessHead.epoch > head.epoch) {
+      return { status: 'unverifiable', reason: 'anchor is behind the witness head' };
+    }
+    if (witnessHead.epoch === head.epoch
+      && (witnessHead.frontierDigest !== head.frontierDigest
+        || witnessHead.recordHash !== headRecordHash)) {
+      return { status: 'unverifiable', reason: 'witness head disagrees with the anchor head' };
+    }
+    return null;
   }
   function projectReplay(replay) {
     if (replay.status !== 'verified') return { status: replay.status, reason: replay.reason };
@@ -1016,21 +1066,8 @@ function createSettlementEvidenceAnchorStore(deps) {
     // Witness gate (Phase L): a witness head in a foreign lineage, or
     // ahead of the anchor, is unverifiable — not reconciliation's to
     // repair.
-    const scoped = observations.filter(o => isRecord(o) && o.scope === scope);
-    if (scoped.length > 0) {
-      const witnessHead = scoped.reduce((a, b) => (b.epoch > a.epoch ? b : a));
-      if (witnessHead.incarnation !== head.incarnation) {
-        return { status: 'unverifiable', reason: 'witness head names a foreign incarnation' };
-      }
-      if (witnessHead.epoch > head.epoch) {
-        return { status: 'unverifiable', reason: 'anchor is behind the witness head' };
-      }
-      if (witnessHead.epoch === head.epoch
-        && (witnessHead.frontierDigest !== head.frontierDigest
-          || witnessHead.recordHash !== replay.headRecordHash)) {
-        return { status: 'unverifiable', reason: 'witness head disagrees with the anchor head' };
-      }
-    }
+    const gate = witnessGate(observations, scope, head, replay.headRecordHash);
+    if (gate) return gate;
     const anchored = new Set(replay.anchoredEntries);
     const storeSet = new Set(storeEntries);
     const transitionsByEvent = new Map(transitions.map(t => [t.eventId, t]));
@@ -1107,6 +1144,15 @@ function createSettlementEvidenceAnchorStore(deps) {
     const replay = await replayInternal(scope);
     if (replay.status !== 'verified') return { status: replay.status, reason: replay.reason };
     const { entries, transitions, head, ref } = replay;
+    // The witness gate precedes every Phase O write: on witness
+    // disagreement the refusal is total — no ack entry is created
+    // and the observation sink is never invoked, because a later
+    // sink refusal cannot undo an ack already written (trace 14).
+    // This does not condition completion on the store set: Phase O
+    // metadata completion for landed transitions stands even where
+    // a later store-set accounting refuses (rolled-back store).
+    const gate = witnessGate(observations, scope, head, replay.headRecordHash);
+    if (gate) return gate;
     const acksWritten = [];
     const observationsWritten = [];
     for (const transition of transitions) {
@@ -1145,6 +1191,12 @@ function createSettlementEvidenceAnchorStore(deps) {
       const terminal = terminalOf(entries, transition.eventId);
       if (!terminal || terminal.kind !== 'ack') {
         violations.push('transition-unacked:' + transition.eventId);
+      } else if (terminal.generation !== transition.generation
+        || terminal.recordHash !== transition.recordHash) {
+        // The terminal entry must bind THIS transition's exact
+        // generation and record hash — kind alone certifies
+        // nothing, and one ack cannot certify two transitions.
+        violations.push('transition-ack-misbound:' + transition.eventId);
       } else if (!observationMatches(observations, scope, head.incarnation, transition)) {
         violations.push('transition-unwitnessed:' + transition.eventId);
       }
