@@ -121,3 +121,55 @@ test('zero cost and colliding native identity never establish payment retirement
     assert.ok(F.fundingSequence(x.plan,x.asOf,{settlementEvidence:evidence(collision==='zero'?0:6000)}).some(r=>r.id==='near'));
   }
 });
+
+// Scheduler join regression: a paid $60 goal emits no future expense, while
+// the independent $170 goal retains $95 of the $119 stock after the $24 bill.
+function scheduleInput(eff = evidence(6000,'2026-10-05')) {
+  const x=input();
+  const opts={...x.opts,settlementEvidence:eff,debts:[],weeklyVariable:0,horizonDays:91,viewDays:91};
+  const advice=F.recommend(x.plan,x.asOf,opts);
+  const sim=F.simulate(x.plan,x.asOf,opts),seq=F.fundingSequence(x.plan,x.asOf,opts);
+  return {x,opts,advice,sim,seq,run:(walk=sim,rows=seq)=>F.planSpendPaydayFunding(x.plan,x.asOf,walk,rows,[])};
+}
+test('scheduler: fully Paid goal keeps the current funding schedule and unrelated goal figures ready',()=>{
+  const p=scheduleInput(),s=p.advice.planSpendPaydayFunding;
+  assert.equal(s.status,'ready');
+  assert.equal(p.advice.savingsFunding.schedule.status,'ready');
+  assert.equal(p.seq.find(r=>r.id==='near').paymentStatus,'paid');
+  assert.equal(p.sim.events.filter(e=>e.id==='near').length,0,'no fabricated zero cash event');
+  const paid=s.costs.find(c=>c.id==='near'),far=s.costs.find(c=>c.id==='far');
+  assert.equal(paid.baseRequirement,0);
+  assert.equal(paid.stillToFund,0);
+  assert.equal(far.baseRequirement,170);
+  assert.equal(far.protectedNow,95);
+  assert.equal(far.actualSaved,null,'backing is not evidence of an actual transfer');
+  assert.equal(far.stillToFund,75,'170 - 95 = 75, independent of the paid goal');
+});
+test('scheduler: a partial positive obligation still needs exactly one matching cash event',()=>{
+  const p=scheduleInput(evidence(2500,'2026-10-05'));
+  assert.equal(p.run().status,'ready');
+  assert.equal(p.seq.find(r=>r.id==='near').need,35);
+  const matches=p.sim.events.filter(e=>e.id==='near');assert.equal(matches.length,1);
+  assert.equal(matches[0].amount,-35);
+  for(const events of [p.sim.events.filter(e=>e.id!=='near'),[...p.sim.events,matches[0]],
+    p.sim.events.map(e=>e.id==='near'?{...e,amount:-34}:e)]) {
+    const s=p.run({...p.sim,events});
+    assert.equal(s.status,'unavailable');assert.match(s.reason,/does not match one Forecast cash event/);
+  }
+});
+test('scheduler: zero alone or an ambiguous/mismatched event cannot claim the Paid exception',()=>{
+  const p=scheduleInput();
+  for(const rows of [p.seq.map(r=>r.id==='near'?{...r,paymentStatus:undefined}:r),
+    p.seq.map(r=>r.id==='near'?{...r,linkedPaid:59}:r)]) assert.equal(p.run(p.sim,rows).status,'unavailable');
+  const unexpected={id:'near',date:'2026-10-21',kind:'commitment',amount:-1};
+  assert.equal(p.run({...p.sim,events:[...p.sim.events,unexpected]}).status,'unavailable');
+});
+test('scheduler: reversal, over-assignment and ambiguous native identity still withhold',()=>{
+  for(const mode of ['reverse','over','duplicate']) {
+    const eff=evidence(mode==='over'?6100:6000,'2026-10-05');
+    if(mode==='reverse')eff.commitments[0].links[0].reversals=[{cents:500,date:'2026-10-06'}];
+    const x=input();if(mode==='duplicate')x.plan.commitments.push({...x.plan.commitments[0]});
+    const a=F.recommend(x.plan,x.asOf,{...x.opts,settlementEvidence:eff,debts:[],weeklyVariable:0});
+    assert.equal(a.planSpendPaydayFunding.status,'unavailable',mode);
+  }
+});

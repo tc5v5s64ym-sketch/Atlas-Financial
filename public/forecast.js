@@ -4455,7 +4455,20 @@
       const matching = point ? sim.events.filter(event => event && event.id === row.id
         && event.date === row.date && cents(-event.amount) === cents(row.need)
         && (event.kind === 'commitment' || event.kind === 'bill' || event.kind === 'reserve')) : [];
-      if (point && matching.length !== 1) {
+      // Full qualified relief intentionally emits no future expense. Consume
+      // that native sequence publication only for an exact zero obligation;
+      // zero alone, ambiguous identity, tainted relief or an unexpected event
+      // cannot excuse the existing positive-payment/event reconciliation.
+      const native = (plan.commitments || []).filter(c => c?.id === row.id);
+      const fullyPaidWithoutEvent = amount === 0 && row.need === 0
+        && row.paymentStatus === 'paid' && row.paymentRetired === false && !row.settlementUncertain
+        && savingsDate(row.paidOn) && row.paidOn <= asOf
+        && native.length === 1 && commitmentCashDate(native[0]) === row.date
+        && savingsCents(native[0].amount) > 0 && savingsCents(native[0].amount) === savingsCents(row.linkedPaid)
+        && seq.filter(candidate => candidate?.id === row.id).length === 1
+        && ![...(plan.bills || []), ...(plan.budget?.categories || [])].some(c => c?.id === row.id)
+        && !sim.events.some(event => event?.id === row.id && event.date === row.date);
+      if (point && matching.length !== 1 && !fullyPaidWithoutEvent) {
         return unavailable('A dated planned payment does not match one Forecast cash event.');
       }
       const backing = reserves && reserves.payments.find(payment => payment.id === row.id && payment.date === row.date);
