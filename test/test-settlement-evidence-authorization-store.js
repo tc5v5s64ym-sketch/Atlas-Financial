@@ -124,6 +124,40 @@ function createFakeSession(db = createFakeDatabase()) {
       (inTxn ? staged[name] : tables[name]).set(k, row);
       return ok([], 1);
     }
+    if (text.includes('frontier_operation_revocations')) {
+      const scope = values[0];
+      const ops = [];
+      for (const row of view('auth_revocation').values()) {
+        if (row.scope !== scope) continue;
+        ops.push([row.operation_id, row.generation,
+          fake.int8AsString ? String(row.revoked_at) : row.revoked_at]);
+      }
+      const sessions = [];
+      for (const row of view('auth_session_revocation').values()) {
+        if (row.scope !== scope) continue;
+        sessions.push([row.sid_digest, fake.int8AsString ? String(row.revoked_at) : row.revoked_at]);
+      }
+      const frontier = {
+        frontier_operation_revocations: ops,
+        frontier_session_revocations: sessions,
+      };
+      if (!text.includes('LEFT JOIN')) return ok([frontier], 1);
+      const [, o, g, sid] = values;
+      const e = view('auth_eligibility').get(key3(scope, o, g));
+      const r = view('auth_revocation').get(key3(scope, o, g));
+      const s = view('auth_session_revocation').get(key2(scope, sid));
+      return ok([{
+        household_id: e ? e.household_id : null,
+        operation_id: e ? e.operation_id : null,
+        generation: e ? e.generation : null,
+        confirmation_digest: e ? e.confirmation_digest : null,
+        secret_digest: e ? e.secret_digest : null,
+        issued_at: e ? (fake.int8AsString ? String(e.issued_at) : e.issued_at) : null,
+        operation_revoked: !!r,
+        session_revoked: !!s,
+        ...frontier,
+      }], 1);
+    }
     if (text.includes('LEFT JOIN')) {
       const [scope, o, g, sid] = values;
       const e = view('auth_eligibility').get(key3(scope, o, g));
@@ -223,6 +257,23 @@ function createFakeSession(db = createFakeDatabase()) {
             operation_revoked: false,
           }],
         };
+      }
+      if (text.includes('frontier_operation_revocations')
+        && (mode === 'bad-frontier' || mode === 'null-frontier' || mode === 'dup-frontier')) {
+        const dupId = 'operation-' + 'ab'.repeat(16);
+        const dupGen = 'generation-' + 'cd'.repeat(16);
+        const dupRow = [dupId, dupGen, 5];
+        const frontier = mode === 'null-frontier'
+          ? { frontier_operation_revocations: null, frontier_session_revocations: [] }
+          : mode === 'dup-frontier'
+            ? { frontier_operation_revocations: [dupRow, dupRow], frontier_session_revocations: [] }
+            : { frontier_operation_revocations: { not: 'a-set' }, frontier_session_revocations: [] };
+        const facts = text.includes('LEFT JOIN') ? {
+          household_id: null, operation_id: null, generation: null,
+          confirmation_digest: null, secret_digest: null, issued_at: null,
+          operation_revoked: false, session_revoked: false,
+        } : {};
+        return { command: 'SELECT', rowCount: 1, rows: [{ ...facts, ...frontier }] };
       }
       const res = dispatch(text, values);
       if (mode === 'dupe-rows' && res.rows.length === 1) res.rows = [res.rows[0], res.rows[0]];
@@ -915,3 +966,340 @@ test('AS-17 caller properties are captured exactly once: the validated value is 
     eq(row.sid_digest, D('sid-a'));
   }
 });
+
+// --- S2 authorization frontier (anchor/epoch design §2.1.1, §2.3.1) ------
+// Independent preimage oracle. Not imported from the store. Encoding
+// bindings this suite locks, because the design names the slots without
+// a second literal:
+//   encodingVersion is the UTF-8 string "1", then framed;
+//   incarnation is a HASH_RE digest, framed as its raw 32 bytes
+//   (the design's digest rule — not the 64-character hex text);
+//   sidDigest likewise raw 32 bytes; operationId/generation/schema/scope
+//   are framed UTF-8; revokedAt and count are u64be, not framed.
+const ENC_V = '1';
+const INC = D('incarnation-lineage-1');
+const INC_B = D('incarnation-lineage-2');
+function u32beOracle(n) {
+  const b = Buffer.alloc(4);
+  b.writeUInt32BE(n, 0);
+  return b;
+}
+function u64beOracle(n) {
+  const b = Buffer.alloc(8);
+  b.writeBigUInt64BE(BigInt(n), 0);
+  return b;
+}
+function frameOracle(value) {
+  const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value, 'utf8');
+  return Buffer.concat([u32beOracle(bytes.length), bytes]);
+}
+function rawHashOracle(hex) { return Buffer.from(hex, 'hex'); }
+function encodeOpOracle(operationId, generation, revokedAt) {
+  return Buffer.concat([
+    frameOracle('oprev'), frameOracle(operationId), frameOracle(generation), u64beOracle(revokedAt),
+  ]);
+}
+function encodeSesOracle(sidDigest, revokedAt) {
+  return Buffer.concat([
+    frameOracle('sesrev'), frameOracle(rawHashOracle(sidDigest)), u64beOracle(revokedAt),
+  ]);
+}
+function digestOracle(schema, scope, incarnation, entries) {
+  const preimage = Buffer.concat([
+    frameOracle('atlas-auth-frontier'), frameOracle(ENC_V), frameOracle(schema), frameOracle(scope),
+    frameOracle(rawHashOracle(incarnation)), u64beOracle(entries.length), ...entries,
+  ]);
+  return crypto.createHash('sha256').update(preimage).digest('hex');
+}
+function sortEntries(entries) {
+  return entries.slice().sort((a, b) => Buffer.compare(a, b));
+}
+function factsOf(read) {
+  return {
+    state: read.state, eligibility: read.eligibility,
+    operationRevoked: read.operationRevoked, sessionRevoked: read.sessionRevoked,
+  };
+}
+const readKey = (incarnation = INC) => ({
+  operationId: op(1), generation: gen(1), sidDigest: D('sid-1'), incarnation,
+});
+
+test('S2-1 combined read returns readState facts and the frontier from one statement', async () => {
+  const fake = createFakeSession();
+  const store = makeStore(fake);
+  eq(Object.keys(store).sort(), [
+    'appendRevocation', 'appendSessionRevocation', 'issueEligibility',
+    'readAuthorizationState', 'retire', 'status']);
+  for (const name of ['readCombinedSnapshot', 'readAuthorizationFrontier', 'readCanonicalRevocationSet']) {
+    assert.equal(typeof store[name], 'function');
+    assert.equal(Object.prototype.propertyIsEnumerable.call(store, name), false);
+    assert.equal(Object.hasOwn(store, name), true);
+  }
+  const record = eligibility();
+  eq(await store.issueEligibility(record), { outcome: 'issued' });
+  const revokedAt = tick();
+  eq(await store.appendRevocation({ operationId: op(1), generation: gen(1), revokedAt }), { outcome: 'appended' });
+  const before = fake.log.length;
+  fake.int8AsString = true;
+  const key = readKey();
+  const state = await store.readAuthorizationState(
+    { operationId: key.operationId, generation: key.generation, sidDigest: key.sidDigest });
+  const combined = await store.readCombinedSnapshot(key);
+  eq(factsOf(combined), state);
+  eq(combined.state, 'ok');
+  eq(combined.frontier.count, 1);
+  const expected = sortEntries([encodeOpOracle(op(1), gen(1), revokedAt)]);
+  eq(combined.frontier.entries, expected);
+  eq(combined.frontier.frontierDigest, digestOracle(SCHEMA, SCOPE_A, INC, expected));
+  eq(combined.frontier.encodingVersion, ENC_V);
+  eq(combined.frontier.schema, SCHEMA);
+  eq(combined.frontier.scope, SCOPE_A);
+  eq(combined.frontier.incarnation, INC);
+  const combinedCalls = fake.log.slice(before).filter(e => e.text.includes('frontier_operation_revocations'));
+  eq(combinedCalls.length, 1, 'the combined read is exactly one statement');
+  assert.ok(combinedCalls[0].text.includes('LEFT JOIN'), 'the one statement still carries the decision facts');
+  assert.ok(!/INSERT|UPDATE|DELETE|BEGIN|COMMIT|ROLLBACK/.test(combinedCalls[0].text));
+  eq(combinedCalls[0].values, [SCOPE_A, op(1), gen(1), D('sid-1')]);
+});
+
+test('S2-2 a revocation append cannot split combined facts from the frontier', async () => {
+  const fake = createFakeSession();
+  const store = makeStore(fake);
+  eq(await store.issueEligibility(eligibility()), { outcome: 'issued' });
+  const key = readKey();
+  const tagOf = (entry, tag) => entry.subarray(0, frameOracle(tag).length).equals(frameOracle(tag));
+
+  let releaseRead;
+  const gateRead = new Promise(r => { releaseRead = r; });
+  fake.hookOnce(
+    t => t.includes('frontier_operation_revocations') && t.includes('LEFT JOIN'),
+    () => gateRead);
+  const readP = store.readCombinedSnapshot(key);
+  await waitFor(
+    () => fake.log.some(e => e.text.includes('frontier_operation_revocations')),
+    'combined statement dispatched');
+  const beginsAtGate = fake.log.filter(e => e.text === 'BEGIN').length;
+  const appendP = store.appendRevocation({ operationId: op(1), generation: gen(1), revokedAt: tick() });
+  await new Promise(r => setImmediate(r));
+  eq(fake.log.filter(e => e.text === 'BEGIN').length, beginsAtGate,
+    'an append unit does not enter while the combined read is in flight');
+  releaseRead();
+  const pre = await readP;
+  eq(await appendP, { outcome: 'appended' });
+  eq(pre.state, 'ok');
+  eq(pre.operationRevoked, false);
+  eq(pre.sessionRevoked, false);
+  eq(pre.frontier.count, 0);
+  eq(pre.frontier.entries.length, 0);
+
+  let releaseAppend;
+  const gateAppend = new Promise(r => { releaseAppend = r; });
+  fake.hookOnce(t => t === 'BEGIN', () => gateAppend);
+  const sessionAt = tick();
+  const append2 = store.appendSessionRevocation({ sidDigest: D('sid-1'), revokedAt: sessionAt });
+  await waitFor(() => fake.log.filter(e => e.text === 'BEGIN').length === beginsAtGate + 1, 'append begun');
+  const readsAtGate = fake.log.filter(e => e.text.includes('frontier_operation_revocations')).length;
+  const read2P = store.readCombinedSnapshot(key);
+  await new Promise(r => setImmediate(r));
+  eq(fake.log.filter(e => e.text.includes('frontier_operation_revocations')).length, readsAtGate,
+    'the combined read does not start inside the append unit');
+  releaseAppend();
+  eq(await append2, { outcome: 'appended' });
+  const post = await read2P;
+  eq(post.operationRevoked, true);
+  eq(post.sessionRevoked, true);
+  eq(post.frontier.count, 2);
+  eq(post.frontier.entries.filter(e => tagOf(e, 'oprev')).length, 1);
+  eq(post.frontier.entries.filter(e => tagOf(e, 'sesrev')).length, 1);
+  eq(post.frontier.frontierDigest, digestOracle(SCHEMA, SCOPE_A, INC, post.frontier.entries));
+});
+
+test('S2-3 frontier-only read agrees with the combined read frontier', async () => {
+  const fake = createFakeSession();
+  const store = makeStore(fake);
+  const at = tick();
+  eq(await store.appendRevocation({ operationId: op(2), generation: gen(2), revokedAt: at }), { outcome: 'appended' });
+  const key = readKey();
+  const before = fake.log.length;
+  const combined = await store.readCombinedSnapshot(key);
+  const only = await store.readAuthorizationFrontier({ incarnation: INC });
+  eq(only.state, 'ok');
+  eq(only.frontier, combined.frontier);
+  const calls = fake.log.slice(before).filter(e => e.text.includes('frontier_operation_revocations'));
+  eq(calls.length, 2, 'each read is its own single statement');
+  assert.ok(calls[1].text.startsWith('SELECT') && !calls[1].text.includes('LEFT JOIN'));
+  eq(calls[1].values, [SCOPE_A]);
+  assert.ok(!/INSERT|UPDATE|DELETE|BEGIN/.test(calls[1].text));
+});
+
+test('S2-4 canonical set is sorted by encoded bytes and hashes to the frontier digest', async () => {
+  const fake = createFakeSession();
+  const store = makeStore(fake);
+  const sessionAt = tick();
+  const op2At = tick();
+  const op1At = tick();
+  eq(await store.appendSessionRevocation({ sidDigest: D('sid-9'), revokedAt: sessionAt }), { outcome: 'appended' });
+  eq(await store.appendRevocation({ operationId: op(2), generation: gen(4), revokedAt: op2At }), { outcome: 'appended' });
+  eq(await store.appendRevocation({ operationId: op(1), generation: gen(3), revokedAt: op1At }), { outcome: 'appended' });
+  const canonical = await store.readCanonicalRevocationSet({ incarnation: INC });
+  const frontier = await store.readAuthorizationFrontier({ incarnation: INC });
+  eq(canonical.state, 'ok');
+  const expected = sortEntries([
+    encodeSesOracle(D('sid-9'), sessionAt),
+    encodeOpOracle(op(2), gen(4), op2At),
+    encodeOpOracle(op(1), gen(3), op1At),
+  ]);
+  eq(canonical.frontier.entries, expected);
+  assert.ok(canonical.frontier.entries[0].includes(Buffer.from(op(1))));
+  assert.ok(canonical.frontier.entries[1].includes(Buffer.from(op(2))));
+  assert.ok(canonical.frontier.entries[2].includes(Buffer.from('sesrev')));
+  eq(canonical.frontier.count, 3);
+  eq(canonical.frontier.frontierDigest, digestOracle(SCHEMA, SCOPE_A, INC, canonical.frontier.entries));
+  eq(canonical.frontier.frontierDigest, frontier.frontier.frontierDigest);
+  eq(canonical.frontier.entries, frontier.frontier.entries);
+});
+
+test('S2-5 eligibility issuance does not change the frontier', async () => {
+  const fake = createFakeSession();
+  const store = makeStore(fake);
+  const at = tick();
+  eq(await store.appendRevocation({ operationId: op(1), generation: gen(1), revokedAt: at }), { outcome: 'appended' });
+  const before = await store.readAuthorizationFrontier({ incarnation: INC });
+  const record = eligibility();
+  eq(await store.issueEligibility(record), { outcome: 'issued' });
+  eq(await store.issueEligibility(eligibility({ operationId: op(2), generation: gen(2) })), { outcome: 'issued' });
+  eq(await store.issueEligibility(record), { outcome: 'reissued-identical' });
+  const after = await store.readAuthorizationFrontier({ incarnation: INC });
+  eq(after.frontier.count, before.frontier.count);
+  eq(after.frontier.frontierDigest, before.frontier.frontierDigest);
+  eq(after.frontier.entries, before.frontier.entries);
+  eq(after.frontier.count, 1);
+});
+
+test('S2-6 operation and session revocations each move the frontier', async () => {
+  const fake = createFakeSession();
+  const store = makeStore(fake);
+  const empty = await store.readAuthorizationFrontier({ incarnation: INC });
+  const opAt = tick();
+  eq(await store.appendRevocation({ operationId: op(1), generation: gen(1), revokedAt: opAt }), { outcome: 'appended' });
+  const afterOp = await store.readAuthorizationFrontier({ incarnation: INC });
+  const sesAt = tick();
+  eq(await store.appendSessionRevocation({ sidDigest: D('sid-1'), revokedAt: sesAt }), { outcome: 'appended' });
+  const afterSes = await store.readAuthorizationFrontier({ incarnation: INC });
+  eq(empty.frontier.count, 0);
+  eq(afterOp.frontier.count, 1);
+  eq(afterSes.frontier.count, 2);
+  assert.notEqual(afterOp.frontier.frontierDigest, empty.frontier.frontierDigest);
+  assert.notEqual(afterSes.frontier.frontierDigest, afterOp.frontier.frontierDigest);
+  const opEntries = sortEntries([encodeOpOracle(op(1), gen(1), opAt)]);
+  const both = sortEntries([encodeOpOracle(op(1), gen(1), opAt), encodeSesOracle(D('sid-1'), sesAt)]);
+  eq(afterOp.frontier.frontierDigest, digestOracle(SCHEMA, SCOPE_A, INC, opEntries));
+  eq(afterSes.frontier.frontierDigest, digestOracle(SCHEMA, SCOPE_A, INC, both));
+});
+
+test('S2-7 scope, schema and incarnation each change the digest over an identical set', async () => {
+  // The double keys rows by scope, not by schema, so the schema pair
+  // below is the same revocation bytes under two schema literals. That
+  // is the domain-binding case: entry bytes match, digests must not.
+  const db = createFakeDatabase();
+  const storeA = makeStore(createFakeSession(db), SCOPE_A);
+  const storeScope = makeStore(createFakeSession(db), SCOPE_B);
+  const storeSchema = A.createAuthorizationStore({
+    session: createFakeSession(db), schema: 'atlas_auth_other', scope: SCOPE_A,
+  });
+  const opAt = tick();
+  const sesAt = tick();
+  eq(await storeA.appendRevocation({ operationId: op(1), generation: gen(1), revokedAt: opAt }), { outcome: 'appended' });
+  eq(await storeA.appendSessionRevocation({ sidDigest: D('sid-1'), revokedAt: sesAt }), { outcome: 'appended' });
+  eq(await storeScope.appendRevocation({ operationId: op(1), generation: gen(1), revokedAt: opAt }), { outcome: 'appended' });
+  eq(await storeScope.appendSessionRevocation({ sidDigest: D('sid-1'), revokedAt: sesAt }), { outcome: 'appended' });
+  const a = await storeA.readCanonicalRevocationSet({ incarnation: INC });
+  const otherScope = await storeScope.readCanonicalRevocationSet({ incarnation: INC });
+  const otherSchema = await storeSchema.readCanonicalRevocationSet({ incarnation: INC });
+  const otherInc = await storeA.readCanonicalRevocationSet({ incarnation: INC_B });
+  eq(otherScope.frontier.entries, a.frontier.entries);
+  eq(otherSchema.frontier.entries, a.frontier.entries);
+  eq(otherInc.frontier.entries, a.frontier.entries);
+  const digests = [
+    a.frontier.frontierDigest, otherScope.frontier.frontierDigest,
+    otherSchema.frontier.frontierDigest, otherInc.frontier.frontierDigest,
+  ];
+  eq(new Set(digests).size, 4);
+  eq(a.frontier.frontierDigest, digestOracle(SCHEMA, SCOPE_A, INC, a.frontier.entries));
+  eq(otherScope.frontier.frontierDigest, digestOracle(SCHEMA, SCOPE_B, INC, a.frontier.entries));
+  eq(otherSchema.frontier.frontierDigest, digestOracle('atlas_auth_other', SCOPE_A, INC, a.frontier.entries));
+  eq(otherInc.frontier.frontierDigest, digestOracle(SCHEMA, SCOPE_A, INC_B, a.frontier.entries));
+});
+
+test('S2-8 the empty revocation set has one stable frontier', async () => {
+  const fake = createFakeSession();
+  const store = makeStore(fake);
+  const first = await store.readAuthorizationFrontier({ incarnation: INC });
+  const second = await store.readCanonicalRevocationSet({ incarnation: INC });
+  const other = await makeStore(createFakeSession()).readAuthorizationFrontier({ incarnation: INC });
+  eq(first.state, 'ok');
+  eq(first.frontier.count, 0);
+  eq(first.frontier.entries.length, 0);
+  eq(first.frontier.frontierDigest, digestOracle(SCHEMA, SCOPE_A, INC, []));
+  eq(second.frontier.frontierDigest, first.frontier.frontierDigest);
+  eq(other.frontier.frontierDigest, first.frontier.frontierDigest);
+  eq(first.frontier.frontierDigest, second.frontier.frontierDigest);
+  assert.notEqual(first.frontier.frontierDigest, digestOracle(SCHEMA, SCOPE_B, INC, []));
+});
+
+test('S2-9 a failed or malformed frontier read is unknown, never an empty frontier', async () => {
+  const emptyDigest = digestOracle(SCHEMA, SCOPE_A, INC, []);
+  const key = readKey();
+  const notEmptyFrontier = result => {
+    eq(result, { state: 'unknown' });
+    eq(result.frontier, undefined);
+    assert.notEqual(result.frontierDigest, emptyDigest);
+    eq(result.count, undefined);
+  };
+  {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    fake.faultOnce(t => t.includes('frontier_operation_revocations'), 'reject');
+    notEmptyFrontier(await store.readCombinedSnapshot(key));
+    eq(store.status(), { retired: true, accepting: false });
+    eq(fake.retiredCount, 1);
+  }
+  {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    fake.faultOnce(t => t.includes('frontier_operation_revocations'), 'bad-frontier');
+    notEmptyFrontier(await store.readAuthorizationFrontier({ incarnation: INC }));
+    eq(store.status().accepting, false);
+  }
+  {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    fake.faultOnce(t => t.includes('frontier_operation_revocations'), 'null-frontier');
+    notEmptyFrontier(await store.readCanonicalRevocationSet({ incarnation: INC }));
+    eq(store.status().accepting, false);
+  }
+  {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    fake.faultOnce(t => t.includes('frontier_operation_revocations'), 'dup-frontier');
+    notEmptyFrontier(await store.readAuthorizationFrontier({ incarnation: INC }));
+    eq(store.status().accepting, false);
+  }
+  {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    await store.retire();
+    notEmptyFrontier(await store.readCombinedSnapshot(key));
+    eq(fake.log.length, 0, 'a retired store does not invent a frontier by reading');
+  }
+  {
+    const fake = createFakeSession();
+    const store = makeStore(fake);
+    assert.throws(() => store.readAuthorizationFrontier({}), TypeError);
+    assert.throws(() => store.readAuthorizationFrontier({ incarnation: 'AB'.repeat(32) }), TypeError);
+    assert.throws(() => store.readCombinedSnapshot({ ...key, extra: 1 }), TypeError);
+    eq(fake.log.length, 0);
+    eq(store.status().accepting, true);
+  }
+});
+
