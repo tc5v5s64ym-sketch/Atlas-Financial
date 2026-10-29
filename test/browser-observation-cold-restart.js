@@ -24,11 +24,21 @@ function installChildBoundary() {
   // The existing approved preload supplies only the invented canonical input
   // and evidence clock. Supply its matching identity through that same fs seam.
   // Never patch Forecast, observer, LivePlan, memory or a served response.
+  const replacements = {
+    [path.join(ROOT, 'docs/connectivity/transaction-identity.json')]: Fixture.identity,
+    // OperatingAnswer also loads historical periods inside acquisition. This
+    // seam is used by test-refresh-stage-timing.js; absent history is explicit.
+    [path.join(ROOT, 'public/periods.json')]: null,
+  };
   const read = fs.readFileSync;
   fs.readFileSync = function(file, ...args) {
-    if (typeof file === 'string' && path.resolve(file) === path.join(ROOT, 'docs/connectivity/transaction-identity.json')) {
-      const bytes = JSON.stringify(Fixture.identity);
-      return typeof args[0] === 'string' || args[0]?.encoding ? bytes : Buffer.from(bytes);
+    if (typeof file === 'string') {
+      const resolved = path.resolve(file);
+      if (Object.hasOwn(replacements, resolved)) {
+        process.stdout.write('COLD_RESTART_FIXTURE_READ\n');
+        const bytes = JSON.stringify(replacements[resolved]);
+        return typeof args[0] === 'string' || args[0]?.encoding ? bytes : Buffer.from(bytes);
+      }
     }
     return Reflect.apply(read, this, [file, ...args]);
   };
@@ -113,7 +123,8 @@ async function run() {
   let browser, app, page;
   const errors = [], browserMutations = [], optionalBlocked = new Set(), externalBlocked = new Set();
   async function start(label, clock) {
-    const record = { label, clock, startedAt: new Date().toISOString(), pid: null, exited: false, boundaryRefusals: 0 };
+    const record = { label, clock, startedAt: new Date().toISOString(), pid: null, exited: false,
+      boundaryRefusals: 0, substitutedInputReads: 0 };
     const child = spawn(process.execPath, ['--require', path.join(__dirname, 'test-server-observation-memory.js'),
       '--require', __filename, path.join(ROOT, 'server.js')], {
       cwd: ROOT, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: {
@@ -127,8 +138,13 @@ async function run() {
     let spawnError;
     child.once('error', error => { spawnError = error; });
     // Never relay private production stdout/stderr. Retain only closed markers.
+    let stdoutTail = '';
     child.stdout.on('data', bytes => {
-      record.boundaryRefusals += (String(bytes).match(/COLD_RESTART_BOUNDARY_REFUSED/g) || []).length;
+      const lines = (stdoutTail + String(bytes)).split('\n'); stdoutTail = lines.pop();
+      for (const line of lines) {
+        if (line === 'COLD_RESTART_BOUNDARY_REFUSED') record.boundaryRefusals++;
+        if (line === 'COLD_RESTART_FIXTURE_READ') record.substitutedInputReads++;
+      }
     });
     child.stderr.on('data', () => {});
     const exit = new Promise(resolve => child.once('exit', (code, signal) => {
@@ -280,6 +296,7 @@ async function run() {
     await page.screenshot({ path: path.join(out, 'B-reacquired.png') });
     check(errors, [], 'no browser script errors');
     check(browserMutations, [], 'all browser financial actions remain GET-only');
+    truth(receipt.processes.every(record => record.substitutedInputReads > 0), 'each actual process uses substituted synthetic identity/history inputs');
     receipt.result = receipt.failures.length ? 'FAIL' : 'PASS';
     if (receipt.failures.length) process.exitCode = 1;
   } catch (error) {
