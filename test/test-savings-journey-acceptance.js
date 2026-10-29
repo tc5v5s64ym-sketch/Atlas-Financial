@@ -2,9 +2,10 @@
 // Household Savings journey acceptance harness. TEST ONLY.
 // Drives the production server composition (the same factories and synthetic
 // in-memory custody as test-settlement-production-composition.js): real
-// startServer, real settlement HTTP, real prepare → confirm, and a restarted
-// process that re-reads the durable document. No production source is touched
-// and nothing is written straight into the settlement store to force a step.
+// startServer, real settlement HTTP, real prepare → confirm, and restarted
+// server owners within the same process that re-read the durable document. No
+// production source is touched and nothing is written straight into the
+// settlement store to force a step.
 //
 // Based on main 04f7a9f60882499afb5d92bb09de61d7b2cb5c2c.
 const test = require('node:test');
@@ -24,6 +25,7 @@ const PURCHASE_B = { id: 'goal-b-spent', payee: 'Already spent outside Goal B',
 const PURCHASE_A = { id: 'goal-a-spent', payee: 'Already spent outside Goal A',
   providerTransactionId: 'SYNTHETIC-GOAL-A', cents: 4000, date: '2026-10-05' };
 const POOL_CENTS = 2500;
+const EXPECTED_NEXT_BOUNDARY = '2026-10-16';
 
 const syntheticPassword = 'synthetic-composition-password';
 const syntheticSessionSecret = 'synthetic-composition-session-secret';
@@ -42,6 +44,20 @@ function centsOf(amount) {
 }
 function money(cents) {
   return cents / 100;
+}
+function freezeCommittedState(w) {
+  return Object.freeze({
+    docBytes: w.doc ? Buffer.from(w.doc) : null,
+    docDigest: w.doc ? hash(w.doc) : null,
+    docState: w.doc ? Object.freeze(JSON.parse(w.doc.toString('utf8'))) : null,
+    historyBytes: w.historyBytes ? Buffer.from(w.historyBytes) : null,
+    historyDigest: w.historyBytes ? hash(w.historyBytes) : null,
+    historyState: w.historyBytes ? Object.freeze(JSON.parse(w.historyBytes.toString('utf8'))) : null,
+    checkpoint: w.checkpoint ? Object.freeze(clone(w.checkpoint)) : null,
+    pin: w.pin ? Object.freeze(clone(w.pin)) : null,
+    writesCount: w.writes.length,
+    appendsCount: w.appends,
+  });
 }
 
 function world() {
@@ -223,6 +239,7 @@ async function login(w) {
   assert.equal(r.status, 302, 'login');
   return r.headers['set-cookie'][0].split(';')[0];
 }
+// Restarts server owners within the same process over retained in-memory world w.
 async function restart(w) {
   const before = w.sql.length;
   await w.owner.close();
@@ -347,25 +364,46 @@ test('household Savings journey acceptance against the production composition', 
     assert.equal(purchaseB.cents, PURCHASE_B.cents);
     assert.equal(purchaseA.cents, PURCHASE_A.cents);
     assert.ok(purchaseB.date <= opened.asOf && purchaseA.date <= opened.asOf, 'purchase is not already spent');
+    // Row A1: freeze pre-operation committed state (without assuming null) and verify
+    // POST /settlement/prepare leaves committed document, pin, and terminal history unchanged.
+    const frozenBeforePrepareB = freezeCommittedState(w);
+    assert.notEqual(frozenBeforePrepareB.docBytes, null, 'pre-operation genesis document must exist');
     const preparedB = (await request(w, '/settlement/prepare', { operationId: op(1), selection: {
       transaction: purchaseB.handle, commitment: commitmentB.handle }, assignedCents: PURCHASE_B.cents })).value;
     assert.equal(preparedB.status, 'prepared', JSON.stringify(preparedB));
     assert.equal(preparedB.assignedCents, PURCHASE_B.cents);
     assert.equal(preparedB.labels.goal, GOAL_B.label);
+    const afterPrepareB = freezeCommittedState(w);
+    assert.deepEqual(afterPrepareB, frozenBeforePrepareB,
+      'POST /settlement/prepare mutated committed document or terminal history before confirm');
     record(2, 'PASS', { name: 'record-and-assign-purchase-to-goal-b',
       detail: { purchaseCents: PURCHASE_B.cents, date: PURCHASE_B.date, goal: GOAL_B.id,
+        preOpDocRevision: frozenBeforePrepareB.docState.revision,
+        preOpStateUnchangedByPrepare: true,
         intake: 'synthetic acquire double (posted debit already spent); assignment via POST /settlement/prepare' } });
 
     const confirmedB = (await request(w, '/settlement/confirm', { operationId: preparedB.operationId,
       previewToken: preparedB.previewToken, generation: preparedB.generation, confirmed: true })).value;
     assert.equal(confirmedB.status, 'committed', JSON.stringify(confirmedB));
-    record(3, 'PASS', { name: 'confirm-goal-b-assignment', detail: { operationId: op(1), status: 'committed' } });
+    // Row A2: duplicate POST /settlement/confirm on the same operation is idempotent and does not double-commit.
+    const committedAfterFirstConfirmB = freezeCommittedState(w);
+    assert.equal(committedAfterFirstConfirmB.docState.revision, 1);
+    assert.equal(committedAfterFirstConfirmB.docState.operations.length, 1);
+    const duplicateConfirmB = (await request(w, '/settlement/confirm', { operationId: preparedB.operationId,
+      previewToken: preparedB.previewToken, generation: preparedB.generation, confirmed: true })).value;
+    assert.deepEqual(duplicateConfirmB, confirmedB, 'duplicate confirm did not return identical committed receipt');
+    const committedAfterDuplicateConfirmB = freezeCommittedState(w);
+    assert.deepEqual(committedAfterDuplicateConfirmB, committedAfterFirstConfirmB,
+      'duplicate POST /settlement/confirm mutated committed document or history');
+    record(3, 'PASS', { name: 'confirm-goal-b-assignment', detail: {
+      operationId: op(1), status: 'committed', duplicateConfirmIdempotent: true,
+      committedRevision: committedAfterDuplicateConfirmB.docState.revision } });
 
     const readsBefore = w.sql.filter(row => row.kind === 'financial' && row.text.includes('.doc_head')).length;
     await restart(w);
     const reloaded = surfaces(await served(w));
     const storeReads = w.storeReadsAtRestart();
-    assert.ok(storeReads > 0, 'restart did not fresh-read doc_head');
+    assert.ok(storeReads > 0, 'restarted server owners within the same process did not fresh-read doc_head');
     assert.ok(w.sql.filter(row => row.kind === 'financial' && row.text.includes('.doc_head')).length > readsBefore);
     assert.equal(reloaded.qualified, true);
     const afterA = figures(reloaded, GOAL_A.id);
@@ -396,6 +434,7 @@ test('household Savings journey acceptance against the production composition', 
     assert.notEqual(savedTotal + linkedPaidTotal, PURCHASE_B.cents, 'distinct stock and assignment totals');
     assert.equal(savedTotal + linkedPaidTotal, POOL_CENTS + PURCHASE_B.cents);
     record(4, 'PASS', { name: 'reload-and-assert-exact-cents', detail: {
+      restartScope: 'restarted server owners within the same process',
       goalBLinkedPaidCents: afterB.linkedPaid, goalBRemainingCents: afterB.remaining,
       goalAUnchanged: true, assignmentLinks: links.length, savedTotalCents: savedTotal,
       storeReads: w.storeReadsAtRestart() } });
@@ -443,19 +482,27 @@ test('household Savings journey acceptance against the production composition', 
     assert.equal(paidA.need, 0);
     assert.equal(paidA.seqPaymentRetired, false, 'Goal A retired inside its completion period');
     assert.equal(paidA.copies.rows, 1, 'Goal A disappeared during the period it was paid');
+    // Row A8: pin independent boundary constant '2026-10-16' rather than deriving the oracle solely from paidNow.cycle.nextPayday.
     const boundary = paidNow.cycle.nextPayday;
-    assert.equal(typeof boundary, 'string');
-    advanceAsOf(w, boundary);
+    assert.equal(boundary, EXPECTED_NEXT_BOUNDARY,
+      'next pay-period boundary diverged from independent oracle ' + EXPECTED_NEXT_BOUNDARY);
+    advanceAsOf(w, EXPECTED_NEXT_BOUNDARY);
     const retired = surfaces(await served(w));
-    assert.equal(retired.asOf, boundary);
+    assert.equal(retired.asOf, EXPECTED_NEXT_BOUNDARY);
     assert.equal(sequenceRows(retired, GOAL_A.id).length, 0, 'Goal A still active after the next period boundary');
     assert.equal(plannedGoals(retired, GOAL_A.id).length, 0, 'Goal A still in the savings inventory after retirement');
     assert.equal(sequenceRows(retired, GOAL_B.id).length, 1, 'Goal B dropped with Goal A');
     assert.equal(plannedGoals(retired, GOAL_B.id).length, 1);
     assert.notEqual(figures(retired, GOAL_B.id).seqPaymentStatus, 'paid');
+    const retiredGoalALinks = linksOf(retired.evidence).filter(link => link.goalId === 'commitment:' + GOAL_A.id);
+    assert.equal(retiredGoalALinks.length, 1, 'retired.evidence dropped Goal A committed link history');
+    assert.equal(retiredGoalALinks[0].operationId, op(2));
+    assert.equal(retiredGoalALinks[0].assignedCents, PURCHASE_A.cents);
+    assert.equal(retiredGoalALinks[0].effectiveDate, PURCHASE_A.date);
     record(5, 'PASS', { name: 'pay-goal-a-then-retire-after-period-boundary', detail: {
       paidOn: PURCHASE_A.date, completionPeriod: [paidNow.cycle.start, paidNow.cycle.end],
-      nextBoundary: boundary, goalBStillActive: true } });
+      nextBoundary: EXPECTED_NEXT_BOUNDARY, goalBStillActive: true,
+      retiredEvidenceRetainedGoalALink: retiredGoalALinks[0].operationId } });
 
     const openAssignments = (await request(w, '/settlement/assignments', {})).value;
     assert.equal(openAssignments.status, 'available', JSON.stringify(openAssignments));
@@ -471,7 +518,7 @@ test('household Savings journey acceptance against the production composition', 
     assert.equal(withdrawn.status, 'committed', JSON.stringify(withdrawn));
     await restart(w);
     const restored = surfaces(await served(w));
-    assert.ok(w.storeReadsAtRestart() > 0, 'withdrawal reload did not fresh-read the store');
+    assert.ok(w.storeReadsAtRestart() > 0, 'withdrawal reload across restarted server owners within the same process did not fresh-read the store');
     const restoredB = figures(restored, GOAL_B.id);
     assert.equal(restoredB.remaining, goalBRemainingBefore, 'Goal B remaining did not return to its pre-assignment value');
     assert.equal(restoredB.need, goalBRemainingBefore);
@@ -480,10 +527,10 @@ test('household Savings journey acceptance against the production composition', 
     assert.equal(knownAmountCents(restoredB.confirmedLinkedPaid), 0);
     assert.equal(linksOf(restored.evidence).some(link => link.goalId === 'commitment:' + GOAL_B.id), false);
     assert.equal(sequenceRows(restored, GOAL_A.id).length, 0);
-    const spendable = (await request(w, '/settlement/selections', {})).value;
-    assert.equal(spendable.status, 'available', JSON.stringify(spendable));
-    const freed = spendable.transactions.find(row => row.label === PURCHASE_B.payee);
-    const goalBAgain = spendable.commitments.find(row => row.label === GOAL_B.label);
+    const assignable = (await request(w, '/settlement/selections', {})).value;
+    assert.equal(assignable.status, 'available', JSON.stringify(assignable));
+    const freed = assignable.transactions.find(row => row.label === PURCHASE_B.payee);
+    const goalBAgain = assignable.commitments.find(row => row.label === GOAL_B.label);
     assert.ok(freed && goalBAgain, 'withdrawn purchase left the recorded-payment catalogue');
     assert.equal(freed.cents, PURCHASE_B.cents);
     const stillAssigned = (await request(w, '/settlement/assignments', {})).value;
@@ -492,11 +539,44 @@ test('household Savings journey acceptance against the production composition', 
       'withdrawn assignment is still active');
     const reusable = (await request(w, '/settlement/prepare', { operationId: op(4), selection: {
       transaction: freed.handle, commitment: goalBAgain.handle }, assignedCents: PURCHASE_B.cents })).value;
-    assert.equal(reusable.status, 'prepared', 'purchase was not spendable again: ' + JSON.stringify(reusable));
+    assert.equal(reusable.status, 'prepared', 'purchase was not assignable again: ' + JSON.stringify(reusable));
     assert.equal(reusable.assignedCents, PURCHASE_B.cents);
+    // Row A7: confirm the re-prepared relink op(4) with its fresh confirmation token and verify
+    // that committed state and operation history retain original link op(1), withdrawal op(3), and relink op(4).
+    const relinked = (await request(w, '/settlement/confirm', { operationId: reusable.operationId,
+      previewToken: reusable.previewToken, generation: reusable.generation, confirmed: true })).value;
+    assert.equal(relinked.status, 'committed', JSON.stringify(relinked));
+    await restart(w);
+    const afterRelink = surfaces(await served(w));
+    assert.ok(w.storeReadsAtRestart() > 0, 'relink reload across restarted server owners within the same process did not fresh-read the store');
+    const relinkedB = figures(afterRelink, GOAL_B.id);
+    assert.equal(relinkedB.linkedPaid, PURCHASE_B.cents);
+    assert.equal(relinkedB.remaining, goalBRemainingBefore - PURCHASE_B.cents);
+    assert.equal(relinkedB.need, goalBRemainingBefore - PURCHASE_B.cents);
+    const relinkedGoalBLinks = linksOf(afterRelink.evidence).filter(link => link.goalId === 'commitment:' + GOAL_B.id);
+    assert.equal(relinkedGoalBLinks.length, 1);
+    assert.equal(relinkedGoalBLinks[0].operationId, op(4));
+    assert.equal(relinkedGoalBLinks[0].assignedCents, PURCHASE_B.cents);
+    const committedDoc = JSON.parse(w.doc.toString('utf8'));
+    assert.equal(committedDoc.revision, 4);
+    assert.deepEqual(committedDoc.operations.map(entry => ({
+      revision: entry.revision,
+      operationId: entry.operationId,
+      kind: entry.command.kind,
+      goalId: entry.command.goalId || null,
+      targetOperationId: entry.command.targetOperationId || null,
+    })), [
+      { revision: 1, operationId: op(1), kind: 'link', goalId: 'commitment:' + GOAL_B.id, targetOperationId: null },
+      { revision: 2, operationId: op(2), kind: 'link', goalId: 'commitment:' + GOAL_A.id, targetOperationId: null },
+      { revision: 3, operationId: op(3), kind: 'retract', goalId: null, targetOperationId: op(1) },
+      { revision: 4, operationId: op(4), kind: 'link', goalId: 'commitment:' + GOAL_B.id, targetOperationId: null },
+    ]);
+    assert.equal(new Set([op(1), op(3), op(4)]).size, 3, 'original link, withdrawal, and relink operation IDs must be distinct');
     record(7, 'PASS', { name: 'withdraw-goal-b-assignment', detail: {
       remainingCents: restoredB.remaining, preAssignmentRemainingCents: goalBRemainingBefore,
-      purchaseUnassigned: true, reprepare: 'prepared' } });
+      purchaseAssignableAgain: true, reprepare: 'prepared', relinkConfirmed: op(4),
+      relinkedRemainingCents: relinkedB.remaining,
+      retainedGoalBHistoryOperations: [op(1), op(3), op(4)] } });
 
     report.sort((a, b) => a.step - b.step);
     const counts = report.reduce((sum, row) => { sum[row.status] = (sum[row.status] || 0) + 1; return sum; }, {});
