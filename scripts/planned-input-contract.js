@@ -213,3 +213,171 @@ function verifyReadback(body, candidate) {
 }
 module.exports = { SCHEMA, TTL_MS, digest, legacyFingerprint, adoptLegacy, pin, restore,
   compose, prepare, confirmCandidate, outcome, verifyReadback };
+
+// ---------------------------------------------------------------------------
+// Bill amount corrections (#768 Slice 1). FOUNDATION - NOT COMPLETION.
+// Additive namespace with its own document and preview schemas; the commitment
+// (v1) path above is unchanged and never reads or writes a bill document.
+// Amount-only, known-amount-only records. No occurrence applicability, no
+// Forecast integration, no caller, storage, route or activation.
+const BILL_SCHEMA = 'atlas-private-planned-bill-inputs/v1';
+const BILL_PREVIEW_SCHEMA = 'atlas-private-planned-bill-input-preview/v1';
+const BILL_FREQUENCIES = Object.freeze(['monthly', 'quarterly', 'yearly', 'biweekly']);
+const BILL_UNSUPPORTED = Object.freeze(['amountMin', 'amountMax', 'amountSchedule', 'dateWindow', 'paymentTiming']);
+// Known amount only: currency units with exact cents. Never null, never coerced to zero.
+const billAmount = value => value !== null && amount(value);
+const billTarget = value => typeof value === 'string' && value.startsWith('bill:')
+  && identifier(value.slice('bill:'.length));
+function billCommandValid(command) {
+  keys(command, ['version', 'kind', 'target', 'headOperationId', 'changes']);
+  check(command.version === 1 && ['correct', 'reset'].includes(command.kind) && billTarget(command.target)
+    && (command.headOperationId === null || operation(command.headOperationId)));
+  if (command.kind === 'correct') {
+    keys(command.changes, ['amount']);
+    check(billAmount(command.changes.amount));
+  } else check(command.changes === null);
+  return command;
+}
+function changedBill(current, baselineRow, head, command) {
+  check((head?.operationId || null) === command.headOperationId);
+  // Incumbent settlement guards: a settled occurrence is never rewritten.
+  check(plain(current) && current.settled !== true && !Object.hasOwn(current, 'settledOn'));
+  // Reset restores the exact adopted row (still present, never a tombstone).
+  if (command.kind === 'reset') { check(digest(current) !== digest(baselineRow)); return clone(baselineRow); }
+  // Explicit estimated/unknown only. Missing, null, malformed, unrecognized and
+  // confirmed are ineligible; Forecast's display fallback is not edit authority.
+  check(Object.hasOwn(current, 'confidence') && ['estimated', 'unknown'].includes(current.confidence));
+  check(BILL_FREQUENCIES.includes(current.frequency));
+  check(Object.hasOwn(current, 'amount') && amount(current.amount));
+  check(!BILL_UNSUPPORTED.some(k => Object.hasOwn(current, k)));
+  const next = { ...current, amount: command.changes.amount };
+  check(digest(next) !== digest(current));
+  return next;
+}
+function billReplay(state) {
+  const baseline = new Map(state.baseline.bills.map(row => ['bill:' + row.id, clone(row)]));
+  const current = new Map([...baseline].map(([k, row]) => [k, clone(row)]));
+  const heads = new Map(), ids = new Set();
+  for (const [index, event] of state.operations.entries()) {
+    keys(event, ['revision', 'operationId', 'actorId', 'recordedAt', 'requestDigest', 'command', 'before', 'after']);
+    billCommandValid(event.command);
+    check(event.revision === index + 1 && operation(event.operationId) && !ids.has(event.operationId)
+      && actor(event.actorId) && hash(event.requestDigest) && tick(event.recordedAt)
+      && (index === 0 || event.recordedAt >= state.operations[index - 1].recordedAt)
+      && current.has(event.command.target));
+    ids.add(event.operationId);
+    check(digest(current.get(event.command.target)) === digest(event.before));
+    const after = changedBill(event.before, baseline.get(event.command.target), heads.get(event.command.target), event.command);
+    check(digest(after) === digest(event.after));
+    current.set(event.command.target, clone(after)); heads.set(event.command.target, event);
+  }
+  return { baseline, current, heads };
+}
+function billEncode(state) {
+  const body = canonical({ schema: BILL_SCHEMA, state, digest: digest(state) });
+  check(Buffer.byteLength(body) <= MAX_BYTES);
+  return body;
+}
+function billDecode(body, householdId) {
+  check(typeof body === 'string' && Buffer.byteLength(body) <= MAX_BYTES && household(householdId));
+  let doc;
+  try { doc = JSON.parse(body); } catch { fail(); }
+  keys(doc, ['schema', 'state', 'digest']); check(doc.schema === BILL_SCHEMA && doc.digest === digest(doc.state));
+  const state = doc.state;
+  keys(state, ['householdId', 'revision', 'baseline', 'operations']);
+  keys(state.baseline, ['fingerprint', 'bills']);
+  check(state.householdId === householdId && Number.isSafeInteger(state.revision) && state.revision >= 0
+    && Array.isArray(state.operations) && state.operations.length <= 1000 && state.revision === state.operations.length
+    && state.baseline.fingerprint === legacyFingerprint(state.baseline.bills));
+  billReplay(state);
+  return state;
+}
+function billAdoptBaseline({ householdId, bills, expectedFingerprint }) {
+  // Complete inventory adoption; unsupported rows are retained unchanged.
+  check(household(householdId) && hash(expectedFingerprint) && legacyFingerprint(bills) === expectedFingerprint);
+  return billEncode({ householdId, revision: 0,
+    baseline: { fingerprint: expectedFingerprint, bills: inventory(bills) }, operations: [] });
+}
+function billPin(body, householdId) {
+  const state = billDecode(body, householdId);
+  return { householdId, revision: state.revision, documentDigest: digest(body) };
+}
+function billRestore(body, expectedPin) {
+  keys(expectedPin, ['householdId', 'revision', 'documentDigest']);
+  check(hash(expectedPin.documentDigest));
+  const actual = billPin(body, expectedPin.householdId);
+  check(actual.revision === expectedPin.revision && actual.documentDigest === expectedPin.documentDigest);
+  return body; // Validation only.
+}
+function billCompose(body, { householdId, bills }) {
+  // Private pure-record projection, not live Forecast integration.
+  const state = billDecode(body, householdId);
+  check(legacyFingerprint(bills) === state.baseline.fingerprint);
+  const { current } = billReplay(state);
+  return inventory(bills).map(row => clone(current.get('bill:' + row.id)));
+}
+function billPrepare(body, { householdId, actorId, operationId, command, bills, now }) {
+  const state = billDecode(body, householdId);
+  check(actor(actorId) && operation(operationId) && tick(now));
+  check(!state.operations.some(event => event.operationId === operationId));
+  check(legacyFingerprint(bills) === state.baseline.fingerprint);
+  command = clone(command); billCommandValid(command);
+  const { baseline, current, heads } = billReplay(state); check(current.has(command.target));
+  const before = current.get(command.target);
+  const after = changedBill(before, baseline.get(command.target), heads.get(command.target), command);
+  const preview = { schema: BILL_PREVIEW_SCHEMA, householdId, actorId, operationId,
+    expectedRevision: state.revision, expectedDocumentDigest: digest(body),
+    baselineFingerprint: state.baseline.fingerprint, issuedAt: now, expiresAt: now + TTL_MS, command };
+  // Entire return value is private. The caller must retain the preview server-side.
+  return { preview, confirmationDigest: digest(preview), before: clone(before), after: clone(after) };
+}
+function billPreviewValid(preview) {
+  keys(preview, ['schema', 'householdId', 'actorId', 'operationId', 'expectedRevision',
+    'expectedDocumentDigest', 'baselineFingerprint', 'issuedAt', 'expiresAt', 'command']);
+  check(preview.schema === BILL_PREVIEW_SCHEMA && household(preview.householdId) && actor(preview.actorId)
+    && operation(preview.operationId) && Number.isSafeInteger(preview.expectedRevision) && preview.expectedRevision >= 0
+    && hash(preview.expectedDocumentDigest) && hash(preview.baselineFingerprint) && tick(preview.issuedAt)
+    && preview.expiresAt === preview.issuedAt + TTL_MS);
+  billCommandValid(preview.command);
+}
+function billOutcome(body, { householdId, actorId, operationId }) {
+  check(actor(actorId) && operation(operationId));
+  const state = billDecode(body, householdId);
+  const event = state.operations.find(e => e.operationId === operationId && e.actorId === actorId);
+  return event ? receipt(event) : { status: 'unknown', operationId };
+}
+function billConfirmCandidate(body, { householdId, actorId, preview, confirmationDigest, bills, now }) {
+  // Creates bytes, NOT a saved result. CAS + durable write + readback belong to a future approved adapter.
+  const state = billDecode(body, householdId);
+  preview = clone(preview); billPreviewValid(preview);
+  check(actor(actorId) && preview.actorId === actorId && preview.householdId === householdId && tick(now)
+    && hash(confirmationDigest) && digest(preview) === confirmationDigest);
+  const existing = state.operations.find(event => event.operationId === preview.operationId);
+  if (existing) {
+    check(existing.actorId === actorId && existing.requestDigest === confirmationDigest);
+    return { status: 'already-recorded', receipt: receipt(existing) };
+  }
+  const reason = now < preview.issuedAt || now >= preview.expiresAt ? 'preview-expired'
+    : state.revision !== preview.expectedRevision || digest(body) !== preview.expectedDocumentDigest ? 'revision-changed'
+    : legacyFingerprint(bills) !== preview.baselineFingerprint ? 'source-changed' : null;
+  if (reason) return { status: 'rejected', reason };
+  check(state.operations.length < 1000 && (!state.operations.length || now >= state.operations.at(-1).recordedAt));
+  const { baseline, current, heads } = billReplay(state); check(current.has(preview.command.target));
+  const before = current.get(preview.command.target);
+  const after = changedBill(before, baseline.get(preview.command.target), heads.get(preview.command.target), preview.command);
+  const event = { revision: ++state.revision, operationId: preview.operationId, actorId,
+    recordedAt: now, requestDigest: confirmationDigest, command: preview.command, before, after };
+  state.operations.push(event);
+  const document = billEncode(state); billDecode(document, householdId);
+  return { status: 'candidate', expectedPin: billPin(body, householdId), nextPin: billPin(document, householdId), document };
+}
+function billVerifyReadback(body, candidate) {
+  check(candidate.status === 'candidate');
+  billRestore(body, candidate.nextPin);
+  const state = billDecode(body, candidate.nextPin.householdId);
+  return receipt(state.operations.at(-1));
+}
+module.exports.bills = Object.freeze({ SCHEMA: BILL_SCHEMA, PREVIEW_SCHEMA: BILL_PREVIEW_SCHEMA, TTL_MS,
+  fingerprint: legacyFingerprint, adoptBaseline: billAdoptBaseline, pin: billPin, restore: billRestore,
+  compose: billCompose, prepare: billPrepare, confirmCandidate: billConfirmCandidate, outcome: billOutcome,
+  verifyReadback: billVerifyReadback });
