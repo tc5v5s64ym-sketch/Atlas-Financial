@@ -1208,3 +1208,332 @@ test('entry shutdown ordering: bounded custody retirement does not wait for a re
   if (settled.responded) assert.notEqual(settled.value && settled.value.status, 'committed');
   await withDeadline(shutdown.drained, 30000, 'shutdown drain');
 });
+
+// --- Single-exit-gate restructure: Atlas DESIGN DISPOSITION 6487233693 --
+// Every observed-change attempt in syncCanonical defaults to
+// INVALIDATED and may end only ADOPTED (a fully verified stable
+// adoption through the one commit gate) or INVALIDATED (the reader
+// refuses; retained content is data only). The cases below pin each
+// enumerated exit at the actual host seam. Test-side interposition on
+// the shared node:fs module object — the host resolves fs.readFileSync
+// / fs.statSync at call time — drives the read/stat paths
+// deterministically; it is scoped to the world's canonical file, every
+// other path delegates untouched, and no production code knows it
+// exists (no new production fault/config hook).
+function interposeCanonical(t, w, hooks = {}) {
+  const realRead = fs.readFileSync;
+  const realStat = fs.statSync;
+  if (hooks.read) {
+    fs.readFileSync = function (p, ...rest) {
+      if (p === w.canonicalFile) hooks.read();
+      return realRead.call(fs, p, ...rest);
+    };
+  }
+  if (hooks.stat) {
+    fs.statSync = function (p, ...rest) {
+      const result = realStat.call(fs, p, ...rest);
+      if (p !== w.canonicalFile) return result;
+      const delta = hooks.stat();
+      if (!delta) return result;
+      return Object.assign(Object.create(Object.getPrototypeOf(result)), result,
+        { mtimeNs: result.mtimeNs + delta });
+    };
+  }
+  t.after(() => { fs.readFileSync = realRead; fs.statSync = realStat; });
+}
+// A hook pair that falsifies the verification stat — the stat that
+// immediately follows a canonical read — of the first `max` sync
+// attempts. Each falsified verification stat carries a distinct
+// fingerprint delta, so every falsified attempt observes a genuine
+// mismatch between its before/after fingerprints, with no file churn
+// at all. Keying on the read that precedes the stat (rather than on
+// global call parity) keeps the drive exact no matter how watcher
+// deliveries interleave.
+const falsifyVerification = max => {
+  let verified = 0;
+  let justRead = false;
+  return {
+    read: () => { justRead = true; },
+    stat: () => {
+      if (!justRead) return null;
+      justRead = false;
+      verified++;
+      return verified <= max ? BigInt(verified) : null;
+    },
+  };
+};
+const readerRefuses = reader => {
+  try { reader(); return false; } catch { return true; }
+};
+const waitRefusal = (reader, label) =>
+  pollUntil(() => (readerRefuses(reader) ? true : null), 8000, label);
+const waitAdopted = (reader, pred, label) => pollUntil(() => {
+  try { const c = reader(); return pred(c) ? c : null; } catch { return null; }
+}, 8000, label);
+
+test('canonical adapter: an unchanged fingerprint is a healthy no-op while valid', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  host.startContextAdapter(); // its boot sync observes no change
+  await new Promise(r => setTimeout(r, 600));
+  const after = reader();
+  assert.equal(after.contextRevision, before.contextRevision);
+  assert.deepEqual(after.canonical, before.canonical);
+  host.close();
+});
+
+test('canonical adapter: a same-content rewrite is adopted at a strictly newer revision', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  // The exact boot bytes land again: contents identical, fingerprint
+  // moved — the adoption is real and the reported revision advances.
+  fs.writeFileSync(w.canonicalFile, fs.readFileSync(w.canonicalFile, 'utf8'));
+  const after = await waitAdopted(reader,
+    c => c.contextRevision > before.contextRevision, 'same-content adoption advances');
+  assert.deepEqual(after.canonical, before.canonical);
+  host.close();
+});
+
+test('canonical adapter (single gate): an observed malformed rewrite refuses reads until a complete adoption clears it', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  const originalBytes = fs.readFileSync(w.canonicalFile, 'utf8');
+  fs.writeFileSync(w.canonicalFile, '{ not json');
+  await waitRefusal(reader, 'reader refuses while the malformed rewrite is unadopted');
+  // A dwell changes nothing: no queued event and no unchanged
+  // fingerprint clears the invalidation or revives cached authority.
+  await new Promise(r => setTimeout(r, 300));
+  assert.throws(() => reader(), /context invalidated/);
+  // Restoring the EXACT previous bytes is a complete stable adoption,
+  // so it clears the refusal — at a strictly newer revision, so the
+  // pre-rewrite witness stays invalid (disposition condition 3).
+  fs.writeFileSync(w.canonicalFile, originalBytes);
+  const restored = await waitAdopted(reader,
+    c => c.contextRevision > before.contextRevision, 'identical-byte restoration adopted strictly newer');
+  assert.deepEqual(restored.canonical, before.canonical);
+  host.close();
+});
+
+test('canonical adapter (single gate): an observed non-record rewrite refuses reads until a complete adoption clears it', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  fs.writeFileSync(w.canonicalFile, '[]');
+  await waitRefusal(reader, 'reader refuses while the non-record rewrite is unadopted');
+  await new Promise(r => setTimeout(r, 300));
+  assert.throws(() => reader(), /context invalidated/);
+  const base = before.canonical;
+  fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...base,
+    meta: { ...base.meta, title: base.meta.title + ' (recovered)' } }));
+  const adopted = await waitAdopted(reader,
+    c => c.canonical.meta.title.endsWith('(recovered)'), 'valid record adopted after the non-record rewrite');
+  assert.ok(adopted.contextRevision > before.contextRevision);
+  host.close();
+});
+
+test('canonical adapter (single gate): a read failure after an observed change refuses reads until a later stable adoption', async t => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  const v1 = JSON.parse(fs.readFileSync(w.canonicalFile, 'utf8'));
+  let armed = true;
+  interposeCanonical(t, w, {
+    read: () => { if (armed) throw Error('synthetic read failure'); },
+  });
+  fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...v1,
+    meta: { ...v1.meta, title: v1.meta.title + ' (unreadable)' } }));
+  await waitRefusal(reader, 'reader refuses after the observed read failure');
+  assert.throws(() => reader(), /context invalidated/);
+  armed = false;
+  fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...v1,
+    meta: { ...v1.meta, title: v1.meta.title + ' (recovered)' } }));
+  const adopted = await waitAdopted(reader,
+    c => c.canonical.meta.title.endsWith('(recovered)'), 'stable adoption after the read failure');
+  assert.ok(adopted.contextRevision > before.contextRevision);
+  host.close();
+});
+
+test('canonical adapter (single gate): a stat failure during verification refuses reads until a later stable adoption', async t => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  const v1 = JSON.parse(fs.readFileSync(w.canonicalFile, 'utf8'));
+  let armed = true;
+  let justRead = false;
+  interposeCanonical(t, w, {
+    read: () => { justRead = true; },
+    stat: () => {
+      // The stat that immediately follows a canonical read is the
+      // attempt's verification stat; only it fails.
+      if (!justRead) return null;
+      justRead = false;
+      if (armed) throw Error('synthetic stat failure');
+      return null;
+    },
+  });
+  fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...v1,
+    meta: { ...v1.meta, title: v1.meta.title + ' (unverifiable)' } }));
+  await waitRefusal(reader, 'reader refuses after the verification stat failure');
+  assert.throws(() => reader(), /context invalidated/);
+  armed = false;
+  fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...v1,
+    meta: { ...v1.meta, title: v1.meta.title + ' (recovered)' } }));
+  const adopted = await waitAdopted(reader,
+    c => c.canonical.meta.title.endsWith('(recovered)'), 'stable adoption after the stat failure');
+  assert.ok(adopted.contextRevision > before.contextRevision);
+  host.close();
+});
+
+async function mismatchAdoption(t, mismatches) {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  const v1 = JSON.parse(fs.readFileSync(w.canonicalFile, 'utf8'));
+  interposeCanonical(t, w, falsifyVerification(mismatches));
+  const title = v1.meta.title + ' (settled)';
+  fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...v1,
+    meta: { ...v1.meta, title } }));
+  const adopted = await waitAdopted(reader,
+    c => c.canonical.meta.title === title, 'stable adoption after ' + mismatches + ' mismatch(es)');
+  assert.ok(adopted.contextRevision > before.contextRevision);
+  host.close();
+}
+
+test('canonical adapter (single gate): one fingerprint mismatch during the read still adopts the stable record', async t => {
+  await mismatchAdoption(t, 1);
+});
+
+test('canonical adapter (single gate): two fingerprint mismatches during the read still adopt the stable record', async t => {
+  await mismatchAdoption(t, 2);
+});
+
+test('canonical adapter (single gate): three fingerprint mismatches exhaust the retries and refuse (6486974495)', async t => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  const v1 = JSON.parse(fs.readFileSync(w.canonicalFile, 'utf8'));
+  // Every verification stat is falsified: all three bounded attempts
+  // observe a rewrite mid-read and the loop exhausts. The fall-through
+  // must end INVALIDATED, never with prior authority intact.
+  interposeCanonical(t, w, falsifyVerification(Infinity));
+  const title = v1.meta.title + ' (churned)';
+  fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...v1,
+    meta: { ...v1.meta, title } }));
+  await waitRefusal(reader, 'reader refuses after exhausted retries');
+  await new Promise(r => setTimeout(r, 300));
+  assert.throws(() => reader(), /context invalidated/);
+  host.close();
+});
+
+test('canonical adapter (single gate): an owner-refused advance refuses reads until a complete adoption clears it', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  // A valid plain record the trusted owner cannot advance: nested
+  // deeply enough that the owner's comparison/clone refuses it after
+  // a successful parse and a stable fingerprint (the round-2 drive).
+  let deepText = '{"v":1}';
+  for (let i = 0; i < 3000; i++) deepText = '{"n":' + deepText + '}';
+  fs.writeFileSync(w.canonicalFile, deepText);
+  await waitRefusal(reader, 'reader refuses after the owner-refused advance');
+  assert.throws(() => reader(), /context invalidated/);
+  fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...before.canonical,
+    meta: { ...before.canonical.meta,
+      title: before.canonical.meta.title + ' (recovered)' } }));
+  const adopted = await waitAdopted(reader,
+    c => c.canonical.meta.title.endsWith('(recovered)'), 'valid record adopted after the refused advance');
+  assert.ok(adopted.contextRevision > before.contextRevision);
+  host.close();
+});
+
+test('canonical adapter (single gate): a failed advance publishes nothing partially, and identical-byte restoration clears it at a newer revision', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  const originalBytes = fs.readFileSync(w.canonicalFile, 'utf8');
+  let deepText = '{"v":1}';
+  for (let i = 0; i < 3000; i++) deepText = '{"n":' + deepText + '}';
+  fs.writeFileSync(w.canonicalFile, deepText);
+  await waitRefusal(reader, 'reader refuses after the failed advance');
+  // Publication atomicity (disposition condition 2): across a dwell,
+  // no read ever serves new content at the old revision or old content
+  // at a silently advanced revision — every read refuses.
+  for (let i = 0; i < 5; i++) {
+    assert.throws(() => reader(), /context invalidated/);
+    await new Promise(r => setTimeout(r, 60));
+  }
+  // Complete stable adoption of the exact previous bytes clears the
+  // refusal, at a revision strictly newer than the pre-failure one.
+  fs.writeFileSync(w.canonicalFile, originalBytes);
+  const restored = await waitAdopted(reader,
+    c => c.contextRevision > before.contextRevision, 'restoration adopted strictly newer');
+  assert.deepEqual(restored.canonical, before.canonical);
+  host.close();
+});
+
+test('a commit whose own acquisition is overtaken by exhausted sync retries is refused (zero commits)', async t => {
+  const w = makeWorld(); active = w; installDoubles(t, w);
+  // Own exclusion domain, as in the other stale-action refusal tests:
+  // a refused commit seals a negative certificate under its domain and
+  // the registry floor is process-global per namespace.
+  const config = hostConfig(w, {
+    SETTLEMENT_EXCLUSION_LEDGER_NAMESPACE: 'ledger-' + 'e'.repeat(32),
+    SETTLEMENT_EXCLUSION_SERIALIZATION_AUTHORITY: 'authority-' + 'f'.repeat(32),
+    SETTLEMENT_EXCLUSION_HISTORY_AUTHORITY: 'authority-' + '0'.repeat(32),
+  });
+  const host = createSettlementProductionHost(config);
+  await bootstrapCustody(host.settlement.connection, host.settlement.custody, () => Date.now());
+  const owner = await startServer({ env: config, host: '127.0.0.1', port: 0, settlement: host.settlement });
+  t.after(async () => { host.close(); await owner.close(); });
+  w.owner = owner; w.url = 'http://127.0.0.1:' + owner.server.address().port; w.cookie = await login(w);
+  host.startContextAdapter();
+  const p = await prepared(w);
+  // The finding's exact shape (6486974495): after the confirm's own
+  // acquisition captured witness A/revision r, a rewrite lands and the
+  // host OBSERVES it, but every bounded retry sees the file change
+  // mid-read — here via falsified verification stats, so the contents
+  // stay one stable valid record and nothing about the drive is
+  // timing-shaped. Exhaustion must invalidate: the stale A/r witness
+  // must not compare as same-context at admission.
+  interposeCanonical(t, w, falsifyVerification(Infinity));
+  const v1 = JSON.parse(fs.readFileSync(w.canonicalFile, 'utf8'));
+  const callsBeforeConfirm = w.acquireCalls;
+  let rewriteLanded = false;
+  w.hooks.query = async (kind, text) => {
+    if (!rewriteLanded && kind === 'financial' && w.acquireCalls > callsBeforeConfirm
+      && text.startsWith('SELECT bytes FROM') && text.includes('.doc_head')) {
+      rewriteLanded = true;
+      fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...v1,
+        meta: { ...v1.meta, title: v1.meta.title + ' (rewritten)' } }));
+      await new Promise(r => setTimeout(r, 250));
+    }
+    return undefined;
+  };
+  const docBefore = w.doc;
+  const r = await confirm(w, p);
+  assert.ok(rewriteLanded, 'the rewrite landed inside the confirm');
+  assert.notEqual(r.value && r.value.status, 'committed');
+  assert.ok(w.doc.equals(docBefore), 'stored document unchanged after refusal');
+});

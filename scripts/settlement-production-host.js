@@ -108,14 +108,20 @@
 // mutation therefore advances the reported revision, an unchanged
 // reported revision always means no observed mutation, and an action
 // pinned to an earlier revision is refused after any rewrite. An
-// observed rewrite whose contents cannot be safely adopted —
-// malformed JSON, a read that fails after the change was observed,
-// a non-record value, or an advance the trusted owner refuses —
-// adopts nothing, but it does not leave the retained snapshot's
-// authority intact either: the epoch advances without adopting
-// contents, the last-good snapshot is retained as data only, and a
-// later valid record is adopted normally. Value
-// polling is never used as no-change evidence. The env component
+// observed rewrite is handled by a single exit gate (syncCanonical
+// below): the attempt defaults to INVALIDATED — the context reader
+// refuses and the last-good snapshot is retained as data only — and
+// it may end ADOPTED only when a fully verified stable adoption
+// (a fingerprint-verified read of a plain record, accepted by the
+// trusted owner, publishing a strictly newer reported revision)
+// passes through the one commit gate. Every other exit — malformed
+// JSON, a read or stat failure after the change was observed, a
+// non-record value, an advance the trusted owner refuses, or
+// exhaustion of the bounded re-read retries — leaves the attempt
+// INVALIDATED; no fall-through retains prior authority. The
+// invalidation clears only at the gate, on a complete stable
+// adoption, even if the adopted bytes equal the previous snapshot.
+// Value polling is never used as no-change evidence. The env component
 // never mutates inside a process (environment changes arrive by
 // restart), so the adapter advances canonical only, re-presenting the
 // boot env snapshot unchanged. If mutation observation is unavailable
@@ -663,14 +669,25 @@ function createSettlementProductionHost(config, seams = {}) {
   // adapter rewrite epoch), so every observed mutation — including a
   // coalesced ABA return to identical contents, which the owner's
   // identical fast path cannot express — advances the reported
-  // revision. Once mutation observation is lost, the reader refuses
-  // by name instead of serving the cached snapshot as authoritative.
+  // revision. While an observed rewrite stands unadopted, the
+  // adapter's invalidation latch is set and the reader refuses by
+  // name: the retained snapshot is data only, never authority. The
+  // latch is set by default at the start of every observed-change
+  // attempt in syncCanonical and clears only at that function's
+  // single commit gate. Once mutation observation is lost, the
+  // reader refuses by name instead of serving the cached snapshot
+  // as authoritative.
   let contextEpoch = 0;
   let contextLost = false;
+  let contextInvalidated = false;
   function contextReader() {
     if (contextLost) {
       throw new Error(PREFIX + 'context observation unavailable — '
         + 'the canonical watcher is not established');
+    }
+    if (contextInvalidated) {
+      throw new Error(PREFIX + 'context invalidated — an observed '
+        + 'canonical rewrite has not been safely adopted');
     }
     const c = owners.contextReader();
     return Object.freeze({
@@ -761,75 +778,95 @@ function createSettlementProductionHost(config, seams = {}) {
       watcher = null;
     }
   }
-  let unusableFingerprint = null;
-  function invalidateContext(fp) {
-    // An observed rewrite that cannot be safely adopted: the
-    // last-good contents are retained as data, but their authority
-    // is not — the rewrite epoch advances, so the reported revision
-    // no longer certifies the retained snapshot as current and a
-    // witness pinned to the earlier revision cannot compare as
-    // same-context. Deduped per fingerprint: repeated watcher
-    // deliveries of the same unusable state invalidate once, and a
-    // later safely-adopted record clears the mark.
-    if (unusableFingerprint === fp) return;
-    unusableFingerprint = fp;
-    contextEpoch += 1;
-  }
   function syncCanonical() {
     if (closed) return;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      let before;
-      try { before = fs.statSync(canonicalFile, { bigint: true }); } catch {
-        // The mutation source itself is gone: observation is
-        // unavailable, so the cached context stops being
-        // authoritative — the reader refuses from here on.
-        loseContextObservation();
-        return;
-      }
-      const fp = fingerprintOf(before);
-      if (fp === lastFingerprint) return;
-      let parsed;
-      let after;
-      try {
-        parsed = JSON.parse(fs.readFileSync(canonicalFile, 'utf8'));
-        after = fs.statSync(canonicalFile, { bigint: true });
-      } catch {
-        // Torn or malformed read AFTER the change was observed: the
-        // last good snapshot is kept as data, but an observed rewrite
-        // must not leave its revision in force.
-        invalidateContext(fp);
-        return;
-      }
-      if (fingerprintOf(after) !== fp) continue; // Changed during the read: re-observe.
-      lastFingerprint = fp;
-      if (!isPlainRecord(parsed)) {
-        // Never advance on a non-record canonical — and never leave
-        // the retained snapshot's authority unchanged either.
-        invalidateContext(fp);
-        return;
-      }
-      try {
-        const revisionBefore = owners.contextReader().contextRevision;
-        const revisionAfter = advanceContext({ canonical: parsed, env: { ...contextEnv } });
-        unusableFingerprint = null;
-        if (revisionAfter === revisionBefore) {
-          // An observed rewrite whose contents equal the current
-          // context — a same-content rewrite or a coalesced ABA
-          // return whose middle state was never observed. The
-          // owner's identical fast path cannot express it, so the
-          // adapter's rewrite epoch carries the reported revision
-          // forward: the mutation is on the record, and an action
-          // pinned to the earlier revision is refused.
-          contextEpoch += 1;
-        }
-      } catch {
-        // The trusted owner refused the advance: the snapshot is
-        // retained as data only — its revision authority is
-        // invalidated, so a stale witness cannot ride the refusal.
-        invalidateContext(fp);
-      }
+    let before;
+    try { before = fs.statSync(canonicalFile, { bigint: true }); } catch {
+      // The mutation source itself is gone: observation is
+      // unavailable, so the cached context stops being
+      // authoritative — the reader refuses from here on. Terminal
+      // under the observation contract; not a gate outcome.
+      loseContextObservation();
       return;
     }
+    let observedFp = fingerprintOf(before);
+    if (observedFp === lastFingerprint && !contextInvalidated) {
+      // A healthy no-op — available ONLY while the context is
+      // valid. An unchanged fingerprint never clears an invalidation
+      // and never revives cached authority.
+      return;
+    }
+    // OBSERVED-CHANGE ATTEMPT. From here the attempt defaults to
+    // INVALIDATED: the latch is set BEFORE any adoption work, and
+    // the single commit gate at the end of this function is the only
+    // path that clears it. Parse failure, read/stat failure,
+    // non-record values, owner refusal and retry exhaustion all
+    // converge on that gate — there is no per-path invalidation call
+    // left to remember, and no fall-through that returns with prior
+    // authority intact.
+    contextInvalidated = true;
+    let candidate = null;
+    for (let attempt = 0; attempt < 3 && !candidate; attempt++) {
+      let attemptFp = observedFp;
+      if (attempt > 0) {
+        // Re-observe after a mid-read change. A stat failure here is
+        // a failed attempt, not source loss: the gate decides, and a
+        // genuinely vanished source turns terminal at the next
+        // sync's opening stat.
+        try {
+          attemptFp = fingerprintOf(fs.statSync(canonicalFile, { bigint: true }));
+        } catch { break; }
+        observedFp = attemptFp;
+      }
+      let parsed;
+      let afterFp;
+      try {
+        parsed = JSON.parse(fs.readFileSync(canonicalFile, 'utf8'));
+        afterFp = fingerprintOf(fs.statSync(canonicalFile, { bigint: true }));
+      } catch {
+        // Malformed JSON, or a torn/failed read, AFTER the change
+        // was observed: this attempt produces no stable candidate.
+        break;
+      }
+      observedFp = afterFp;
+      if (afterFp !== attemptFp) continue; // Changed during the read: re-observe.
+      if (!isPlainRecord(parsed)) break; // Stable but not a record: never adopted.
+      candidate = { fp: attemptFp, parsed };
+    }
+    lastFingerprint = observedFp;
+    if (!candidate) return; // The gate: refusal persists.
+    // THE COMMIT GATE — the only path out of an observed-change
+    // attempt that clears the latch, reached only with a fully
+    // verified stable candidate. The trusted owner must accept the
+    // advance, and the reported revision about to be published must
+    // be a positive safe integer strictly newer than the revision
+    // published before this attempt. If the owner's advance, the
+    // epoch arithmetic, the cloning or this publication check
+    // fails, nothing is published — neither content nor revision —
+    // and refusal persists.
+    let revisionBefore;
+    let revisionAfter;
+    try {
+      revisionBefore = owners.contextReader().contextRevision;
+      revisionAfter = advanceContext({ canonical: candidate.parsed, env: { ...contextEnv } });
+    } catch { return; }
+    let nextEpoch = contextEpoch;
+    if (revisionAfter === revisionBefore) {
+      // An observed rewrite whose contents equal the current
+      // context — a same-content rewrite or a coalesced ABA return
+      // whose middle state was never observed. The owner's identical
+      // fast path cannot express it, so the adapter's rewrite epoch
+      // carries the reported revision forward: the mutation is on
+      // the record, and an action pinned to the earlier revision is
+      // refused.
+      nextEpoch += 1;
+    }
+    const publishedBefore = revisionBefore + contextEpoch;
+    const published = revisionAfter + nextEpoch;
+    if (!Number.isSafeInteger(published) || published <= publishedBefore) return;
+    contextEpoch = nextEpoch;
+    lastFingerprint = candidate.fp;
+    contextInvalidated = false;
   }
   function startContextAdapter() {
     if (watcher || closed || contextLost) return;
