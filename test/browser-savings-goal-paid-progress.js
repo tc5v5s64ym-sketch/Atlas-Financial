@@ -179,6 +179,66 @@ async function faceFacts(tile) {
         assert.equal(facts['goal-d'].stf, '$30.00', 'gap: D still to fund is the funding gap');
         assert.equal(facts['goal-f'].state, 'funding', 'gap: F fully saved is not paid');
       }
+      if (mode === 'gap') {
+        // Period-context cases (Atlas re-review 6483658593): the funding
+        // schedule joined above is the live/current publication, fetched
+        // without a selected period. A historical or projected packet
+        // withholds the goal facts but retains the same goal ids and the
+        // same observation asOf, so an asOf-only join prints today's
+        // numeric gap beside that period's Unknown Paid. Matching asOf is
+        // not matching period/context: outside the current context the
+        // gap must be withheld (Unknown, no stamp, face included), and
+        // returning to the current period must restore the numeric gap.
+        // Wheel items outside the visible slot are not pointer-visible,
+        // so selection dispatches the item's own click through the app's
+        // delegated wheel handler — the same selection path a tap takes.
+        const selectPeriod = async index => {
+          const marker = await page.evaluate(() =>
+            document.querySelector('[data-calendar-waterfalls]')?.getAttribute('data-selected-pay-period'));
+          await page.evaluate(i => {
+            document.querySelector(`[data-budget-wheel="period"] [data-wheel-index="${i}"]`).click();
+          }, index);
+          await page.waitForFunction(prev =>
+            document.querySelector('[data-calendar-waterfalls]')?.getAttribute('data-selected-pay-period') !== prev,
+            marker, { timeout: 10000 });
+          await page.waitForTimeout(300);
+        };
+        const wheel = await page.evaluate(() => {
+          const items = [...document.querySelectorAll('[data-budget-wheel="period"] [data-wheel-index]')];
+          return { count: items.length, current: items.findIndex(b => b.hasAttribute('aria-current')) };
+        });
+        assert.ok(wheel.current > 0 && wheel.current + 2 < wheel.count,
+          'gap: historical and projected periods are selectable');
+        const factsById = async () => {
+          const out = {};
+          for (const g of goals) {
+            const row = tile.locator(`[data-budget-savings-goal="${g.key}"]`);
+            if (await row.count()) out[g.id] = await goalFacts(row);
+          }
+          return out;
+        };
+        const expectWithheld = async (factsNow, tag) => {
+          for (const id of ['goal-d', 'goal-e']) {
+            assert.ok(factsNow[id], `${tag}: ${id} row present`);
+            assert.equal(factsNow[id].paid, 'Unknown', `${tag}: ${id} Paid withheld by the noncurrent packet`);
+            assert.equal(factsNow[id].stf, 'Unknown', `${tag}: ${id} Still to fund must not borrow today's gap`);
+            assert.equal(factsNow[id].stfStamp, null, `${tag}: ${id} no still-to-fund stamp when withheld`);
+          }
+          const text = await tile.locator('[data-blend-goals]').evaluate(n => n.textContent.replace(/\s+/g, ' '));
+          assert.ok(!text.includes('Still to fund $30.00'), `${tag}: face does not print today's $30.00 gap`);
+          assert.ok(!text.includes('Still to fund $50.00'), `${tag}: face does not print today's $50.00 gap`);
+        };
+        await selectPeriod(wheel.current - 1);
+        await expectWithheld(await factsById(), `gap ${width} historical`);
+        await selectPeriod(wheel.current + 1);
+        await expectWithheld(await factsById(), `gap ${width} projected-next`);
+        await selectPeriod(wheel.current + 2);
+        await expectWithheld(await factsById(), `gap ${width} projected-future`);
+        await selectPeriod(wheel.current);
+        const restored = await factsById();
+        assert.equal(restored['goal-d'].stf, '$30.00', `gap ${width} current restored: D numeric gap`);
+        assert.equal(restored['goal-e'].stf, '$50.00', `gap ${width} current restored: E numeric gap`);
+      }
       // Household-facing face carries the same printed Paid / Still to
       // fund text as each plan.js row, verbatim.
       const faceText = await tile.locator('[data-blend-goals]').evaluate(n => n.textContent.replace(/\s+/g, ' '));

@@ -5204,7 +5204,8 @@ function budgetDailyNeededHtml(row, periodContext = false) {
 // commitmentCost fact on the goal row (confirmedLinkedPaid). Still to
 // fund is Forecast's funding-schedule publication (planSpendPaydayFunding
 // costs[] / groups[] stillToFund), joined by goal id at the matching
-// asOf: that figure already nets recorded payments (the relieved base
+// asOf and only in the verified current period context (the schedule is
+// the live publication; see budgetGoalScheduleContext): that figure already nets recorded payments (the relieved base
 // requirement) and Saved (actualSaved), so it is the funding gap Dale
 // reads. Nothing is subtracted or recomputed here: a figure prints only
 // when its publication is present; a missing, unconfigured, unavailable
@@ -5222,6 +5223,26 @@ const budgetGoalCostFact = fact => fact && fact.status === 'known'
 const budgetGoalCostText = fact => !fact ? '<span class="budget-v3-unknown">Unknown</span>'
   : fact.range ? `${money2(fact.range.min)} - ${money2(fact.range.max)}` : money2(fact.amount);
 const budgetGoalRatio = (part, whole) => Math.max(0, Math.min(1, part / whole)).toFixed(4);
+
+// Period/context identity for the schedule join. The schedule handed to
+// the goals list is the live/current publication — fetched without a
+// selected period — so its stillToFund gap belongs only to rows published
+// for that same current context. Forecast stamps a noncurrent packet with
+// its own period identity (period.kind 'historical' / 'projected', plus
+// its span) and withholds the goal facts while retaining the observation
+// asOf: matching asOf is therefore not matching period/context, and an
+// asOf-only join would print today's numeric gap beside a historical or
+// projected period's Unknown facts. The live schedule is carried into a
+// row only when the selected period IS the current period and the packet
+// serving the rows is that period's own publication spanning exactly the
+// selected period; otherwise the gap is withheld (Unknown) — no renderer
+// subtraction, and no gap is invented for the selected context.
+function budgetGoalScheduleContext(period, packet) {
+  if (!period || period.timelineRole !== 'current') return false;
+  const p = packet?.period;
+  if (!p || p.kind === 'historical' || p.kind === 'projected') return false;
+  return p.start === period.start && p.end === period.end;
+}
 
 // The schedule join, fail-closed: the schedule must be a live
 // planSpendPaydayFunding publication whose asOf matches the row's own
@@ -7381,6 +7402,12 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
   if (period?.timelineRole === 'current' || ctx.plan?.savingsEarmarks?.allocationPolicy != null
       || ctx.advice?.savingsFunding != null) {
     const daily = budgetDailySavingsFor(ctx, period.id);
+    // The schedule is the live/current publication; offer it to the rows
+    // only in the verified matching current context (see
+    // budgetGoalScheduleContext). A historical/projected selection keeps
+    // its rows but renders Still to fund Unknown rather than borrowing
+    // today's gap.
+    const liveSchedule = budgetGoalScheduleContext(period, daily) ? schedule : null;
     const projected = daily.period?.kind === 'projected';
     const value = (amount, trust) => budgetSavingsMoney(amount, trust, projected);
     const roster = [...(period.plannedCostFunding?.items || []), ...(period.plannedCostFunding?.unscheduled || [])];
@@ -7403,7 +7430,7 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
       return `<li data-budget-savings-goal="${budgetV3Escape(row.key)}"${savedStamp}${requiredStamp}><button type="button" class="budget-goal-row" data-budget-goal-open="${budgetV3Escape(row.key)}" aria-haspopup="dialog">
       <div class="budget-goal-heading"><strong>${budgetV3Escape(group ? group.title : row.label)}</strong></div>
       <div class="budget-goal-amounts"><span><span class="budget-goal-amount">${value(row.saved, row.savedTrust)}</span><small>Saved</small></span><span aria-hidden="true">/</span><span><span class="budget-goal-amount">${budgetDailyNeededHtml(row, projected)}</span><small>Needed</small></span></div>
-      ${budgetGoalPaidProgressHtml(row, schedule)}
+      ${budgetGoalPaidProgressHtml(row, liveSchedule)}
       <p class="budget-goal-context">${value(row.thisPeriod, row.thisPeriodTrust)} this period<span class="budget-goal-evidence">Info <span aria-hidden="true">></span></span></p>${members}
     </button></li>`;
     }).join('');
