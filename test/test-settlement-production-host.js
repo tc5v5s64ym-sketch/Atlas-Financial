@@ -954,6 +954,177 @@ test('canonical adapter: losing the canonical source at runtime fails closed and
   host.close();
 });
 
+test('canonical adapter: an observed malformed rewrite invalidates the retained snapshot authority', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  // The watcher observes a rewrite it cannot adopt: malformed JSON.
+  // Retaining the last-good contents as data must not retain their
+  // authority — at the old revision a witness pinned before the
+  // rewrite would still compare as current.
+  fs.writeFileSync(w.canonicalFile, '{ not json');
+  const after = await pollUntil(() => {
+    try {
+      const c = reader();
+      return c.contextRevision > before.contextRevision ? c : null;
+    } catch { return { refused: true }; }
+  }, 8000, 'observed malformed rewrite invalidates the retained revision');
+  if (!after.refused) assert.deepEqual(after.canonical, before.canonical);
+  // Safe adoption resumes: a later valid record is adopted normally.
+  fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...before.canonical,
+    meta: { ...before.canonical.meta,
+      title: before.canonical.meta.title + ' (recovered)' } }));
+  const adopted = await pollUntil(() => {
+    try {
+      const c = reader();
+      return c.canonical.meta.title.endsWith('(recovered)') ? c : null;
+    } catch { return null; }
+  }, 8000, 'valid record adopted after the malformed rewrite');
+  assert.ok(adopted.contextRevision > before.contextRevision);
+  host.close();
+});
+
+test('canonical adapter: an observed non-record rewrite invalidates the retained snapshot authority', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  // Valid JSON, but not a record: the adapter must never advance on
+  // it — and must not leave the previous snapshot's revision in
+  // force either, because the rewrite was observed.
+  fs.writeFileSync(w.canonicalFile, '[]');
+  const after = await pollUntil(() => {
+    try {
+      const c = reader();
+      return c.contextRevision > before.contextRevision ? c : null;
+    } catch { return { refused: true }; }
+  }, 8000, 'observed non-record rewrite invalidates the retained revision');
+  if (!after.refused) assert.deepEqual(after.canonical, before.canonical);
+  fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...before.canonical,
+    meta: { ...before.canonical.meta,
+      title: before.canonical.meta.title + ' (recovered)' } }));
+  const adopted = await pollUntil(() => {
+    try {
+      const c = reader();
+      return c.canonical.meta.title.endsWith('(recovered)') ? c : null;
+    } catch { return null; }
+  }, 8000, 'valid record adopted after the non-record rewrite');
+  assert.ok(adopted.contextRevision > before.contextRevision);
+  host.close();
+});
+
+test('canonical adapter: an owner-refused advance invalidates the retained snapshot authority', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  // A valid plain record the trusted owner cannot advance: nested
+  // deeply enough that the owner's deep comparison/clone refuses it
+  // after a successful parse and a stable fingerprint (verified
+  // against the shipped owner: parse succeeds, advance throws). The
+  // swallowed refusal must not leave the old revision in force.
+  let deepText = '{"v":1}';
+  for (let i = 0; i < 3000; i++) deepText = '{"n":' + deepText + '}';
+  fs.writeFileSync(w.canonicalFile, deepText);
+  const after = await pollUntil(() => {
+    try {
+      const c = reader();
+      return c.contextRevision > before.contextRevision ? c : null;
+    } catch { return { refused: true }; }
+  }, 8000, 'owner-refused advance invalidates the retained revision');
+  if (!after.refused) assert.deepEqual(after.canonical, before.canonical);
+  fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...before.canonical,
+    meta: { ...before.canonical.meta,
+      title: before.canonical.meta.title + ' (recovered)' } }));
+  const adopted = await pollUntil(() => {
+    try {
+      const c = reader();
+      return c.canonical.meta.title.endsWith('(recovered)') ? c : null;
+    } catch { return null; }
+  }, 8000, 'valid record adopted after the refused advance');
+  assert.ok(adopted.contextRevision > before.contextRevision);
+  host.close();
+});
+
+test('a commit whose own acquisition is overtaken by an observed malformed rewrite is refused (zero commits)', async t => {
+  const w = makeWorld(); active = w; installDoubles(t, w);
+  // Own exclusion domain, as in the coalesced-ABA refusal test: a
+  // refused commit seals a negative certificate under its domain and
+  // the registry floor is process-global per namespace.
+  const config = hostConfig(w, {
+    SETTLEMENT_EXCLUSION_LEDGER_NAMESPACE: 'ledger-' + '7'.repeat(32),
+    SETTLEMENT_EXCLUSION_SERIALIZATION_AUTHORITY: 'authority-' + '8'.repeat(32),
+    SETTLEMENT_EXCLUSION_HISTORY_AUTHORITY: 'authority-' + '9'.repeat(32),
+  });
+  const host = createSettlementProductionHost(config);
+  await bootstrapCustody(host.settlement.connection, host.settlement.custody, () => Date.now());
+  const owner = await startServer({ env: config, host: '127.0.0.1', port: 0, settlement: host.settlement });
+  t.after(async () => { host.close(); await owner.close(); });
+  w.owner = owner; w.url = 'http://127.0.0.1:' + owner.server.address().port; w.cookie = await login(w);
+  host.startContextAdapter();
+  const p = await prepared(w);
+  // Source-derived scenario (Atlas re-review 6486479656): witness
+  // A/revision r is captured by the confirm's own acquisition; the
+  // canonical file is then replaced with malformed JSON and the host
+  // OBSERVES the rewrite before admission. The stale A/r witness
+  // must not be accepted by same-context comparison.
+  const callsBeforeConfirm = w.acquireCalls;
+  let rewriteLanded = false;
+  w.hooks.query = async (kind, text) => {
+    if (!rewriteLanded && kind === 'financial' && w.acquireCalls > callsBeforeConfirm
+      && text.startsWith('SELECT bytes FROM') && text.includes('.doc_head')) {
+      rewriteLanded = true;
+      fs.writeFileSync(w.canonicalFile, '{ not json');
+      await new Promise(r => setTimeout(r, 250));
+    }
+    return undefined;
+  };
+  const docBefore = w.doc;
+  const r = await confirm(w, p);
+  assert.ok(rewriteLanded, 'the malformed rewrite landed inside the confirm');
+  assert.notEqual(r.value && r.value.status, 'committed');
+  assert.ok(w.doc.equals(docBefore), 'stored document unchanged after refusal');
+});
+
+test('a commit whose own acquisition is overtaken by an observed non-record rewrite is refused (zero commits)', async t => {
+  const w = makeWorld(); active = w; installDoubles(t, w);
+  const config = hostConfig(w, {
+    SETTLEMENT_EXCLUSION_LEDGER_NAMESPACE: 'ledger-' + 'b'.repeat(32),
+    SETTLEMENT_EXCLUSION_SERIALIZATION_AUTHORITY: 'authority-' + 'c'.repeat(32),
+    SETTLEMENT_EXCLUSION_HISTORY_AUTHORITY: 'authority-' + 'd'.repeat(32),
+  });
+  const host = createSettlementProductionHost(config);
+  await bootstrapCustody(host.settlement.connection, host.settlement.custody, () => Date.now());
+  const owner = await startServer({ env: config, host: '127.0.0.1', port: 0, settlement: host.settlement });
+  t.after(async () => { host.close(); await owner.close(); });
+  w.owner = owner; w.url = 'http://127.0.0.1:' + owner.server.address().port; w.cookie = await login(w);
+  host.startContextAdapter();
+  const p = await prepared(w);
+  // Same scenario with a non-record canonical ([]): the fingerprint
+  // is consumed by the observation, so without invalidation nothing
+  // ever moves the retained revision again for this rewrite.
+  const callsBeforeConfirm = w.acquireCalls;
+  let rewriteLanded = false;
+  w.hooks.query = async (kind, text) => {
+    if (!rewriteLanded && kind === 'financial' && w.acquireCalls > callsBeforeConfirm
+      && text.startsWith('SELECT bytes FROM') && text.includes('.doc_head')) {
+      rewriteLanded = true;
+      fs.writeFileSync(w.canonicalFile, '[]');
+      await new Promise(r => setTimeout(r, 250));
+    }
+    return undefined;
+  };
+  const docBefore = w.doc;
+  const r = await confirm(w, p);
+  assert.ok(rewriteLanded, 'the non-record rewrite landed inside the confirm');
+  assert.notEqual(r.value && r.value.status, 'committed');
+  assert.ok(w.doc.equals(docBefore), 'stored document unchanged after refusal');
+});
+
 test('a failed duplicate startServer cannot unbind the live composition\u2019s authorization facade', async t => {
   const w = makeWorld(); active = w; installDoubles(t, w);
   const authorization = profileFor(AUTH_USER);

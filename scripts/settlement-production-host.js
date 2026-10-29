@@ -107,7 +107,14 @@
 // epoch carries the reported revision forward instead. Every observed
 // mutation therefore advances the reported revision, an unchanged
 // reported revision always means no observed mutation, and an action
-// pinned to an earlier revision is refused after any rewrite. Value
+// pinned to an earlier revision is refused after any rewrite. An
+// observed rewrite whose contents cannot be safely adopted —
+// malformed JSON, a read that fails after the change was observed,
+// a non-record value, or an advance the trusted owner refuses —
+// adopts nothing, but it does not leave the retained snapshot's
+// authority intact either: the epoch advances without adopting
+// contents, the last-good snapshot is retained as data only, and a
+// later valid record is adopted normally. Value
 // polling is never used as no-change evidence. The env component
 // never mutates inside a process (environment changes arrive by
 // restart), so the adapter advances canonical only, re-presenting the
@@ -754,6 +761,20 @@ function createSettlementProductionHost(config, seams = {}) {
       watcher = null;
     }
   }
+  let unusableFingerprint = null;
+  function invalidateContext(fp) {
+    // An observed rewrite that cannot be safely adopted: the
+    // last-good contents are retained as data, but their authority
+    // is not — the rewrite epoch advances, so the reported revision
+    // no longer certifies the retained snapshot as current and a
+    // witness pinned to the earlier revision cannot compare as
+    // same-context. Deduped per fingerprint: repeated watcher
+    // deliveries of the same unusable state invalidate once, and a
+    // later safely-adopted record clears the mark.
+    if (unusableFingerprint === fp) return;
+    unusableFingerprint = fp;
+    contextEpoch += 1;
+  }
   function syncCanonical() {
     if (closed) return;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -772,13 +793,25 @@ function createSettlementProductionHost(config, seams = {}) {
       try {
         parsed = JSON.parse(fs.readFileSync(canonicalFile, 'utf8'));
         after = fs.statSync(canonicalFile, { bigint: true });
-      } catch { return; } // Torn or malformed read: keep the last good snapshot.
+      } catch {
+        // Torn or malformed read AFTER the change was observed: the
+        // last good snapshot is kept as data, but an observed rewrite
+        // must not leave its revision in force.
+        invalidateContext(fp);
+        return;
+      }
       if (fingerprintOf(after) !== fp) continue; // Changed during the read: re-observe.
       lastFingerprint = fp;
-      if (!isPlainRecord(parsed)) return; // Never advance on a non-record canonical.
+      if (!isPlainRecord(parsed)) {
+        // Never advance on a non-record canonical — and never leave
+        // the retained snapshot's authority unchanged either.
+        invalidateContext(fp);
+        return;
+      }
       try {
         const revisionBefore = owners.contextReader().contextRevision;
         const revisionAfter = advanceContext({ canonical: parsed, env: { ...contextEnv } });
+        unusableFingerprint = null;
         if (revisionAfter === revisionBefore) {
           // An observed rewrite whose contents equal the current
           // context — a same-content rewrite or a coalesced ABA
@@ -789,7 +822,12 @@ function createSettlementProductionHost(config, seams = {}) {
           // pinned to the earlier revision is refused.
           contextEpoch += 1;
         }
-      } catch { /* The trusted owner refused the advance; snapshot retained. */ }
+      } catch {
+        // The trusted owner refused the advance: the snapshot is
+        // retained as data only — its revision authority is
+        // invalidated, so a stale witness cannot ride the refusal.
+        invalidateContext(fp);
+      }
       return;
     }
   }
