@@ -94,12 +94,18 @@
 // pipeline that replaces the file. The observable revision mechanism
 // is the filesystem revision fingerprint (dev, ino, size, mtimeNs,
 // ctimeNs — the tuple scripts/server-live-refresh.js's fileRevision
-// already uses for runtime files): any rewrite, including an ABA
-// return to earlier bytes, moves the fingerprint, while an unchanged
-// fingerprint means the file was not rewritten. The host observes the
-// file with fs.watch; every fingerprint change triggers a
-// fingerprint-verified re-read whose snapshot is handed to P1's
-// advanceContext, the trusted owner's only update path. The reported
+// already uses for runtime files). A moved fingerprint is positive
+// evidence of a rewrite, but an unchanged fingerprint is NOT proof
+// that no rewrite happened: a sub-tick or in-place rewrite — including
+// an ABA return to earlier bytes — can leave the whole tuple
+// identical (the A11 counterexample, PR #781). The host observes the
+// file with fs.watch, and a delivered watcher notification is itself
+// an observed-change signal: every delivered notification enters the
+// observed-change attempt below and may clear only through the commit
+// gate on a fingerprint-verified stable re-read whose snapshot is
+// handed to P1's advanceContext, the trusted owner's only update
+// path. Fingerprint equality never discharges a delivered
+// notification. The reported
 // revision is the owner's revision plus the adapter's rewrite epoch:
 // when an observed rewrite's contents equal the current context — a
 // same-content rewrite, or a coalesced A→B→A whose middle the watcher
@@ -778,7 +784,7 @@ function createSettlementProductionHost(config, seams = {}) {
       watcher = null;
     }
   }
-  function syncCanonical() {
+  function syncCanonical(notified = false) {
     if (closed) return;
     let before;
     try { before = fs.statSync(canonicalFile, { bigint: true }); } catch {
@@ -790,10 +796,14 @@ function createSettlementProductionHost(config, seams = {}) {
       return;
     }
     let observedFp = fingerprintOf(before);
-    if (observedFp === lastFingerprint && !contextInvalidated) {
-      // A healthy no-op — available ONLY while the context is
-      // valid. An unchanged fingerprint never clears an invalidation
-      // and never revives cached authority.
+    if (observedFp === lastFingerprint && !contextInvalidated && !notified) {
+      // A healthy no-op — available ONLY while the context is valid
+      // AND no watcher notification was delivered. A delivered
+      // notification is an observed-change attempt in its own right:
+      // fingerprint equality cannot discharge it (a sub-tick rewrite
+      // can leave the tuple identical), so a notified sync always
+      // enters the attempt below. An unchanged fingerprint never
+      // clears an invalidation and never revives cached authority.
       return;
     }
     // OBSERVED-CHANGE ATTEMPT. From here the attempt defaults to
@@ -872,7 +882,7 @@ function createSettlementProductionHost(config, seams = {}) {
     if (watcher || closed || contextLost) return;
     try {
       watcher = fs.watch(path.dirname(canonicalFile), (_event, name) => {
-        if (!name || name === path.basename(canonicalFile)) syncCanonical();
+        if (!name || name === path.basename(canonicalFile)) syncCanonical(true);
       });
       watcher.on('error', () => { loseContextObservation(); });
     } catch {
