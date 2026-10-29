@@ -70,9 +70,12 @@ which is the connection owner's designed refusal.
 groups separately, each with its own wall-clock cap, instead of wrapping the
 whole serial aggregate in one cap.
 
-- A single 1500-second cap on the serial aggregate cannot cover both groups.
-  The earlier local aggregate ended `timeout` exit 124 at that cap for this
-  budget reason.
+- The earlier local serial aggregate was run under one 1500-second cap and
+  ended `timeout` exit 124 at that cap, during B92. The full local serial
+  aggregate was not observed completing.
+- The successful standalone B92 run and the hosted durations below support
+  insufficient budget as the explanation for that timeout. No complete local
+  aggregate runtime and no universal minimum were measured.
 - Local `refresh-isolation` (B92) completed in 1150 seconds, exit 0, on the
   real binary with the trust variables unset: B92 printed `ALL CHECKS PASSED`
   and the runner printed `ALL 1 SUITES PASSED`. One local run.
@@ -85,8 +88,9 @@ Pick each cap with headroom over the observed duration for that group, and
 record the cap you used.
 
 ```sh
+CAP_SECONDS=1800  # choose and record your own cap with headroom
 env -u NODE_EXTRA_CA_CERTS -u SSL_CERT_FILE -u NODE_USE_SYSTEM_CA \
-  timeout <cap-seconds> /usr/local/lib/nodejs/node test/test.js --group refresh-isolation
+  timeout "$CAP_SECONDS" /usr/local/lib/nodejs/node test/test.js --group refresh-isolation
 echo "EXIT=$?"
 ```
 
