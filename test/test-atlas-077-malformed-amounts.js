@@ -1,9 +1,11 @@
 'use strict';
-/* ATLAS-077 (#726) — Household consumer acceptance suite for malformed
- * scheduled bill, commitment, and obligation amounts.
+/* ATLAS-077 (#726) — Supplementary VM renderer and Assistant-packet
+ * regression suite for malformed scheduled bill, commitment, and obligation
+ * amounts (companion to the real-browser Playwright acceptance suite in
+ * `test/browser-malformed-scheduled-amounts-acceptance.js`).
  *
- * Verifies the merged PR #637 (`a6cdd394`) `Forecast.scheduledAmountState`
- * fail-closed contract across the real household consumer surfaces:
+ * Exercises the merged PR #637 (`a6cdd394`) `Forecast.scheduledAmountState`
+ * fail-closed contract in Node/VM and packet helpers:
  *   1. Active Budget surface (`public/budget-surface.js` + `public/plan.js`)
  *      in both Pay Period and Month (Road Ahead / `baselineTrajectory`) views.
  *   2. Credit page (`public/credit.js` consuming `Forecast.creditAccounts`).
@@ -435,5 +437,5 @@ console.log('\n=== 5. Transition lifecycle: malformed -> valid numeric 0 -> rest
     `load=${restoredCur.periodBillLoad} bad=${restoredCur.balanceAfterDeductions} weekly=${restoredAdv.weekly}`);
 }
 
-console.log('\n' + (failures ? `${failures} failure(s)` : 'All ATLAS-077 household consumer acceptance checks passed'));
+console.log('\n' + (failures ? `${failures} failure(s)` : 'All ATLAS-077 supplementary VM regression checks passed'));
 process.exit(failures === 0 ? 0 : 1);
