@@ -28,7 +28,7 @@
 // after every synthetic SQL statement completes, so it reflects the
 // backing as of A's last statement. The synthetic pg driver, provider
 // acquisition and encrypt seam are the labelled doubles from
-// test/acceptance-host-observations.js.
+// test/test-acceptance-host-observations.js.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -49,7 +49,7 @@ const dec = v => v === null ? null
   : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, dec(x)]));
 
 async function child(role, backingFile) {
-  const H = require('./acceptance-host-observations');
+  const H = require('./test-acceptance-host-observations');
   const w = H.makeWorld(); H.setActive(w); w.nativeHistory = true; H.installDoubles(null, w);
   if (role === 'B') {
     const saved = dec(JSON.parse(fs.readFileSync(backingFile, 'utf8')));
