@@ -115,6 +115,7 @@ const suites = [
   ['settlement evidence recovery-to-server integration: durable eligibility issuance inside prepare, the recovery-secret credential on both disclosing routes, and the opt-in awaited final authority authorizeRecoveryFinal judged on one fresh store read (planner-trial Lane 1, ATLAS-082)', 'test-settlement-evidence-recovery-integration.js'],
   ['settlement production startup: two owners, retained uncertainty, single final authority and logout tombstones (synthetic assembled ATLAS-083)', 'test-settlement-production-composition.js'],
   ['settlement production owners: synchronous authorize, preliminary recovery admission, trusted context revision and synthetic custody composition (Plan #5 P1)', 'test-settlement-production-owners.js'],
+  ['settlement custody durable stores: Postgres-backed pin/backup custody over one dedicated direct session, restart persistence and fail-closed corruption (Plan #5 GAP-1)', 'test-settlement-custody-durable-stores.js'],
   ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
