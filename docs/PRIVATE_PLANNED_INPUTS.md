@@ -175,3 +175,68 @@ Neither is implemented here. No real inputs are changed.
 This candidate requires independent Atlas Contract / Systems Review because it
 defines a private schema/authority boundary. A builder/advisory pass is not that
 review. Draft publication does not authorize merge, activation or completion.
+
+## Bill amount corrections (FOUNDATION, NOT COMPLETION)
+
+Issue #768 Slice 1, dispatched by Muse as Assignment 13 on #787 with Atlas's
+pre-start ruling (#768 comment 6507647743) binding. This adds a pure, private
+contract for recording a corrected **known amount** on an existing planned bill.
+No production writer or caller exists in inspected source; no deployed
+private-document inventory was inspected. No storage, route, environment switch,
+Forecast integration, observer, server or UI change is made, and no real input
+changes. Neon Free remains a candidate basis only.
+
+**Namespace.** `require('scripts/planned-input-contract').bills` is additive. It
+uses its own document schema `atlas-private-planned-bill-inputs/v1` (state keys
+exactly `householdId`, `revision`, `baseline {fingerprint, bills}`, `operations`)
+and its own preview schema `atlas-private-planned-bill-input-preview/v1`. The
+commitment (v1) functions, exports, document bytes and regression suite are
+unchanged. Isolation comes from explicit schema and exact-key validation plus the
+document and preview bindings: the envelope `digest` hashes canonical state and
+does not itself include the schema; `documentDigest` (pin) hashes the encoded
+document, which includes the schema; `confirmationDigest` binds the whole preview,
+including its schema. Each namespace refuses the other's documents, candidates
+and previews at every state-consuming entry point, including envelopes whose
+schema string was swapped.
+
+**Baseline.** `adoptBaseline` takes the complete `plan.bills` inventory and its
+expected fingerprint, explicitly. Unsupported rows are retained unchanged;
+adoption and correction eligibility are different operations. Compose fails
+closed on any source drift and never returns an empty inventory.
+
+**Commands.** Exact keys `{version: 1, kind, target: 'bill:<id>', headOperationId,
+changes}`.
+- `correct`: `changes` is exactly `{amount}`, a nonnegative currency-unit number
+  with exact cent precision (for example `12.34`, not integer cents). `amount:
+  null` is refused by an explicit non-null guard and is never coerced to zero.
+- `reset` (`changes: null`): a new dated revision returning the effective row to
+  the exact adopted baseline row. The bill is never deleted and no settlement is
+  invented. There is no `remove` or `retract` in this namespace.
+
+**Correction eligibility.** Only rows whose `confidence` is explicitly
+`estimated` or `unknown`; missing, null, malformed, unrecognized and `confirmed`
+are ineligible, and Forecast's presentation fallback for undated or unlabelled
+bills is not edit authority. Frequency must be `monthly`, `quarterly`, `yearly`
+or `biweekly`. Rows with `settled === true`, any own `settledOn`, or any of
+`amountMin`, `amountMax`, `amountSchedule`, `dateWindow`, `paymentTiming` are
+refused. Only `amount` changes; `confidence` and every other key are preserved.
+No-op corrections and resets of an uncorrected row are refused. Head, revision,
+document-digest, baseline-fingerprint, TTL and monotonic-time guards match v1.
+
+**Not decided here.** Occurrence applicability (later occurrences only versus
+selected current or past-due occurrences) stays open for Slice 2. Amount-only
+records do not settle it or pre-approve a future schema migration. Slice 1
+`compose` is a private pure-record projection, not live Forecast integration;
+corrected projection totals, Balance After Deductions and "unknown never becomes
+$0" publication proofs belong to Slice 2.
+
+Run the suite explicitly:
+
+```text
+node test/test-planned-bill-input-contract.js
+```
+
+It uses synthetic fixtures only and includes a v1 byte pin captured at base
+`ccb1316d` before any edit. Those are contract and serialization proofs, not
+persistent-storage, deployed or live household acceptance. Grok, the designated
+registry writer, added the suite to `test/test.js`.

@@ -79,6 +79,7 @@ const suites = [
   ['source check metadata and independent financial coverage status', 'test-source-check-status.js'],
   ['explicit private comparison save from complete loaded inputs only', 'test-private-comparison-download.js'],
   ['inactive private planned-input correction contract and synthetic validation', 'test-planned-input-contract.js'],
+  ['inactive private planned bill amount correction contract and synthetic validation (#768 Slice 1)', 'test-planned-bill-input-contract.js'],
   ['inactive planned-obligation settlement evidence contract and synthetic validation', 'test-planned-obligation-settlement-contract.js'],
   ['settlement evidence relief through Forecast: remaining, cash events and backing (Phase 2)', 'test-savings-settlement-phase2.js'],
   ['paid Savings goals retained through completion period and retired afterward', 'test-savings-paid-goal-lifecycle.js'],
