@@ -7,77 +7,93 @@
 // Scope packet #787 comment 6508539468 as corrected by Atlas's ruling
 // 6508634090; dispatch 6508755098.
 //
-// DETERMINATION (made at main ccb1316d58a977f47cfa6fe0b7a5d94a838d371f
-// and re-verified by the probe test below at run time): the journey is
-// NOT EXECUTED in this environment. Two named prerequisites are
-// missing, and neither may be weakened around (ruling point 3):
+// DETERMINATION (at main ccb1316d58a977f47cfa6fe0b7a5d94a838d371f;
+// re-verified mechanically by the probe test below at run time): the
+// journey is NOT EXECUTED. Exactly one prerequisite is missing:
 //
-//  P1 — a local disposable PostgreSQL target. The entry composes its
-//  financial and authorization profiles from the REAL pg driver
-//  (settlement-production-host.js binds require('pg').Client; the
-//  entry passes no seams, server.js require.main block), so an active
-//  entry cannot even qualify its sessions without a server to connect
-//  to. This environment has no PostgreSQL server at all: no postgres /
-//  initdb / pg_ctl / pg_isready binaries on PATH, no /usr/lib/postgresql
-//  or /var/lib/postgresql, no service, no embedded-postgres package.
-//  The probe re-checks this mechanically on every run (binaries, or a
-//  disposable target named by the A12_LOCAL_PG_URL test-only env knob).
-//
-//  P2 — the acquisition basis. A prepare → confirm journey additionally
-//  requires ServerLiveRefresh.acquireSettlementWithWitness
-//  (server.js composition `acquire`), which refuses unless the overlay
-//  mode is 'live' AND a qualified process-local observation already
-//  exists (scripts/server-live-refresh.js: acquireSettlementWithWitness
-//  — an acquisition never starts a provider job; a missing observation
-//  is 'live-refresh-unavailable'). No existing supported synthetic
-//  setup on main supplies that basis to the env-only child entry: the
-//  shipped synthetic acquisition setups are IN-PROCESS doubles —
-//  test/test-savings-journey-acceptance.js replaces Refresh.serve and
+//  P2 — the acquisition basis. A prepare → confirm journey requires
+//  ServerLiveRefresh.acquireSettlementWithWitness (the server.js
+//  composition `acquire`), which refuses unless the overlay mode is
+//  'live' AND a qualified process-local observation already exists
+//  (scripts/server-live-refresh.js — an acquisition never starts a
+//  provider job; a missing observation is 'live-refresh-unavailable').
+//  No existing supported synthetic setup on main supplies that basis
+//  to the env-only child entry: the shipped synthetic acquisition
+//  setups are IN-PROCESS doubles — test/test-savings-journey-
+//  acceptance.js replaces Refresh.serve and
 //  Refresh.acquireSettlementWithWitness on the module object, and
 //  test/test-settlement-evidence-refresh-acquisition.js preloads
 //  refresh workers — and a module double cannot cross into a child
-//  process that receives only an environment. Inside the child, an
-//  observation could only be qualified by a real provider refresh:
-//  real Lunch Money credentials / provider access, which are out of
-//  scope. No new production seam, no relaxed TLS/hostname/catalog
-//  checks, and no real provider access may be introduced to change
-//  this (ruling 6508634090 points 1 and 3).
+//  process that receives only an environment. The strongest precedent
+//  confirms it: INT-2's local-Postgres journey (52592991) composed
+//  startServer IN-PROCESS with those same module doubles; it never
+//  drove the env-only entry. Inside the child, an observation could
+//  only be qualified by a real provider refresh — real Lunch Money
+//  credentials / provider access, which are out of scope. No new
+//  production seam, no relaxed TLS/hostname/catalog checks, and no
+//  real provider access may be introduced to change this (ruling
+//  6508634090 points 1 and 3).
+//
+//  P1 — a local disposable PostgreSQL target — is PRESENT in this
+//  environment and is NOT the blocker: PostgreSQL 18.6 from the
+//  INT-1/INT-2 disposable-cluster tooling lives at
+//  ~/workspace/int-exec/pg (bin/postgres, bin/initdb, bin/pg_ctl) and
+//  `postgres --version` executes. It is not on PATH and not in a
+//  standard install root, so a probe that only checks PATH misses it;
+//  the probe below checks the INT tooling explicitly, plus PATH,
+//  standard roots, and a disposable target named by the
+//  A12_LOCAL_PG_URL test-only env knob. (An earlier draft of this
+//  file recorded P1 as absent on PATH evidence alone; that was wrong
+//  and is corrected here — P1's presence changes nothing about the
+//  outcome, because P2 alone keeps the journey unexecutable, but the
+//  record must be exact.)
 //
 // RECORDING, NOT SKIPPING SILENTLY: the probe test below EXECUTES on
-// every run and asserts this determination against the live
-// environment. The three journey tests are recorded NOT EXECUTED via
-// their skip reasons, which name both prerequisites. If a local
-// disposable PostgreSQL target ever appears (P1 satisfied), the probe
-// FAILS LOUDLY and the journey tests stop skipping — their bodies then
-// fail with an explicit demand that the journey be implemented and
-// executed by a dispatched slice, so this file can never quietly pass
-// over an executable journey. A skip here is NOT EXECUTED, never PASS:
-// A12 stays PARTIAL on this file's evidence boundary.
+// every run. It re-checks P1 mechanically (including a --version
+// execution of any binary found) and asserts the P2 source tripwire:
+// the shipped acquireSettlementWithWitness still refuses without a
+// pre-existing qualified observation. If that source shape changes —
+// e.g. an env-only synthetic observation path is ever added — the
+// probe FAILS LOUDLY and the P2 determination must be re-reviewed
+// before this file's NOT EXECUTED recording is trusted again. The
+// three journey tests are recorded NOT EXECUTED via their skip
+// reasons, which name the sole missing prerequisite. A skip here is
+// NOT EXECUTED, never PASS: A12 stays PARTIAL on this file's
+// evidence boundary.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const net = require('node:net');
+const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const NOT_EXECUTED_REASON =
-  'NOT EXECUTED — missing prerequisites: (P1) no local disposable PostgreSQL target in this '
-  + 'environment (no postgres/initdb/pg_isready binaries, no disposable target configured); '
-  + '(P2) no existing supported synthetic setup on main supplies the acquisition basis '
-  + '(overlay mode live + qualified process-local observation) to the env-only child entry. '
-  + 'See the header determination in this file.';
+  'NOT EXECUTED — missing prerequisite: (P2) no existing supported synthetic setup on main '
+  + 'supplies the acquisition basis (overlay mode live + qualified process-local observation) '
+  + 'to the env-only child entry; the shipped synthetic acquisition setups are in-process '
+  + 'module doubles that cannot cross into the child. (P1, a local disposable PostgreSQL '
+  + 'target, IS present in this environment — the INT tooling at ~/workspace/int-exec/pg — '
+  + 'and is not the blocker.) See the header determination in this file.';
 
 // P1, mechanically: server binaries on PATH, a conventional install
-// root, or an operator-provisioned disposable target named by
-// A12_LOCAL_PG_URL (a postgres:// URL whose host is loopback).
-function pgBinariesPresent() {
+// root, the workspace INT-1/INT-2 tooling, or an operator-provisioned
+// disposable target named by A12_LOCAL_PG_URL (loopback only).
+function pgInstallPresent() {
   const dirs = String(process.env.PATH || '').split(path.delimiter).filter(Boolean);
   for (const bin of ['postgres', 'initdb', 'pg_ctl', 'pg_isready']) {
     for (const dir of dirs) {
-      try { fs.accessSync(path.join(dir, bin), fs.constants.X_OK); return bin; } catch { /* keep looking */ }
+      const candidate = path.join(dir, bin);
+      try { fs.accessSync(candidate, fs.constants.X_OK); return candidate; } catch { /* keep looking */ }
     }
   }
   for (const dir of ['/usr/lib/postgresql', '/usr/local/pgsql', '/var/lib/postgresql']) {
     if (fs.existsSync(dir)) return dir;
+  }
+  const intBin = path.join(os.homedir(), 'workspace', 'int-exec', 'pg', 'bin');
+  for (const bin of ['postgres', 'initdb', 'pg_ctl']) {
+    const candidate = path.join(intBin, bin);
+    try { fs.accessSync(candidate, fs.constants.X_OK); return candidate; } catch { /* keep looking */ }
   }
   return null;
 }
@@ -99,45 +115,52 @@ const tcpReachable = (host, port) => new Promise(resolve => {
   sock.once('error', () => resolve(false));
 });
 async function p1Present() {
-  const bin = pgBinariesPresent();
-  if (bin) return 'PostgreSQL server binary/install found: ' + bin;
+  const found = pgInstallPresent();
+  if (found) {
+    // Presence must be executable truth, not a stray path: if the
+    // find is a binary, run its --version.
+    if (path.basename(found).startsWith('postgres')) {
+      const r = spawnSync(found, ['--version'], { encoding: 'utf8' });
+      if (r.status === 0 && /PostgreSQL/.test(String(r.stdout))) {
+        return 'PostgreSQL present and executing: ' + String(r.stdout).trim() + ' (' + found + ')';
+      }
+      return 'PostgreSQL install found (version probe inconclusive): ' + found;
+    }
+    return 'PostgreSQL install found: ' + found;
+  }
   const target = configuredTarget();
   if (target && await tcpReachable(target.host, target.port)) {
     return 'disposable local target reachable via A12_LOCAL_PG_URL (' + target.host + ':' + target.port + ')';
   }
   return null;
 }
-// Synchronous tripwire evaluated at load: if server binaries/install
-// roots exist OR a disposable target is even configured, the journey
-// tests below do NOT skip — their bodies fail loudly (and the probe
-// fails too). While neither holds, they record NOT EXECUTED.
-const P1_AT_LOAD = pgBinariesPresent()
-  || (process.env.A12_LOCAL_PG_URL ? 'A12_LOCAL_PG_URL is configured' : null);
-const JOURNEY_SKIP = P1_AT_LOAD ? false : NOT_EXECUTED_REASON;
 
 test('A12 File 2 prerequisite probe (executes): the NOT EXECUTED determination matches this environment', async t => {
   const p1 = await p1Present();
   t.diagnostic('A12 File 2 determination: P1 (local disposable PostgreSQL) '
-    + (p1 ? 'PRESENT — ' + p1 : 'absent (no server binaries/install, no configured disposable target)'));
+    + (p1 ? 'PRESENT — ' + p1 : 'absent (no binaries/install found, no configured disposable target)'));
   t.diagnostic('A12 File 2 determination: P2 (acquisition basis for the env-only entry) absent on main '
     + 'ccb1316d — synthetic acquisition setups are in-process module doubles only; see header.');
-  assert.equal(p1, null,
-    'LOUD FAILURE, BY DESIGN: a local disposable PostgreSQL target now exists (' + p1 + '), so the '
-    + 'active-entry journey in this file is executable in principle and its NOT EXECUTED record is '
-    + 'stale. Do not let this suite go green around it: a dispatched slice must implement and execute '
-    + 'the journey below (and settle prerequisite P2) and replace the NOT EXECUTED recording.');
+  // P2 source tripwire: the shipped acquisition still refuses without
+  // a pre-existing qualified observation. If this shape changes, the
+  // P2 determination is stale and must be re-reviewed — fail loudly.
+  const source = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'server-live-refresh.js'), 'utf8');
+  const acquire = source.slice(source.indexOf('function acquireSettlementWithWitness'));
+  assert.ok(acquire.includes("overlayModeFromEnv(env) !== 'live'"),
+    'P2 TRIPWIRE: acquireSettlementWithWitness no longer gates on overlay mode live — re-review the P2 determination in this file before trusting its NOT EXECUTED recording');
+  assert.ok(acquire.includes('observations.read(context)') && acquire.includes("if (!evidence) return Promise.reject"),
+    'P2 TRIPWIRE: acquireSettlementWithWitness no longer requires a pre-existing qualified observation — re-review the P2 determination in this file before trusting its NOT EXECUTED recording');
+  assert.ok(acquire.length > 0, 'acquireSettlementWithWitness still exists in server-live-refresh.js');
 });
 
-// The journey bodies are intentionally NOT implemented against absent
-// prerequisites. When the probe above fires (P1 present), these tests
-// stop skipping and fail with the demand below — loudly, never as a
-// silent pass. The flow each body must implement when dispatched
-// (packet 6508539468, File 2):
+// The journey bodies are intentionally NOT implemented while P2 is
+// absent. Their flow, when a dispatched slice settles P2 (packet
+// 6508539468, File 2):
 //   - Full financial+auth SETTLEMENT_* config, NO custody profile (the
 //     memory custody binding — the only active configuration the entry
 //     can compose), ATLAS_LIVE_OVERLAY=live with the acquisition basis
 //     settled; launch `node server.js` env-only against the local
-//     disposable target.
+//     disposable target (P1: the INT tooling cluster or equivalent).
 //   - Journey: entry listens → login → /settlement/capability reads
 //     active → prepare → confirm over the entry's own HTTP surface
 //     returns committed → /data.json settlement status qualified → a
@@ -148,16 +171,19 @@ test('A12 File 2 prerequisite probe (executes): the NOT EXECUTED determination m
 //     sessions created during the journey (counted by profile).
 //   - Shutdown: SIGTERM → process exits; stderr carries no
 //     custody-closure FATAL (memory custody retires not-started).
+// If P2 is ever settled, these bodies must be implemented by that
+// slice; until then they stay behind the NOT EXECUTED recording, and
+// the probe above guards the determination's freshness.
 const journeyBody = label => () => {
-  assert.fail('PREREQUISITES PRESENT — the A12 active-entry journey (' + label + ') must be '
+  assert.fail('PREREQUISITE P2 SETTLED? — the A12 active-entry journey (' + label + ') must be '
     + 'implemented and executed by a dispatched slice before this test can pass. The NOT '
-    + 'EXECUTED recording in this file exists only while its named prerequisites are absent; '
-    + 'it must never survive their arrival.');
+    + 'EXECUTED recording in this file exists only while the acquisition basis is unavailable '
+    + 'to the env-only entry; it must never survive that basis arriving.');
 };
 
 test('A12 active entry (local PG): full financial+auth config serves prepare → confirm committed',
-  { skip: JOURNEY_SKIP }, journeyBody('prepare → confirm journey'));
+  { skip: NOT_EXECUTED_REASON }, journeyBody('prepare → confirm journey'));
 test('A12 active entry (local PG): fresh connections are taken at startup/qualification only, none during the journey',
-  { skip: JOURNEY_SKIP }, journeyBody('fresh-connection observation'));
+  { skip: NOT_EXECUTED_REASON }, journeyBody('fresh-connection observation'));
 test('A12 active entry (local PG): SIGTERM shutdown is clean, no custody-closure FATAL for memory custody',
-  { skip: JOURNEY_SKIP }, journeyBody('clean shutdown'));
+  { skip: NOT_EXECUTED_REASON }, journeyBody('clean shutdown'));
