@@ -148,7 +148,7 @@ class SyntheticClient extends EventEmitter {
     super();
     this.kind = config.user === AUTH_USER ? 'authorization'
       : config.user === CUSTODY_USER ? 'custody' : 'financial';
-    this.config = config; this.ends = 0; this.count = 0;
+    this.config = config; this.ends = 0; this.count = 0; this.endEmitted = false;
     this.connection = { stream: { encrypted: true, authorized: true, servername: 'db.example.test',
       getPeerCertificate: () => ({ subjectaltname: 'DNS:db.example.test' }) } };
     active.clients.push(this); active.events.push('construct:' + this.kind);
@@ -166,7 +166,13 @@ class SyntheticClient extends EventEmitter {
       if (active.custodyEndMode === 'rejects') throw Error(canary);
       if (active.custodyEndMode === 'hangs') return new Promise(() => {});
     }
-    if (active.hooks.end) await active.hooks.end(this.kind); this.emit('end');
+    if (active.hooks.end) await active.hooks.end(this.kind);
+    // Idempotent end (repair for Atlas review 2026-10-29T04:18:44Z): a
+    // pg session emits 'end' at most once. The previous double emitted
+    // on EVERY end(); the custody stores' loss listener ends the session
+    // again on 'end', so re-emitting produced an unbounded end->emit->end
+    // chain (a TEST-DOUBLE artifact, not a production deadlock claim).
+    if (!this.endEmitted) { this.endEmitted = true; this.emit('end'); }
   }
   async query(text, values = []) {
     const w = active; w.sql.push({ kind: this.kind, text, values });
@@ -504,18 +510,77 @@ if (require.main === module) {
     assert.deepEqual(Buffer.from(w.doc), doc, 'committed document preserved');
   });
 
-  test('A9 tainted terminal checkpoint: the original operation reads as truthful Unknown, never committed/included (observation)', async t => {
+  // A9 tainted terminal checkpoint — PARTIAL (Atlas review 2026-10-29T04:18:44Z).
+  // Qualified generic serving and an Unknown operation are NOT a
+  // contradiction: generic serving verifies the document against the
+  // pin only, while outcome/publication additionally require the
+  // terminal-history/coexistence qualification the taint removes. The
+  // test therefore asserts BOTH: the independently pinned facts stay
+  // served unchanged, and the operation reads Unknown. Consumer-level
+  // evidence: a withdrawal of the operation's assignment is refused
+  // under the taint (the untainted control below shows it otherwise
+  // prepares). No production defect is inferred from the differing
+  // predicates.
+  // BOUNDED DISPOSITION (open, not claimed): goal-lifecycle retirement
+  // and UI green/status rendering reading the Unknown operation are not
+  // exercised through the host here; row A9 remains PARTIAL.
+  async function a9CheckpointWorld(t) {
     const w = await started(t);
     const p = await prepared(w);
     assert.equal((await confirm(w, p)).value.status, 'committed');
+    const before = (await request(w, '/data.json')).value;
+    const assignmentsBefore = (await request(w, '/settlement/assignments', {})).value;
+    return { w, p, before, assignmentsBefore };
+  }
+  const withoutHandles = a => ({ ...a, assignments: a.assignments.map(({ handle, ...rest }) => rest) });
+
+  test('A9 tainted terminal checkpoint: operation reads Unknown, independently pinned facts stay served, withdrawal refused (PARTIAL)', async t => {
+    const { w, p, before, assignmentsBefore } = await a9CheckpointWorld(t);
     w.terminalRow = { ...w.terminalRow, checkpointBytes: Buffer.from('{"synthetic":"tainted-checkpoint"}') };
     const mark = w.sql.length;
+    // Operation-level reads need terminal-history qualification: Unknown.
     const pub = (await request(w, '/settlement/publication', { operationId: p.operationId })).value;
     assert.equal(pub.status, 'unknown');
     assert.equal(pub.publication, undefined, 'no inclusion claimed under uncertainty');
     assert.deepEqual((await request(w, '/settlement/outcome', credential(p))).value,
       { status: 'unknown', operationId: p.operationId });
+    // Generic serving verifies document/pin only: the independently
+    // pinned facts are preserved exactly (not a contradiction).
+    const data = await request(w, '/data.json');
+    assert.equal(data.status, 200);
+    assert.deepEqual(data.value.settlementEvidenceStatus, { status: 'qualified' },
+      'document/pin-qualified serving unchanged by the checkpoint taint');
+    assert.deepEqual(data.value.settlementEvidence, before.settlementEvidence,
+      'pinned evidence served byte-for-byte as before the taint');
+    const listed = (await request(w, '/settlement/assignments', {})).value;
+    assert.deepEqual(withoutHandles(listed), withoutHandles(assignmentsBefore), 'pinned assignment listing preserved');
+    // Consumer-level: withdrawing the Unknown operation's assignment is refused.
+    const wd = (await request(w, '/settlement/prepare-withdrawal',
+      { operationId: op(9), assignmentHandle: listed.assignments[0].handle })).value;
+    assert.deepEqual(wd, { status: 'unavailable', reason: 'prepare-unavailable' },
+      'no withdrawal of the assignment while its operation is Unknown');
     assert.deepEqual(appWrites(w, mark), [], 'no writes or repair after the taint');
+  });
+
+  test('A9 control (untainted): the same withdrawal prepares, so the refusal above is caused by the checkpoint taint', async t => {
+    const { w } = await a9CheckpointWorld(t);
+    const listed = (await request(w, '/settlement/assignments', {})).value;
+    const wd = (await request(w, '/settlement/prepare-withdrawal',
+      { operationId: op(9), assignmentHandle: listed.assignments[0].handle })).value;
+    assert.equal(wd.status, 'prepared');
+  });
+
+  // ------------------------------------------------ test-double guard
+  test('test double: SyntheticClient emits end once, so a loss listener that ends again terminates', () => {
+    const w = makeWorld(); active = w;
+    const c = new SyntheticClient({ user: CUSTODY_USER });
+    let emitted = 0;
+    // Mirrors the custody stores' loss listener (markLost ends the session again).
+    c.on('end', () => { emitted++; Promise.resolve(c.end()).catch(() => {}); });
+    return Promise.resolve(c.end()).then(() => {
+      assert.equal(emitted, 1, "'end' emitted exactly once");
+      assert.equal(c.ends, 2, 'one re-entrant end() from the listener, then the chain stops');
+    });
   });
 
   // --------------------------------------------------------------- A10

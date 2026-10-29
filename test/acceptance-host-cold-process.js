@@ -13,6 +13,15 @@
 // retained backing and must recover the saved result WITHOUT bootstrap
 // or any reseeding/application write.
 //
+// Backup continuity (repair for Atlas review 2026-10-29T04:18:44Z): A
+// records the retained-backup manifest through the HOST custody
+// backupStore.list() before exiting; B lists the manifest through its
+// OWN host-created backupStore over the retained serialized backing and
+// must see the identical entries (revision, digest, artifactId). list()
+// verifies every row's household binding, revision/digest binding and
+// stored-ciphertext integrity; no server decryption is involved
+// (backupStore.get() is deliberately recovery-unavailable).
+//
 // Retained backing = a JSON file holding the synthetic pg world's
 // tables (doc/journal/staged, custody pin + backups, native terminal
 // history row, authorization eligibility/revocations). It is rewritten
@@ -60,7 +69,9 @@ async function child(role, backingFile) {
     const p = await H.prepared(w);
     const r = await H.confirm(w, p);
     Object.assign(out, { confirm: r.value, credential: H.credential(p), revision: JSON.parse(w.doc).revision,
-      docCommitsAfterStart: H.docCommits({ sql: w.sql.slice(mark) }) });
+      docCommitsAfterStart: H.docCommits({ sql: w.sql.slice(mark) }),
+      backups: (await host.settlement.custody.backupStore.list()).map(e => ({ ...e })),
+      backupRows: w.backups.size });
   } else {
     const cred = JSON.parse(process.env.ACCEPTANCE_A6_CREDENTIAL);
     out.outcome = (await H.request(w, '/settlement/outcome', cred)).value;
@@ -70,6 +81,8 @@ async function child(role, backingFile) {
       .filter(l => l.operationId === cred.operationId).map(l => ({ operationId: l.operationId, assignedCents: l.assignedCents }));
     out.assignments = (await H.request(w, '/settlement/assignments', {})).value;
     out.revision = JSON.parse(w.doc).revision;
+    out.backupRowsLoaded = w.backups.size;
+    out.backups = (await host.settlement.custody.backupStore.list()).map(e => ({ ...e }));
     out.writesInB = H.appWrites(w, mark).map(e => e.kind + ':' + e.text.slice(0, 40));
     out.bootstrapCalls = w.sql.filter(e => e.text.startsWith('INSERT') && e.text.includes('.doc_staged')).length;
   }
@@ -88,7 +101,7 @@ if (process.argv[2] === '--child') {
     assert.ok(line, 'child ' + role + ' reported');
     return JSON.parse(line.slice('A6-RESULT '.length));
   };
-  test('A6 fake-backed cold process: process A writes via the actual host and exits; fresh process B recovers without reseeding', () => {
+  test('A6 fake-backed cold process: process A writes via the actual host and exits; fresh process B recovers without reseeding and lists the retained backups', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-a6-'));
     const file = path.join(dir, 'retained-backing.json');
     const a = run('A', file);
@@ -97,6 +110,8 @@ if (process.argv[2] === '--child') {
     assert.equal(a.revision, 1);
     assert.equal(a.docCommitsAfterStart, 1, 'A applied exactly once');
     assert.ok(fs.existsSync(file), 'retained backing file exists after A exited');
+    assert.equal(a.backups.length, a.backupRows, 'A host manifest covers every retained backup row');
+    assert.deepEqual(a.backups.map(e => e.revision), [0, 1], 'A retained the genesis and revision-1 backups');
     const b = run('B', file, { ACCEPTANCE_A6_CREDENTIAL: JSON.stringify(a.credential) });
     assert.notEqual(b.pid, a.pid, 'B is a different OS process');
     assert.equal(b.ready, 'ready');
@@ -108,6 +123,9 @@ if (process.argv[2] === '--child') {
     assert.equal(b.assignments.status, 'available');
     assert.equal(b.assignments.assignments.length, 1);
     assert.equal(b.revision, 1, 'revision unchanged in B');
+    assert.deepEqual(b.backups, a.backups,
+      'B lists, through its own host backup store, exactly the backups A retained (revision, digest, artifactId)');
+    assert.equal(b.backupRowsLoaded, a.backupRows, 'B loaded every serialized backup row');
     assert.deepEqual(b.writesInB, [], 'B performed no application, custody or bootstrap writes');
     assert.equal(b.bootstrapCalls, 0);
   });
