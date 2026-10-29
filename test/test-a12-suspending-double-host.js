@@ -33,12 +33,20 @@
 //    the unchanged-published-revision oracle valid. (b) MUTATION
 //    BEFORE LOST ACKNOWLEDGMENT — the write takes effect at the
 //    backing and the acknowledgment never arrives; the actual effect
-//    and the uncertainty must both be preserved. In both: no false
-//    terminal (committed) claim, no replay of the write — not on a
-//    repeated confirm, not on shutdown — and no silent controller or
-//    session replacement (the confirmation controller sets its
+//    and the uncertainty must both be preserved. In both fixtures
+//    the tests observe: no false terminal (committed) claim; the
+//    write issued exactly once in the statement log — no replay on
+//    a repeated confirm and none on shutdown (each fixture asserts
+//    the statement log and the published document AFTER an explicit
+//    shutdown); and client construction counts unchanged, i.e. no
+//    session was substituted. Claims stop at what is observed:
+//    client counts establish session construction only — they do
+//    NOT independently establish confirmation-controller identity,
+//    and controller state is claimed only as surfaced through the
+//    operation's outcome reads. (Design note, not an observation of
+//    these fixtures: the confirmation controller sets its
 //    attempted/uncertain state before awaiting commit,
-//    settlement-evidence-confirmation.js). The observed surface for a
+//    settlement-evidence-confirmation.js.) The observed surface for a
 //    lost financial session is the composition's fail-closed
 //    retirement: the operation reads `unavailable`, never `committed`,
 //    and the composition serves nothing further rather than continuing
@@ -602,7 +610,7 @@ if (require.main === module) {
     assert.deepEqual(Buffer.from(w.doc), before,
       'PRE-EFFECT freeze: the published revision is unchanged (this oracle is valid only for this fixture)');
     assert.deepEqual(counts(w), { financial: 2, custody: 1, authorization: 1 },
-      'no session was silently replaced inside the composition');
+      'client construction counts unchanged — no session was substituted (counts observe session construction only, not controller identity)');
     // Uncertainty is preserved, not erased and not replayed: the
     // operation never becomes readable as committed, and a repeated
     // confirm does not resend the write.
@@ -644,12 +652,18 @@ if (require.main === module) {
     assert.notDeepEqual(Buffer.from(w.doc), before,
       'the mutation that landed before the lost acknowledgment is preserved at the backing — not rolled back, not hidden');
     assert.deepEqual(counts(w), { financial: 2, custody: 1, authorization: 1 },
-      'no session or controller was silently replaced');
+      'client construction counts unchanged — no session was substituted (counts observe session construction only; controller identity is not independently established)');
     assert.deepEqual((await request(w, '/settlement/outcome', credential(p))).value, { status: 'unavailable' },
       'the operation never flips to a committed (or any terminal) reading afterwards');
     const again = (await confirmLong(w, p)).value;
     assert.equal(again.status, 'unavailable');
     assert.equal(gated, 1, 'no replay: the landed write is never resent');
     assert.equal(promotions(w, mark), 1);
+    const landed = Buffer.from(w.doc);
+    await shutdown(owner, w.host);
+    assert.equal(gated, 1, 'no replay on shutdown either: the landed write is never resent');
+    assert.equal(promotions(w, mark), 1, 'the statement log gains no second publishing write at shutdown');
+    assert.deepEqual(Buffer.from(w.doc), landed,
+      'the landed effect remains preserved after shutdown — shutdown neither replays nor rolls back the mutation');
   });
 }
