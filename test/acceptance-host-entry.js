@@ -20,7 +20,9 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const ENTRY = path.join(__dirname, '..', 'server.js');
-const base = { SITE_PASSWORD: 'synthetic-entry-password', SESSION_SECRET: 'synthetic-entry-session-secret' };
+const SYNTH_PASS = 'synthetic-entry-password';
+const SYNTH_SECRET = 'synthetic-entry-session-secret';
+const base = { SITE_PASSWORD: SYNTH_PASS, SESSION_SECRET: SYNTH_SECRET };
 function cleanEnv(extra) {
   const env = {};
   for (const [k, v] of Object.entries(process.env)) if (!k.startsWith('SETTLEMENT_')) env[k] = v;
