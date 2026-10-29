@@ -249,6 +249,7 @@ const suites = [
   ['Current Balance is planning-hub cash only', 'test-current-balance-chequing-cash.js'],
   ['null Bills opening is not a confirmed zero', 'test-null-bills-opening-not-confirmed-zero.js'],
   ['malformed scheduled amounts fail closed as unknown', 'test-malformed-amounts-fail-closed.js'],
+  ['ATLAS-077 household consumer acceptance for malformed scheduled amounts', 'test-atlas-077-malformed-amounts.js'],
   ['ATLAS-075 bill amount schedule promo pricing and regular-price restoration', 'test-bill-amount-schedule.js'],
   ['Dale payday Current Balance assumption', 'test-dale-payday-current-balance.js'],
   ['live payday pre-BILLS base retain', 'test-live-payday-bills-base.js'],
