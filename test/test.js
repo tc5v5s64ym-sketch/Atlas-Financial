@@ -116,6 +116,7 @@ const suites = [
   ['settlement production startup: two owners, retained uncertainty, single final authority and logout tombstones (synthetic assembled ATLAS-083)', 'test-settlement-production-composition.js'],
   ['household Savings journey end-to-end acceptance (test only)', 'test-savings-journey-acceptance.js'],
   ['settlement production owners: synchronous authorize, preliminary recovery admission, trusted context revision and synthetic custody composition (Plan #5 P1)', 'test-settlement-production-owners.js'],
+  ['settlement production host: composition root wiring P1 owners into startServer, GAP-2 read facade lifecycle, canonical-file context adapter, custody-session preflight and confirmed custody closure (Plan #5 assembly)', 'test-settlement-production-host.js'],
   ['settlement custody durable stores: Postgres-backed pin/backup custody over one dedicated direct session, restart persistence and fail-closed corruption (Plan #5 GAP-1)', 'test-settlement-custody-durable-stores.js'],
   ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
