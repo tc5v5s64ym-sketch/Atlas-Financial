@@ -2553,6 +2553,9 @@ html.reduce .blend-sky { display: block; }
    dash treatment), and a known zero requirement fills the track with a
    neutral tone — complete, but not a funding band. */
 .blend-g-bar.is-full::before { background: var(--blend-income); }
+/* Paid in full (published payment state): the whole track, in the
+   income green — a paid goal never wears the neutral no-funding tone. */
+.blend-g-bar.is-paid::before { width: 100%; background: var(--blend-income); }
 .blend-g-bar.is-amber::before { background: var(--blend-over); }
 .blend-g-bar.is-red::before { background: var(--blend-overdue); }
 .blend-g-bar.is-no-funding-required::before {
