@@ -156,6 +156,12 @@ class SyntheticClient extends EventEmitter {
   async connect() { active.events.push('connect:' + this.kind); if (active.hooks.connect) await active.hooks.connect(this.kind); }
   async end() {
     this.ends++; active.events.push('end:' + this.kind);
+    if (this.kind === 'custody' && active.custodyEndScript
+      && active.custodyEndScript.length > 0) {
+      const step = active.custodyEndScript.shift();
+      if (step === 'rejects') throw Error(canary);
+      if (step === 'hangs') return new Promise(() => {});
+    }
     if (this.kind === 'custody' && active.endModeArmed) {
       if (active.custodyEndMode === 'rejects') throw Error(canary);
       if (active.custodyEndMode === 'hangs') return new Promise(() => {});
@@ -255,6 +261,7 @@ function makeWorld() {
     doc: null, journal: null, temp: null,
     pinRow: null, backups: new Map(), custodySchemaMode: 'ok',
     custodyGrantsOk: true, custodyEndMode: 'ok', endModeArmed: false,
+    custodyEndScript: null,
     nativeHistory: false,
     servedTitles: [], acquireCalls: 0, witnessCalls: 0, allowed: true };
   // The provisioned genesis terminal-history row native mode requires
@@ -425,6 +432,12 @@ test('host refuses partial or malformed configuration by field name, before any 
     'SETTLEMENT_CUSTODY_DB_SCHEMA']);
   cases.push([{ ...hostConfig(w), ...custodyConfig({ SETTLEMENT_CUSTODY_DB_SCOPE: 'synthetic-scope' }) },
     'SETTLEMENT_CUSTODY_DB_SCOPE']);
+  // An OPTIONAL custody key alone is still custody group presence:
+  // the group is detected from every known custody key, so a lone
+  // SETTLEMENT_CUSTODY_DB_SSL_SERVERNAME refuses by the first missing
+  // required key instead of silently selecting memory custody.
+  cases.push([{ ...hostConfig(w), SETTLEMENT_CUSTODY_DB_SSL_SERVERNAME: 'db.example.test' },
+    'SETTLEMENT_CUSTODY_DB_HOST']);
   for (const [config, field] of cases) {
     assert.throws(() => createSettlementProductionHost(config, { encrypt: syntheticEncrypt }),
       new RegExp('settlement-production-host: invalid configuration — ' + field), field);
@@ -659,30 +672,44 @@ test('durable custody: preflight gates the binding, the journey runs over GAP-1 
   assert.deepEqual(await host.retireCustody(), { state: 'retired', close: 'confirmed' });
 });
 
-test('custody preflight refuses when the schema check fails or cannot be performed', async () => {
+test('custody qualification runs on the actual operational session: a bad catalog, short grants, or a failed connect refuse the first custody operation with zero application queries', async () => {
+  // Qualification is a property of the RETAINED operational session,
+  // discharged inside its own connect — there is no probe session
+  // whose success could license an unvalidated one. prepare() opens
+  // the construction gate only; the first custody operation either
+  // qualifies its own session or fails closed, and no application
+  // statement ever reaches an unqualified session.
+  const applicationSql = w => w.sql.filter(e => e.kind === 'custody'
+    && e.text.includes('"settlement_custody".custody_'));
+  const qualificationSql = w => w.sql.filter(e => e.kind === 'custody'
+    && (e.text.startsWith('SELECT current_database()') || e.text.includes('pg_class')));
   for (const mode of ['unlogged', 'rls', 'missing', 'extra']) {
     const w = makeWorld(); active = w; w.custodySchemaMode = mode;
     const host = createSettlementProductionHost(
       { ...hostConfig(w), ...custodyConfig() }, { encrypt: syntheticEncrypt });
-    await assert.rejects(host.prepare(),
-      /settlement-production-host: custody preflight failed/, mode);
-    // The gate never opened, so custody operations stay unavailable.
+    await host.prepare();
     await assert.rejects(host.settlement.custody.pinStore.read(),
-      /custody|unavailable/, mode);
+      /unavailable/, mode);
+    // The qualification catalog queries ran on the operational
+    // session itself — and not one application statement did.
+    assert.ok(qualificationSql(w).length > 0, mode + ': qualification attempted');
+    assert.equal(applicationSql(w).length, 0, mode + ': zero application queries');
   }
-  // Grants short of the relation contract refuse too.
+  // Grants short of the relation contract refuse the operation too.
   const wg = makeWorld(); active = wg; wg.custodyGrantsOk = false;
   const grantHost = createSettlementProductionHost(
     { ...hostConfig(wg), ...custodyConfig() }, { encrypt: syntheticEncrypt });
-  await assert.rejects(grantHost.prepare(),
-    /settlement-production-host: custody preflight failed — privileges/);
+  await grantHost.prepare();
+  await assert.rejects(grantHost.settlement.custody.pinStore.read(), /unavailable/);
+  assert.equal(applicationSql(wg).length, 0);
   // Cannot be performed: the custody session cannot even connect.
   const w = makeWorld(); active = w;
   w.hooks.connect = kind => { if (kind === 'custody') throw Error(canary); };
   const host = createSettlementProductionHost(
     { ...hostConfig(w), ...custodyConfig() }, { encrypt: syntheticEncrypt });
-  await assert.rejects(host.prepare(),
-    /settlement-production-host: custody preflight failed/);
+  await host.prepare();
+  await assert.rejects(host.settlement.custody.pinStore.read(), /unavailable/);
+  assert.equal(applicationSql(w).length, 0);
 });
 
 test('composition root surfaces custody closure it cannot confirm', async () => {
@@ -711,4 +738,302 @@ test('composition root surfaces custody closure it cannot confirm', async () => 
   w2.endModeArmed = true; w2.custodyEndMode = 'hangs';
   assert.equal(await host2.settlement.custody.pinStore.read(), null);
   assert.deepEqual(await host2.retireCustody(), { state: 'lost', close: 'unconfirmed' });
+});
+
+// --- Repair tests: Atlas BLOCKING review on PR #774 head 5d175dc3 ---
+const withDeadline = (promise, ms, label) => Promise.race([promise,
+  new Promise((_, reject) => setTimeout(() => reject(Error('deadline: ' + label)), ms))]);
+const pollUntil = async (check, ms, label) => {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const value = check();
+    if (value) return value;
+    if (Date.now() >= deadline) throw Error('deadline: ' + label);
+    await new Promise(r => setTimeout(r, 25));
+  }
+};
+
+test('the operational custody session itself is qualified: session-level TLS divergence refuses custody with zero application queries', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(
+    { ...hostConfig(w), ...custodyConfig() }, { encrypt: syntheticEncrypt });
+  await host.prepare();
+  // The configuration is identical and valid; THIS session's TLS
+  // state is what diverges (the double degrades the stream of the
+  // session constructed after prepare). There is no probe whose
+  // success could license it: qualification judges the operational
+  // session inside its own connect, so the operation refuses.
+  w.hooks.connect = kind => {
+    if (kind !== 'custody') return;
+    const client = w.clients.filter(c => c.kind === 'custody').at(-1);
+    if (client) client.connection.stream.authorized = false;
+  };
+  await assert.rejects(host.settlement.custody.pinStore.read(), /unavailable/);
+  assert.equal(w.sql.filter(e => e.kind === 'custody'
+    && e.text.includes('"settlement_custody".custody_')).length, 0);
+});
+
+test('the operational custody session itself is qualified: session-level identity divergence refuses custody with zero application queries', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(
+    { ...hostConfig(w), ...custodyConfig() }, { encrypt: syntheticEncrypt });
+  await host.prepare();
+  // The operational session presents a different login identity than
+  // the profile names. Identical config objects are not session
+  // identity: the connect-time identity check on THIS session fails.
+  w.hooks.query = (kind, text) => {
+    if (kind === 'custody' && text.startsWith('SELECT current_database()')) {
+      return { command: 'SELECT', rows: [{ database: 'atlas', user: FIN_USER,
+        pid: 303, searchPath: 'pg_catalog' }] };
+    }
+    return undefined;
+  };
+  await assert.rejects(host.settlement.custody.pinStore.read(), /unavailable/);
+  assert.equal(w.sql.filter(e => e.kind === 'custody'
+    && e.text.includes('"settlement_custody".custody_')).length, 0);
+});
+
+test('close evidence is monotonic: a failed or unconfirmed end attempt is never erased by a later resolution', async () => {
+  // reject -> resolve: the session-loss path ends the session
+  // (attempt 1 rejects); retirement ends it again (attempt 2
+  // resolves). The composition root's receipt keeps the failure.
+  const w1 = makeWorld(); active = w1;
+  const host1 = createSettlementProductionHost(
+    { ...hostConfig(w1), ...custodyConfig() }, { encrypt: syntheticEncrypt });
+  await host1.prepare();
+  assert.equal(await host1.settlement.custody.pinStore.read(), null);
+  const client1 = w1.clients.filter(c => c.kind === 'custody').at(-1);
+  w1.custodyEndScript = ['rejects'];
+  client1.emit('error', Error('synthetic session error'));
+  await pollUntil(() => client1.ends >= 1, 5000, 'first end attempt (rejects)');
+  assert.deepEqual(await host1.retireCustody(), { state: 'lost', close: 'failed' });
+  // never-settles -> resolve: attempt 1 hangs forever; retirement's
+  // attempt 2 resolves. The receipt stays unconfirmed — a hung close
+  // attempt is never erased by a later resolution.
+  const w2 = makeWorld(); active = w2;
+  const host2 = createSettlementProductionHost(
+    { ...hostConfig(w2), ...custodyConfig() }, { encrypt: syntheticEncrypt });
+  await host2.prepare();
+  assert.equal(await host2.settlement.custody.pinStore.read(), null);
+  const client2 = w2.clients.filter(c => c.kind === 'custody').at(-1);
+  w2.custodyEndScript = ['hangs'];
+  client2.emit('error', Error('synthetic session error'));
+  await pollUntil(() => client2.ends >= 1, 5000, 'first end attempt (hangs)');
+  assert.deepEqual(await host2.retireCustody(), { state: 'lost', close: 'unconfirmed' });
+});
+
+test('a full custody profile with a matching optional SSL_SERVERNAME composes the durable binding', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(
+    { ...hostConfig(w), ...custodyConfig(
+      { SETTLEMENT_CUSTODY_DB_SSL_SERVERNAME: 'db.example.test' }) },
+    { encrypt: syntheticEncrypt });
+  // The durable binding (native terminal history), not memory custody.
+  assert.deepEqual(host.settlement.custody.terminalHistory, { mode: 'postgres' });
+  await host.prepare();
+  assert.equal(await host.settlement.custody.pinStore.read(), null);
+  host.close();
+});
+
+test('canonical adapter: a coalesced A→B→A rewrite advances the reported revision (actual host reader)', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const before = reader();
+  const v1 = fs.readFileSync(w.canonicalFile, 'utf8');
+  const title = JSON.parse(v1).meta.title;
+  const vB = JSON.stringify({ ...JSON.parse(v1),
+    meta: { ...JSON.parse(v1).meta, title: title + ' (intervening)' } });
+  // Both writes land in one synchronous turn: no watcher callback can
+  // observe B, so a sync sees only the returned-to A bytes under a
+  // moved fingerprint — the coalesced ABA the previous adapter lost
+  // (it handed A to advanceContext, whose identical fast path kept
+  // the old revision, so a stale action could not be refused).
+  fs.writeFileSync(w.canonicalFile, vB);
+  fs.writeFileSync(w.canonicalFile, v1);
+  const after = await pollUntil(() => {
+    const c = reader();
+    return c.contextRevision > before.contextRevision ? c : null;
+  }, 8000, 'revision advances on coalesced ABA');
+  assert.equal(after.canonical.meta.title, title);
+  host.close();
+});
+
+test('a commit whose own acquisition is overtaken by a coalesced ABA rewrite is refused (zero commits)', async t => {
+  const w = makeWorld(); active = w; installDoubles(t, w);
+  // This test's refused commit seals a negative terminal certificate
+  // under its domain. The certificate registry's anti-rollback floor
+  // is process-global per (household, ledger namespace) BY DESIGN —
+  // a later fresh genesis under the same namespace must refuse — so
+  // the sealing test runs under its own exclusion domain, exactly as
+  // a distinct production deployment would.
+  const config = hostConfig(w, {
+    SETTLEMENT_EXCLUSION_LEDGER_NAMESPACE: 'ledger-' + '4'.repeat(32),
+    SETTLEMENT_EXCLUSION_SERIALIZATION_AUTHORITY: 'authority-' + '5'.repeat(32),
+    SETTLEMENT_EXCLUSION_HISTORY_AUTHORITY: 'authority-' + '6'.repeat(32),
+  });
+  const host = createSettlementProductionHost(config);
+  await bootstrapCustody(host.settlement.connection, host.settlement.custody, () => Date.now());
+  const owner = await startServer({ env: config, host: '127.0.0.1', port: 0, settlement: host.settlement });
+  t.after(async () => { host.close(); await owner.close(); });
+  w.owner = owner; w.url = 'http://127.0.0.1:' + owner.server.address().port; w.cookie = await login(w);
+  host.startContextAdapter();
+  const p = await prepared(w);
+  // Confirm carries the freshness witness paired with its OWN fresh
+  // acquisition into write admission (settlement-evidence-
+  // confirmation.js). Land a coalesced A→B→A rewrite after that
+  // acquisition is captured and have the host OBSERVE it (the hook
+  // pauses the confirm's first post-acquisition read while the
+  // watcher syncs) — before the store's admission point. The
+  // witness must refuse and the write must not happen.
+  const v1 = fs.readFileSync(w.canonicalFile, 'utf8');
+  const vB = JSON.stringify({ ...JSON.parse(v1),
+    meta: { ...JSON.parse(v1).meta, title: JSON.parse(v1).meta.title + ' (intervening)' } });
+  // Fire only on a head read that follows the confirm's OWN
+  // acquisition (the doubles count acquisitions at capture time), so
+  // the rewrite is guaranteed to postdate the witness's capture.
+  const callsBeforeConfirm = w.acquireCalls;
+  let abaLanded = false;
+  w.hooks.query = async (kind, text) => {
+    if (!abaLanded && kind === 'financial' && w.acquireCalls > callsBeforeConfirm
+      && text.startsWith('SELECT bytes FROM') && text.includes('.doc_head')) {
+      abaLanded = true;
+      fs.writeFileSync(w.canonicalFile, vB);
+      fs.writeFileSync(w.canonicalFile, v1);
+      await new Promise(r => setTimeout(r, 250));
+    }
+    return undefined;
+  };
+  const docBefore = w.doc; // the bootstrapped genesis document
+  const r = await confirm(w, p);
+  assert.ok(abaLanded, 'the coalesced rewrite landed inside the confirm');
+  assert.notEqual(r.value && r.value.status, 'committed');
+  // Zero commits: admission refused before any write — the stored
+  // document is byte-identical to what it was before the confirm.
+  assert.ok(w.doc.equals(docBefore), 'stored document unchanged after refusal');
+});
+
+test('canonical adapter: failed watcher establishment fails the context reader closed', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  const reader = host.settlement.application.contextReader;
+  // The boot snapshot serves before the adapter starts.
+  assert.equal(reader().contextRevision, 1);
+  fs.rmSync(w.dir, { recursive: true, force: true });
+  host.startContextAdapter();
+  await pollUntil(() => {
+    try { reader(); return null; } catch { return true; }
+  }, 5000, 'reader refuses once observation is unavailable');
+  assert.throws(() => reader(), /context observation unavailable/);
+  host.close();
+});
+
+test('canonical adapter: losing the canonical source at runtime fails closed and never silently recovers', async () => {
+  const w = makeWorld(); active = w;
+  const host = createSettlementProductionHost(hostConfig(w));
+  host.startContextAdapter();
+  const reader = host.settlement.application.contextReader;
+  const v1 = JSON.parse(fs.readFileSync(w.canonicalFile, 'utf8'));
+  const title2 = v1.meta.title + ' (revised)';
+  fs.writeFileSync(w.canonicalFile,
+    JSON.stringify({ ...v1, meta: { ...v1.meta, title: title2 } }));
+  // Sanity: the adapter is live and adopts an ordinary change first.
+  await pollUntil(() => reader().canonical.meta.title === title2, 8000,
+    'adapter adopts an ordinary change');
+  fs.rmSync(w.canonicalFile);
+  await pollUntil(() => {
+    try { reader(); return null; } catch { return true; }
+  }, 8000, 'reader refuses after the canonical source vanishes');
+  // Recreating the file does not silently restore authority: the
+  // loss is terminal for this composition and commits nothing more.
+  fs.writeFileSync(w.canonicalFile, JSON.stringify({ ...v1,
+    meta: { ...v1.meta, title: v1.meta.title + ' (recreated)' } }));
+  await new Promise(r => setTimeout(r, 400));
+  assert.throws(() => reader(), /context observation unavailable/);
+  host.close();
+});
+
+test('a failed duplicate startServer cannot unbind the live composition\u2019s authorization facade', async t => {
+  const w = makeWorld(); active = w; installDoubles(t, w);
+  const authorization = profileFor(AUTH_USER);
+  const facade = Server.createSettlementAuthorizationReadFacade(authorization);
+  const owners = Owners.createSettlementProductionOwners({ householdId,
+    authorizationStore: facade,
+    context: { canonical: clone(w.base), env: { ...appEnv }, domain: 'synthetic-household-authority' } });
+  const custody = Owners.createSettlementProductionCustody(
+    { householdId, exclusionDomain, now: () => w.time });
+  const settlement = { connection: profileFor(FIN_USER), authorization,
+    custody: { pinStore: custody.pinStore, backupStore: custody.backupStore,
+      terminalHistory: custody.terminalHistory, exclusionDomain: custody.exclusionDomain },
+    application: { householdId, origin: 'https://atlas.example.test',
+      authorize: owners.authorize, authorizeRecovery: owners.authorizeRecovery,
+      contextReader: owners.contextReader, now: () => w.time } };
+  await bootstrapCustody(profileFor(FIN_USER), custody, () => w.time);
+  const start = () => startServer({ env: { ...appEnv }, host: '127.0.0.1', port: 0, settlement });
+  const owner = await start();
+  t.after(async () => { await owner.close().catch(() => {}); });
+  w.owner = owner; w.url = 'http://127.0.0.1:' + owner.server.address().port; w.cookie = await login(w);
+  const p = await prepared(w);
+  const probe = { operationId: p.operationId, generation: p.generation, sidDigest: hash(sidOf(w.cookie)) };
+  assert.equal((await facade.readAuthorizationState(probe)).state, 'ok');
+  // The duplicate fails (the facade is already bound to the live
+  // composition). Its cleanup runs its own retire — which must be
+  // owner-conditional and leave the live binding exactly as it was.
+  await assert.rejects(start(), /settlement composition unavailable/);
+  assert.equal(owner.status().state, 'ready');
+  assert.equal((await facade.readAuthorizationState(probe)).state, 'ok');
+  const grant = await owners.authorizeRecovery({ householdId,
+    actorId: 'session-' + sidOf(w.cookie), operationId: p.operationId, generation: p.generation });
+  assert.equal(grant.operationId, p.operationId);
+  await owner.close();
+  await assert.rejects(facade.readAuthorizationState(probe), /composition/);
+});
+
+test('entry shutdown ordering: bounded custody retirement does not wait for a request stalled inside a custody operation', async t => {
+  const w = makeWorld(); active = w; w.nativeHistory = true; installDoubles(t, w);
+  const config = { ...hostConfig(w), ...custodyConfig() };
+  const host = createSettlementProductionHost(config, { encrypt: syntheticEncrypt });
+  await host.prepare();
+  await bootstrapCustody({ ...host.settlement.connection,
+    terminalHistory: { householdId, ledgerNamespace: exclusionDomain.ledgerNamespace } },
+    host.settlement.custody, () => Date.now());
+  const owner = await startServer({ env: config, host: '127.0.0.1', port: 0, settlement: host.settlement });
+  t.after(async () => { host.close(); await owner.close().catch(() => {}); });
+  w.owner = owner; w.url = 'http://127.0.0.1:' + owner.server.address().port; w.cookie = await login(w);
+  const p = await prepared(w);
+  // Stall the confirm inside a custody write whose driver query never
+  // settles. Under the previous entry ordering, owner.close()'s HTTP
+  // drain waited for this request, so retireCustody() — and any
+  // terminal custody receipt — was never reached.
+  w.hooks.query = (kind, text) => {
+    if (kind === 'custody' && w.hangCustodyWrite && /^(INSERT INTO|UPDATE)/.test(text)
+      && text.includes('"settlement_custody".')) {
+      w.hangCustodyWrite = false; w.custodyWriteHung = true;
+      return new Promise(() => {});
+    }
+    return undefined;
+  };
+  w.hangCustodyWrite = true;
+  const confirmPromise = request(w, '/settlement/confirm',
+    { operationId: p.operationId, previewToken: p.previewToken,
+      generation: p.generation, confirmed: true });
+  confirmPromise.catch(() => {}); // settlement is asserted below
+  await pollUntil(() => w.custodyWriteHung, 10000, 'confirm stalls inside a custody write');
+  // The actual entry shutdown sequence (the helper the signal handler
+  // runs): both refusal fences fire synchronously, and the bounded
+  // custody receipt is produced without depending on the stalled
+  // request finishing first.
+  const shutdown = Server.initiateCompositionShutdown(owner, host);
+  assert.notEqual(owner.status().state, 'ready');
+  const report = await withDeadline(shutdown.custodyReport, 10000, 'custody report');
+  assert.deepEqual(report, { state: 'lost', close: 'unconfirmed' });
+  // The stalled request is bounded at the custody session wrapper: it
+  // settles as an unknown outcome (never replayed, never committed),
+  // and the drain then completes — shutdown terminates.
+  const settled = await withDeadline(confirmPromise.then(
+    v => ({ responded: true, value: v.value }), () => ({ responded: false })),
+    30000, 'stalled confirm settles');
+  if (settled.responded) assert.notEqual(settled.value && settled.value.status, 'committed');
+  await withDeadline(shutdown.drained, 30000, 'shutdown drain');
 });

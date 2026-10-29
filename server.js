@@ -1084,13 +1084,17 @@ async function startServer(options = {}) {
   let phase = o.settlement === undefined ? 'inactive' : 'configuring';
   let runtime = null, authorization = null, authOpening = null, authFailure = null;
   let retirement = null, closing = null, reports = null, server = null, app;
-  let recover = null, highWater = 0, previousContext = null, facadeCell = null;
+  let recover = null, highWater = 0, previousContext = null, facadeCell = null, facadeBound = false;
   const seenClients = new WeakSet();
   const notOpened = () => Object.freeze({state:'retired',close:'not-opened',primary:null,closeDiagnostic:null});
   function retire() {
     if (retirement) return retirement;
     phase = 'retiring'; // Fence synchronously before any close or callback.
-    if (facadeCell) facadeCell.bound = null; // GAP-2: the facade refuses from the fence.
+    // GAP-2: the facade refuses from the fence — but only the
+    // composition that BOUND it may unbind it. A failed duplicate
+    // startServer over the same record retires its own attempt; its
+    // cleanup must not unbind the live composition's facade.
+    if (facadeCell && facadeBound) { facadeCell.bound = null; facadeBound = false; }
     retirement = Promise.resolve().then(async () => {
       const financial = runtime ? runtime.retire() : Promise.resolve(notOpened());
       // The authorization factory owns any in-progress allocation and returns
@@ -1270,6 +1274,7 @@ async function startServer(options = {}) {
       if (facadeCell) {
         if (facadeCell.bound) throw compositionError();
         facadeCell.bound = input => authStore.readAuthorizationState(input);
+        facadeBound = true;
       }
     }
     await new Promise((resolve,reject) => {
@@ -1285,9 +1290,27 @@ async function startServer(options = {}) {
   }
 }
 
+// Entry shutdown coordination (used by the require.main signal
+// handler below): both refusal fences fire synchronously — the
+// composition's retire fence via owner.close(), and GAP-1's
+// synchronous retired fence inside the host's retireCustody() — and
+// the bounded custody retirement runs CONCURRENTLY with the HTTP
+// drain, never chained behind it. A request stalled inside a custody
+// operation can hold server.close's drain open, and that request is
+// exactly what custody retirement must not wait for: custody
+// operational calls are bounded at the host's session wrapper, so
+// the stalled request fails as an unknown outcome (never replayed)
+// and the drain can finish — but the terminal custody receipt is
+// produced on retireCustody()'s own bound either way.
+function initiateCompositionShutdown(owner, host) {
+  const custodyReport = host.retireCustody();
+  const drained = Promise.resolve(owner.close()).then(() => null, () => null);
+  return Object.freeze({ custodyReport, drained });
+}
+
 module.exports = { createApplication, createPreactivationApplication,
   createRecoveryEligibilityIssuer, createRecoveryFinalAuthority, startServer,
-  createSettlementAuthorizationReadFacade };
+  createSettlementAuthorizationReadFacade, initiateCompositionShutdown };
 if (require.main === module) {
   // Production composition root (Plan #5 assembly): the host wires the
   // settlement composition from process.env values only. Inactive (no
@@ -1299,10 +1322,13 @@ if (require.main === module) {
   const host = require('./scripts/settlement-production-host')
     .createSettlementProductionHost(process.env);
   const starting = (async () => {
-    // Assembly-owned custody preflight (PR #772 contracts): when a
-    // custody profile is configured, prepare() discharges the custody
-    // session/catalog preflight before the composition exists; a
-    // failed preflight is a boot failure and nothing listens.
+    // Assembly-owned custody discipline (PR #772 contracts): when a
+    // custody profile is configured, prepare() opens the host's
+    // custody construction gate before the composition exists; the
+    // retained custody session is then qualified inside its own
+    // connect, before any application query — a session that fails
+    // qualification never serves one, and the composition fails
+    // closed on the first custody operation.
     await host.prepare();
     return host.active
       ? startServer({ env: process.env, settlement: host.settlement })
@@ -1315,16 +1341,18 @@ if (require.main === module) {
       // The composition root owns confirmed custody closure: GAP-1's
       // retire() is local fencing only, so the host's retireCustody()
       // report is the closure receipt — a failed or unconfirmed close
-      // is surfaced, never silently assumed.
-      void owner.close()
-        .then(() => host.retireCustody(), () => host.retireCustody())
-        .then(report => {
-          host.close();
-          if (report && report.close !== 'confirmed' && report.close !== 'not-started') {
-            console.error(`FATAL: custody connection closure ${report.close}.`);
-            process.exitCode = 1;
-          }
-        }, () => host.close());
+      // is surfaced, never silently assumed. The shutdown sequence
+      // runs that retirement concurrently with the HTTP drain (see
+      // initiateCompositionShutdown): it never waits for a request
+      // that needs the retirement to finish.
+      const { custodyReport } = initiateCompositionShutdown(owner, host);
+      void custodyReport.then(report => {
+        host.close();
+        if (report && report.close !== 'confirmed' && report.close !== 'not-started') {
+          console.error(`FATAL: custody connection closure ${report.close}.`);
+          process.exitCode = 1;
+        }
+      }, () => host.close());
     });
   }).catch(() => {host.close();console.error('FATAL: server startup unavailable.');process.exitCode=1;});
 }

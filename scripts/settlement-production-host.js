@@ -53,33 +53,39 @@
 // Assembly-owned custody prerequisites (PR #772 contracts, discharged
 // here — the GAP-1 module itself is trusted-schema adapter
 // preparation only and performs neither):
-//   1. SESSION/CATALOG PREFLIGHT. Before any production custody
-//      operation, the host preflights the custody session/schema with
-//      the shipped connection discipline
-//      (scripts/settlement-evidence-postgres-connection.js): TLS and
-//      restricted-login identity checks, then catalog checks that the
+//   1. SESSION/CATALOG QUALIFICATION OF THE ACTUAL SESSION. The
+//      retained custody session is qualified with the shipped
+//      connection discipline
+//      (scripts/settlement-evidence-postgres-connection.js) INSIDE
+//      its own connect, before any application query: TLS state from
+//      that session's own socket and restricted-login identity
+//      checks, then catalog checks over that same session that the
 //      custody relations are permanent (an unlogged relation can
 //      acknowledge a write a crash then loses) and free of row-level
 //      security (RLS-hidden rows can fake absence), with the exact
 //      custody relation contract (custody_pin, custody_backup). The
-//      preflight validates the CUSTODY schema separately: the shipped
-//      factory's own catalog preflight covers the ADAPTER (financial)
-//      schema's four relations — or five with native terminal history
-//      — and the custody relations are never added to it. GAP-1's
-//      session is constructed through a gated Client wrapper: until
-//      prepare() has run the preflight successfully, no custody
-//      client can be constructed at all, so no custody operation can
-//      precede the preflight. A failed or unperformable preflight is
-//      a named boot failure; the composition never starts.
+//      qualification validates the CUSTODY schema separately: the
+//      shipped factory's own catalog preflight covers the ADAPTER
+//      (financial) schema's four relations — or five with native
+//      terminal history — and the custody relations are never added
+//      to it. There is NO probe session: a separate session's success
+//      cannot license this one, and identical config objects are not
+//      session identity. GAP-1's session is constructed through a
+//      gated Client wrapper: until prepare() opens the gate, no
+//      custody client can be constructed at all; once constructed,
+//      GAP-1 awaits connect() — and with it qualification — before
+//      any application statement, so a session that fails
+//      qualification never serves one and the stores fail closed.
 //   2. CONFIRMED CONNECTION CLOSURE. GAP-1's retire() is local
 //      fencing only (its end() outcome is suppressed by design). The
 //      composition root owns confirmed closure of the custody
 //      connection: GAP-1's session is built through an observing
-//      Client wrapper that records the underlying end() settlement,
+//      Client wrapper that records EVERY underlying end() attempt,
 //      and retireCustody() fences the stores, then reports the
-//      closure as confirmed only when that end() actually resolved —
-//      failed or unconfirmed otherwise, surfaced by the entry, never
-//      silently assumed.
+//      closure as confirmed only when every attempt resolved — a
+//      rejected or never-settled attempt is monotonic evidence and
+//      is never erased by a later resolution: failed or unconfirmed
+//      otherwise, surfaced by the entry, never silently assumed.
 //
 // Context updates (the named adapter): the trusted canonical mutation
 // owner is the canonical data file itself — data.json at the repo
@@ -93,16 +99,23 @@
 // fingerprint means the file was not rewritten. The host observes the
 // file with fs.watch; every fingerprint change triggers a
 // fingerprint-verified re-read whose snapshot is handed to P1's
-// advanceContext, the trusted owner's only update path, so the
-// context revision advances on every contents change and an unchanged
-// revision always means unchanged contents. Value polling is never
-// used as no-change evidence. The env component never mutates inside
-// a process (environment changes arrive by restart), so the adapter
-// advances canonical only, re-presenting the boot env snapshot
-// unchanged. If the watch cannot be established the adapter stays
-// unwired: the composition keeps its boot snapshot, and server.js's
-// own context guard still retires the composition if contents ever
-// change at an unchanged revision — fail-closed, never silently fresh.
+// advanceContext, the trusted owner's only update path. The reported
+// revision is the owner's revision plus the adapter's rewrite epoch:
+// when an observed rewrite's contents equal the current context — a
+// same-content rewrite, or a coalesced A→B→A whose middle the watcher
+// never saw — the owner's identical fast path cannot advance, so the
+// epoch carries the reported revision forward instead. Every observed
+// mutation therefore advances the reported revision, an unchanged
+// reported revision always means no observed mutation, and an action
+// pinned to an earlier revision is refused after any rewrite. Value
+// polling is never used as no-change evidence. The env component
+// never mutates inside a process (environment changes arrive by
+// restart), so the adapter advances canonical only, re-presenting the
+// boot env snapshot unchanged. If mutation observation is unavailable
+// — the watch cannot be established, the watcher errors, or the
+// canonical source vanishes — the adapter fails closed: the context
+// reader refuses by name and the composition retires, rather than
+// the cached snapshot silently staying authoritative.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -159,6 +172,11 @@ const REQUIRED_KEYS = KNOWN_KEYS.filter(k =>
 const CUSTODY_REQUIRED_KEYS = PROFILE_SUFFIXES
   .filter(s => s !== 'SSL_SERVERNAME')
   .map(s => 'SETTLEMENT_CUSTODY_DB_' + s);
+// Group presence is detected from EVERY known custody key — the
+// optional SSL_SERVERNAME included — so an optional-only custody
+// profile is a partial profile that refuses by its first missing
+// required key, never a silent selection of the memory binding.
+const CUSTODY_KEYS = PROFILE_SUFFIXES.map(s => 'SETTLEMENT_CUSTODY_DB_' + s);
 
 function validHostname(host, field) {
   if (typeof host !== 'string' || host.length === 0 || host.length > 253
@@ -230,12 +248,13 @@ function fingerprintOf(stat) {
     .map(String).join(':');
 }
 
-// --- Custody session/catalog preflight --------------------------------
+// --- Custody session/catalog qualification ----------------------------
 // The shipped connection discipline (settlement-evidence-postgres-
-// connection.js), discharged by the host for the custody profile:
+// connection.js), discharged by the host for the custody profile, on
+// the ACTUAL retained session (see qualifyCustodySession below):
 // four bounded, parameterized catalog queries — no DDL, no row reads,
 // no writes. Bounds mirror the shipped factory's maxima.
-const PREFLIGHT_MAX = { connect: 10000, preflight: 10000, query: 7000, close: 2000 };
+const PREFLIGHT_MAX = { connect: 10000, preflight: 10000, query: 7000 };
 const CUSTODY_IDENTITY = 'SELECT current_database() AS database, current_user AS "user",'
   + ' pg_backend_pid() AS pid, current_setting(\'search_path\') AS "searchPath"';
 const CUSTODY_ROLE = `SELECT r.rolcanlogin AS "canLogin", r.rolsuper AS superuser,
@@ -296,56 +315,43 @@ function boundedCall(invoke, millis) {
   ]);
 }
 
-async function closeBounded(raw, millis) {
-  try {
-    return await Promise.race([
-      Promise.resolve().then(() => raw.end()).then(() => true, () => false),
-      new Promise(resolve => setTimeout(() => resolve(false), millis)),
-    ]);
-  } catch { return false; }
-}
-
-// Runs the preflight over its own dedicated session and closes that
-// session with confirmed closure before returning: an unconfirmed end
-// means the preflight cannot be considered performed. Throws a named
-// host error on any failure; GAP-1's acknowledgements are durable
-// only relative to a schema this preflight has validated.
-async function preflightSettlementCustodySession(custodyProfile) {
-  let raw;
-  try { raw = new custodyProfile.Client(custodyProfile.config); } catch {
-    throw preflightFailure('client');
+// Qualifies ONE live session — the actual retained session that will
+// carry custody operations — after its connect and before any
+// application statement: TLS state read from that session's own
+// socket, then the four bounded catalog queries over that same
+// session. Throws a named host error on any failure; GAP-1's
+// acknowledgements are durable only relative to a schema this
+// qualification has validated on the session carrying them.
+async function qualifyCustodySession(raw, custodyProfile) {
+  const socket = raw.connection && raw.connection.stream;
+  if (!socket || socket.encrypted !== true || socket.authorized !== true
+    || socket.servername !== custodyProfile.config.host
+    || socket.authorizationError
+    || typeof socket.getPeerCertificate !== 'function'
+    || tls.checkServerIdentity(custodyProfile.config.host,
+      socket.getPeerCertificate(true))) {
+    throw preflightFailure('tls');
   }
-  let failure = null;
-  try {
-    await boundedCall(() => raw.connect(), PREFLIGHT_MAX.connect);
-    const socket = raw.connection && raw.connection.stream;
-    if (!socket || socket.encrypted !== true || socket.authorized !== true
-      || socket.servername !== custodyProfile.config.host
-      || socket.authorizationError
-      || typeof socket.getPeerCertificate !== 'function'
-      || tls.checkServerIdentity(custodyProfile.config.host,
-        socket.getPeerCertificate(true))) {
-      throw preflightFailure('tls');
+  const deadline = Date.now() + PREFLIGHT_MAX.preflight;
+  const query = async (text, values) => {
+    const left = deadline - Date.now();
+    if (left <= 0) throw preflightFailure('timeout');
+    let result;
+    try {
+      result = await boundedCall(() => raw.query(text, values),
+        Math.min(PREFLIGHT_MAX.query, left));
+    } catch { throw preflightFailure('query'); }
+    if (!result || Array.isArray(result) || result.command !== 'SELECT'
+      || !Array.isArray(result.rows)) throw preflightFailure('protocol');
+    return result.rows;
+  };
+  const single = rows => {
+    if (rows.length !== 1 || !rows[0] || typeof rows[0] !== 'object') {
+      throw preflightFailure('protocol');
     }
-    const deadline = Date.now() + PREFLIGHT_MAX.preflight;
-    const query = async (text, values) => {
-      const left = deadline - Date.now();
-      if (left <= 0) throw preflightFailure('timeout');
-      let result;
-      try {
-        result = await boundedCall(() => raw.query(text, values),
-          Math.min(PREFLIGHT_MAX.query, left));
-      } catch { throw preflightFailure('query'); }
-      if (!result || Array.isArray(result) || result.command !== 'SELECT'
-        || !Array.isArray(result.rows)) throw preflightFailure('protocol');
-      return result.rows;
-    };
-    const single = rows => {
-      if (rows.length !== 1 || !rows[0] || typeof rows[0] !== 'object') {
-        throw preflightFailure('protocol');
-      }
-      return rows[0];
-    };
+    return rows[0];
+  };
+  try {
     const id = single(await query(CUSTODY_IDENTITY, []));
     if (id.database !== custodyProfile.config.database
       || id.user !== custodyProfile.config.user
@@ -387,40 +393,79 @@ async function preflightSettlementCustodySession(custodyProfile) {
     }
     if (Date.now() > deadline) throw preflightFailure('timeout');
   } catch (error) {
-    failure = error && typeof error.message === 'string'
+    throw error && typeof error.message === 'string'
       && error.message.startsWith(PREFIX) ? error : preflightFailure('session');
   }
-  const closed = await closeBounded(raw, PREFLIGHT_MAX.close);
-  if (failure) throw failure;
-  if (!closed) throw preflightFailure('close');
 }
 
 // GAP-1's session is built through this wrapper: construction is
-// refused until the host's preflight gate has opened, and every
-// underlying end() settlement is recorded for the composition root's
-// confirmed-closure report. The wrapper returns the raw client
-// untouched apart from the end() observation; it adds no behaviour
-// of its own to the session.
-function observeCustodyClient(ClientClass, gate, record) {
+// refused until prepare() has opened the gate. The wrapper owns the
+// session's qualification and close evidence:
+//   - connect() is single-flight and QUALIFIES THE ACTUAL SESSION —
+//     TLS state from its own socket, then the identity/role/
+//     privilege/catalog checks over its own queries — before it
+//     resolves. GAP-1 awaits connect() before any application
+//     statement, so no application query or write can precede
+//     qualification, and a session that fails it never serves one.
+//   - query() bounds every operational statement: a statement that
+//     outlives the bound rejects as an unknown outcome (GAP-1 loses
+//     the session and never replays it), which is what keeps a
+//     request stalled inside a custody operation from holding
+//     shutdown's HTTP drain — and with it the custody receipt —
+//     open indefinitely.
+//   - end() forwards every call to the session and records EVERY
+//     attempt. The recorded outcome is monotonic: a rejected attempt
+//     is sticky, and 'resolved' requires every attempt to have
+//     resolved. GAP-1's loss path and its retire() can both end the
+//     session; a later call never rewrites an earlier attempt's
+//     evidence.
+const CUSTODY_QUERY_MAX = 10000;
+function observeCustodyClient(ClientClass, gate, record, custodyProfile) {
   return class ObservedCustodyClient {
     constructor(config) {
       if (!gate.open) {
         throw new Error(PREFIX
-          + 'custody session refused — the custody preflight has not passed');
+          + 'custody session refused — prepare() has not opened the custody gate');
       }
       const raw = new ClientClass(config);
-      const entry = { endCalled: false, endOutcome: 'pending' };
+      const entry = { endCalled: false, endOutcome: 'pending', attempts: [] };
       record.sessions.push(entry);
-      const end = raw.end.bind(raw);
-      raw.end = (...args) => {
-        entry.endCalled = true;
-        const pending = Promise.resolve().then(() => end(...args));
-        pending.then(
-          () => { entry.endOutcome = 'resolved'; },
-          () => { entry.endOutcome = 'rejected'; });
-        return pending;
+      const syncEndEvidence = () => {
+        if (entry.attempts.some(a => a.outcome === 'rejected')) {
+          entry.endOutcome = 'rejected';
+        } else if (entry.attempts.some(a => a.outcome === 'pending')) {
+          entry.endOutcome = 'pending';
+        } else if (entry.attempts.length > 0) {
+          entry.endOutcome = 'resolved';
+        }
       };
-      return raw;
+      let connectPromise = null;
+      return {
+        connect() {
+          if (!connectPromise) {
+            connectPromise = (async () => {
+              try {
+                await boundedCall(() => raw.connect(), PREFLIGHT_MAX.connect);
+              } catch { throw preflightFailure('session'); }
+              await qualifyCustodySession(raw, custodyProfile);
+            })();
+          }
+          return connectPromise;
+        },
+        query: (...args) => boundedCall(() => raw.query(...args), CUSTODY_QUERY_MAX),
+        on: (...args) => raw.on(...args),
+        end: (...args) => {
+          entry.endCalled = true;
+          const attempt = { outcome: 'pending' };
+          entry.attempts.push(attempt);
+          syncEndEvidence();
+          const pending = Promise.resolve().then(() => raw.end(...args));
+          pending.then(
+            () => { attempt.outcome = 'resolved'; syncEndEvidence(); },
+            () => { attempt.outcome = 'rejected'; syncEndEvidence(); });
+          return pending;
+        },
+      };
     }
   };
 }
@@ -452,7 +497,7 @@ function createSettlementProductionHost(config, seams = {}) {
   for (const key of REQUIRED_KEYS) {
     if (values[key] === undefined) invalid(key);
   }
-  const custodySupplied = CUSTODY_REQUIRED_KEYS
+  const custodySupplied = CUSTODY_KEYS
     .some(k => values[k] !== undefined);
   if (custodySupplied) {
     for (const key of CUSTODY_REQUIRED_KEYS) {
@@ -585,7 +630,7 @@ function createSettlementProductionHost(config, seams = {}) {
     custodyRecord = { sessions: [] };
     durableStores = createSettlementCustodyDurableStores({
       connection: {
-        Client: observeCustodyClient(Client, custodyGate, custodyRecord),
+        Client: observeCustodyClient(Client, custodyGate, custodyRecord, custodyProfile),
         config: custodyProfile.config,
         schema: custodyProfile.schema,
         scope: custodyProfile.scope,
@@ -605,6 +650,30 @@ function createSettlementProductionHost(config, seams = {}) {
     });
   }
 
+  // --- Canonical context adapter state (mechanism below) ----------
+  // The composition-facing reader is the host's: P1's trusted
+  // projection with the revision composed as (owner revision +
+  // adapter rewrite epoch), so every observed mutation — including a
+  // coalesced ABA return to identical contents, which the owner's
+  // identical fast path cannot express — advances the reported
+  // revision. Once mutation observation is lost, the reader refuses
+  // by name instead of serving the cached snapshot as authoritative.
+  let contextEpoch = 0;
+  let contextLost = false;
+  function contextReader() {
+    if (contextLost) {
+      throw new Error(PREFIX + 'context observation unavailable — '
+        + 'the canonical watcher is not established');
+    }
+    const c = owners.contextReader();
+    return Object.freeze({
+      canonical: c.canonical,
+      env: c.env,
+      domain: c.domain,
+      contextRevision: c.contextRevision + contextEpoch,
+    });
+  }
+
   const settlement = Object.freeze({
     connection,
     authorization,
@@ -614,7 +683,7 @@ function createSettlementProductionHost(config, seams = {}) {
       origin,
       authorize: owners.authorize,
       authorizeRecovery: owners.authorizeRecovery,
-      contextReader: owners.contextReader,
+      contextReader,
       now,
     }),
   });
@@ -623,7 +692,11 @@ function createSettlementProductionHost(config, seams = {}) {
   let prepared = false;
   async function prepare() {
     if (!durableStores || prepared) return settlement;
-    await preflightSettlementCustodySession(custodyProfile);
+    // Opens the custody construction gate. There is nothing to probe
+    // here: no session exists yet, and the retained session is
+    // qualified inside its own connect (see observeCustodyClient),
+    // so the first custody operation either qualifies its own
+    // session or fails closed before any application statement.
     custodyGate.open = true;
     prepared = true;
     return settlement;
@@ -674,12 +747,23 @@ function createSettlementProductionHost(config, seams = {}) {
   const advanceContext = owners.advanceContext;
   let watcher = null;
   let closed = false;
+  function loseContextObservation() {
+    contextLost = true;
+    if (watcher) {
+      try { watcher.close(); } catch { /* already closed */ }
+      watcher = null;
+    }
+  }
   function syncCanonical() {
     if (closed) return;
     for (let attempt = 0; attempt < 3; attempt++) {
       let before;
       try { before = fs.statSync(canonicalFile, { bigint: true }); } catch {
-        return; // Absent mid-replace: keep the snapshot; a later event re-syncs.
+        // The mutation source itself is gone: observation is
+        // unavailable, so the cached context stops being
+        // authoritative — the reader refuses from here on.
+        loseContextObservation();
+        return;
       }
       const fp = fingerprintOf(before);
       if (fp === lastFingerprint) return;
@@ -693,23 +777,38 @@ function createSettlementProductionHost(config, seams = {}) {
       lastFingerprint = fp;
       if (!isPlainRecord(parsed)) return; // Never advance on a non-record canonical.
       try {
-        advanceContext({ canonical: parsed, env: { ...contextEnv } });
+        const revisionBefore = owners.contextReader().contextRevision;
+        const revisionAfter = advanceContext({ canonical: parsed, env: { ...contextEnv } });
+        if (revisionAfter === revisionBefore) {
+          // An observed rewrite whose contents equal the current
+          // context — a same-content rewrite or a coalesced ABA
+          // return whose middle state was never observed. The
+          // owner's identical fast path cannot express it, so the
+          // adapter's rewrite epoch carries the reported revision
+          // forward: the mutation is on the record, and an action
+          // pinned to the earlier revision is refused.
+          contextEpoch += 1;
+        }
       } catch { /* The trusted owner refused the advance; snapshot retained. */ }
       return;
     }
   }
   function startContextAdapter() {
-    if (watcher || closed) return;
+    if (watcher || closed || contextLost) return;
     try {
       watcher = fs.watch(path.dirname(canonicalFile), (_event, name) => {
         if (!name || name === path.basename(canonicalFile)) syncCanonical();
       });
-      watcher.on('error', () => {
-        // Unwired: the composition keeps its boot snapshot (header).
-        try { watcher.close(); } catch { /* already closed */ }
-        watcher = null;
-      });
-    } catch { watcher = null; }
+      watcher.on('error', () => { loseContextObservation(); });
+    } catch {
+      watcher = null;
+      loseContextObservation();
+      return;
+    }
+    // Adopt anything that changed between construction and the watch
+    // landing; a canonical source already gone fails closed here
+    // rather than the boot snapshot serving as fresh.
+    syncCanonical();
   }
   function close() {
     closed = true;
