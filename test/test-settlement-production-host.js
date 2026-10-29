@@ -753,6 +753,107 @@ const pollUntil = async (check, ms, label) => {
   }
 };
 
+// --- A11 diagnostic capture (Atlas verdict 6489267517, item 1) -------
+// Test-side OBSERVATION ONLY for the two canonical-adapter revision
+// tests whose intermittent timeouts are under diagnosis (coalesced ABA
+// and same-content rewrite). It interposes on the shared node:fs module
+// object — the same scoped pattern interposeCanonical uses below — and
+// records, without altering anything the host sees:
+//   * the test's own fingerprints (dev:ino:size:mtimeNs:ctimeNs, the
+//     host's fingerprintOf tuple) at each marked step, read with the
+//     real stat so they are not mistaken for adapter calls;
+//   * every callback the host's fs.watch delivers (event, name);
+//   * every stat/read the host performs on the world's canonical file
+//     (construction baseline, syncCanonical's opening stat, any
+//     verified re-read), in order;
+//   * the reader's final reported revision, or its refusal message.
+// From those facts it names the path the adapter took: the
+// unchanged-fingerprint no-op (watcher delivered, opening stat equal
+// to the baseline, no re-read), an invalidation (reader refuses), or an
+// adoption (revision advanced). On an assertion failure the trace is
+// written to stderr as one `A11-DIAG {json}` line and appended to the
+// thrown error, so a failing execution — locally or in a CI runner's
+// private stderr capture — carries the evidence. Set ATLAS_A11_DIAG=1
+// to emit the same line on passing executions too. Synthetic world
+// file only; no fixture content is recorded, only stat tuples.
+function traceCanonicalAdapter(w) {
+  const t0 = process.hrtime.bigint();
+  const at = () => Number((process.hrtime.bigint() - t0) / 1000n) / 1000;
+  const fpOf = s => [s.dev, s.ino, s.size, s.mtimeNs, s.ctimeNs].map(String).join(':');
+  const realWatch = fs.watch, realStat = fs.statSync, realRead = fs.readFileSync;
+  const trace = { marks: [], watcherDeliveries: [], adapterStats: [], adapterReads: [] };
+  let quiet = 0;
+  fs.watch = function (target, ...rest) {
+    const listener = typeof rest[rest.length - 1] === 'function' ? rest.pop() : null;
+    if (!listener) return realWatch.call(fs, target, ...rest);
+    return realWatch.call(fs, target, ...rest, function (event, name) {
+      trace.watcherDeliveries.push({ atMs: at(), event, name: name == null ? null : String(name) });
+      return listener.call(this, event, name);
+    });
+  };
+  fs.statSync = function (p, ...rest) {
+    const r = realStat.call(fs, p, ...rest);
+    if (!quiet && p === w.canonicalFile && r && typeof r.mtimeNs === 'bigint') {
+      trace.adapterStats.push({ atMs: at(), fp: fpOf(r) });
+    }
+    return r;
+  };
+  fs.readFileSync = function (p, ...rest) {
+    if (!quiet && p === w.canonicalFile) trace.adapterReads.push({ atMs: at() });
+    return realRead.call(fs, p, ...rest);
+  };
+  const asTest = fn => { quiet++; try { return fn(); } finally { quiet--; } };
+  const api = {
+    // The test's own file operations, excluded from the adapter record.
+    read: () => asTest(() => realRead.call(fs, w.canonicalFile, 'utf8')),
+    write: bytes => asTest(() => fs.writeFileSync(w.canonicalFile, bytes)),
+    mark: label => {
+      const s = realStat.call(fs, w.canonicalFile, { bigint: true });
+      trace.marks.push({ label, atMs: at(), fp: fpOf(s) });
+    },
+    restore: () => { fs.watch = realWatch; fs.statSync = realStat; fs.readFileSync = realRead; },
+    snapshot: (reader, before) => {
+      let final;
+      try { final = { contextRevision: reader().contextRevision }; } catch (e) { final = { refusal: e.message }; }
+      const mark = l => trace.marks.find(m => m.label === l);
+      const baseline = mark('baseline');
+      const start = mark('adapter-started');
+      const lastWrite = [...trace.marks].reverse().find(m => m.label.startsWith('after-write'));
+      const sinceStart = x => start && x.atMs >= start.atMs;
+      const statsAfterStart = trace.adapterStats.filter(sinceStart);
+      const readsAfterStart = trace.adapterReads.filter(sinceStart);
+      const fingerprintMovedByRewrite = !!(baseline && lastWrite) && lastWrite.fp !== baseline.fp;
+      const adapterSawMovedFingerprint = statsAfterStart.some(x => baseline && x.fp !== baseline.fp);
+      const path = 'refusal' in final ? 'invalidation (reader refuses)'
+        : final.contextRevision > before.contextRevision ? 'adoption (revision advanced)'
+        : !adapterSawMovedFingerprint && readsAfterStart.length === 0
+          ? 'unchanged-fingerprint no-op (every adapter stat equals the baseline; no re-read)'
+          : 'observed change without published revision';
+      return { beforeRevision: before.contextRevision, final, path,
+        fingerprintMovedByRewrite, adapterSawMovedFingerprint,
+        watcherDeliveryCount: trace.watcherDeliveries.length,
+        adapterStatCountAfterStart: statsAfterStart.length,
+        adapterReadCountAfterStart: readsAfterStart.length, ...trace };
+    },
+  };
+  return api;
+}
+// Runs `step`; on failure attaches the trace (and always emits it when
+// ATLAS_A11_DIAG=1). Never retries and never extends the step's own
+// deadline: the evidence is captured from the execution that failed.
+async function withAdapterDiagnosis(label, trace, reader, before, step) {
+  const emit = d => process.stderr.write('A11-DIAG ' + JSON.stringify({ test: label, ...d }) + '\n');
+  let value;
+  try { value = await step(); } catch (e) {
+    const d = trace.snapshot(reader, before);
+    emit(d);
+    e.message += '\nA11-DIAG ' + JSON.stringify({ test: label, ...d });
+    throw e;
+  }
+  if (process.env.ATLAS_A11_DIAG === '1') emit(trace.snapshot(reader, before));
+  return value;
+}
+
 test('the operational custody session itself is qualified: session-level TLS divergence refuses custody with zero application queries', async () => {
   const w = makeWorld(); active = w;
   const host = createSettlementProductionHost(
@@ -837,27 +938,40 @@ test('a full custody profile with a matching optional SSL_SERVERNAME composes th
 
 test('canonical adapter: a coalesced A→B→A rewrite advances the reported revision (actual host reader)', async () => {
   const w = makeWorld(); active = w;
-  const host = createSettlementProductionHost(hostConfig(w));
-  host.startContextAdapter();
-  const reader = host.settlement.application.contextReader;
-  const before = reader();
-  const v1 = fs.readFileSync(w.canonicalFile, 'utf8');
-  const title = JSON.parse(v1).meta.title;
-  const vB = JSON.stringify({ ...JSON.parse(v1),
-    meta: { ...JSON.parse(v1).meta, title: title + ' (intervening)' } });
-  // Both writes land in one synchronous turn: no watcher callback can
-  // observe B, so a sync sees only the returned-to A bytes under a
-  // moved fingerprint — the coalesced ABA the previous adapter lost
-  // (it handed A to advanceContext, whose identical fast path kept
-  // the old revision, so a stale action could not be refused).
-  fs.writeFileSync(w.canonicalFile, vB);
-  fs.writeFileSync(w.canonicalFile, v1);
-  const after = await pollUntil(() => {
-    const c = reader();
-    return c.contextRevision > before.contextRevision ? c : null;
-  }, 8000, 'revision advances on coalesced ABA');
-  assert.equal(after.canonical.meta.title, title);
-  host.close();
+  const trace = traceCanonicalAdapter(w);
+  let host = null;
+  // Unconditional cleanup (verdict 6489267517 item 2): a failed
+  // assertion or deadline below must not leave the watcher open.
+  try {
+    trace.mark('baseline');
+    host = createSettlementProductionHost(hostConfig(w));
+    host.startContextAdapter();
+    trace.mark('adapter-started');
+    const reader = host.settlement.application.contextReader;
+    const before = reader();
+    const v1 = trace.read();
+    const title = JSON.parse(v1).meta.title;
+    const vB = JSON.stringify({ ...JSON.parse(v1),
+      meta: { ...JSON.parse(v1).meta, title: title + ' (intervening)' } });
+    // Both writes land in one synchronous turn: no watcher callback can
+    // observe B, so a sync sees only the returned-to A bytes under a
+    // moved fingerprint — the coalesced ABA the previous adapter lost
+    // (it handed A to advanceContext, whose identical fast path kept
+    // the old revision, so a stale action could not be refused).
+    trace.write(vB);
+    trace.mark('after-write-B');
+    trace.write(v1);
+    trace.mark('after-write-A');
+    const after = await withAdapterDiagnosis('coalesced-ABA', trace, reader, before,
+      () => pollUntil(() => {
+        const c = reader();
+        return c.contextRevision > before.contextRevision ? c : null;
+      }, 8000, 'revision advances on coalesced ABA'));
+    assert.equal(after.canonical.meta.title, title);
+  } finally {
+    if (host) host.close();
+    trace.restore();
+  }
 });
 
 test('a commit whose own acquisition is overtaken by a coalesced ABA rewrite is refused (zero commits)', async t => {
@@ -1286,17 +1400,143 @@ test('canonical adapter: an unchanged fingerprint is a healthy no-op while valid
 
 test('canonical adapter: a same-content rewrite is adopted at a strictly newer revision', async () => {
   const w = makeWorld(); active = w;
+  const trace = traceCanonicalAdapter(w);
+  let host = null;
+  // Unconditional cleanup (verdict 6489267517 item 2): a failed
+  // assertion or deadline below must not leave the watcher open.
+  try {
+    trace.mark('baseline');
+    host = createSettlementProductionHost(hostConfig(w));
+    host.startContextAdapter();
+    trace.mark('adapter-started');
+    const reader = host.settlement.application.contextReader;
+    const before = reader();
+    // The exact boot bytes land again: contents identical, fingerprint
+    // moved — the adoption is real and the reported revision advances.
+    trace.write(trace.read());
+    trace.mark('after-write-same');
+    const after = await withAdapterDiagnosis('same-content', trace, reader, before,
+      () => waitAdopted(reader,
+        c => c.contextRevision > before.contextRevision, 'same-content adoption advances'));
+    assert.deepEqual(after.canonical, before.canonical);
+  } finally {
+    if (host) host.close();
+    trace.restore();
+  }
+});
+
+// --- A11 notification contract (Muse disposition 6493752417) -------
+// freezeCanonicalFingerprint models, deterministically, the filesystem
+// condition Grok's A11 capture observed on the coarse-tick box
+// (PR #781): a real rewrite — same-size, same-content, or a coalesced
+// A→B→A — whose statSync tuple (dev, ino, size, mtimeNs, ctimeNs) is
+// identical to the tuple from before the rewrite. The interposition
+// pins ONLY that observable tuple to the baseline for the world's
+// canonical file; content reads and fs.watch delivery stay entirely
+// real, and every other path delegates untouched. Under the contract,
+// a delivered watcher notification is an observed-change attempt:
+// fingerprint equality can never discharge it, adoption may clear the
+// latch only through the commit gate, and a failed adoption stays
+// INVALIDATED. On the pre-repair host each case below takes the
+// unchanged-fingerprint no-op instead and fails.
+function freezeCanonicalFingerprint(t, w) {
+  const realStat = fs.statSync;
+  const base = realStat.call(fs, w.canonicalFile, { bigint: true });
+  fs.statSync = function (p, ...rest) {
+    const result = realStat.call(fs, p, ...rest);
+    if (p !== w.canonicalFile) return result;
+    return Object.assign(Object.create(Object.getPrototypeOf(result)), result,
+      { dev: base.dev, ino: base.ino, size: base.size,
+        mtimeNs: base.mtimeNs, ctimeNs: base.ctimeNs });
+  };
+  t.after(() => { fs.statSync = realStat; });
+}
+
+test('canonical adapter (A11): a delivered notification adopts a same-content rewrite even when the fingerprint does not move', async t => {
+  const w = makeWorld(); active = w;
+  freezeCanonicalFingerprint(t, w);
   const host = createSettlementProductionHost(hostConfig(w));
-  host.startContextAdapter();
-  const reader = host.settlement.application.contextReader;
-  const before = reader();
-  // The exact boot bytes land again: contents identical, fingerprint
-  // moved — the adoption is real and the reported revision advances.
-  fs.writeFileSync(w.canonicalFile, fs.readFileSync(w.canonicalFile, 'utf8'));
-  const after = await waitAdopted(reader,
-    c => c.contextRevision > before.contextRevision, 'same-content adoption advances');
-  assert.deepEqual(after.canonical, before.canonical);
-  host.close();
+  try {
+    host.startContextAdapter();
+    const reader = host.settlement.application.contextReader;
+    const before = reader();
+    // The exact boot bytes land again and the watcher delivers, but the
+    // observable fingerprint is identical to the baseline. The attempt
+    // must still run: the gate adopts the stable re-read and the rewrite
+    // epoch carries the reported revision forward.
+    fs.writeFileSync(w.canonicalFile, fs.readFileSync(w.canonicalFile, 'utf8'));
+    const after = await waitAdopted(reader,
+      c => c.contextRevision > before.contextRevision,
+      'same-content adoption under an unmoved fingerprint');
+    assert.deepEqual(after.canonical, before.canonical);
+  } finally { host.close(); }
+});
+
+test('canonical adapter (A11): a delivered notification adopts changed content even when the fingerprint does not move', async t => {
+  const w = makeWorld(); active = w;
+  freezeCanonicalFingerprint(t, w);
+  const host = createSettlementProductionHost(hostConfig(w));
+  try {
+    host.startContextAdapter();
+    const reader = host.settlement.application.contextReader;
+    const before = reader();
+    const v1 = fs.readFileSync(w.canonicalFile, 'utf8');
+    const title = JSON.parse(v1).meta.title;
+    // A same-size content change (one character differs, length kept):
+    // under an unmoved fingerprint the pre-repair host never re-reads,
+    // so the old title would keep serving as authoritative.
+    const v2 = JSON.stringify({ ...JSON.parse(v1),
+      meta: { ...JSON.parse(v1).meta, title: title.slice(0, -1) + (title.endsWith('X') ? 'Y' : 'X') } });
+    assert.equal(v2.length, v1.length);
+    fs.writeFileSync(w.canonicalFile, v2);
+    const after = await waitAdopted(reader,
+      c => c.contextRevision > before.contextRevision
+        && c.canonical.meta.title !== title,
+      'changed-content adoption under an unmoved fingerprint');
+    assert.equal(after.canonical.meta.title, JSON.parse(v2).meta.title);
+  } finally { host.close(); }
+});
+
+test('canonical adapter (A11): a delivered notification adopts a coalesced A→B→A rewrite even when the fingerprint does not move', async t => {
+  const w = makeWorld(); active = w;
+  freezeCanonicalFingerprint(t, w);
+  const host = createSettlementProductionHost(hostConfig(w));
+  try {
+    host.startContextAdapter();
+    const reader = host.settlement.application.contextReader;
+    const before = reader();
+    const v1 = fs.readFileSync(w.canonicalFile, 'utf8');
+    const title = JSON.parse(v1).meta.title;
+    const vB = JSON.stringify({ ...JSON.parse(v1),
+      meta: { ...JSON.parse(v1).meta, title: title + ' (intervening)' } });
+    // Both writes land in one synchronous turn under an unmoved
+    // fingerprint: the sync sees only the returned-to A bytes, and the
+    // epoch must still carry the reported revision forward.
+    fs.writeFileSync(w.canonicalFile, vB);
+    fs.writeFileSync(w.canonicalFile, v1);
+    const after = await waitAdopted(reader,
+      c => c.contextRevision > before.contextRevision,
+      'coalesced ABA adoption under an unmoved fingerprint');
+    assert.equal(after.canonical.meta.title, title);
+  } finally { host.close(); }
+});
+
+test('canonical adapter (A11): a delivered notification whose adoption fails stays INVALIDATED even when the fingerprint does not move', async t => {
+  const w = makeWorld(); active = w;
+  freezeCanonicalFingerprint(t, w);
+  const host = createSettlementProductionHost(hostConfig(w));
+  try {
+    host.startContextAdapter();
+    const reader = host.settlement.application.contextReader;
+    assert.ok(reader().contextRevision >= 1);
+    // A malformed rewrite of the same size lands under an unmoved
+    // fingerprint. The notification enters the attempt, the adoption
+    // cannot complete, and no exit may retain prior authority on
+    // fingerprint equality: the reader must refuse.
+    const v1 = fs.readFileSync(w.canonicalFile, 'utf8');
+    fs.writeFileSync(w.canonicalFile, 'x'.repeat(v1.length));
+    await waitRefusal(reader, 'malformed rewrite under an unmoved fingerprint refuses');
+  } finally { host.close(); }
 });
 
 test('canonical adapter (single gate): an observed malformed rewrite refuses reads until a complete adoption clears it', async () => {
