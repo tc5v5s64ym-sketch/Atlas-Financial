@@ -10,13 +10,29 @@
 // backing goals chronologically; links per the fixture), not from the
 // renderer or Forecast.
 //
-// Mode notes (this branch's base): with qualified evidence the schedule
-// publication is unavailable because the fully paid goal leaves a
-// zero-obligation commitment the pre-repair scheduler rejects, so Still
-// to fund is honestly Unknown in 'evidence' and 'uncertain'; the paid /
-// saved bar geometry does not depend on the schedule and still renders.
-// In 'absent' the schedule is ready and publishes the funding gap even
-// though Paid itself is unconfigured and Unknown.
+// Mode notes (published #770 contract, "Keep fully paid goals from
+// blocking the funding schedule", merge 9764226621; asserted by
+// test/test-savings-paid-goal-lifecycle.js "scheduler: fully Paid goal
+// keeps the current funding schedule ... ready"): with qualified evidence
+// Forecast qualifies goal A's full relief (link effective 2026-10-05, on or
+// before the packet observation asOf 2026-10-07), emits no fabricated zero
+// cash event, keeps the schedule ready and publishes A's funding gap as a
+// real zero. So in 'evidence' Still to fund is numeric for every goal: A
+// $0.00 (relieved need 0), B $0.00 (relieved need 80 - 20 = 60, backed 60
+// of the 119 pool), C $1.00 (need 60, backed by the remaining 59). That
+// $0.00 is a published fact, not an invented zero. Unknown is preserved
+// where the evidence genuinely does not support a figure: 'uncertain' (B's
+// link carries a reversal, so Forecast withholds the whole schedule) and
+// every noncurrent (historical / projected) period, which withholds the
+// current gap. In 'absent' the schedule is ready and publishes the funding
+// gap even though Paid itself is unconfigured and Unknown.
+//
+// Two dates, never conflated: OBSERVATION_AS_OF is the packet's
+// meta.asOf (2026-10-07, via the roster -> daily-consumer fixture chain)
+// that the schedule/commitmentCost join keys on; LINK_EFFECTIVE is the
+// payment link's own effectiveDate / asOf (2026-10-05) that pins when the
+// relief took effect. Both are hand-pinned below and checked against the
+// fixture before any page loads.
 const fs = require('node:fs'), path = require('node:path'), cp = require('node:child_process');
 const crypto = require('node:crypto'), assert = require('node:assert/strict');
 const { chromium } = require('playwright');
@@ -26,6 +42,7 @@ const out = process.env.ATLAS_PAID_PROGRESS_PROOF || path.join(require('node:os'
 fs.mkdirSync(out, { recursive: true });
 const ORIGIN = 'http://savings-goal-paid.test';
 const served = {}, cases = [], errors = [], external = [], writes = [];
+const OBSERVATION_AS_OF = '2026-10-07', LINK_EFFECTIVE = '2026-10-05';
 const near = (actual, expected, message) =>
   assert.ok(Math.abs(actual - expected) <= 0.02, `${message}: expected ≈${expected}, got ${actual}`);
 
@@ -34,9 +51,9 @@ const near = (actual, expected, message) =>
 // visible-face bar fill ratio / band where the paid geometry publishes.
 const EXPECT = {
   evidence: {
-    'goal-a': { paid: '$40.00', stf: 'Unknown', state: 'paid', paidRatio: 1, faceBand: 'is-paid', faceRatio: 1 },
-    'goal-b': { paid: '$20.00', stf: 'Unknown', state: 'funding', paidRatio: 0.25, savedRatio: 0.75, faceRatio: 1 },
-    'goal-c': { paid: '$0.00', stf: 'Unknown', state: 'funding', savedRatio: 59 / 60, faceRatio: 59 / 60 },
+    'goal-a': { paid: '$40.00', stf: '$0.00', state: 'paid', paidRatio: 1, faceBand: 'is-paid', faceRatio: 1 },
+    'goal-b': { paid: '$20.00', stf: '$0.00', state: 'funding', paidRatio: 0.25, savedRatio: 0.75, faceRatio: 1 },
+    'goal-c': { paid: '$0.00', stf: '$1.00', state: 'funding', savedRatio: 59 / 60, faceRatio: 59 / 60 },
   },
   absent: {
     'goal-a': { paid: 'Unknown', stf: '$0.00', state: 'unknown' },
@@ -92,6 +109,21 @@ async function faceFacts(tile) {
     }));
 }
 
+// Date pins, checked against the invented fixture (not the renderer):
+// the observation asOf and the link effective date are distinct facts.
+for (const mode of ['evidence', 'uncertain', 'gap']) {
+  const d = fixture(mode);
+  assert.equal(d.meta.asOf, OBSERVATION_AS_OF, `${mode}: packet meta.asOf is the observation date`);
+  for (const c of d.settlementEvidence.commitments) for (const l of c.links) {
+    assert.equal(l.effectiveDate, LINK_EFFECTIVE, `${mode} ${c.goalId}: link effectiveDate`);
+    assert.equal(l.asOf, LINK_EFFECTIVE, `${mode} ${c.goalId}: link asOf`);
+  }
+}
+assert.notEqual(OBSERVATION_AS_OF, LINK_EFFECTIVE, 'observation asOf and link effective date are distinct');
+assert.ok(LINK_EFFECTIVE <= OBSERVATION_AS_OF, 'relief is effective on or before the observation asOf');
+assert.equal(fixture('absent').meta.asOf, OBSERVATION_AS_OF, 'absent: packet meta.asOf');
+const rows = { A3: [], A4: [], A9: [] };
+
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH
     || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
@@ -143,7 +175,12 @@ async function faceFacts(tile) {
         // read $30.00, not the $60.00 unpaid cost).
         assert.equal(f.stf, e.stf, `${where}: Still to fund from published schedule stillToFund`);
         if (e.stf === 'Unknown') assert.equal(f.stfStamp, null, `${where}: no still-to-fund stamp when unknown`);
-        else assert.equal(Number(f.stfStamp), Number(e.stf.replace(/[$,]/g, '')), `${where}: still-to-fund stamp matches print`);
+        else {
+          // A published zero must carry its own stamp; Number(null) === 0
+          // would otherwise let a missing stamp pass as a zero gap.
+          assert.notEqual(f.stfStamp, null, `${where}: still-to-fund stamp present for a published figure`);
+          assert.equal(Number(f.stfStamp), Number(e.stf.replace(/[$,]/g, '')), `${where}: still-to-fund stamp matches print`);
+        }
         if (e.state === 'paid') {
           near(f.paidWidth / f.track, 1, `${where}: full paid fill`);
           assert.match(f.paidColor, /^rgb/, `${where}: paid fill painted`);
@@ -169,6 +206,13 @@ async function faceFacts(tile) {
         } else if (e.faceRatio != null) {
           near(fb.ratio, e.faceRatio, `${where}: face bar fill ratio (paid + saved)`);
         }
+        // A9 no false retirement / no false green: only a goal whose hand
+        // oracle state is paid may render the paid band or paid state.
+        if (e.state !== 'paid') {
+          assert.notEqual(fb.band, 'is-paid', `${where}: no paid face band without qualified full relief`);
+          assert.notEqual(f.state, 'paid', `${where}: not retired as paid`);
+        }
+        if (e.state === 'unknown') assert.ok(!f.paidWidth && !f.savedWidth, `${where}: unknown draws no fill`);
       }
       if (mode === 'evidence') {
         assert.ok(facts['goal-a'].paidWidth > facts['goal-b'].paidWidth, 'paid fill orders A over B');
@@ -179,7 +223,7 @@ async function faceFacts(tile) {
         assert.equal(facts['goal-d'].stf, '$30.00', 'gap: D still to fund is the funding gap');
         assert.equal(facts['goal-f'].state, 'funding', 'gap: F fully saved is not paid');
       }
-      if (mode === 'gap') {
+      if (mode === 'gap' || mode === 'evidence') {
         // Period-context cases (Atlas re-review 6483658593): the funding
         // schedule joined above is the live/current publication, fetched
         // without a selected period. A historical or projected packet
@@ -217,27 +261,46 @@ async function faceFacts(tile) {
           }
           return out;
         };
+        // Hand oracle per mode: goals whose Paid / gap the noncurrent packet
+        // must withhold, and today's printed gaps that must not leak there.
+        // Retirement (#770 contract; lifecycle "selected future publications
+        // omit actual Paid goals"): a projected packet starts after the
+        // observation asOf, so the goal fully paid by then (A) has no
+        // remaining obligation there and is retired from the projected
+        // rows; the historical packet still lists it, withheld. Goals with
+        // a remaining obligation (B, C) stay listed and withheld everywhere.
+        const WITHHELD = mode === 'gap'
+          ? { ids: ['goal-d', 'goal-e'], gaps: ['$30.00', '$50.00'], retiredProjected: [] }
+          : { ids: ['goal-a', 'goal-b', 'goal-c'], gaps: ['$0.00', '$1.00'], retiredProjected: ['goal-a'] };
         const expectWithheld = async (factsNow, tag) => {
-          for (const id of ['goal-d', 'goal-e']) {
+          const projected = !tag.endsWith('historical');
+          for (const id of WITHHELD.ids) {
+            if (projected && WITHHELD.retiredProjected.includes(id)) {
+              assert.equal(factsNow[id], undefined, `${tag}: ${id} fully paid goal retired from the projected period`);
+              continue;
+            }
             assert.ok(factsNow[id], `${tag}: ${id} row present`);
             assert.equal(factsNow[id].paid, 'Unknown', `${tag}: ${id} Paid withheld by the noncurrent packet`);
             assert.equal(factsNow[id].stf, 'Unknown', `${tag}: ${id} Still to fund must not borrow today's gap`);
             assert.equal(factsNow[id].stfStamp, null, `${tag}: ${id} no still-to-fund stamp when withheld`);
+            assert.notEqual(factsNow[id].state, 'paid', `${tag}: ${id} not shown retired as paid outside the current period`);
           }
           const text = await tile.locator('[data-blend-goals]').evaluate(n => n.textContent.replace(/\s+/g, ' '));
-          assert.ok(!text.includes('Still to fund $30.00'), `${tag}: face does not print today's $30.00 gap`);
-          assert.ok(!text.includes('Still to fund $50.00'), `${tag}: face does not print today's $50.00 gap`);
+          for (const gap of WITHHELD.gaps) assert.ok(!text.includes('Still to fund ' + gap), `${tag}: face does not print today's ${gap} gap`);
         };
         await selectPeriod(wheel.current - 1);
-        await expectWithheld(await factsById(), `gap ${width} historical`);
+        await expectWithheld(await factsById(), `${mode} ${width} historical`);
         await selectPeriod(wheel.current + 1);
-        await expectWithheld(await factsById(), `gap ${width} projected-next`);
+        await expectWithheld(await factsById(), `${mode} ${width} projected-next`);
         await selectPeriod(wheel.current + 2);
-        await expectWithheld(await factsById(), `gap ${width} projected-future`);
+        await expectWithheld(await factsById(), `${mode} ${width} projected-future`);
         await selectPeriod(wheel.current);
         const restored = await factsById();
-        assert.equal(restored['goal-d'].stf, '$30.00', `gap ${width} current restored: D numeric gap`);
-        assert.equal(restored['goal-e'].stf, '$50.00', `gap ${width} current restored: E numeric gap`);
+        for (const goal of goals) {
+          assert.equal(restored[goal.id].stf, expect[goal.id].stf, `${mode} ${width} current restored: ${goal.id} gap`);
+          assert.equal(restored[goal.id].state, expect[goal.id].state, `${mode} ${width} current restored: ${goal.id} state`);
+        }
+        rows.A9.push(`${mode} ${width}: historical withholds ${WITHHELD.ids.join(',')}; projected-next/future withhold ${WITHHELD.ids.filter(id => !WITHHELD.retiredProjected.includes(id)).join(',')}${WITHHELD.retiredProjected.length ? ' and retire ' + WITHHELD.retiredProjected.join(',') : ''} (Unknown, no stamp, no paid state); current restored`);
       }
       // Household-facing face carries the same printed Paid / Still to
       // fund text as each plan.js row, verbatim.
@@ -250,6 +313,9 @@ async function faceFacts(tile) {
       assert.equal(await page.evaluate(() => JSON.stringify(App.data)), before, `${mode} ${width}: App.data unchanged`);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${mode} ${width}: no horizontal overflow`);
       await tile.screenshot({ path: path.join(out, `${mode}-${width}.png`), animations: 'disabled' });
+      if (mode === 'evidence' || mode === 'gap') rows.A3.push(`${mode} ${width}: partial Paid + Saved join (${mode === 'evidence' ? 'B paid 0.25 + saved 0.75, STF $0.00' : 'D paid 0.25 + saved 0.375, STF $30.00'})`);
+      if (mode === 'evidence') rows.A4.push(`${width}: A fully paid row fill 1.0 ${facts['goal-a'].paidColor}; face ${face[keys.indexOf('commitment:goal-a')].band} ratio ${face[keys.indexOf('commitment:goal-a')].ratio} ${face[keys.indexOf('commitment:goal-a')].fill}; STF $0.00`);
+      if (mode === 'absent' || mode === 'uncertain') rows.A9.push(`${mode} ${width}: ${goals.map(g => g.id + ' ' + facts[g.id].paid + '/' + facts[g.id].stf + '/' + facts[g.id].state).join('; ')}`);
       cases.push({ width, mode, keys, facts });
       console.log('PASS ' + mode + ' ' + width);
       await page.close();
@@ -257,6 +323,9 @@ async function faceFacts(tile) {
   } finally { await browser.close(); }
   assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(writes, []);
   const head = cp.execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-  fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ head, synthetic: true, served, cases, errors, external, writes }, null, 2) + '\n');
+  // A4 requires the 390px face/bar observation specifically.
+  assert.ok(rows.A4.some(r => r.startsWith('390:')), 'A4: 390px fully paid face/bar observed');
+  fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ head, synthetic: true, observationAsOf: OBSERVATION_AS_OF, linkEffective: LINK_EFFECTIVE, rows, served, cases, errors, external, writes }, null, 2) + '\n');
+  for (const [row, list] of Object.entries(rows)) for (const r of list) console.log(`ROW ${row} PASS ${r}`);
   console.log('PASS all ' + cases.length + ' cases');
 })().catch(e => { console.error(e); process.exitCode = 1; });
