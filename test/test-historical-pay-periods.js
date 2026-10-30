@@ -911,6 +911,64 @@ console.log('\n=== 11. #723 gap (5): a sealed lookback withholds an unknown sche
     'exclusion (disabled stream) disposes of the unknown occurrence');
   expectWithheld(run(fixture(300, { adjust: extraAdjust({ amount: -5 }) })),
     'invalid negative override');
+  // Atlas BLOCKING B1 (#803 review 5714735912): an invalid adjustment on an
+  // Other Income occurrence that independent posted-receipt reconciliation
+  // later qualifies must publish from that actual in a sealed lookback,
+  // exactly as in the active period and as on base. Without a receipt the
+  // marked row stays unresolved and withholds. No priorAsOf here, so the
+  // occurrence takes the ordinary expected-row path that reconciliation reads.
+  {
+    const reconPlan = (refundDate) => ({
+      defaults: { targetBuffer: 500 },
+      startingCash: { breakdown: [{ id: 'chequing-a', label: 'BILLS ACCOUNT', value: 2300, class: 'spendable' }] },
+      opening: { asOf: AS_OF, paydaySnapshot: { periodStart: '2026-09-11', asOf: '2026-09-11', opening: 1000 },
+        representedEvents: [] },
+      income: [
+        { id: 'payroll', frequency: 'biweekly', anchor: ANCHOR, amount: 2000, confidence: 'confirmed' },
+        { id: 'partner', frequency: 'monthly', day: 15, amount: 1500, confidence: 'confirmed' },
+        { id: 'refund', label: 'Synthetic refund', frequency: 'once', date: refundDate, amount: 175,
+          incomeClass: 'other', confidence: 'estimated' },
+      ],
+      bills: [], obligations: [], commitments: [], budget: { categories: [] },
+    });
+    const reconPacket = (refundDate, withReceipt) => ({
+      schema: 'atlas-current-period-actuals/v1', observationAsOf: AS_OF,
+      coverageStart: '2026-07-31', coverageThrough: AS_OF, pendingCoverage: 'complete',
+      representedActuals: [],
+      transactions: withReceipt ? [{ id: 'tx-refund', date: refundDate, amount: -175, isIncome: true,
+        categoryLabel: 'gifts', displayedPayee: 'Synthetic refund', accountRole: 'household-cash' }] : [],
+    });
+    const reconRun = (refundDate, adjAmount, withReceipt) => F.recommend(reconPlan(refundDate), AS_OF, {
+      targetBuffer: 500, debts, currentPeriodActuals: reconPacket(refundDate, withReceipt),
+      incomeOccurrenceAdjust: (s) => s && s.id === 'refund' ? { amount: adjAmount, confidence: 'confirmed' } : null,
+    });
+    for (const [label, adjAmount] of [["string '250'", '250'], ['boolean true', true]]) {
+      // Sealed lookback (Aug 14 window): payroll 2,000 + partner 1,500 + reconciled refund 175.
+      const sealedAdvice = reconRun('2026-08-20', adjAmount, true);
+      for (const [family, p] of [['pastPeriodViews', pastOf(sealedAdvice)], ['payPeriodViews', timelineOf(sealedAdvice)]]) {
+        const refund = incomeRow(p, 'refund');
+        ok(p && p.incomeTotal === 3675 && p.incomeTrust !== 'unavailable' && !p.incomeUnavailableReason
+            && p.balanceAfterDeductions != null,
+          `B1 sealed lookback ${label} + reconciled receipt (${family}): publishes from the actual`,
+          p && `${p.incomeTotal}/${p.incomeTrust}`);
+        ok(refund && refund.amount === 175 && refund.actual === 175 && refund.status === 'received'
+            && refund.reconciledFrom === 'unique-unmatched-same-date',
+          `B1 sealed lookback ${label} (${family}): the reconciled row keeps its actual and received status`);
+      }
+      const unresolved = reconRun('2026-08-20', adjAmount, false);
+      expectWithheld(unresolved, `B1 sealed lookback ${label} without a receipt`);
+      // Active control (Aug 28 window holds as-of Sep 9): same publication.
+      const active = reconRun('2026-09-02', adjAmount, true).payPeriodViews
+        .find(p => p.start <= '2026-09-02' && p.end >= '2026-09-02');
+      ok(active && active.role === 'active' && active.incomeTrust !== 'unavailable' && !active.incomeUnavailableReason
+          && incomeRow(active, 'refund') && incomeRow(active, 'refund').actual === 175,
+        `B1 active control ${label} + reconciled receipt: publishes from the actual`,
+        active && `${active.role}/${active.incomeTotal}/${active.incomeTrust}`);
+    }
+    const valid = pastOf(reconRun('2026-08-20', 175, true));
+    ok(valid.incomeTotal === 3675 && !valid.incomeUnavailableReason,
+      'B1 valid numeric adjustment + reconciled receipt: publishes unchanged');
+  }
   // A non-numeric override is not asserted here: with priorAsOf this
   // occurrence takes the not-relied-upon row path, which carries no
   // invalid-adjustment mark in the active period either (separate
