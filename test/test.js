@@ -62,6 +62,7 @@ const suites = [
   ['PA-1 Decision 1: estimated future Savings close under an unqualified movement; guards and verified path unchanged', 'test-savings-estimated-future-closing.js'],
   ['PA-2a Decision 2: Still to fund = max(0, Needed - Saved), estimated, only with both inputs known', 'test-savings-still-to-fund.js'],
   ['PA-2b Decision 2: the Budget goals list renders row-owned Still to fund with its estimate mark and reason; legacy join retired', 'test-savings-still-to-fund-render.js'],
+  ['PA-3 Decision 1: an elapsed goal retires from later projected periods; current visibility and closing gate unchanged', 'test-savings-elapsed-goal-relisting.js'],
   ['separate bank EOD reconstruction anchor, historical preservation and Savings conservation', 'test-payday-bank-eod-anchor.js'],
   ['payday surplus sweep: full prior surplus lands on the next payday, routine deficits stay visible and uncovered', 'test-savings-payday-sweep.js'],
   ['S1 payday sweep: full available remainder incl. inherited cash sweeps, Budget opening and Savings credit consume the same published sweep', 'test-savings-payday-sweep-s1.js'],

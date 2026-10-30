@@ -8,7 +8,7 @@ authority and the bounded review protocol.
 
 | Label | Meaning | Owner action |
 |---|---|---|
-| `auto-safe` | No published figure moves and no fact changes home. | None. Merge on green when no systems-review trigger fired. A high-risk trigger still waits for Atlas Contract / Systems Review `PASS`. |
+| `auto-safe` | No published figure moves and no fact changes home. | None. Merge on green when no systems-review trigger fired. A high-risk trigger still waits for Atlas Contract / Systems Review `NO BLOCKERS FOUND` on the current head; a non-builder merger decides. |
 | `figures-moved` | A figure the household reads changes. | Read the figures diff and reconcile it with the card. |
 | `owner-decision` | A household fact or owner-reserved decision is outstanding. | Answer the exact question. |
 | `blocked` | A hard gate failed or a real blocker remains. | Do not merge. |
@@ -47,17 +47,18 @@ with itself:
   event body. A closed PR, a non-`main` base, a PR or repository identity
   change, or a live head that is not the event head fails closed.
 
-It does **not** fail on a review SHA, a PASS / PENDING / NOT PASS / BLOCKING
-outcome, ChatGPT identity, or a trusted Atlas review. Those fields stay on
-the card as the governance record. Completeness of `REQUIRED` / `NOT REQUIRED`
-is structural, not a judgement that the human trigger decision was correct,
-and not a GitHub lock on ChatGPT `PASS`. A later fix must not turn this check
-red.
+It does **not** fail on a review SHA, a review outcome value (`BLOCKERS
+FOUND` / `NO BLOCKERS FOUND` / `INCOMPLETE` / `PENDING`, or a historical
+`PASS` / `NOT PASS` / `BLOCKING`), reviewer identity, or a trusted Atlas
+review, and it authenticates nothing. Those fields stay on the card as the
+governance record. Completeness of `REQUIRED` / `NOT REQUIRED` is structural,
+not a judgement that the human trigger decision was correct, and not a GitHub
+lock on review findings. A later fix must not turn this check red.
 
 Required governance and a required GitHub status check are different things.
 When a high-risk trigger fires, Atlas Contract / Systems Review remains
-required before merge; this workflow still does not parse or enforce that
-`PASS`.
+required before merge; this workflow still does not parse or enforce its
+findings.
 
 Confidence that the change is not junk is the job of `npm test`, the secret
 hook, and the figures comment. This check only stops an empty or malformed
@@ -147,12 +148,14 @@ and merge card is still a correctness defect to resolve.
 ### Atlas Contract / Systems Review — trigger-based required governance
 
 This review is required governance when a high-risk trigger in `CLAUDE.md`
-fires, and it is not required otherwise. ChatGPT performs it on the current
-exact PR head. The outcome is `PASS` or `BLOCKING`. The active builder cannot
-satisfy it.
+fires, and it is not required otherwise. A non-builder reviewer — Atlas
+(ChatGPT) by default — performs it on the current exact PR head and records
+factual findings: `BLOCKERS FOUND`, `NO BLOCKERS FOUND`, or `INCOMPLETE`. The
+findings are not merge authorization; a non-builder merger other than Atlas
+decides. The active builder cannot satisfy it.
 
 It is **not** a GitHub status check. `merge-card-check` does not parse or
-enforce ChatGPT identity, `PASS`, `BLOCKING`, or review-SHA equality.
+enforce reviewer identity, the outcome value, or review-SHA equality.
 
 Request it only on a stable merge candidate: implementation complete, merge
 card current, applicable deterministic checks green, figures review completed
@@ -197,7 +200,7 @@ Codex automatic reviews are the intended first advisory pass: Codex docs say
 they post when a pull request is opened for review or marked ready, without an
 `@codex review` comment. That lane is operational: PR #63 received a real
 `chatgpt-codex-connector[bot]` review that found implementation defects. Codex
-remains advisory. It is not Atlas PASS authority. The `codex-review-request.yml`
+remains advisory. It is not Atlas review authority. The `codex-review-request.yml`
 comment dispatcher remains retired: it never successfully posted `@codex review`,
 and it is not replaced by another token or dispatcher. A justified second pass
 remains a human `@codex review` comment. Atlas Contract / Systems Review, Merge

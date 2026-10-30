@@ -106,6 +106,9 @@ test('overdue unproved cost stays visible without claiming actual settlement', (
   const x = make('card'); x.plan.commitments[0].date = '2026-10-06';
   const advice = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [] });
   const p = select({ x, advice }, '2026-10-30');
-  assert.ok(p.plannedRequirements.items.some(i => i.id === 'early'));
+  // PA-3 flip (Muse ruling): the elapsed cost retires from later projected
+  // periods and stays visible, unpaid, in the current goal rows instead.
+  assert.ok(!p.plannedRequirements.items.some(i => i.id === 'early'));
+  assert.ok(advice.savingsFunding.rows.some(row => row.members.includes('early@2026-10-06')));
   assert.equal(p.forecastClosing.status, 'unavailable');
 });

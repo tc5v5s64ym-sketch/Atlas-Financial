@@ -21923,14 +21923,21 @@
   // Planned identities survive independently of cash qualification. A unique
   // native expense retires at this inclusive future close in the plan only:
   // it is neither actual settlement nor evidence of funded/available money.
-  // Undated, ambiguous and overdue unproved requirements remain visible.
+  // Undated and ambiguous unproved requirements remain visible. A dated
+  // requirement that has elapsed (before asOf) is not re-listed here (PA-3);
+  // it stays on the current period until settlement evidence exists.
   function savingsPlannedRequirements(funding, events, asOf, period) {
     const all = [...funding.backing.items, ...funding.unresolved];
     const counts = new Map();
     for (const item of all) counts.set(item.key, (counts.get(item.key) || 0) + 1);
     const items = all.filter(item => {
       if (item.paymentStatus === 'paid' && item.paidOn < period.start) return false;
-      if (counts.get(item.key) !== 1 || !savingsDate(item.date) || item.date < asOf
+      // PA-3 (Decision 1): a dated requirement that has already elapsed is
+      // not re-listed in later projected periods. It stays on the current
+      // period as unpaid until settlement evidence exists; the closing-basis
+      // gate for unpaid past requirements is unchanged.
+      if (savingsDate(item.date) && item.date < asOf) return false;
+      if (counts.get(item.key) !== 1 || !savingsDate(item.date)
           || item.date > period.end || savingsCents(item.needed) == null) return true;
       const matches = events.filter(e => e.id === item.id && e.date === item.date
         && ['commitment', 'bill', 'reserve'].includes(e.kind));
