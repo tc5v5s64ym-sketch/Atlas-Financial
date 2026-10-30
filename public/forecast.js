@@ -21923,7 +21923,9 @@
   // Planned identities survive independently of cash qualification. A unique
   // native expense retires at this inclusive future close in the plan only:
   // it is neither actual settlement nor evidence of funded/available money.
-  // Undated, ambiguous and overdue unproved requirements remain visible.
+  // Undated and ambiguous unproved requirements remain visible. A dated
+  // requirement that has elapsed (before asOf) is not re-listed here (PA-3);
+  // it stays on the current period until settlement evidence exists.
   function savingsPlannedRequirements(funding, events, asOf, period) {
     const all = [...funding.backing.items, ...funding.unresolved];
     const counts = new Map();

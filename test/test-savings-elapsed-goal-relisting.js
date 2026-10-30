@@ -55,15 +55,39 @@ test('the elapsed goal stays visible in the current period as unpaid, never mark
     'current goal rows still show it');
 });
 
-test('closing-basis gate is unchanged: the future close stays withheld', () => {
+// Not a test of the unpaid-past-requirement gate itself: in this fixture an
+// earlier hold withholds the close first. It only pins that relisting does
+// not release a withheld close. The gate is covered by the daily-allocation
+// contract and external-alias suites.
+test('relisting does not release a withheld future close', () => {
   const r = run();
   for (const start of LATER) {
     const c = packet(r, start).forecastClosing;
-    assert.equal(c && c.status, 'unavailable', `${start}: relisting alone does not release the close`);
+    assert.equal(c && c.status, 'unavailable', `${start}: still withheld after relisting`);
   }
 });
 
-test('a goal paid before the period still drops out (incumbent rule unchanged)', () => {
+test('a future goal matched by its planned payment still drops out of later periods (incumbent rule)', () => {
   const r = run(x => { x.plan.commitments[0].date = '2026-10-21'; });
-  assert.deepEqual(plannedIds(packet(r, '2026-10-30')), ['later'], 'paid/settled items behave as on main');
+  assert.deepEqual(plannedIds(packet(r, '2026-10-30')), ['later'], 'native-expense retirement unchanged');
+});
+
+// Boundaries: retirement is measured against asOf, not the viewed period.
+// A ranged item never matches one planned payment, so only the new guard
+// can retire it. Dated exactly asOf it has not elapsed; dated after asOf
+// but before a later period it is not retired by this change either.
+function ranged(date) {
+  return x => { const cm = x.plan.commitments[0]; cm.date = date; delete cm.amount; cm.amountMin = 40; cm.amountMax = 60; };
+}
+test('boundary: a requirement dated exactly asOf is not retired', () => {
+  const r = run(ranged('2026-10-07'));
+  for (const start of LATER) assert.ok(plannedIds(packet(r, start)).includes('early'), `${start}: dated asOf stays listed`);
+});
+test('boundary: a requirement dated after asOf is measured against asOf, not the viewed period start', () => {
+  const r = run(ranged('2026-10-10'));
+  assert.ok(plannedIds(packet(r, '2026-10-16')).includes('early'), 'dated before this period but after asOf: still listed');
+});
+test('boundary: the same ranged requirement dated one day before asOf is retired', () => {
+  const r = run(ranged('2026-10-06'));
+  for (const start of LATER) assert.ok(!plannedIds(packet(r, start)).includes('early'), `${start}: elapsed ranged item retired`);
 });
