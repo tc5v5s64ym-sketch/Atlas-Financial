@@ -11658,6 +11658,7 @@
     // PA-4: an estimated planned close carries its estimated trust into the
     // later periods that open from it.
     let previousPlannedTrust = 'calculated';
+    let activeCarryFromPlannedClose = false;
     let unavailableOpeningLost = false;
     let openingChainLost = false;
     const heldCycleStarts = new Set();
@@ -12183,7 +12184,10 @@
             if (previousEnding == null) openingChainLost = true;
           } else {
             // Incumbent noncombined publication, with no Savings sweep consumer.
+            // This carry is the same cash the planned close is built on, so
+            // the close's trust is a dependency of the next opening (#809 B1).
             previousEnding = cashAfterHouseholdBudget;
+            activeCarryFromPlannedClose = true;
             if (previousEnding != null && openingKnown && opening != null) {
               const rows = (plan.startingCash?.breakdown || []).filter(r =>
                 r && HOUSEHOLD_CHEQUING_IDS.includes(r.id));
@@ -12313,8 +12317,12 @@
       });
       // Later projected closes open from this one's walk: an estimate makes
       // them estimated, and an unknown close makes them unknown (#809 B1).
+      // The active period's unknown carries only where the next opening is
+      // this close's own cash; the S1 observed-Bills seed is independently
+      // qualified and does not include the Savings-funded provision.
       const publishedPlannedTrust = periods[periods.length - 1].plannedPeriodCloseTrust;
-      if (projected && publishedPlannedTrust === 'unknown') previousPlannedTrust = 'unavailable';
+      const carriesFromThisClose = projected || (role === 'active' && activeCarryFromPlannedClose);
+      if (carriesFromThisClose && publishedPlannedTrust === 'unknown') previousPlannedTrust = 'unavailable';
       else if (publishedPlannedTrust === 'estimated' && previousPlannedTrust !== 'unavailable') previousPlannedTrust = 'estimated';
     }
     const active = periods.find(p => p.role === 'active') || periods[0] || null;

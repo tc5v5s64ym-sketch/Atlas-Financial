@@ -262,3 +262,71 @@ test('annual provision with unknown confidence: no number; later closes are unkn
     assert.equal(p.plannedPeriodCloseTrust, 'unknown');
   }
 });
+
+// Atlas #809 B1 (re-review at f0f0e1b5): the annual provision in the ACTIVE
+// period. Without an allocation policy the next opening is this close's own
+// cash, so an unknown close must keep the dependent later closes unknown.
+// Atlas's synthetic discriminator: the PA-4 plan plus a 200 Savings-funded
+// yearly bill due 2026-10-10; carry 500 + 1000 - 200 = 1300 into Oct 16.
+function activeAnnual(confidence) {
+  const p = plan();
+  p.bills.push({ id: 'annual', label: 'Synthetic annual', frequency: 'yearly', month: 10, day: 10,
+    firstDue: '2026-10-10', amount: 200, jointCash: false, confidence });
+  p.savingsEarmarks = { version: 1, currency: 'CAD', history: [], pools: [{ id: 'pool', accountId: 'savings',
+    label: 'Synthetic pool', role: 'purpose-reserve', purpose: 'Synthetic', goalRefs: [{ kind: 'yearly-bill', id: 'annual' }] }] };
+  return periods(F.recommend(p, ASOF, { weeklyVariable: 0, debts: [], currentPeriodActuals: actuals(false) }));
+}
+
+test('active annual provision, confirmed control: 1300 carries and the next close is calculated', () => {
+  const [active, next] = activeAnnual('confirmed');
+  assert.equal(c(active.plannedPeriodClose), 130000);
+  assert.equal(active.plannedPeriodCloseTrust, 'calculated');
+  assert.equal(c(next.opening), 130000, 'fixture: the next opening is the active close cash');
+  assert.equal(c(next.plannedPeriodClose), 218000); // 1300 + 1000 - 120
+  assert.equal(next.plannedPeriodCloseTrust, 'calculated');
+});
+
+test('active annual provision, estimated: the active and dependent later closes are estimated', () => {
+  const [active, ...later] = activeAnnual('estimated');
+  assert.equal(active.plannedPeriodCloseTrust, 'estimated');
+  for (const p of later) if (p.plannedPeriodClose !== null) assert.equal(p.plannedPeriodCloseTrust, 'estimated', p.start);
+});
+
+test('active annual provision, unknown confidence: the dependent later closes are unknown, never calculated', () => {
+  const [active, ...later] = activeAnnual('unknown');
+  assert.equal(active.plannedPeriodClose, null);
+  assert.equal(active.plannedPeriodCloseTrust, 'unknown');
+  assert.equal(c(later[0].opening), 130000, 'fixture: a finite carry still seeds the next opening');
+  for (const p of later) {
+    assert.equal(p.plannedPeriodClose, null, `${p.start}: depends on the unknown active close`);
+    assert.equal(p.plannedPeriodCloseTrust, 'unknown');
+  }
+});
+
+// The S1 observed-Bills seed (allocation policy installed) is independently
+// qualified: it does not include the Savings-funded provision, so the next
+// opening is identical whether the provision is confirmed or unknown, and a
+// later close built on it is not poisoned by the active display.
+test('independent S1 seam: an unknown active provision does not blank the independently seeded next close', () => {
+  const run1 = confidence => {
+    const { ledger } = require('./fixtures/chronological-savings-data');
+    const { advance } = require('./fixtures/savings-daily-allocation-contract');
+    const i = advance(ledger(), '2026-10-10');
+    i.plan.income[0].anchor = '2026-08-14';
+    i.plan.income = i.plan.income.map(row => ({ ...row, confidence: 'confirmed' }));
+    i.plan.opening.paydaySnapshot = { periodStart: '2026-10-09', asOf: '2026-10-09', opening: 80 };
+    i.plan.opening.representedEvents = [];
+    i.opts.currentPeriodActuals.coverageStart = '2026-10-09';
+    i.opts.currentPeriodActuals.savingsFetchCoverage.startDate = '2026-10-09';
+    i.plan.bills = [{ id: 'annual', label: 'Invented annual premium', amount: 200, frequency: 'yearly',
+      month: 10, day: 15, firstDue: '2026-10-15', jointCash: false, confidence }];
+    i.plan.savingsEarmarks.pools[1].goalRefs = [{ kind: 'yearly-bill', id: 'annual' }];
+    assert.ok(i.plan.savingsEarmarks.allocationPolicy, 'fixture: S1 seam installed');
+    return F.recommend(i.plan, i.asOf, { ...i.opts, debts: [], weeklyVariable: 0 }).payPeriodViews.filter(v => v.role !== 'lookback');
+  };
+  const known = run1('confirmed'), unknown = run1('unknown');
+  assert.equal(unknown[0].plannedPeriodCloseTrust, 'unknown', 'the active display is still unknown');
+  assert.equal(c(unknown[1].opening), c(known[1].opening), 'fixture: the seeded opening does not depend on the provision');
+  assert.equal(c(unknown[1].plannedPeriodClose), c(known[1].plannedPeriodClose));
+  assert.equal(unknown[1].plannedPeriodCloseTrust, 'calculated', 'independent seam is not poisoned');
+});
