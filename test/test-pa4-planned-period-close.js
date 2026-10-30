@@ -109,14 +109,28 @@ test('an unknown opening publishes no planned close, with the reason', () => {
 
 // Pre-review finding: only a card-MATCHING hold may estimate; every other
 // card hold leaves the plan's cash basis unknown (never a number, never 0).
+const CARD_DEBTS = [{ id: 'card', label: 'Synthetic card', balance: 821.43, pending: 0, rate: 0, limit: 2000 }];
+function cardMinimumObligation() {
+  return { id: 'card', debtId: 'card', effect: 'payment', label: 'Synthetic card minimum', frequency: 'monthly',
+    day: 7, firstDue: '2026-10-07', amount: 47.39, confidence: 'estimated', payingAccount: 'chequing-a',
+    statementOccurrences: [{ scheduledDate: '2026-10-07', dueDate: '2026-10-08', minimum: 47.39, currency: 'cad',
+      confidence: 'confirmed' }],
+    sentPayments: [{ scheduledDate: '2026-10-07', confirmed: true, intent: 'minimum', debitId: 'synthetic-debit',
+      postedOn: '2026-10-05', amount: 47.39, currency: 'cad', fundingAccountId: 'chequing-a', pending: false }] };
+}
 function hardHold(mutate) {
   const p = plan(), pkt = actuals(true); mutate(p, pkt);
-  return periods(F.recommend(p, ASOF, { weeklyVariable: 0, debts: [], currentPeriodActuals: pkt }));
+  const a = F.recommend(p, ASOF, { weeklyVariable: 0, debts: CARD_DEBTS, currentPeriodActuals: pkt });
+  assert.equal(a.cardPurchaseCoverage.status, 'unavailable', 'fixture: card hold is on');
+  return periods(a);
 }
 for (const [label, mutate] of [
   ['incomplete transaction history', (p, pkt) => { pkt.transactionCoverage = 'partial'; }],
   ['unknown Bills balance', (p) => { p.startingCash.breakdown[0].unknown = true; }],
   ['unconfirmed card currency', (p, pkt) => { pkt.transactions[0].currency = 'USD'; }],
+  // The coverage issues stay matching-only here; only the card minimum is
+  // unavailable (a sent payment with unconfirmed cash inclusion).
+  ['unavailable card minimum', (p) => { p.obligations = [cardMinimumObligation()]; }],
 ]) {
   test(`hard card hold (${label}): planned close is null with the card reason`, () => {
     for (const per of hardHold(mutate)) {
@@ -149,11 +163,48 @@ test('card reserve shortfall: disclosed on the active period, estimated, never d
     ['coverage-bills-backing-unconfirmed', 'coverage-opening-unconfirmed'], 'fixture: matching-only, below-reserve branch');
   const active = periods(a)[0];
   const d = active.cardReserveShortfall;
-  assert.ok(d && d.amount > 0 && d.trust === 'estimated' && d.deducted === false);
+  // 5000 matching-derived reserve - 500 known Bills balance = 4500.00.
+  assert.equal(Math.round(d.amount * 100), 450000);
+  assert.ok(d.trust === 'estimated' && d.deducted === false);
+  for (const later of periods(a).slice(1)) {
+    assert.equal(later.cardReserveShortfall, undefined, `${later.start}: disclosed on the active period only`);
+  }
   assert.match(d.reason, /not the plan deficit/);
   // Not deducted: the planned close is still opening + income - the card spend counted once.
   assert.equal(active.plannedPeriodCloseTrust, 'estimated');
   assert.equal(Math.round(active.plannedPeriodClose * 100), 50000 + 100000 - 500000);
   // No disclosure without the below-reserve branch.
   assert.equal(periods(run(true))[0].cardReserveShortfall, undefined);
+});
+
+test('card matching plus another estimated input: both reasons are published', () => {
+  const p = plan(); p.bills[0].confidence = 'estimated';
+  const per = periods(F.recommend(p, ASOF, { weeklyVariable: 0, debts: [], currentPeriodActuals: actuals(true) }));
+  const both = per.filter(x => x.periodBillLoadTrust === 'estimated' && x.plannedPeriodClose !== null);
+  assert.ok(both.length, 'fixture: a period with an estimated bill and a card-matching estimate');
+  for (const x of both) {
+    assert.equal(x.plannedPeriodCloseTrust, 'estimated');
+    assert.match(x.plannedPeriodCloseReason, /card purchase and payment matching is unresolved/, `${x.start}: card reason`);
+    assert.match(x.plannedPeriodCloseReason, /an input to this close .* is estimated/, `${x.start}: input reason kept`);
+  }
+});
+
+// PA-1: an unqualified Savings movement makes projected openings estimated;
+// the planned close built on them is estimated too, never calculated.
+test('PA-1 movement hold: every projected planned close is estimated, with a reason', () => {
+  const input = require('./fixtures/savings-future-closing-data');
+  const run1 = unq => {
+    const x = input();
+    x.plan.income.push({ id: 'p0', label: 'Invented', frequency: 'once', date: '2026-10-09', amount: 400, confidence: 'confirmed' });
+    if (unq) x.opts.currentPeriodActuals.savingsMovementUnconfirmed = [{ accountId: 'savings', reason: 'transaction-posting-status-unconfirmed' }];
+    return F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [] }).payPeriodViews.filter(v => v.role === 'future');
+  };
+  const held = run1(true), clear = run1(false);
+  assert.ok(held.length >= 3 && held.every(v => v.openingTrust === 'estimated'), 'fixture: PA-1 hold is on');
+  assert.ok(clear.every(v => v.plannedPeriodCloseTrust === 'calculated'), 'control: calculated without the hold');
+  for (const v of held) {
+    assert.equal(typeof v.plannedPeriodClose, 'number', `${v.start}: published`);
+    assert.equal(v.plannedPeriodCloseTrust, 'estimated', `${v.start}: estimated, not calculated`);
+    assert.match(v.plannedPeriodCloseReason, /is estimated/);
+  }
 });

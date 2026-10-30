@@ -10272,8 +10272,8 @@
       // (missing history or amounts, unknown Bills, unavailable minimum)
       // leaves the plan's cash basis unknown: never a number, never zero.
       return { plannedPeriodClose: null, plannedPeriodCloseTrust: 'unknown', plannedPeriodCloseTerms: null,
-        plannedPeriodCloseReason: 'The planned period close is unavailable: card coverage is unavailable for a reason other than matching. '
-          + (cardReason || '') };
+        plannedPeriodCloseReason: ['The planned period close is unavailable: card coverage is unavailable for a reason other than matching.',
+          cardReason].filter(Boolean).join(' ') };
     }
     const cardMatchUnresolved = cardState === 'match';
     const known = typeof value === 'number' && Number.isFinite(value)
@@ -10296,9 +10296,11 @@
       plannedPeriodCloseTrust: trust,
       plannedPeriodCloseTerms: { ...terms, identity: 'opening-plus-income-minus-bills-budget-and-annual-savings',
         deficit: close < 0 },
-      plannedPeriodCloseReason: cardMatchUnresolved
-        ? 'Planned remainder: card purchase and payment matching is unresolved, so this is an estimated plan, not verified safe-to-spend cash or proof that card balances are paid.'
-        : trust === 'estimated' ? 'Planned remainder: an input to this close (or an earlier period it carries from) is estimated.' : null,
+      // Every estimate source carries its own reason; one never hides another.
+      plannedPeriodCloseReason: [
+        cardMatchUnresolved ? 'Planned remainder: card purchase and payment matching is unresolved, so this is an estimated plan, not verified safe-to-spend cash or proof that card balances are paid.' : null,
+        base === 'estimated' ? 'Planned remainder: an input to this close (or an earlier period it carries from) is estimated.' : null,
+      ].filter(Boolean).join(' ') || null,
     };
   }
 
