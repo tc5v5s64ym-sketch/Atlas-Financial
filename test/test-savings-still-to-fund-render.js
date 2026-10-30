@@ -34,7 +34,9 @@ function render(mutate, start) {
   ctx.src = { plan: x.plan, debts: [], asOf: x.asOf, advice: a, liveOverlay: null, weekly: 0, weeklyOverride: 0 };
   ctx.period = a.payPeriodViews.find(p => p.start === start) || a.pastPeriodViews.find(p => p.start === start);
   assert.ok(ctx.period, `fixture: period ${start} exists`);
-  return { a, html: vm.runInContext('budgetSavingsGoalsHtml(src,period,null)', ctx) };
+  // Exactly as the page calls it: with the live funding schedule (pre-review:
+  // a null schedule could not detect a reintroduced schedule join).
+  return { a, html: vm.runInContext('budgetSavingsGoalsHtml(src,period,budgetMonthPlanSpendSchedule(src,true))', ctx) };
 }
 const cells = html => html.split('data-budget-goal-still-to-fund>').slice(1)
   .map(p => p.split('</span></span></span>')[0]);
@@ -59,6 +61,7 @@ test('projected period: prints that period-close figure, estimated, not today\'s
   const published = close.rows.map(r => r.stillToFund);
   const shown = cells(html).map(c => Number(text(c).split('$')[1].split(' ')[0].replace(/,/g, '')));
   assert.deepEqual(shown, published, 'printed amounts are exactly the published period-close row figures');
+  for (const cell of cells(html)) assert.match(cell, /class="budget-v3-est">≈/, 'projected figure carries the estimated mark');
   assert.notDeepEqual(shown, [1381, 1000], 'not today\'s current-period gap');
 });
 
@@ -69,7 +72,8 @@ test('historical period: Unknown with the published reason, never a borrowed num
   for (const cell of all) {
     assert.match(cell, /budget-v3-unknown">Unknown/);
     assert.doesNotMatch(cell, /\$/, 'no amount printed');
-    assert.match(text(cell), /Still to fund is unavailable/);
+    // Forecast's own published reason, not the page fallback.
+    assert.match(text(cell), /Still to fund is unavailable: the (goal amount needed is not a known point value|amount saved for this goal is not known)/);
   }
   assert.doesNotMatch(html, /data-budget-goal-still-to-fund-amount/);
 });
