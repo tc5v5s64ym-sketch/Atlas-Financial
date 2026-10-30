@@ -460,3 +460,139 @@ test('null carry, cutover-walk fallback: no stale provenance; the fallback discl
   assert.equal(after.plannedPeriodClose, null, 'a carry from an unqualified fallback stays unknown');
   assert.equal(after.plannedPeriodCloseTrust, 'unknown');
 });
+
+// ---- Pre-review findings on the redesign (B1-B4), literal values.
+
+// B3: the close and its carry add only incomeAdded. A receipt already inside
+// the payday-morning opening is not a term and must not taint.
+test('income already inside the opening does not taint the close or its carry', () => {
+  for (const confidence of ['estimated', 'unknown']) {
+    const p = { ...plan(), opening: { asOf: '2026-10-02', representedEvents: [{ id: 'payroll', date: '2026-10-02' },
+      { id: 'gift', date: '2026-10-02' }] }, startingCash: { breakdown: [{ id: 'chequing-a', value: 1600 }] } };
+    p.income.push({ id: 'gift', frequency: 'once', date: '2026-10-02', amount: 100, confidence });
+    const [active, next, after] = periods(F.recommend(p, '2026-10-02', { weeklyVariable: 0, debts: [] }));
+    assert.equal(c(active.plannedPeriodClose), 160000, `${confidence}: opening 1600, nothing added`);
+    assert.equal(c(next.plannedPeriodClose), 248000); // 1600 + 1000 - 120
+    assert.equal(c(after.plannedPeriodClose), 100000);
+    for (const v of [active, next, after]) assert.equal(v.plannedPeriodCloseTrust, 'calculated', `${confidence} ${v.start}`);
+  }
+});
+
+// B2: a pooled active opening read from startingCash takes that row's
+// qualification; after the account split only the retained Bills stock does.
+test('pooled startingCash opening: an estimated or unknown row qualifies the close and its carry', () => {
+  const run1 = tags => {
+    const p = { ...plan(), opening: { asOf: '2026-10-02', representedEvents: [{ id: 'payroll', date: '2026-10-02' }] },
+      startingCash: { breakdown: [{ id: 'chequing-a', value: 1500, ...tags }] } };
+    return periods(F.recommend(p, '2026-10-02', { weeklyVariable: 0, debts: [] }));
+  };
+  const [a0, n0] = run1({});
+  assert.deepEqual([c(a0.plannedPeriodClose), a0.plannedPeriodCloseTrust, c(n0.plannedPeriodClose), n0.plannedPeriodCloseTrust],
+    [150000, 'calculated', 238000, 'calculated']);
+  const [a1, n1] = run1({ confidence: 'estimated' });
+  assert.deepEqual([a1.plannedPeriodCloseTrust, n1.plannedPeriodCloseTrust], ['estimated', 'estimated']);
+  const [a2, n2] = run1({ unknown: true });
+  assert.deepEqual([a2.plannedPeriodClose, n2.plannedPeriodClose], [null, null]);
+});
+
+test('account split: the retained Bills stock qualifies the carry; the replaced account does not taint it', () => {
+  const run1 = breakdown => noncombined('confirmed', breakdown);
+  const [, bEst, bEstAfter] = run1([{ id: 'chequing-a', value: 300, confidence: 'estimated' }, { id: 'chequing-b', value: 200 }]);
+  assert.equal(c(bEst.opening), 118000);
+  assert.deepEqual([bEst.plannedPeriodCloseTrust, bEstAfter.plannedPeriodCloseTrust], ['estimated', 'estimated']);
+  const [, bUnk] = run1([{ id: 'chequing-a', value: 300, unknown: true }, { id: 'chequing-b', value: 200 }]);
+  assert.equal(bUnk.plannedPeriodClose, null);
+  assert.equal(bUnk.plannedPeriodCloseTrust, 'unknown');
+  const [, other, otherAfter] = run1([{ id: 'chequing-a', value: 300 }, { id: 'chequing-b', value: 200, confidence: 'estimated' }]);
+  assert.equal(c(other.plannedPeriodClose), 218000);
+  assert.deepEqual([other.plannedPeriodCloseTrust, otherAfter.plannedPeriodCloseTrust], ['calculated', 'calculated'],
+    'the split replaces the pooled component; the other account is not used');
+});
+
+// B1: the S1 boundary credit moves with the active native surplus, so an
+// estimated bill already paid before as-of (outside the seed's remaining
+// bills) still reaches the seeded close. The planned amount moves the next
+// opening (1000 -> 1050): a real dependency, never calculated.
+test('S1 boundary credit: an estimated paid bill reaches the seeded close through the credit', () => {
+  const ownerModel = require('./fixtures/savings-owner-closing-data');
+  const run1 = (confidence, planned) => {
+    const x = ownerModel(1000);
+    x.plan.income.push({ id: 'current-gift', label: 'Invented', frequency: 'once', date: '2026-10-04', amount: 1000, confidence: 'confirmed' });
+    x.opts.currentPeriodActuals.representedActuals.push({ id: 'current-gift', date: '2026-10-04', actual: 1000, transactionId: 'current-income' });
+    x.opts.currentPeriodActuals.transactions.push({ id: 'current-income', date: '2026-10-04', amount: -1000, currency: 'CAD', pending: false,
+      isIncome: true, incomeId: 'current-gift', savingsPostingEvidence: 'posted', atlasAccountId: 'chequing-a',
+      accountRole: 'household-cash', displayedPayee: 'Invented' });
+    x.plan.startingCash.breakdown[0].value += 1000;
+    x.plan.bills = [{ id: 'paid-bill', label: 'Invented paid bill', frequency: 'yearly', month: 10, day: 5,
+      firstDue: '2026-10-05', amount: planned, confidence }];
+    x.opts.currentPeriodActuals.representedActuals.push({ id: 'paid-bill', date: '2026-10-05', actual: 100, transactionId: 'bill-tx' });
+    x.opts.currentPeriodActuals.transactions.push({ id: 'bill-tx', date: '2026-10-05', amount: 100, currency: 'CAD', pending: false,
+      savingsPostingEvidence: 'posted', atlasAccountId: 'chequing-a', accountRole: 'household-cash', displayedPayee: 'Invented' });
+    x.plan.startingCash.breakdown[0].value -= 100;
+    return F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [] }).payPeriodViews.filter(v => v.role !== 'lookback');
+  };
+  const [, ctl] = run1('confirmed', 100);
+  assert.deepEqual([c(ctl.opening), c(ctl.plannedPeriodClose), ctl.plannedPeriodCloseTrust], [100000, 140000, 'calculated']);
+  const [, e100] = run1('estimated', 100), [, e150] = run1('estimated', 150);
+  assert.deepEqual([c(e100.opening), c(e150.opening)], [100000, 105000], 'fixture: the seed moves with the planned amount');
+  assert.deepEqual([e100.plannedPeriodCloseTrust, e150.plannedPeriodCloseTrust], ['estimated', 'estimated']);
+  assert.equal(c(e150.plannedPeriodClose), 145000);
+});
+
+// B4: exactly restored goal rows. An estimated goal bill makes its own
+// period estimated; its overlap restoration cancels its deduction, so the
+// next opening equals the confirmed control and stays calculated.
+test('exactly restored goal bill: the current-period (S1 seed + credit) restoration does not taint later closes', () => {
+  const ownerModel = require('./fixtures/savings-owner-closing-data');
+  const run1 = confidence => {
+    const x = ownerModel(); x.plan.commitments = [];
+    x.plan.savingsPoolObservation.accounts[0].value = 1000; x.plan.startingCash.breakdown[2].value = 1000;
+    x.plan.bills = [{ id: 'a', label: 'Invented current annual goal', frequency: 'yearly', month: 10, day: 10,
+      firstDue: '2026-10-10', amount: 500, confidence, jointCash: false }];
+    return F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [] }).payPeriodViews.filter(v => v.role !== 'lookback');
+  };
+  const ctl = run1('confirmed'), est = run1('estimated');
+  assert.equal(c(est[0].plannedPeriodClose), -42000);
+  assert.equal(est[0].plannedPeriodCloseTrust, 'estimated', 'the goal bill is a term of its own period');
+  for (const n of [1, 2]) {
+    assert.equal(c(est[n].opening), c(ctl[n].opening), `${est[n].start}: restored exactly`);
+    assert.equal(c(est[n].plannedPeriodClose), c(ctl[n].plannedPeriodClose));
+    assert.equal(est[n].plannedPeriodCloseTrust, 'calculated');
+  }
+  assert.deepEqual([c(est[1].plannedPeriodClose), c(est[2].plannedPeriodClose)], [48000, 40000]);
+});
+
+test('exactly restored goal bill: the future-carry restoration does not taint the next close', () => {
+  const ownerModel = require('./fixtures/savings-owner-closing-data');
+  const run1 = confidence => {
+    const y = ownerModel(); y.plan.commitments.shift();
+    y.plan.bills = [{ id: 'a', label: 'Invented annual goal', frequency: 'yearly', month: 10, day: 21,
+      firstDue: '2026-10-21', amount: 500, confidence, jointCash: false }];
+    return F.recommend(y.plan, y.asOf, { ...y.opts, weeklyVariable: 0, debts: [] }).payPeriodViews.filter(v => v.role !== 'lookback');
+  };
+  const ctl = run1('confirmed'), est = run1('estimated');
+  assert.equal(c(est[1].plannedPeriodClose), -2000);
+  assert.equal(est[1].plannedPeriodCloseTrust, 'estimated');
+  assert.equal(c(est[2].opening), c(ctl[2].opening));
+  assert.equal(c(est[2].plannedPeriodClose), 40000);
+  assert.equal(est[2].plannedPeriodCloseTrust, 'calculated', 'restored exactly; not a carry dependency');
+});
+
+// B4: future-carry income. An estimated receipt in the first future period
+// only; a large bill makes that period's remainder negative, so the deficit
+// carries in full into the next opening, which must keep the estimate.
+test('future carry: an estimated receipt reaches the next close through a negative carry', () => {
+  const run1 = confidence => {
+    const p = plan();
+    p.income.push({ id: 'gift', frequency: 'once', date: '2026-10-20', amount: 50, confidence });
+    p.bills = [{ id: 'big', label: 'Synthetic large bill', frequency: 'yearly', month: 10, day: 22,
+      firstDue: '2026-10-22', amount: 3000, confidence: 'confirmed' }];
+    return periods(F.recommend(p, ASOF, { weeklyVariable: 0, debts: [] }));
+  };
+  const [, n0, a0] = run1('confirmed');
+  assert.deepEqual([c(n0.plannedPeriodClose), c(a0.opening), c(a0.plannedPeriodClose), a0.plannedPeriodCloseTrust],
+    [-45000, -45000, 55000, 'calculated']); // 1500 + 1000 + 50 - 3000; then -450 + 1000
+  const [, n1, a1] = run1('estimated');
+  assert.equal(n1.plannedPeriodCloseTrust, 'estimated');
+  assert.equal(a1.plannedPeriodCloseTrust, 'estimated', 'the carry depends on the estimated receipt');
+});
