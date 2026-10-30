@@ -798,7 +798,17 @@ function renderCalendar(sim, neededBy, plan) {
  * invent a second feasibility test. */
 function liveOperatingPlanUnavailable(advice, liveOverlay) {
   return (advice && advice.operatingPlanUnavailable === true)
-    || (liveOverlay && liveOverlay.operatingPlan === 'unavailable');
+    || (liveOverlay && liveOverlay.operatingPlan === 'unavailable')
+    // #775: a refresh was attempted and failed before any household date was
+    // observed (cold process, provider unavailable). Only the dated opening
+    // remains and nothing proves that period is still today's, so it is the
+    // last-good dated baseline, never the current operating plan. A same-date
+    // or later observed date keeps the incumbent live-plan verdict; an
+    // overlay with no failure reason is unchanged.
+    || (!!liveOverlay && liveOverlay.applied === false
+      && liveOverlay.operatingPlan === 'dated-opening'
+      && !liveOverlay.observedAsOf && !liveOverlay.effectiveAsOf
+      && typeof liveOverlay.reason === 'string' && liveOverlay.reason.length > 0);
 }
 
 function liveOperatingPlanNote(advice, liveOverlay) {
@@ -8157,7 +8167,11 @@ function renderPlan(d, periods, history) {
     fundingSources: plan.funding && plan.funding.options,
     periods,
     currentPeriodActuals: actuals,
-    operatingPlan: d.liveOverlay && d.liveOverlay.operatingPlan,
+    // PA-5 (#775): the incumbent Forecast call gets the same effective verdict
+    // as the presentation, so a cold failed refresh is never shown unavailable
+    // while Forecast was told 'dated-opening'. Forecast stays the calculator.
+    operatingPlan: d.liveOverlay && (liveOperatingPlanUnavailable(null, d.liveOverlay)
+      ? 'unavailable' : d.liveOverlay.operatingPlan),
     observedCash: d.liveOverlay && d.liveOverlay.observedCash,
     operatingPlanNote: d.liveOverlay && d.liveOverlay.operatingPlanNote,
   }));
