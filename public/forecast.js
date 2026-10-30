@@ -824,6 +824,20 @@
     const cents = Math.round(value * 100);
     return Number.isSafeInteger(cents) && Math.abs(value * 100 - cents) < 0.000001 ? cents : null;
   }
+  // Decision 2 (owner 2026-10-29): Still to fund = max(0, Needed - Saved),
+  // tagged estimated, published only when both are known point values. It is
+  // a planning gap, never an unpaid balance or verified figure. A missing
+  // Saved or a ranged/unknown Needed publishes no number, with the reason.
+  function savingsStillToFund(needed, saved) {
+    const need = savingsCents(needed), have = savingsCents(saved);
+    if (need == null || have == null) {
+      return { stillToFund: null, stillToFundTrust: 'unknown',
+        stillToFundReason: need == null
+          ? 'Still to fund is unavailable: the goal amount needed is not a known point value.'
+          : 'Still to fund is unavailable: the amount saved for this goal is not known.' };
+    }
+    return { stillToFund: Math.max(0, need - have) / 100, stillToFundTrust: 'estimated', stillToFundReason: null };
+  }
   function savingsKeys(value, allowed) {
     return value && typeof value === 'object' && !Array.isArray(value)
       && Object.keys(value).every(key => allowed.includes(key));
@@ -22159,7 +22173,7 @@
       const amounts = new Map(); let left = closing.pot;
       for (const item of active) { const amount = Math.min(left, savingsCents(item.needed)); amounts.set(item.key, amount); left -= amount; }
       const projectedItems = active.map(i => ({ ...withholdCommitmentCost(i, asOf), saved: null, forecastSaved: amounts.get(i.key) / 100,
-        savedTrust: 'unknown', forecastTrust: 'estimated' }));
+        savedTrust: 'unknown', forecastTrust: 'estimated', ...savingsStillToFund(i.needed, amounts.get(i.key) / 100) }));
       const costs = active.map(i => ({ id: i.key, label: i.label, baseRequirement: savingsCents(i.needed) }));
       const beforeAddition = new Map(costs.map(c => [c.id, 0]));
       // Only the UNSPENT sweep can be attributed to remaining goals: draws
@@ -22179,7 +22193,7 @@
           needed: active.filter(i => members.includes(i.key)).reduce((sum,i) => sum + savingsCents(i.needed),0) / 100,
           neededTrust: r.neededTrust, forecastContribution: allocations.filter(a => members.includes(a.id))
             .reduce((sum,a) => sum + savingsCents(a.amount),0) / 100 };
-      });
+      }).map(r => ({ ...r, ...savingsStillToFund(r.needed, r.forecastSaved) }));
       result.set(period.end, { status: 'ready', source: 'Forecast.recommend.savingsFunding',
         asOf, currency: 'CAD',
         nature: 'if-eligible-surplus-saved', cashBasis: 'opening-savings-plus-eligible-surplus-minus-goal-costs',
@@ -22281,7 +22295,10 @@
         : derived.basis === 'policy-derived-combined-observed-backing'
         ? derived.goalAllocation?.reason || derived.allocationDescription || 'Goal allocation requires validated dated reported Savings balances.'
         : 'Historical allocation policy applies to the dated pool evidence.',
-      unresolved: (derived.unresolved || []).map(({ needCents, savedCents, event, rank, ...item }) => item), rows: derived.rows };
+      unresolved: (derived.unresolved || []).map(({ needCents, savedCents, event, rank, ...item }) => item),
+      // Decision 2: every published goal row carries Still to fund beside its
+      // Saved, whether the packet is ready or withheld.
+      rows: (derived.rows || []).map(row => ({ ...row, ...savingsStillToFund(row.needed, row.saved) })) };
     const unknown = reason => ({ ...shell, status: 'unavailable', reason,
       period: { status: 'unavailable', reason, entitlement: null, transferred: null,
         remainingEntitlement: null, availableNow: null, proposal: null, unassigned: null, actualSaved: null } });
