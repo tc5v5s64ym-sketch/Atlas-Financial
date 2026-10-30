@@ -144,7 +144,14 @@
         && typeof reported.amount === 'number' && Number.isFinite(reported.amount)
         && Array.isArray(reported.balanceDates) && reported.balanceDates.length === 2
         && new Set(reported.balanceDates.map(row => row?.accountId)).size === 2;
-      const stockCopy = projected ? 'Savings at period close: ' + money(packet.forecastClosing?.stock) + '.' : reportedKnown
+      // Decision 1 (owner 2026-10-29): a reported-balance estimate is tagged
+      // and explains its basis; it never reads as verified backing.
+      const estimate = closing && packet.forecastClosing.nature === 'reported-balance-estimate';
+      const estimateCopy = estimate ? '<p data-savings-closing-estimate>Estimated from the reported Savings balance dated '
+        + escape(packet.forecastClosing.balanceAsOf) + '. ' + (packet.forecastClosing.assumptions || []).map(escape).join(' ')
+        + ' Verified backing is withheld: ' + escape(packet.forecastClosing.verifiedReason) + '</p>' : '';
+      const stockCopy = projected ? 'Savings at period close: ' + (estimate ? '≈ ' : '') + money(packet.forecastClosing?.stock)
+        + (estimate ? ' (estimated)' : '') + '.' : reportedKnown
         ? 'Reported combined savings: ' + money(reported.amount) + '. Balance dates '
           + escape(reported.balanceFrom) + (reported.balanceFrom === reported.balanceThrough ? '' : ' - ' + escape(reported.balanceThrough)) + '.'
         : currentStock ? 'Observed stock as of ' + escape(packet.asOf) + ': ' + money(packet.stock?.amount) + '.'
@@ -159,7 +166,7 @@
         return `<article data-savings-goal="${escape(row.key)}"><h3>${escape(members.title)}</h3><dl>${amount(savedLabel, row.saved, row.savedTrust, 'backed', projected)}${amount('Needed', row.needed, row.neededTrust, 'needed', projected)}${amount(projected ? 'This period' : 'Projected this period', row.thisPeriod, row.thisPeriodTrust, null, projected)}</dl>${cost ? '<details><summary>Cost breakdown</summary>' + cost + '</details>' : ''}${members.html}</article>`;
       }).join('');
       const pools = (packet.backing?.pools || []).map(pool => `<li>${escape(pool.label || pool.accountId)}: ${money(pool.observedCash)} <small>${escape(pool.observedAsOf || 'Date unavailable')}</small></li>`).join('');
-      return `<section class="savings-inventory" data-savings-inventory="${escape(projected ? packet.forecastClosing?.status || 'unavailable' : packet.backing?.status || 'unavailable')}"><h2>One savings pot</h2><p>${stockCopy}${projected ? '' : ' ' + savedLabel + ' amounts follow unpaid planning dates across both reserves.'}</p>${projected ? !closing ? '<p>'+escape(packet.forecastClosing?.reason || 'Closing Savings data is unavailable.')+'</p>' : '' : '<p>'+escape(packet.goalAllocation?.status === 'ready' ? packet.allocationDescription : 'Calculated backing is separate from manual assignments, actual transfers and future projected top-ups.')+'</p>'}${!projected && packet.backing?.reason ? '<p>'+escape(packet.backing.reason)+'</p>' : ''}${rows}${annualBillExcluded ? '<p class="operating-note" data-savings-annual-bill-note>Travel Visa annual fee is treated as a bill; its funding is unchanged.</p>' : ''}<details><summary>Accounts &amp; evidence</summary><ul>${pools}</ul>${projected ? '' : '<p>Saved allocation is a reported earmark, not money moved or a bill paid. Physical withdrawal routing and money movement are not authorized by this view.</p>'}</details></section>`;
+      return `<section class="savings-inventory" data-savings-inventory="${escape(projected ? packet.forecastClosing?.status || 'unavailable' : packet.backing?.status || 'unavailable')}"><h2>One savings pot</h2><p>${stockCopy}${projected ? '' : ' ' + savedLabel + ' amounts follow unpaid planning dates across both reserves.'}</p>${projected ? !closing ? '<p>'+escape(packet.forecastClosing?.reason || 'Closing Savings data is unavailable.')+'</p>' : estimateCopy : '<p>'+escape(packet.goalAllocation?.status === 'ready' ? packet.allocationDescription : 'Calculated backing is separate from manual assignments, actual transfers and future projected top-ups.')+'</p>'}${!projected && packet.backing?.reason ? '<p>'+escape(packet.backing.reason)+'</p>' : ''}${rows}${annualBillExcluded ? '<p class="operating-note" data-savings-annual-bill-note>Travel Visa annual fee is treated as a bill; its funding is unchanged.</p>' : ''}<details><summary>Accounts &amp; evidence</summary><ul>${pools}</ul>${projected ? '' : '<p>Saved allocation is a reported earmark, not money moved or a bill paid. Physical withdrawal routing and money movement are not authorized by this view.</p>'}</details></section>`;
     }
     const packet = inventory || { status: 'setup-unknown', reason: 'Savings setup is unknown.' };
     const head = '<h2>Savings assigned to goals</h2>';

@@ -81,6 +81,9 @@ test('estimated pool rolls forward: sweeps land and goals pay on their dates', (
   // The first future close starts from the reported balance plus a
   // non-negative estimated boundary credit.
   assert.ok(est[0] >= 119, 'estimate never drops below the reported balance');
+  // Hand-derived: reported 119 + current boundary credit 400 (proven
+  // transfers only; none in this ledger) = 519.
+  assert.equal(est[0], 519);
   // Planned Savings moves across future periods.
   assert.ok(new Set(est).size > 1, 'Savings at period close is not frozen at one value');
   // Conservation: once the next payday sweep lands, money only moves between
@@ -97,4 +100,53 @@ test('current-period figures are untouched by the estimate', () => {
     return { income: v.incomeTotal, bad: v.balanceAfterDeductions, opening: v.opening };
   };
   assert.deepEqual(pick(advice(scenario(true))), pick(advice(scenario(false))));
+});
+
+test('current-period proposals and verified backing stay withheld under the estimate', () => {
+  const a = advice(scenario(true));
+  assert.equal(a.savingsFunding.status, 'unavailable');
+  assert.equal(a.savingsFunding.backing.status, 'unavailable');
+  const current = a.payPeriodViews.find(p => p.start === '2026-10-02');
+  assert.equal(current.fromTodayFunding?.status, 'unavailable', 'no from-today proposal is minted');
+  for (const p of a.payPeriodViews.filter(v => v.end >= '2026-10-07'))
+    assert.equal(p.plannedCostFunding?.status, 'unavailable', `${p.start} Budget funding stays withheld`);
+});
+
+test('guards: holds outside the movement class stay withheld', () => {
+  // Card coverage unconfirmed is PA-4 territory and an owner tagging ruling.
+  const card = scenario(true);
+  card.opts.currentPeriodActuals.cardCoverageRequired = true;
+  const ac = advice(card);
+  for (const start of FUTURE) assert.equal(closing(ac, start).status, 'unavailable', `${start} card hold stays withheld`);
+  // Clean movements but card coverage unconfirmed also stays withheld.
+  const cardOnly = scenario(false);
+  cardOnly.opts.currentPeriodActuals.cardCoverageRequired = true;
+  const acc = advice(cardOnly);
+  for (const start of FUTURE) assert.equal(closing(acc, start).status, 'unavailable', `${start} card-only hold stays withheld`);
+  // A negative reported stock is a protected deficit, never estimated.
+  const negative = scenario(true);
+  for (const obs of negative.plan.savingsPoolObservation?.accounts || []) obs.value = -Math.abs(obs.value || 1);
+  const an = advice(negative);
+  for (const start of FUTURE) {
+    const c = closing(an, start);
+    assert.notEqual(c.nature, 'reported-balance-estimate', `${start} negative stock is not estimated`);
+  }
+});
+
+test('render: the estimate is tagged and explains its basis; the verified close is unchanged', () => {
+  const SavingsInventory = require(path.join(process.env.ATLAS_TEST_APP_ROOT || path.resolve(__dirname, '..'), 'public/savings-inventory'));
+  const render = (a, start) => {
+    const view = a.savingsFunding.periodViews.find(p => p.start === start);
+    return SavingsInventory.html(a.savingsFunding, { asOf: a.savingsFunding.asOf, advice: a, periodId: view.id });
+  };
+  const est = render(advice(scenario(true)), '2026-10-30');
+  assert.match(est, /Savings at period close: ≈ \$1,599\.00 \(estimated\)\./);
+  assert.match(est, /data-savings-closing-estimate/);
+  assert.match(est, /Estimated from the reported Savings balance dated 2026-10-07\./);
+  assert.match(est, /may or may not already be included/);
+  assert.ok(est.includes('Verified backing is withheld: ' + MOVEMENT_REASON), 'the withheld reason is named');
+  const clean = render(advice(scenario(false)), '2026-10-30');
+  assert.match(clean, /Savings at period close: \$1,599\.00\./);
+  for (const marker of ['data-savings-closing-estimate', 'Estimated from the reported Savings balance', 'period close: ≈', '(estimated).'])
+    assert.ok(!clean.includes(marker), 'verified close carries no estimate marker: ' + marker);
 });
