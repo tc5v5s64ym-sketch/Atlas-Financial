@@ -968,6 +968,52 @@ figures unchanged by the sweep; the rest of this section (deficits
 published, never covered from Savings; no hold-back; costs debited once;
 projected transfers never establish settlement) is unchanged.
 
+**Owner simplification decisions (2026-10-29).** Dale ruled directly to
+Muse (2026-10-29 ~21:46 PT); the record is issue #787 (comment
+6515215675) and the Owner Decisions Register #765 (comment 6515217463).
+Decisions 1, 2 and 3 are settled and are not re-asked.
+
+**Decision 1 (settled): future-period Savings publishes tagged
+ESTIMATED, not withheld, when a movement cannot be uniquely qualified.**
+Savings at period close and per-goal Saved are shown, with the reason
+named. This amends, for future-period Savings publication in that case
+only, the withholding stated earlier in this section — "Unknown sweep
+means unknown dependent Budget openings and Savings closes", "Missing
+opening/inclusion proof ... keeps the closing projection unknown", and
+future Saved remaining unknown: in the unqualified-movement case those
+figures publish tagged estimated instead. Current-period, verified and
+posted figures are unchanged, and future transfers and settlement
+remain unpublished as actuals, as stated above. The Savings pool rolls
+forward across future periods. Goals whose dates have passed retire
+from later periods; retirement is not erasure — the goal remains
+visible in its own period.
+
+**Decision 2 (settled): Still to fund = max(0, Needed − Saved), tagged
+estimated, in current and future periods.** It is never "Unknown" and
+never presented as verified. Paid stays as-is until paid tracking
+exists.
+
+**Decision 3 (settled): Scenario 6 is narrowed.** A failed refresh
+shows the last good data with its date; nothing is counted twice;
+nothing stale is labelled "Now". Restore-authority protection (INT-4,
+P-8, anchors, fencing) is NOT a release requirement unless Dale
+explicitly asks again.
+
+**Proposal A (adopted): the ATLAS-080 activation path is PAUSED/FROZEN
+— frozen, not deleted.** Savings remains production-inactive by freeze.
+Under the freeze there are no builds or dispatches on that path
+(storage, custody, restore, INT-3/4/5, anchor work, key custody
+ceremony, production host composition, S4 composition, the activation
+packet); records may still land.
+
+**Proposal B (direction, not built): purchase→goal assignment moves to
+a Lunch Money tag contract, and planned inputs become ordinary
+data.json edits via git.** The contract is explicit; the adapter is
+narrow and validated; Atlas reads Lunch Money GET-only. Acceptance
+proof covers pending→posted, split, refund and reassignment, with
+parent/child conservation. No B build before the adversarial verdict
+and Atlas's disposition.
+
 **Every concept has one owner.** A new piece of work either consumes an existing
 owner or explicitly replaces it; it never quietly becomes a second one.
 
