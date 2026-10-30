@@ -12150,6 +12150,9 @@
         afterHouseholdBudget,
         balanceAfterDeductions,
         paydaySweep,
+        ...(opts.s1CurrentBoundaryCreditEstimated === true && projected
+          ? { openingTrust: 'estimated', paydaySweepTrust: 'estimated',
+            openingBasis: 'reported-balance-movement-hold' } : {}),
         predictedEndingBalance: afterHouseholdBudget,
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
           ? 'balance-after-deductions' : null,
@@ -15711,6 +15714,9 @@
               // This signed NET seam adjustment never changes observed cash or
               // grants a transfer. The existing future sweep consumer is intact.
               paydayOpts.s1CurrentBoundaryCreditCents = creditCents - fp.unreceivedCents;
+              // Decision 1: openings and sweeps derived from an estimated
+              // basis carry the estimated tag end-to-end.
+              if (fp.estimateBasis === 'reported-balance-movement-hold') paydayOpts.s1CurrentBoundaryCreditEstimated = true;
             }
           }
         }

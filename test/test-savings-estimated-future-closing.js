@@ -150,3 +150,16 @@ test('render: the estimate is tagged and explains its basis; the verified close 
   for (const marker of ['data-savings-closing-estimate', 'Estimated from the reported Savings balance', 'period close: ≈', '(estimated).'])
     assert.ok(!clean.includes(marker), 'verified close carries no estimate marker: ' + marker);
 });
+
+test('openings and sweeps derived from the estimated credit carry the estimated tag end-to-end', () => {
+  const est = advice(scenario(true)).payPeriodViews.filter(p => FUTURE.includes(p.start));
+  for (const v of est) {
+    assert.equal(v.openingTrust, 'estimated', v.start + ' opening tagged estimated');
+    assert.equal(v.paydaySweepTrust, 'estimated', v.start + ' sweep tagged estimated');
+    assert.equal(v.openingBasis, 'reported-balance-movement-hold');
+  }
+  const current = advice(scenario(true)).payPeriodViews.find(p => p.start === '2026-10-02');
+  assert.equal(current.openingTrust, undefined, 'the current period carries no estimate tag');
+  for (const v of advice(scenario(false)).payPeriodViews)
+    assert.ok(!('openingTrust' in v) && !('paydaySweepTrust' in v), v.start + ' verified rows gain no new fields');
+});
