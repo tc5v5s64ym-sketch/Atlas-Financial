@@ -25,10 +25,10 @@ function dataFor(key) {
   const data = fixture.served();
   if (key === 'calculated') for (const rows of [data.plan.income, data.plan.bills, data.plan.obligations,
     data.plan.commitments, data.plan.budget.categories]) rows.forEach(row => { row.confidence = 'confirmed'; });
-  if (key === 'large') {
-    data.plan.income.forEach(row => { row.amount = 1234567.89; });
-    data.plan.bills.forEach(row => { row.amount = 123456.78; });
-  }
+  // Large income only. Since #645 (ATLAS-076) a fixture that declares no
+  // funding sources leaves inflated bills as an unfunded gap and the Month
+  // view correctly fails closed, so bills stay at normal fixture values.
+  if (key === 'large') data.plan.income.forEach(row => { row.amount = 1234567.89; });
   if (key === 'hero-control') {
     const shifted = JSON.parse(JSON.stringify(data).replace(/\d{4}-\d{2}-\d{2}/g,
       s => new Date(Date.parse(s + 'T00:00:00Z') + 140 * 86400000).toISOString().slice(0, 10)));
