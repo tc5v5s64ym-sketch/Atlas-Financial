@@ -4353,7 +4353,13 @@
       if (c.status === 'unavailable') return c.stock === null && c.trust === 'unknown'
         && c.items.length === 0 && c.rows.length === 0
         && (c.gap == null || savingsDate(c.gap.date) && savingsCents(c.gap.shortBy) != null && c.gap.trust === 'estimated');
-      return c.status === 'ready' && c.trust === 'estimated' && c.nature === 'if-eligible-surplus-saved'
+      // Decision 1: the reported-balance estimate must name its balance date,
+      // its assumptions and the withheld verified reason.
+      const estimateShape = c.nature === 'reported-balance-estimate' && savingsDate(c.balanceAsOf)
+        && Array.isArray(c.assumptions) && c.assumptions.length > 0 && c.assumptions.every(a => typeof a === 'string')
+        && typeof c.verifiedReason === 'string' && c.verifiedReason.length > 0;
+      return c.status === 'ready' && c.trust === 'estimated'
+        && (c.nature === 'if-eligible-surplus-saved' && c.verifiedReason == null || estimateShape)
         && c.cashBasis === 'opening-savings-plus-eligible-surplus-minus-goal-costs'
         && [c.stock, c.contribution, c.unallocated, c.projectedContributions, c.projectedDraws, c.projectedDeficitCoverage].every(n => savingsCents(n) != null)
         && savingsCents(c.operatingCash, true) != null && Array.isArray(c.allocations)
@@ -12144,6 +12150,9 @@
         afterHouseholdBudget,
         balanceAfterDeductions,
         paydaySweep,
+        ...(opts.s1CurrentBoundaryCreditEstimated === true && projected
+          ? { openingTrust: 'estimated', paydaySweepTrust: 'estimated',
+            openingBasis: 'reported-balance-movement-hold' } : {}),
         predictedEndingBalance: afterHouseholdBudget,
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
           ? 'balance-after-deductions' : null,
@@ -14718,10 +14727,33 @@
   // or a reconstruction of the original payday plan.
   // Private handoff of the incumbent Budget walk, never a page calculation.
   const savingsClosingWalks = new WeakMap();
+  function withholdBudgetPeriodFunding(periods, asOf, reason) {
+    for (const period of periods || []) {
+      period.plannedCostFunding = { status: 'unavailable', reason,
+        contribution: null, trust: 'unavailable', actualSaved: null, items: [] };
+      if (period.start <= asOf && period.end >= asOf) period.fromTodayFunding = {
+        status: 'unavailable', reason, asOf,
+        basis: 'Budget-from-today', contribution: null, trust: 'unavailable',
+        actualSaved: null, items: [], periods: [], evidenceFailures: [],
+      };
+    }
+  }
+  // Decision 1 (owner 2026-10-29): under a movement-only Savings hold the
+  // native closing walk is still built for the future reported-balance
+  // estimate, then every Budget funding publication is withheld exactly as
+  // before. Current-period proposals and verified backing do not change.
   function publishBudgetPeriodFunding(plan, asOf, periods, opts) {
+    const reserves = savingsEarmarksEnabled(plan) ? reserveFundingState(plan, asOf, opts) : null;
+    const movementHold = !!reserves && reserves.status !== 'ready'
+      && savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf)
+      && (savingsDailyBackingContexts.get(plan) || savingsPolicyBacking(plan, asOf, opts || {})).holdKind === 'movement-qualification';
+    publishBudgetPeriodFundingCore(plan, asOf, periods, opts, movementHold);
+    if (movementHold) withholdBudgetPeriodFunding(periods, asOf, reserves.reason);
+  }
+  function publishBudgetPeriodFundingCore(plan, asOf, periods, opts, movementHold) {
     const coverage = cardCoverageState(plan, asOf, opts);
     const reserves = savingsEarmarksEnabled(plan) ? reserveFundingState(plan, asOf, opts) : null;
-    if (reserves && reserves.status !== 'ready') {
+    if (reserves && reserves.status !== 'ready' && !movementHold) {
       const reason = reserves.reason;
       for (const period of periods || []) {
         period.plannedCostFunding = { status: 'unavailable', reason,
@@ -15627,7 +15659,11 @@
         earlySavingsFunding = savingsDailyFunding(plan, paydayOpts.debts || base.debts, asOf,
           { ...paydayOpts, savingsAllocationPolicy: undefined }, savingsPlanning);
       }
-      if (earlySavingsFunding && earlySavingsFunding.backing?.status === 'ready'
+      // Decision 1: a movement-only hold supplies an ESTIMATED planning basis
+      // (proven transfers only), so future sweeps and the estimated Savings
+      // walk exist; future Budget rows are projections either way.
+      if (earlySavingsFunding && (earlySavingsFunding.backing?.status === 'ready'
+          || savingsPlanning.current?.estimateBasis === 'reported-balance-movement-hold')
         && savingsPlanning.current?.status === 'ready'
         && !(earlySavingsFunding.unresolved || []).length) {
         const fp = savingsPlanning.current;
@@ -15678,6 +15714,9 @@
               // This signed NET seam adjustment never changes observed cash or
               // grants a transfer. The existing future sweep consumer is intact.
               paydayOpts.s1CurrentBoundaryCreditCents = creditCents - fp.unreceivedCents;
+              // Decision 1: openings and sweeps derived from an estimated
+              // basis carry the estimated tag end-to-end.
+              if (fp.estimateBasis === 'reported-balance-movement-hold') paydayOpts.s1CurrentBoundaryCreditEstimated = true;
             }
           }
         }
@@ -21605,6 +21644,14 @@
       : savingsReportedStockOverlap(opts, reported, day)
         || (unresolved.length ? 'Unresolved protected requirements withhold allocation; no date or priority is invented.' : null);
     const allocationReady = !allocationReason;
+    // Decision 1 (owner 2026-10-29): a hold caused only by the movement
+    // coherence check (a movement that cannot be uniquely qualified) is
+    // marked so future periods may publish a separate reported-balance
+    // ESTIMATE. An unresolved pending state stays withheld. The verified
+    // reason, status and payments below are unchanged; internal signal only.
+    const holdKind = config.status === 'ready' && stockKnown && allocationReady
+      && !inventory.pools.some(p => p.observedCash < 0) && !unresolved.length
+      && !pendingMovement && coherenceReason ? 'movement-qualification' : null;
     // Owner 2026-10-07/12: present earmarks use the latest known combined
     // reported stock. Historical/pending movement and Bills/card reconciliation
     // qualify payment backing and new contributions, not this dated allocation.
@@ -21642,7 +21689,7 @@
       requirement:i.needed,backed:i.saved,parts:[{poolId:'combined-savings',accountId:null,
         goalKey:rows.find(r=>r.members.includes(i.key))?.key,amount:i.saved,location:'combined-observed-reserves'}]})):[];
     return {status:ready?'ready':'unavailable',reason,stock,items,unresolved,rows,pools:packetPools,
-      allocationDescription: coherenceReason,
+      allocationDescription: coherenceReason, holdKind,
       unallocated:ready&&left!=null?left/100:null,basis:'policy-derived-combined-observed-backing',trust:ready?'calculated':'unknown',
       goalAllocation: { status: allocationReady ? 'ready' : 'unavailable', reason: allocationReason,
         basis: 'latest-validated-provider-reported-balances', evidenceTrust: reportedKnown ? 'provider-reported' : 'unknown',
@@ -21890,13 +21937,21 @@
       return result;
     };
     const planning = context?.currentPlanning;
-    if (funding.allocationMode !== 'combined' || funding.backing.status !== 'ready'
+    // Decision 1 (owner 2026-10-29): under a movement-only hold the same
+    // conserved walk runs from the dated REPORTED balance and each close is
+    // published as a named estimate. Verified backing stays withheld.
+    const reported = funding.stock?.reportedStock;
+    const estimate = funding.backing.status !== 'ready'
+      && planning?.estimateBasis === 'reported-balance-movement-hold'
+      && reported?.status === 'ready' && savingsDate(reported.balanceThrough || reported.checkedAsOf);
+    if (funding.allocationMode !== 'combined' || (funding.backing.status !== 'ready' && !estimate)
         || planning?.status !== 'ready') return hold(planning?.reason || funding.period.reason || funding.backing.reason
           || 'Current-period receipt inclusion is not proved; a remaining surplus cannot be added to reported savings.');
     if (context.openingQualified !== true || !context.sim || !['calculated', 'estimated'].includes(context.trust))
       return hold('The native Budget cash walk is unavailable.');
     const { sim, through } = context;
-    const stock = savingsCents(funding.stock.amount), floor = savingsCents(simulationCashFloor(sim), true);
+    const stock = savingsCents(estimate ? reported.amount : funding.stock.amount),
+      floor = savingsCents(simulationCashFloor(sim), true);
     if (stock == null || floor == null)
       return hold('Reported stock, remaining current-period receipt evidence or cash floor is unavailable.');
     const items = funding.backing.items;
@@ -22121,6 +22176,18 @@
         actionPermission: 'not-granted', moneyMovementPermission: 'not-granted',
         reason: 'Forecast at period close. Each period\'s eligible surplus is swept into Savings on the following payday; routine Bills deficits are shown, not covered from Savings. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.' });
     }
+    if (estimate) {
+      const balanceAsOf = reported.balanceThrough || reported.checkedAsOf;
+      const assumptions = [
+        'Starts from the reported Savings balance dated ' + balanceAsOf + '.',
+        'An unqualified Savings movement may or may not already be included in that reported balance.',
+        'The current-period sweep counts proven household transfers only.',
+      ];
+      for (const [end, row] of result) if (row.status === 'ready') result.set(end, { ...row,
+        nature: 'reported-balance-estimate', balanceAsOf, assumptions, verifiedReason: planning.verifiedReason,
+        reason: 'Estimated from the reported Savings balance dated ' + balanceAsOf
+          + '. Verified backing is withheld: ' + planning.verifiedReason });
+    }
     return result;
   }
 
@@ -22205,8 +22272,14 @@
         remainingEntitlement: null, availableNow: null, proposal: null, unassigned: null, actualSaved: null } });
     const income = incomeReconciliationState(plan, day);
     if (income.status === 'unavailable') return unknown(income.reason);
-    if (derived.status !== 'ready') return unknown(derived.reason);
-    if (derived.funding.status !== 'ready') return unknown(derived.funding.reason);
+    // Decision 1: under a movement-only hold the published packet stays
+    // unavailable exactly as before; the remaining gates still run so a
+    // private ESTIMATED current-period planning basis can feed future
+    // reported-balance estimates. Every other hold returns here unchanged.
+    const movementEstimate = derived.status !== 'ready' && derived.holdKind === 'movement-qualification'
+      && derived.goalAllocation?.status === 'ready';
+    if (derived.status !== 'ready' && !movementEstimate) return unknown(derived.reason);
+    if (derived.funding.status !== 'ready' && !movementEstimate) return unknown(derived.funding.reason);
     if (derived.pools.some(pool => pool.deficit > 0)) return unknown('Negative savings stock remains a protected deficit.');
     if (plan.opening?.asOf !== day || opts.operatingPlan === 'unavailable') return unknown('A matching available operating opening is required.');
     const cashRows = plan.startingCash?.breakdown;
@@ -22346,6 +22419,18 @@
       .reduce((sum, tx) => sum - savingsCents(tx.amount, true), 0);
     if (planningContext) planningContext.current = currentSavingsPlanningBasis(plan, day, {
       current, packet, unique, opts, nativePeriodSurplus, nativeReceived, evidencedIncome, alreadySavedIncome, transferred });
+    if (movementEstimate) {
+      // Transfers above are the proven pairs only (an unmatched household
+      // transfer already returned unknown), so the boundary credit cannot
+      // count a Bills transfer twice. The remaining uncertainty is whether
+      // the dated reported balance includes the unqualified movement; the
+      // estimate names that assumption and never becomes verified backing.
+      if (planningContext?.current?.status === 'ready' && nativeReceived === evidencedIncome) {
+        planningContext.current = { ...planningContext.current,
+          estimateBasis: 'reported-balance-movement-hold', verifiedReason: derived.reason };
+      } else if (planningContext) planningContext.current = { status: 'unavailable', reason: derived.reason };
+      return unknown(derived.reason);
+    }
     if (nativeReceived !== evidencedIncome) return unknown('Native received income does not reconcile to the complete posted receipt evidence.');
     const entitlement = nativePeriodSurplus - alreadySavedIncome, remainingEntitlement = Math.max(0, entitlement - transferred);
     if (!Number.isSafeInteger(entitlement) || !Number.isSafeInteger(remainingEntitlement)) return unknown('Period cents exceed exact arithmetic.');

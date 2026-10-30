@@ -59,6 +59,7 @@ const suites = [
   ['latest reported Savings allocations with unchanged native funding gates', 'test-savings-latest-known-allocation.js'],
   ['present reported Savings earmarks independent of historical reconciliation', 'test-reported-savings-earmarks.js'],
   ['future Savings closing surplus, native cash conservation and receipt inclusion', 'test-savings-future-closing.js'],
+  ['PA-1 Decision 1: estimated future Savings close under an unqualified movement; guards and verified path unchanged', 'test-savings-estimated-future-closing.js'],
   ['separate bank EOD reconstruction anchor, historical preservation and Savings conservation', 'test-payday-bank-eod-anchor.js'],
   ['payday surplus sweep: full prior surplus lands on the next payday, routine deficits stay visible and uncovered', 'test-savings-payday-sweep.js'],
   ['S1 payday sweep: full available remainder incl. inherited cash sweeps, Budget opening and Savings credit consume the same published sweep', 'test-savings-payday-sweep-s1.js'],
