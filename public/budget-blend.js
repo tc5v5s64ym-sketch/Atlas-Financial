@@ -2058,8 +2058,25 @@
         line.className = 'blend-goal-needed ' + cls;
         line.setAttribute(attr + '-face', '');
         line.appendChild(document.createTextNode(label + ' '));
-        appendPrintedAmount(line, source);
+        // PA-2b: the estimate mark stays on the figure's own line; the reason
+        // plan.js prints beside it goes on a separate wrapping line beneath,
+        // so the no-wrap figure line never overflows the tile.
+        const reasonNode = source.querySelector('[data-budget-goal-still-to-fund-reason]');
+        let amountSource = source;
+        if (reasonNode) {
+          amountSource = source.cloneNode(true);
+          const clonedReason = amountSource.querySelector('[data-budget-goal-still-to-fund-reason]');
+          if (clonedReason) clonedReason.remove();
+        }
+        appendPrintedAmount(line, amountSource);
         stack.appendChild(line);
+        if (reasonNode && reasonNode.textContent.trim()) {
+          const why = document.createElement('span');
+          why.className = 'blend-goal-reason';
+          why.setAttribute('data-budget-goal-still-to-fund-reason-face', '');
+          why.textContent = reasonNode.textContent.trim();
+          stack.appendChild(why);
+        }
       });
       const bar = document.createElement('span');
       bar.className = 'blend-g-bar';
