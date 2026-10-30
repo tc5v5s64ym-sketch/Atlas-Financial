@@ -109,10 +109,12 @@ status out of a bot's wording, its reactions, or its identity.
 
 ### Merger — any agent that is not the builder, except Atlas
 
-Any agent that is not the pull request's builder may make and record the merge
-decision, except Atlas, which reviews only. Muse (dispatcher) is the default
-merger. Claude Code is a backup merger under Dale's standing approval, for pull
-requests it did not build. Grok does not merge for now. The merger decides under
+Only the agents named here make and record merge decisions, and never on a pull
+request they built. Atlas reviews only and never merges. Muse (dispatcher) is
+the default merger. Claude Code is the backup merger under Dale's standing
+approval, for pull requests it did not build: when Muse asks, or through the
+30-minute **Merge fallback** below. Grok does not merge for now. If no eligible
+merger is available, the pull request waits. The merger decides under
 Dale's standing instructions and treats review findings as evidence, not as
 delegated permission — see **Merge gate**.
 
@@ -130,9 +132,9 @@ exceptions. Extended 2026-10-30 (owner).
   SHA>` in the assignment thread before starting. The first claim owns the
   review. If no review is claimed within 30 minutes of REVIEW READY, the
   dispatcher assigns a reviewer.
-- **Merge fallback:** Muse merges by default. If a pull request has green
-  required checks and `NO BLOCKERS FOUND` on its exact head and Muse has not
-  merged within 30 minutes, the backup merger (Claude Code, never for its own
+- **Merge fallback:** Muse merges by default. The 30-minute clock starts when
+  the exact head first has both green required checks and a `NO BLOCKERS FOUND`
+  review. If Muse has not merged by then, the backup merger (Claude Code, never for its own
   build) may merge after the same **Merge gate** verification.
 - **The dispatcher still owns build-side coordination:** what is built, by
   whom, in what order, and file reservations. It handles unclaimed reviews,
@@ -169,8 +171,11 @@ defect remains a blocker because the defect is real.
 > history.
 
 **Atlas (ChatGPT) performs this review by default**, and always for a
-figures-moved pull request it did not build. A lower-risk or Atlas-built pull
-request may instead be reviewed by Claude Code or Muse. When a high-risk trigger
+figures-moved pull request it did not build; that is the only case where Atlas
+is the required reviewer (owner scope, 2026-10-30). Any other pull request,
+including one with a non-figures high-risk trigger, or an Atlas-built pull
+request may instead be reviewed by Claude Code or Muse. A Grok-built pull
+request goes to Atlas by default. When a high-risk trigger
 fires, the review is required governance before merge. When no high-risk
 trigger fires, it is not required. The active implementation agent cannot
 satisfy its own architecture gate. The review is not a GitHub status check. It
@@ -332,7 +337,7 @@ completed findings on the current full SHA but cannot write to GitHub:
 
 1. preserve that exact head; do not ask the builder to change code or rerun the
    repair loop;
-2. a non-builder agent may **clerically transcribe** the completed findings into
+2. one owner-approved non-builder agent may **clerically transcribe** the completed findings into
    a PR comment and the Merge Card review block, without deciding, upgrading,
    downgrading, or materially rewriting them; and
 3. the transcription notes that the reviewer completed the exact-head review and
@@ -388,8 +393,10 @@ When a high-risk trigger has fired, Atlas Contract / Systems Review findings of
 `NO BLOCKERS FOUND` on the current exact head are also required governance
 before merge. The builder cannot satisfy it. It is not a GitHub status check:
 `merge-card-check` does not parse or enforce reviewer identity, the outcome
-value, or review-SHA equality. `BLOCKERS FOUND` or `INCOMPLETE` returns the pull
-request to the named builder; silence is not review evidence.
+value, or review-SHA equality. `BLOCKERS FOUND` returns the pull request to the
+named builder; `INCOMPLETE` stays with the reviewer to complete (the builder has
+nothing to repair); silence is not review evidence. Dale's owner-reserved holds
+and veto on high-stakes changes are unchanged.
 
 When no high-risk trigger has fired, the systems review is not required; the
 builder's independent pre-review is the review evidence and must cover the

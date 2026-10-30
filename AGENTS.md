@@ -55,7 +55,8 @@ behavior, or a second planner. Exact-head review procedure stays in
 It may review a high-risk change, but that review is not a SHA-matching merge
 lock. Reviews publish factual findings, never a PASS or merge permission; a
 merger that is not the builder (Muse by default, never Atlas) decides.
-Independent agent review is an optional improvement audit. Confidence
+Builders obtain one independent pre-review before handback; beyond that,
+independent agent review is an optional improvement audit. Confidence
 that a PR is not junk is `npm test`, the secret hook, and the figures
 comment. `CLAUDE.md` holds the merge gate.
 
