@@ -797,6 +797,185 @@ console.log('\n=== 10. finalized historical facts close every publication alias 
     'future represented occurrence stays planned and outside paid disclosure');
 }
 
+console.log('\n=== 11. #723 gap (5): a sealed lookback withholds an unknown scheduled receipt ===');
+{
+  // Engine classification 6524178220 / scope 6524772978. Failing-before
+  // evidence is test/test-forecast-723-gap5-repro.js (from #801). Synthetic
+  // one-off receipt 'extra' dated inside the completed Aug 14 window.
+  const REASON = 'A scheduled receipt in this period has an unknown amount (income-unavailable), so period income is not published.';
+  function fixture(extraAmount, opts = {}) {
+    const plan = historyPlan();
+    plan.opening.priorAsOf = '2026-08-13';
+    plan.opening.representedEvents.push({ id: 'payroll', date: ANCHOR });
+    if (extraAmount !== undefined) {
+      const extra = { id: 'extra', label: 'Synthetic receipt', frequency: 'once',
+        date: '2026-08-18', confidence: 'confirmed' };
+      if (extraAmount !== 'missing') extra.amount = extraAmount;
+      plan.income.push(extra);
+    }
+    const packet = actualsPacket();
+    packet.representedActuals = [
+      { id: 'payroll', date: ANCHOR, actual: opts.payrollActual ?? 4017.25 },
+      { id: 'bill-prev', date: '2026-08-21', actual: 93.40 },
+      { id: 'bill-recur-prev', date: '2026-08-21', actual: 126.60 },
+    ];
+    return { plan, packet, adjust: opts.adjust || null };
+  }
+  const run = ({ plan, packet, adjust }) => F.recommend(plan, AS_OF, Object.assign({
+    targetBuffer: 500, debts, currentPeriodActuals: packet,
+    paydaySnapshot: plan.opening.paydaySnapshot,
+  }, adjust ? { incomeOccurrenceAdjust: adjust } : {}));
+  const pastOf = advice => advice.pastPeriodViews.find(p => p.start === ANCHOR);
+  const timelineOf = advice => advice.payPeriodViews.find(p => p.start === ANCHOR);
+  const notPast = advice => JSON.stringify(advice.payPeriodViews.filter(p => p.start > ANCHOR));
+  const otherHistory = advice => JSON.stringify(advice.pastPeriodViews.filter(p => p.start !== ANCHOR));
+  const independent = p => JSON.stringify({
+    periodBillLoad: p.periodBillLoad, totalBillsThisPeriod: p.totalBillsThisPeriod,
+    paidBills: p.paidBills, budgetHold: p.budgetHold, paydayCarryover: p.paydayCarryover,
+    openingKnown: p.openingKnown, opening: p.opening, paydaySweep: p.paydaySweep,
+    bills: p.bills, householdBudget: p.householdBudget,
+  });
+  const controlAdvice = run(fixture());
+  const control = pastOf(controlAdvice);
+  // 4,017.25 observed payroll + 2,000 planned partner + 50 observed gift.
+  ok(control.incomeTotal === 6067.25 && control.incomeTrust !== 'unavailable'
+      && !control.incomeUnavailableReason, 'control: completed window publishes its income');
+
+  function expectWithheld(advice, label) {
+    for (const [family, p] of [['pastPeriodViews', pastOf(advice)], ['payPeriodViews', timelineOf(advice)]]) {
+      ok(!!p, `${label} (${family}): period exists`);
+      if (!p) continue;
+      // Each dependent key must be PRESENT and null: deleting a field must not pass.
+      for (const key of ['incomeTotal', 'available', 'afterBills', 'afterRemainingBills',
+        'afterHouseholdBudget', 'balanceAfterDeductions', 'predictedEndingBalance']) {
+        ok(Object.prototype.hasOwnProperty.call(p, key) && p[key] === null,
+          `${label} (${family}): ${key} present and withheld`, String(p[key]));
+      }
+      ok(p.incomeTrust === 'unavailable' && p.afterBillsTrust === 'unavailable'
+          && p.balanceAfterDeductionsTrust === 'unavailable',
+        `${label} (${family}): dependent trust is unavailable`,
+        `${p.incomeTrust}/${p.afterBillsTrust}/${p.balanceAfterDeductionsTrust}`);
+      ok(p.incomeUnavailableReason === REASON,
+        `${label} (${family}): the exact income-unavailable reason`, String(p.incomeUnavailableReason));
+      ok(p.predictedEndingBalanceTerms == null || p.predictedEndingBalanceTerms.closes !== true,
+        `${label} (${family}): no closing identity on withheld income`);
+    }
+  }
+
+  for (const amount of ['missing', null, NaN, 'abc']) {
+    const label = `unknown ${amount === 'missing' ? 'missing' : String(amount)} receipt`;
+    const advice = run(fixture(amount));
+    expectWithheld(advice, label);
+    const p = pastOf(advice);
+    ok(incomeRow(p, 'payroll') && incomeRow(p, 'payroll').amount === 4017.25
+        && incomeRow(p, 'payroll').status === incomeRow(control, 'payroll').status
+        && incomeRow(p, 'amandaSalary15') && incomeRow(p, 'amandaSalary15').amount === AMANDA,
+      `${label}: known rows keep their amounts and planned/received status (mixed known + unknown)`);
+    ok(independent(p) === independent(control),
+      `${label}: opening, bills, budget, carryover and sweep evidence unchanged`);
+    ok(notPast(advice) === notPast(controlAdvice),
+      `${label}: current and future periods byte-identical (no lookback propagation)`);
+    ok(otherHistory(advice) === otherHistory(controlAdvice),
+      `${label}: other retained history unchanged`);
+  }
+
+  const zero = pastOf(run(fixture(0)));
+  ok(zero.incomeTotal === 6067.25 && zero.incomeTrust === control.incomeTrust
+      && !zero.incomeUnavailableReason && zero.balanceAfterDeductions === control.balanceAfterDeductions,
+    'genuine planned zero is a known zero: the period publishes exactly as the control');
+  const observedZero = pastOf(run(fixture(undefined, { payrollActual: 0 })));
+  ok(observedZero.incomeTotal === 2050 && observedZero.incomeTrust !== 'unavailable'
+      && !observedZero.incomeUnavailableReason,
+    'observed actual zero on a planned row is a qualified basis, not withheld (0 + 2,000 + 50)');
+  const positive = pastOf(run(fixture(300)));
+  ok(positive.incomeTotal === 6367.25 && !positive.incomeUnavailableReason,
+    'known planned positive publishes (6,067.25 + 300)');
+  ok(control.incomeTotal === 6067.25 && incomeRow(control, 'payroll').actual === 4017.25,
+    'qualified actual substitution: observed payroll replaces its planned amount');
+
+  const extraAdjust = adj => (s) => s && s.id === 'extra' ? adj : null;
+  const overridden = pastOf(run(fixture(null, { adjust: extraAdjust({ amount: 300, confidence: 'confirmed' }) })));
+  ok(overridden.incomeTotal === 6367.25 && !overridden.incomeUnavailableReason,
+    'override with a valid amount disposes of the unknown occurrence');
+  const overriddenZero = pastOf(run(fixture(null, { adjust: extraAdjust({ amount: 0 }) })));
+  ok(overriddenZero.incomeTotal === 6067.25 && !overriddenZero.incomeUnavailableReason,
+    'override with a declared zero disposes of the unknown occurrence');
+  const omitted = pastOf(run(fixture(null, { adjust: extraAdjust({ omit: true }) })));
+  ok(omitted.incomeTotal === 6067.25 && !omitted.incomeUnavailableReason,
+    'omission disposes of the unknown occurrence');
+  const disabled = fixture(null);
+  const disabledAdvice = F.recommend(disabled.plan, AS_OF, { targetBuffer: 500, debts,
+    currentPeriodActuals: disabled.packet, paydaySnapshot: disabled.plan.opening.paydaySnapshot,
+    disabled: ['extra'] });
+  ok(pastOf(disabledAdvice).incomeTotal === 6067.25 && !pastOf(disabledAdvice).incomeUnavailableReason,
+    'exclusion (disabled stream) disposes of the unknown occurrence');
+  expectWithheld(run(fixture(300, { adjust: extraAdjust({ amount: -5 }) })),
+    'invalid negative override');
+  // Atlas BLOCKING B1 (#803 review 5714735912): an invalid adjustment on an
+  // Other Income occurrence that independent posted-receipt reconciliation
+  // later qualifies must publish from that actual in a sealed lookback,
+  // exactly as in the active period and as on base. Without a receipt the
+  // marked row stays unresolved and withholds. No priorAsOf here, so the
+  // occurrence takes the ordinary expected-row path that reconciliation reads.
+  {
+    const reconPlan = (refundDate) => ({
+      defaults: { targetBuffer: 500 },
+      startingCash: { breakdown: [{ id: 'chequing-a', label: 'BILLS ACCOUNT', value: 2300, class: 'spendable' }] },
+      opening: { asOf: AS_OF, paydaySnapshot: { periodStart: '2026-09-11', asOf: '2026-09-11', opening: 1000 },
+        representedEvents: [] },
+      income: [
+        { id: 'payroll', frequency: 'biweekly', anchor: ANCHOR, amount: 2000, confidence: 'confirmed' },
+        { id: 'partner', frequency: 'monthly', day: 15, amount: 1500, confidence: 'confirmed' },
+        { id: 'refund', label: 'Synthetic refund', frequency: 'once', date: refundDate, amount: 175,
+          incomeClass: 'other', confidence: 'estimated' },
+      ],
+      bills: [], obligations: [], commitments: [], budget: { categories: [] },
+    });
+    const reconPacket = (refundDate, withReceipt) => ({
+      schema: 'atlas-current-period-actuals/v1', observationAsOf: AS_OF,
+      coverageStart: '2026-07-31', coverageThrough: AS_OF, pendingCoverage: 'complete',
+      representedActuals: [],
+      transactions: withReceipt ? [{ id: 'tx-refund', date: refundDate, amount: -175, isIncome: true,
+        categoryLabel: 'gifts', displayedPayee: 'Synthetic refund', accountRole: 'household-cash' }] : [],
+    });
+    const reconRun = (refundDate, adjAmount, withReceipt) => F.recommend(reconPlan(refundDate), AS_OF, {
+      targetBuffer: 500, debts, currentPeriodActuals: reconPacket(refundDate, withReceipt),
+      incomeOccurrenceAdjust: (s) => s && s.id === 'refund' ? { amount: adjAmount, confidence: 'confirmed' } : null,
+    });
+    for (const [label, adjAmount] of [["string '250'", '250'], ['boolean true', true]]) {
+      // Sealed lookback (Aug 14 window): payroll 2,000 + partner 1,500 + reconciled refund 175.
+      const sealedAdvice = reconRun('2026-08-20', adjAmount, true);
+      for (const [family, p] of [['pastPeriodViews', pastOf(sealedAdvice)], ['payPeriodViews', timelineOf(sealedAdvice)]]) {
+        const refund = incomeRow(p, 'refund');
+        ok(p && p.incomeTotal === 3675 && p.incomeTrust !== 'unavailable' && !p.incomeUnavailableReason
+            && p.balanceAfterDeductions != null,
+          `B1 sealed lookback ${label} + reconciled receipt (${family}): publishes from the actual`,
+          p && `${p.incomeTotal}/${p.incomeTrust}`);
+        ok(refund && refund.amount === 175 && refund.actual === 175 && refund.status === 'received'
+            && refund.reconciledFrom === 'unique-unmatched-same-date',
+          `B1 sealed lookback ${label} (${family}): the reconciled row keeps its actual and received status`);
+      }
+      const unresolved = reconRun('2026-08-20', adjAmount, false);
+      expectWithheld(unresolved, `B1 sealed lookback ${label} without a receipt`);
+      // Active control (Aug 28 window holds as-of Sep 9): same publication.
+      const active = reconRun('2026-09-02', adjAmount, true).payPeriodViews
+        .find(p => p.start <= '2026-09-02' && p.end >= '2026-09-02');
+      ok(active && active.role === 'active' && active.incomeTrust !== 'unavailable' && !active.incomeUnavailableReason
+          && incomeRow(active, 'refund') && incomeRow(active, 'refund').actual === 175,
+        `B1 active control ${label} + reconciled receipt: publishes from the actual`,
+        active && `${active.role}/${active.incomeTotal}/${active.incomeTrust}`);
+    }
+    const valid = pastOf(reconRun('2026-08-20', 175, true));
+    ok(valid.incomeTotal === 3675 && !valid.incomeUnavailableReason,
+      'B1 valid numeric adjustment + reconciled receipt: publishes unchanged');
+  }
+  // A non-numeric override is not asserted here: with priorAsOf this
+  // occurrence takes the not-relied-upon row path, which carries no
+  // invalid-adjustment mark in the active period either (separate
+  // ATLAS-026 finding, outside gap 5). The sealed-lookback non-numeric
+  // case is pinned in test-budget-timeline-pay-periods.js.
+}
+
 if (failures) {
   console.error(`\n${failures} CHECK(S) FAILED`);
   process.exit(1);
