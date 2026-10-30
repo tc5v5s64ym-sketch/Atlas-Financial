@@ -1,0 +1,6 @@
+DIAGNOSTIC ONLY - NON-EXECUTABLE TEXT
+Purpose: bounded GitHub connector capability test in the regular ChatGPT session.
+Scope: one isolated branch, one Draft PR, one test comment, one COMMENT review.
+This disposable fixture is not product code, a workflow, a dependency, or configuration.
+This file records no PASS verdict, approval, merge, deployment, or financial action.
+Keep the pull request in Draft and unmerged pending the owner's separate decision.
