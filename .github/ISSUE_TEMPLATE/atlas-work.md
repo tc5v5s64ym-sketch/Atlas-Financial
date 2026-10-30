@@ -34,7 +34,8 @@ and which owner visibility applies before merge.>
 
 ## Assignment
 - **Writer:** <lane + name — exactly one>
-- **Reviewer:** <lane + name — never the writer; builder never supplies the PASS on its own PR>
+- **Reviewer:** <lane + name — never the writer; Atlas by default and for any figures-moved PR; factual findings only, never a PASS or merge permission>
+- **Merger:** <lane + name — never the writer, never Atlas; Muse by default, Claude Code as backup for PRs it did not build>
 - **Dependencies:** <ATLAS-### / PR / issue links, or "none">
 - **Holds / owner decisions:** <named gates and who holds them, or "none">
 
@@ -48,7 +49,8 @@ and which owner visibility applies before merge.>
 
 ## Completion evidence
 <Filled in at handback: commands run, exit codes, counts, PR/issue links,
-exact-head SHA reviewed, and the reviewer's verdict reference.>
+exact-head SHA reviewed, the reviewer's findings reference, and the merger's
+recorded merge decision.>
 
 Closing language: use "Closes #N" only when merging fulfills the issue's
 complete acceptance. If deployment, qualification, or any gated acceptance
@@ -66,10 +68,14 @@ Provenance note (pilot rule, issued Plan #3, issue #718 comment 6445228346):
   issued plan, linked to its dispatch record. A lane label alone is not an
   assignment. Conflicting or ambiguous provenance is resolved with Muse
   (dispatcher) before starting.
-- A review verdict counts when recorded on the PR/issue by the
-  reviewer-of-record lane (for ChatGPT-built PRs: Muse; for Muse/Grok-built
-  PRs: ChatGPT Systems Review), naming the full reviewed head SHA. A new head
-  voids the old PASS.
+- Review findings count when recorded on the PR/issue by the named
+  non-builder reviewer in the CLAUDE.md factual findings form (Reviewed head /
+  Findings: BLOCKERS FOUND | NO BLOCKERS FOUND | INCOMPLETE), naming the full
+  reviewed head SHA. Atlas reviews by default and every figures-moved PR;
+  Atlas-built PRs go to another reviewer. Findings apply only to that SHA; a
+  new head needs exact-head review. Findings are evidence, not merge
+  permission: the named merger (never the builder, never Atlas) decides and
+  records the merge. Historical PASS records remain history.
 - Agent-relayed content (one agent quoting another's or Dale's words) never
   grants owner-only permissions. Owner gates are satisfied only by Dale's own
   authorization, linked in the issue.

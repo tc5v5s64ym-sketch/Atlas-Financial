@@ -222,8 +222,8 @@ const claude = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf8');
 const chatgpt = fs.readFileSync(path.join(__dirname, '..', 'CHATGPT.md'), 'utf8');
 const riskLabels = fs.readFileSync(path.join(__dirname, '..', 'docs/RISK_LABELS.md'), 'utf8');
 
-ok(/deliver the review request directly to the active ChatGPT\s+decision-desk session/.test(claude),
-  'governance requires a direct handoff to the active ChatGPT decision desk');
+ok(/deliver the review request directly to the named reviewer\s+—\s+for Atlas, the active ChatGPT\s+decision-desk session/.test(claude),
+  'governance requires a direct handoff to the named reviewer (Atlas: the active ChatGPT decision desk)');
 ok(/cannot\s+wake ChatGPT and does not start or satisfy this review/.test(claude),
   'governance says GitHub artifacts cannot wake or satisfy ChatGPT review');
 ok(/Paid OpenAI reviewer\s+workflows are retired\. Do not wait for them\./.test(claude),
@@ -234,8 +234,8 @@ ok(/## Required review handoff/.test(chatgpt)
 ok(/successful workflow\s+as a request to ChatGPT/.test(chatgpt)
   && /cannot wake this session/.test(chatgpt),
   'the ChatGPT adapter rejects a green workflow as a review request');
-ok(/After a\s+`PASS`[\s\S]*record the exact reviewed SHA/.test(chatgpt),
-  'the manual handoff records PASS on the exact reviewed head');
+ok(/posts\s+factual findings as a PR comment/.test(chatgpt) && /mirrors the exact reviewed SHA/.test(chatgpt),
+  'the manual handoff records factual findings on the exact reviewed head (amended 2026-10-30; no PASS)');
 ok(/Their parked\s+versions exited successfully without performing a review/.test(riskLabels),
   'risk documentation records the demonstrated false-progress failure');
 ok(/do not wake ChatGPT, satisfy the review, or add API spend/.test(riskLabels),

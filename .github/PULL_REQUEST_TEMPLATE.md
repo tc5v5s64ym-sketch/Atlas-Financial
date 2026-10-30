@@ -6,7 +6,8 @@
   closed value, and Required opens REQUIRED or NOT REQUIRED (with N/A for
   head, reviewer, and outcome when not required). It does not interpret prose,
   scope, negation, findings, or review quality. It does not parse or enforce
-  ChatGPT identity, PASS, BLOCKING, or review-SHA equality.
+  reviewer identity, the review outcome value, or review-SHA equality, and it
+  authenticates nothing.
 
   Atlas Contract / Systems Review is required governance when a CLAUDE.md
   high-risk trigger fires, and not required otherwise. That is not a GitHub
@@ -68,9 +69,16 @@
   `CLAUDE.md` owns the narrow trigger list and review protocol.
 
   When a high-risk trigger fires, this review is REQUIRED governance before
-  merge. ChatGPT performs it on the current exact head. The builder cannot
-  satisfy it. Request it only on a stable merge candidate, not the first
-  implementation attempt. Outcome is PASS or BLOCKING.
+  merge. A non-builder reviewer performs it on the current exact head: Atlas
+  by default and for every figures-moved PR; Claude Code or Muse may review a
+  lower-risk or Atlas-built PR. The builder cannot satisfy it. Request it only
+  on a stable merge candidate, not the first implementation attempt.
+
+  The reviewer posts factual findings as a PR comment (Reviewed head /
+  Findings) per CLAUDE.md. Outcome is BLOCKERS FOUND, NO BLOCKERS FOUND, or
+  INCOMPLETE (PENDING until findings exist). Findings are not PR approval or
+  merge authorization; a non-builder merger other than Atlas (Muse by
+  default) makes and records the merge decision.
 
   When no high-risk trigger fires, it is NOT REQUIRED.
 
@@ -79,15 +87,15 @@
   This is not a GitHub status check. Closed forms enforced by CI:
   - Required opens REQUIRED or NOT REQUIRED.
   - NOT REQUIRED: head, reviewer, and outcome are each N/A.
-  Review SHA / PASS / PENDING / BLOCKING are documentary. They do not fail
-  the mechanical check.
+  Review SHA and outcome values are documentary. They do not fail the
+  mechanical check. Historical PASS / BLOCKING cards remain valid history.
 -->
 
 - **Required**: <!-- REQUIRED — trigger; or NOT REQUIRED — why no high-risk trigger fired -->
 - **Exact reviewed head**: <!-- 40-character SHA, or N/A -->
-- **Reviewer**: <!-- ChatGPT, or N/A -->
-- **Review outcome**: <!-- PASS, BLOCKING, or N/A -->
-- **Findings and fix verification**: <!-- blockers and dispositions; follow-up verification; none; or N/A -->
+- **Reviewer**: <!-- non-builder reviewer (e.g. Atlas), or N/A -->
+- **Review outcome**: <!-- BLOCKERS FOUND, NO BLOCKERS FOUND, INCOMPLETE, PENDING, or N/A -->
+- **Findings and fix verification**: <!-- link to findings comment; blockers and dispositions; follow-up verification; none; or N/A -->
 
 ### Additional findings
 

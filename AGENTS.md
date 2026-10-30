@@ -53,7 +53,10 @@ behavior, or a second planner. Exact-head review procedure stays in
 
 **The review lanes are not interchangeable.** ChatGPT is the decision desk.
 It may review a high-risk change, but that review is not a SHA-matching merge
-lock. Independent agent review is an optional improvement audit. Confidence
+lock. Reviews publish factual findings, never a PASS or merge permission; a
+merger that is not the builder (Muse by default, never Atlas) decides.
+Builders obtain one independent pre-review before handback; beyond that,
+independent agent review is an optional improvement audit. Confidence
 that a PR is not junk is `npm test`, the secret hook, and the figures
 comment. `CLAUDE.md` holds the merge gate.
 
@@ -105,10 +108,12 @@ This is the one launcher. Do not write a second one.
 > prefer a fresh `agent/<outcome>` branch, but an approved surface's enforced
 > namespace is allowed exactly as `docs/BUILDER_PORTABILITY.md` defines. One
 > independently provable outcome, merge card filled, findings dispositioned.
-> Stop only for an owner-reserved item. Merge on green tests and a complete card
-> when no high-risk trigger fired. When a high-risk trigger has fired, merge
-> also waits for Atlas Contract / Systems Review `PASS` on the current exact
-> head.
+> Stop only for an owner-reserved item. Obtain an independent pre-review, then
+> hand back; nobody reviews or merges their own build. The merger — never the
+> builder, never Atlas — merges on green tests and a complete card when no
+> high-risk trigger fired. When a high-risk trigger has fired, merge also waits
+> for Atlas Contract / Systems Review findings of `NO BLOCKERS FOUND` on the
+> current exact head.
 
 Before implementing, report only: the source/item, the current-state verdict,
 whether code is actually required, and any owner gate. Then go.
