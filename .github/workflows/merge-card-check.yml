@@ -3,7 +3,9 @@ name: Merge card check
 # Completeness only. This check proves the PR named what it is: heading,
 # required rows, closed primary-risk and current-state openings, and a
 # Required / NOT REQUIRED decision. It does not lock merge on a review SHA,
-# a PASS/PENDING/NOT PASS outcome, or a ChatGPT review.
+# a review outcome (BLOCKERS FOUND / NO BLOCKERS FOUND / INCOMPLETE /
+# PENDING, N/A when NOT REQUIRED, or historical PASS values), or any
+# reviewer's identity. It authenticates nothing.
 #
 # Confidence that the change is not junk comes from `npm test`, the secret
 # hook, and the figures comment. This check only keeps the card aligned
@@ -321,7 +323,8 @@ jobs:
                 problems.push('"Required" must open with REQUIRED or NOT REQUIRED.');
               }
 
-              // Review SHA / PASS / PENDING / trusted Atlas outcome are
+              // Review SHA and outcome values (BLOCKERS FOUND / NO BLOCKERS
+              // FOUND / INCOMPLETE / PENDING, or historical PASS) are
               // documentary. They must not fail this check: a later fix
               // would otherwise invalidate the card and hang the PR.
               if (notRequired) {

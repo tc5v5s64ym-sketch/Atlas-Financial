@@ -122,9 +122,12 @@ deterministic gate state, and any prior blocking finding that bounds a
 re-review. Do not treat a GitHub review, comment, label, or successful workflow
 as a request to ChatGPT; those artifacts cannot wake this session.
 
-ChatGPT reviews that exact head independently of the active builder. After a
-`PASS`, record the exact reviewed SHA, `Reviewer: ChatGPT`, outcome, and finding
-closure in the Merge Card, then re-run the applicable deterministic gates. If
+ChatGPT reviews that exact head independently of the active builder and posts
+factual findings as a PR comment in the `CLAUDE.md` form (`Reviewed head:` /
+`Findings: BLOCKERS FOUND | NO BLOCKERS FOUND | INCOMPLETE`), never a PASS,
+GitHub APPROVE, or merge permission; it does not make merge decisions. The Merge
+Card mirrors the exact reviewed SHA, reviewer, outcome, and finding closure, and
+a non-builder merger decides. If
 the head moves, request review again on the new full SHA. Paid OpenAI reviewer
 workflows are retired; never wait for them and do not add API spend to perform
 this manual review.
