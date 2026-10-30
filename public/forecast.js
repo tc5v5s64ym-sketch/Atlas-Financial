@@ -10266,7 +10266,16 @@
   // a negative value is a deficit and is published, never clamped. While
   // card purchase/payment matching is unresolved it is a plan, not
   // verified safe-to-spend cash, so it carries estimated trust and a reason.
-  function plannedPeriodClosePublication(value, terms, trusts, cardMatchUnresolved) {
+  function plannedPeriodClosePublication(value, terms, trusts, cardState, cardReason) {
+    if (cardState === 'hard') {
+      // A card hold caused by anything other than unresolved MATCHING
+      // (missing history or amounts, unknown Bills, unavailable minimum)
+      // leaves the plan's cash basis unknown: never a number, never zero.
+      return { plannedPeriodClose: null, plannedPeriodCloseTrust: 'unknown', plannedPeriodCloseTerms: null,
+        plannedPeriodCloseReason: 'The planned period close is unavailable: card coverage is unavailable for a reason other than matching. '
+          + (cardReason || '') };
+    }
+    const cardMatchUnresolved = cardState === 'match';
     const known = typeof value === 'number' && Number.isFinite(value)
       && [terms.opening, terms.incomeAdded, terms.periodBillLoad, terms.budgetHold, terms.annualSavingsNeed]
         .every(v => typeof v === 'number' && Number.isFinite(v));
@@ -10289,7 +10298,7 @@
         deficit: close < 0 },
       plannedPeriodCloseReason: cardMatchUnresolved
         ? 'Planned remainder: card purchase and payment matching is unresolved, so this is an estimated plan, not verified safe-to-spend cash or proof that card balances are paid.'
-        : null,
+        : trust === 'estimated' ? 'Planned remainder: an input to this close (or an earlier period it carries from) is estimated.' : null,
     };
   }
 
@@ -11477,6 +11486,39 @@
       backfill: row.backfill, cardPayment: row.cardPayment, otherPurpose: row.otherPurpose || null,
       purchases: (row.purchases || []).map(p => ({ date: p.date, amount: p.amount, categoryLabel: p.categoryLabel })) } : null;
   }
+  // PA-4 (adopted packet #787 6526949494; Atlas classification 6527529634):
+  // a card hold whose only causes are unresolved MATCHING (an unconfirmed
+  // coverage opening, an unconfirmed payment/credit purpose, or a single
+  // known Bills balance below the matching-derived reserve) may feed an
+  // estimated planning projection. Missing amounts or history, an
+  // unavailable card minimum, or an absent/invalid/unknown Bills balance
+  // stay hard holds. Verified coverage and available-now are unchanged.
+  const CARD_MATCH_ISSUES = new Set(['coverage-opening-unconfirmed',
+    'coverage-payment-or-credit-purpose-unconfirmed', 'coverage-bills-backing-unconfirmed']);
+  function cardMatchOnlyHold(plan, coverage) {
+    if (!coverage || coverage.status !== 'unavailable' || coverage.cardMinimumPayments) return false;
+    const codes = (coverage.issues || []).map(issue => issue && issue.code);
+    if (!codes.length || !codes.every(code => CARD_MATCH_ISSUES.has(code))) return false;
+    if (codes.includes('coverage-bills-backing-unconfirmed')) {
+      const bills = (plan?.startingCash?.breakdown || []).filter(row => row && row.id === BILLS_ACCOUNT_ID);
+      if (bills.length !== 1 || typeof bills[0].value !== 'number' || !Number.isFinite(bills[0].value)
+        || bills[0].unknown === true) return false;
+    }
+    return true;
+  }
+  // PA-4 (Atlas 6527529634): when the only Bills issue is a known balance
+  // below the matching-derived reserve, disclose that gap on its own. It is a
+  // diagnostic, never deducted from the plan and never the plan deficit: the
+  // reserve itself rests on unresolved matching, so it is estimated.
+  function cardReserveShortfallDisclosure(plan, coverage) {
+    if (!cardMatchOnlyHold(plan, coverage)
+      || !(coverage.issues || []).some(issue => issue && issue.code === 'coverage-bills-backing-unconfirmed')) return null;
+    const bills = (plan.startingCash.breakdown || []).find(row => row && row.id === BILLS_ACCOUNT_ID);
+    const reserve = savingsCents(coverage.knownObservedReserve), cash = savingsCents(bills.value, true);
+    if (reserve == null || cash == null || cash >= reserve) return null;
+    return { status: 'disclosed', amount: (reserve - cash) / 100, trust: 'estimated', deducted: false,
+      reason: 'The Bills balance is below the card purchases not yet matched to payments. Because matching is unresolved this gap is an estimate; it is shown, not deducted, and is not the plan deficit.' };
+  }
   function cardCoverageState(plan, asOf, opts) {
     const packet = currentPeriodActualsPacket(opts) || {};
     const coverage = visaPaymentReconciliation(packet.transactions, { plan, asOf, packet, debts: opts && opts.debts });
@@ -11611,6 +11653,9 @@
       Object.assign({}, opts, { debts: debts || opts.debts || [] }), priority);
     const periods = [];
     let previousEnding = null;
+    // PA-4: an estimated planned close carries its estimated trust into the
+    // later periods that open from it.
+    let previousPlannedTrust = 'calculated';
     let unavailableOpeningLost = false;
     let openingChainLost = false;
     const heldCycleStarts = new Set();
@@ -12224,7 +12269,11 @@
           opening: paydayBoundaryOpening ? opening : null, incomeAdded, periodBillLoad,
           budgetHold: planUnavailable ? null : budget.hold, annualSavingsNeed,
         }, [balanceAfterDeductionsTrust, opts.s1CurrentBoundaryCreditEstimated === true && projected
-          ? 'estimated' : 'calculated'], !lookback && cardCoverage.status === 'unavailable'),
+          ? 'estimated' : 'calculated', projected ? previousPlannedTrust : 'calculated'],
+        lookback || cardCoverage.status !== 'unavailable' ? 'none'
+          : cardMatchOnlyHold(plan, cardCoverage) ? 'match' : 'hard', cardCoverage.reason),
+        ...(role === 'active' && cardReserveShortfallDisclosure(plan, cardCoverage)
+          ? { cardReserveShortfall: cardReserveShortfallDisclosure(plan, cardCoverage) } : {}),
 
         extraDebt,
         firstCard: cards.firstCard,
@@ -12250,6 +12299,7 @@
                     ? 'Opening this pay period. Carried forward, not income.'
                     : null))))),
       });
+      if (periods[periods.length - 1].plannedPeriodCloseTrust === 'estimated') previousPlannedTrust = 'estimated';
     }
     const active = periods.find(p => p.role === 'active') || periods[0] || null;
     if (active && active.role === 'active') {

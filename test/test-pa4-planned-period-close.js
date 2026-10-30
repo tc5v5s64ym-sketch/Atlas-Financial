@@ -100,9 +100,43 @@ test('available-now qualification is unchanged under the card hold', () => {
 
 test('an unknown opening publishes no planned close, with the reason', () => {
   const p = plan(); delete p.opening.paydaySnapshot; p.startingCash.breakdown[0].value = null;
-  const a = F.recommend(p, ASOF, { weeklyVariable: 0, debts: [], currentPeriodActuals: actuals(true) });
+  const a = F.recommend(p, ASOF, { weeklyVariable: 0, debts: [], currentPeriodActuals: actuals(false) });
   const active = periods(a)[0];
   assert.equal(active.plannedPeriodClose, null, 'unknown opening is never zero');
   assert.equal(active.plannedPeriodCloseTrust, 'unknown');
   assert.match(active.plannedPeriodCloseReason, /opening or a deduction is not known/);
+});
+
+// Pre-review finding: only a card-MATCHING hold may estimate; every other
+// card hold leaves the plan's cash basis unknown (never a number, never 0).
+function hardHold(mutate) {
+  const p = plan(), pkt = actuals(true); mutate(p, pkt);
+  return periods(F.recommend(p, ASOF, { weeklyVariable: 0, debts: [], currentPeriodActuals: pkt }));
+}
+for (const [label, mutate] of [
+  ['incomplete transaction history', (p, pkt) => { pkt.transactionCoverage = 'partial'; }],
+  ['unknown Bills balance', (p) => { p.startingCash.breakdown[0].unknown = true; }],
+  ['unconfirmed card currency', (p, pkt) => { pkt.transactions[0].currency = 'USD'; }],
+]) {
+  test(`hard card hold (${label}): planned close is null with the card reason`, () => {
+    for (const per of hardHold(mutate)) {
+      assert.equal(per.plannedPeriodClose, null, `${per.start}: no number`);
+      assert.equal(per.plannedPeriodCloseTrust, 'unknown');
+      assert.match(per.plannedPeriodCloseReason, /card coverage is unavailable for a reason other than matching/);
+    }
+  });
+}
+
+test('estimated trust carries forward into periods that open from an estimated close', () => {
+  const p = plan(); p.bills[0].confidence = 'estimated'; // an estimated deduction in each period
+  const pkt = actuals(false);
+  pkt.transactions = [];
+  const per = periods(F.recommend(p, ASOF, { weeklyVariable: 0, debts: [], currentPeriodActuals: pkt }));
+  const firstEstimated = per.findIndex(x => x.plannedPeriodCloseTrust === 'estimated');
+  assert.ok(firstEstimated >= 0, 'fixture: an estimated close exists');
+  for (const later of per.slice(firstEstimated + 1)) {
+    if (later.plannedPeriodClose === null) continue;
+    assert.equal(later.plannedPeriodCloseTrust, 'estimated', `${later.start}: carried estimated, never calculated`);
+    assert.match(later.plannedPeriodCloseReason, /estimated/);
+  }
 });
