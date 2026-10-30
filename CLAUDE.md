@@ -116,6 +116,29 @@ requests it did not build. Grok does not merge for now. The merger decides under
 Dale's standing instructions and treats review findings as evidence, not as
 delegated permission — see **Merge gate**.
 
+### Review routing and claims — no per-review dispatch
+
+Routine review and merge run by rule; the dispatcher steps in only on
+exceptions. Extended 2026-10-30 (owner).
+
+- **Default reviewer, named by the builder in its REVIEW READY post:**
+  a figures-moved pull request not built by Atlas → Atlas; an Atlas-built pull
+  request → Claude Code (Muse if Claude Code built part of it); a lower-risk
+  pull request built by Claude Code → Atlas, or Muse if Atlas is unavailable; a
+  Muse-built pull request → Atlas.
+- **Claim before reviewing:** the reviewer posts `Reviewing #<n> at <full head
+  SHA>` in the assignment thread before starting. The first claim owns the
+  review. If no review is claimed within 30 minutes of REVIEW READY, the
+  dispatcher assigns a reviewer.
+- **Merge fallback:** Muse merges by default. If a pull request has green
+  required checks and `NO BLOCKERS FOUND` on its exact head and Muse has not
+  merged within 30 minutes, the backup merger (Claude Code, never for its own
+  build) may merge after the same **Merge gate** verification.
+- **The dispatcher still owns build-side coordination:** what is built, by
+  whom, in what order, and file reservations. It handles unclaimed reviews,
+  stalled merges and conflicts.
+
+
 ### GitHub Actions
 
 The deterministic hard gates. A required check that is missing, stale, skipped,
