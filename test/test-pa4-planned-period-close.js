@@ -208,3 +208,57 @@ test('PA-1 movement hold: every projected planned close is estimated, with a rea
     assert.match(v.plannedPeriodCloseReason, /is estimated/);
   }
 });
+
+// Atlas #809 B1: a Savings-funded yearly bill is excluded from paycheck Bills
+// and enters the close as annualSavingsNeed; its own confidence must feed the
+// close's trust. Invented fixture: 200 premium due 2026-10-25 against a
+// purpose-reserve goal; every other input confirmed.
+function annualFixture(confidence) {
+  const { ledger } = require('./fixtures/chronological-savings-data');
+  const { advance } = require('./fixtures/savings-daily-allocation-contract');
+  const i = advance(ledger(), '2026-10-10');
+  i.plan.income[0].anchor = '2026-08-14';
+  i.plan.income = i.plan.income.map(row => ({ ...row, confidence: 'confirmed' }));
+  i.plan.opening.paydaySnapshot = { periodStart: '2026-10-09', asOf: '2026-10-09', opening: 80 };
+  i.plan.opening.representedEvents = [];
+  i.opts.currentPeriodActuals.coverageStart = '2026-10-09';
+  i.opts.currentPeriodActuals.savingsFetchCoverage.startDate = '2026-10-09';
+  i.plan.bills = [{ id: 'annual', label: 'Invented annual premium', amount: 200, frequency: 'yearly',
+    month: 10, day: 25, firstDue: '2026-10-25', jointCash: false, confidence }];
+  i.plan.savingsEarmarks.pools[1].goalRefs = [{ kind: 'yearly-bill', id: 'annual' }];
+  const a = F.recommend(i.plan, i.asOf, { ...i.opts, debts: [], weeklyVariable: 0 });
+  const views = a.payPeriodViews.filter(p => p.role === 'future');
+  return { due: views.find(p => p.start === '2026-10-23'), later: views.filter(p => p.start > '2026-10-23') };
+}
+
+test('annual provision confirmed (control): the close is calculated with the provision deducted', () => {
+  const { due, later } = annualFixture('confirmed');
+  assert.ok(due.plannedPeriodCloseTerms.annualSavingsNeed > 0, 'fixture: an unfunded provision lands in this period');
+  assert.equal(due.plannedPeriodCloseTrust, 'calculated');
+  assert.equal(due.plannedPeriodCloseReason, null);
+  for (const p of later) assert.equal(p.plannedPeriodCloseTrust, 'calculated', `${p.start}: control stays calculated`);
+});
+
+test('annual provision estimated: the close is estimated with a reason, and later closes stay estimated', () => {
+  const { due, later } = annualFixture('estimated');
+  assert.ok(due.plannedPeriodCloseTerms.annualSavingsNeed > 0);
+  assert.equal(due.plannedPeriodCloseTrust, 'estimated', 'never promoted to calculated');
+  assert.match(due.plannedPeriodCloseReason, /an input to this close .* is estimated/);
+  assert.ok(later.length);
+  for (const p of later) {
+    if (p.plannedPeriodClose === null) continue;
+    assert.equal(p.plannedPeriodCloseTrust, 'estimated', `${p.start}: dependent close carries the estimate`);
+  }
+});
+
+test('annual provision with unknown confidence: no number; later closes are unknown, never calculated', () => {
+  const { due, later } = annualFixture('unknown');
+  assert.equal(due.plannedPeriodClose, null, 'a numeric amount does not make unknown confidence calculated');
+  assert.equal(due.plannedPeriodCloseTrust, 'unknown');
+  assert.match(due.plannedPeriodCloseReason, /unavailable trust/);
+  assert.ok(later.length);
+  for (const p of later) {
+    assert.equal(p.plannedPeriodClose, null, `${p.start}: depends on an unknown close`);
+    assert.equal(p.plannedPeriodCloseTrust, 'unknown');
+  }
+});

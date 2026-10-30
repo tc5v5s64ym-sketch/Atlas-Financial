@@ -10288,7 +10288,7 @@
       : cardMatchUnresolved || base === 'estimated' ? 'estimated' : 'calculated';
     if (trust === 'unknown') {
       return { plannedPeriodClose: null, plannedPeriodCloseTrust: 'unknown', plannedPeriodCloseTerms: null,
-        plannedPeriodCloseReason: 'The planned period close is unavailable: a deduction has unavailable trust.' };
+        plannedPeriodCloseReason: 'The planned period close is unavailable: a deduction, or an earlier projected close it carries from, has unavailable trust.' };
     }
     const close = roundCent(value);
     return {
@@ -12021,10 +12021,19 @@
         typeof budget.hold === 'number' && Number.isFinite(budget.hold)
           ? (budget.holdTrust === 'estimated' ? 'estimated' : 'calculated') : 'unavailable');
       const balanceAfterDeductions = afterHouseholdBudget;
-      const annualSavingsNeed = roundCent(annualSavingsEvents.filter(e => {
+      const annualSavingsWindowEvents = annualSavingsEvents.filter(e => {
         const date = cashWalkDate(e, asOf);
         return date >= window.start && date <= window.end;
-      }).reduce((sum, e) => sum + Math.max(0, -operatingEventAmount(e)), 0));
+      });
+      const annualSavingsNeedAmount = e => Math.max(0, -operatingEventAmount(e));
+      const annualSavingsNeed = roundCent(annualSavingsWindowEvents
+        .reduce((sum, e) => sum + annualSavingsNeedAmount(e), 0));
+      // PA-4 (Atlas #809 B1): the annual provision is a deduction of the
+      // planned close, so its own confidence feeds the close's trust. An
+      // estimated provision is estimated; unknown confidence is unavailable,
+      // never calculated merely because the amount is numeric.
+      const annualSavingsNeedTrust = periodWaterfallTotalTrust(
+        annualSavingsWindowEvents, annualSavingsNeed, annualSavingsNeedAmount);
       const predictedEndingBalanceTerms = composeBalanceAfterDeductionsTerms(
         incomeTotal,
         periodBillLoad,
@@ -12270,8 +12279,9 @@
         ...plannedPeriodClosePublication(lookback ? null : cashAfterHouseholdBudget, {
           opening: paydayBoundaryOpening ? opening : null, incomeAdded, periodBillLoad,
           budgetHold: planUnavailable ? null : budget.hold, annualSavingsNeed,
-        }, [balanceAfterDeductionsTrust, opts.s1CurrentBoundaryCreditEstimated === true && projected
-          ? 'estimated' : 'calculated', projected ? previousPlannedTrust : 'calculated'],
+        }, [balanceAfterDeductionsTrust, annualSavingsNeedTrust,
+          opts.s1CurrentBoundaryCreditEstimated === true && projected
+            ? 'estimated' : 'calculated', projected ? previousPlannedTrust : 'calculated'],
         lookback || cardCoverage.status !== 'unavailable' ? 'none'
           : cardMatchOnlyHold(plan, cardCoverage) ? 'match' : 'hard', cardCoverage.reason),
         ...(role === 'active' && cardReserveShortfallDisclosure(plan, cardCoverage)
@@ -12301,7 +12311,11 @@
                     ? 'Opening this pay period. Carried forward, not income.'
                     : null))))),
       });
-      if (periods[periods.length - 1].plannedPeriodCloseTrust === 'estimated') previousPlannedTrust = 'estimated';
+      // Later projected closes open from this one's walk: an estimate makes
+      // them estimated, and an unknown close makes them unknown (#809 B1).
+      const publishedPlannedTrust = periods[periods.length - 1].plannedPeriodCloseTrust;
+      if (projected && publishedPlannedTrust === 'unknown') previousPlannedTrust = 'unavailable';
+      else if (publishedPlannedTrust === 'estimated' && previousPlannedTrust !== 'unavailable') previousPlannedTrust = 'estimated';
     }
     const active = periods.find(p => p.role === 'active') || periods[0] || null;
     if (active && active.role === 'active') {
