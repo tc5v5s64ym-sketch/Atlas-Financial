@@ -11739,6 +11739,12 @@
       // adjustment disposes of it. A section row that
       // reaches the waterfall with no numeric basis at all taints it too.
       // Genuine zero is a known cents value and never taints.
+      // #723 gap (5): a sealed lookback applies the same detection. Sealing
+      // finalizes rows that exist; it does not supply a basis for an
+      // occurrence the event layer dropped for having no amount, so an
+      // unknown receipt must stay withheld rather than publish as a
+      // calculated zero. A lookback period never seeds a later opening
+      // (previousEnding is null for that role), so the hold stays local.
       const incomeRowHasBasis = row => !!row
         && [row.actual, row.amount, row.planned]
           .some(v => typeof v === 'number' && Number.isFinite(v));
@@ -11781,7 +11787,7 @@
         if (!adj || adj.omit || adj.amount == null) return false;
         return !(typeof adj.amount === 'number' && Number.isFinite(adj.amount) && adj.amount >= 0);
       };
-      const incomeLoadUnknown = !planUnavailable && !lookback && (
+      const incomeLoadUnknown = !planUnavailable && (
         (income || []).some(row => row && row.otherIncome !== true
           && row.notReliedUpon !== true && row.settlement !== 'not-relied-upon'
           && !incomeRowHasBasis(row))

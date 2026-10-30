@@ -1646,16 +1646,19 @@ function sectionMissingIncomeAmount() {
       `026 provenance actual ${label} preserved: qualified actual publishes over an invalid adjustment`,
       v && `${v.incomeTotal}/${v.incomeTrust}`);
   }
-  // Sealed lookback keeps incumbent treatment: a marked occurrence in a
-  // sealed period is not the repair's business, so the period publishes
-  // exactly what the base publishes (the coerced figure included).
-  for (const [label, adjAmount, expected] of [["string '250'", '250', 250], ['boolean true', true, 1]]) {
+  // #723 gap (5) disposition: this was the ATLAS-026 scope pin that kept a
+  // sealed lookback publishing the coerced figure (250 / 1) as calculated.
+  // Engine classification 6524178220 superseded it: a sealed period applies
+  // the same unknown-amount detection, so the marked occurrence withholds
+  // the period exactly as it does in the active period above.
+  for (const [label, adjAmount] of [["string '250'", '250'], ['boolean true', true]]) {
     const sealedPlan = fixture([payroll,
       { id: 'r1', label: 'Synthetic receipt', frequency: 'once', date: '2026-09-25', amount: 500, confidence: 'confirmed' }]);
     const v = rowByStart(run(sealedPlan,
       { incomeOccurrenceAdjust: (s) => s && s.id === 'r1' ? { amount: adjAmount, confidence: 'confirmed' } : null }), '2026-09-18');
-    ok(v && v.incomeTotal === expected && v.incomeTrust === 'calculated' && !v.incomeUnavailableReason,
-      `026 provenance sealed lookback ${label}: incumbent treatment unchanged`,
+    ok(v && v.incomeTotal === null && v.incomeTrust === 'unavailable'
+        && String(v.incomeUnavailableReason || '').includes('income-unavailable') && v.afterBills === null,
+      `026 provenance sealed lookback ${label}: coerced contribution withheld (gap 5)`,
       v && `${v.incomeTotal}/${v.incomeTrust}`);
   }
   // Disabled-stream provenance hold: an unresolved marked row holds its
