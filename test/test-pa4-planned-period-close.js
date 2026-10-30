@@ -140,3 +140,20 @@ test('estimated trust carries forward into periods that open from an estimated c
     assert.match(later.plannedPeriodCloseReason, /estimated/);
   }
 });
+
+test('card reserve shortfall: disclosed on the active period, estimated, never deducted from the plan', () => {
+  const p = plan(), pkt = actuals(true);
+  pkt.transactions[0].amount = 5000; // a purchase larger than the known Bills balance
+  const a = F.recommend(p, ASOF, { weeklyVariable: 0, debts: [], currentPeriodActuals: pkt });
+  assert.deepEqual(a.cardPurchaseCoverage.issues.map(i => i.code).sort(),
+    ['coverage-bills-backing-unconfirmed', 'coverage-opening-unconfirmed'], 'fixture: matching-only, below-reserve branch');
+  const active = periods(a)[0];
+  const d = active.cardReserveShortfall;
+  assert.ok(d && d.amount > 0 && d.trust === 'estimated' && d.deducted === false);
+  assert.match(d.reason, /not the plan deficit/);
+  // Not deducted: the planned close is still opening + income - the card spend counted once.
+  assert.equal(active.plannedPeriodCloseTrust, 'estimated');
+  assert.equal(Math.round(active.plannedPeriodClose * 100), 50000 + 100000 - 500000);
+  // No disclosure without the below-reserve branch.
+  assert.equal(periods(run(true))[0].cardReserveShortfall, undefined);
+});
