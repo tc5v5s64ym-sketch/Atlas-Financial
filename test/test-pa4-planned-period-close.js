@@ -239,28 +239,32 @@ test('annual provision confirmed (control): the close is calculated with the pro
   for (const p of later) assert.equal(p.plannedPeriodCloseTrust, 'calculated', `${p.start}: control stays calculated`);
 });
 
-test('annual provision estimated: the close is estimated with a reason, and later closes stay estimated', () => {
+// Carry redesign (Atlas 6535096443 point 4): the future carry restores the
+// annual provision exactly (availableRemainder adds annualSavingsNeed back
+// before the one sweep), so later closes do not depend on it. Proved by
+// amount independence: a confirmed 200 and a confirmed 900 provision give
+// the same sweep and next opening.
+test('annual provision estimated: the due-period close is estimated; the exactly restored provision does not taint later closes', () => {
   const { due, later } = annualFixture('estimated');
   assert.ok(due.plannedPeriodCloseTerms.annualSavingsNeed > 0);
   assert.equal(due.plannedPeriodCloseTrust, 'estimated', 'never promoted to calculated');
   assert.match(due.plannedPeriodCloseReason, /an input to this close .* is estimated/);
   assert.ok(later.length);
-  for (const p of later) {
-    if (p.plannedPeriodClose === null) continue;
-    assert.equal(p.plannedPeriodCloseTrust, 'estimated', `${p.start}: dependent close carries the estimate`);
-  }
+  for (const p of later) assert.equal(p.plannedPeriodCloseTrust, 'calculated', `${p.start}: restored term does not taint`);
 });
 
-test('annual provision with unknown confidence: no number; later closes are unknown, never calculated', () => {
+test('annual provision with unknown confidence: the due-period close is unknown; later closes stay independent', () => {
   const { due, later } = annualFixture('unknown');
   assert.equal(due.plannedPeriodClose, null, 'a numeric amount does not make unknown confidence calculated');
   assert.equal(due.plannedPeriodCloseTrust, 'unknown');
   assert.match(due.plannedPeriodCloseReason, /unavailable trust/);
+  const control = annualFixture('confirmed');
   assert.ok(later.length);
-  for (const p of later) {
-    assert.equal(p.plannedPeriodClose, null, `${p.start}: depends on an unknown close`);
-    assert.equal(p.plannedPeriodCloseTrust, 'unknown');
-  }
+  later.forEach((p, n) => {
+    assert.equal(c(p.opening), c(control.later[n].opening), `${p.start}: opening independent of the provision`);
+    assert.equal(c(p.plannedPeriodClose), c(control.later[n].plannedPeriodClose));
+    assert.equal(p.plannedPeriodCloseTrust, 'calculated');
+  });
 });
 
 // Atlas #809 B1 (re-review at f0f0e1b5): the annual provision in the ACTIVE
@@ -329,4 +333,130 @@ test('independent S1 seam: an unknown active provision does not blank the indepe
   assert.equal(c(unknown[1].opening), c(known[1].opening), 'fixture: the seeded opening does not depend on the provision');
   assert.equal(c(unknown[1].plannedPeriodClose), c(known[1].plannedPeriodClose));
   assert.equal(unknown[1].plannedPeriodCloseTrust, 'calculated', 'independent seam is not poisoned');
+});
+
+// ---- Carry-trust redesign proof matrix (Muse 6535162602; Atlas 6535096443).
+// Each carry branch derives the next opening's provenance from the inputs
+// that carry actually uses. Invented values, literal cents.
+
+// Noncombined active carry, with and without the account split. A one-time
+// 120 bill on 2026-10-10 (active, after as-of) is the only contributing term.
+function noncombined(confidence, breakdown) {
+  const p = plan();
+  p.startingCash.breakdown = breakdown;
+  p.bills = [{ id: 'once', label: 'Synthetic one-time bill', frequency: 'yearly', month: 10, day: 10,
+    firstDue: '2026-10-10', amount: 120, confidence }];
+  return periods(F.recommend(p, ASOF, { weeklyVariable: 0, debts: [], currentPeriodActuals: actuals(false) }));
+}
+const SINGLE = [{ id: 'chequing-a', value: 500 }];
+const SPLIT = [{ id: 'chequing-a', value: 300 }, { id: 'chequing-b', value: 200 }];
+
+for (const [label, breakdown, nextOpening] of [['pooled opening', SINGLE, 138000], ['account split', SPLIT, 118000]]) {
+  test(`noncombined carry (${label}): confirmed control carries calculated; a zero carry stays calculated`, () => {
+    const [active, next, after] = noncombined('confirmed', breakdown);
+    assert.equal(c(active.plannedPeriodClose), 138000); // 500 + 1000 - 120
+    assert.equal(c(next.opening), nextOpening, 'split retains only the Bills stock (1380 - (500 - 300))');
+    assert.equal(c(next.plannedPeriodClose), nextOpening + 100000);
+    assert.equal(c(after.opening), 0, 'positive remainder sweeps; carry is zero');
+    assert.equal(c(after.plannedPeriodClose), 100000);
+    for (const p of [active, next, after]) assert.equal(p.plannedPeriodCloseTrust, 'calculated', p.start);
+  });
+  test(`noncombined carry (${label}): an estimated active term carries estimated, through a zero carry too`, () => {
+    const [active, next, after] = noncombined('estimated', breakdown);
+    assert.equal(active.plannedPeriodCloseTrust, 'estimated');
+    assert.equal(next.plannedPeriodCloseTrust, 'estimated');
+    assert.equal(c(after.opening), 0);
+    assert.equal(after.plannedPeriodCloseTrust, 'estimated', 'sign-sensitive: a computed zero carry is not proof of independence');
+    assert.match(after.plannedPeriodCloseReason, /is estimated/);
+  });
+  test(`noncombined carry (${label}): an unknown-confidence active term keeps dependent closes unknown`, () => {
+    const [active, next, after] = noncombined('unknown', breakdown);
+    assert.equal(active.plannedPeriodClose, null);
+    assert.equal(c(next.opening), nextOpening, 'fixture: a finite carry still seeds the next opening');
+    for (const p of [next, after]) {
+      assert.equal(p.plannedPeriodClose, null, p.start);
+      assert.equal(p.plannedPeriodCloseTrust, 'unknown');
+      assert.match(p.plannedPeriodCloseReason, /opening it carries from, has unavailable trust/);
+    }
+  });
+}
+
+// S1 observed-Bills seed: provenance follows the seed's own selectors. This
+// pins the pre-review under-carry example: a non-Savings yearly bill due in
+// the active window after as-of is subtracted by the seed.
+function s1Seed(mutate) {
+  const { ledger } = require('./fixtures/chronological-savings-data');
+  const { advance } = require('./fixtures/savings-daily-allocation-contract');
+  const i = advance(ledger(), '2026-10-10');
+  i.plan.income[0].anchor = '2026-08-14';
+  i.plan.income = i.plan.income.map(row => ({ ...row, confidence: 'confirmed' }));
+  i.plan.opening.paydaySnapshot = { periodStart: '2026-10-09', asOf: '2026-10-09', opening: 80 };
+  i.plan.opening.representedEvents = [];
+  i.opts.currentPeriodActuals.coverageStart = '2026-10-09';
+  i.opts.currentPeriodActuals.savingsFetchCoverage.startDate = '2026-10-09';
+  i.plan.bills = [];
+  mutate(i);
+  assert.ok(i.plan.savingsEarmarks.allocationPolicy, 'fixture: S1 seam installed');
+  return F.recommend(i.plan, i.asOf, { ...i.opts, debts: [], weeklyVariable: 0 }).payPeriodViews.filter(v => v.role !== 'lookback');
+}
+const yearlyBill = (confidence, amount = 300) => i => {
+  i.plan.bills = [{ id: 'oneoff', label: 'Synthetic yearly bill', amount, frequency: 'yearly',
+    month: 10, day: 15, firstDue: '2026-10-15', confidence }];
+};
+
+test('S1 seed, confirmed control: the seeded next close is calculated (literal values)', () => {
+  const [active, next, after] = s1Seed(yearlyBill('confirmed'));
+  assert.equal(c(active.plannedPeriodClose), -22000); // 80 - 300
+  assert.equal(c(next.opening), -22000, 'seeded from current Bills less the remaining bill');
+  assert.equal(c(next.plannedPeriodClose), -14300);   // -220 + 77 receipt
+  assert.equal(c(after.plannedPeriodClose), -14300);  // the deficit carries in full, zero sweep
+  for (const p of [active, next, after]) assert.equal(p.plannedPeriodCloseTrust, 'calculated', p.start);
+});
+
+test('S1 seed, estimated remaining bill: the seeded later closes are estimated', () => {
+  const [active, next, after] = s1Seed(yearlyBill('estimated'));
+  assert.equal(active.plannedPeriodCloseTrust, 'estimated');
+  assert.equal(next.plannedPeriodCloseTrust, 'estimated');
+  assert.equal(after.plannedPeriodCloseTrust, 'estimated');
+});
+
+test('S1 seed, unknown-confidence remaining bill: the seeded later closes are unknown, never calculated', () => {
+  for (const [amount, opening] of [[300, -22000], [600, -52000]]) {
+    const [active, next, after] = s1Seed(yearlyBill('unknown', amount));
+    assert.equal(active.plannedPeriodClose, null);
+    assert.equal(c(next.opening), opening, 'fixture: the seeded opening moves with the bill (a real dependency)');
+    for (const p of [next, after]) {
+      assert.equal(p.plannedPeriodClose, null, `${p.start} (bill ${amount})`);
+      assert.equal(p.plannedPeriodCloseTrust, 'unknown');
+    }
+  }
+});
+
+test('S1 seed, estimated remaining receipt: the seeded close is never published as calculated', () => {
+  // The selected in-window receipt is a seed input. Its cancellation against
+  // the boundary credit is not established from the same component, so it
+  // stays a dependency (estimated), never calculated.
+  const [active, next] = s1Seed(i => i.plan.income.push({ id: 'gift2', label: 'Invented receipt',
+    frequency: 'once', date: '2026-10-20', amount: 50, confidence: 'estimated' }));
+  assert.equal(active.plannedPeriodCloseTrust, 'estimated');
+  assert.equal(next.plannedPeriodCloseTrust, 'estimated');
+});
+
+// Null carry with a fallback opening. This pins the pre-review over-carry
+// example: a mid-period cutover opening (no payday snapshot) leaves the
+// active close unknown and its carry null; the next opening comes from the
+// cutover-walk fallback. No stale active provenance attaches. The fallback
+// has no established trust of its own, so the close discloses that.
+test('null carry, cutover-walk fallback: no stale provenance; the fallback discloses its own unestablished trust', () => {
+  const p = { ...plan(), opening: { asOf: ASOF }, startingCash: { amount: 500 } };
+  const [active, next, after] = periods(F.recommend(p, ASOF, { weeklyVariable: 0, debts: [] }));
+  assert.equal(active.plannedPeriodClose, null);
+  assert.match(active.plannedPeriodCloseReason, /opening or a deduction is not known/);
+  assert.equal(next.openingSource, 'cutover-walk');
+  assert.equal(c(next.opening), 500, 'fixture: the incumbent cutover walk publishes its 5.00 start-of-day opening, unchanged');
+  assert.equal(next.plannedPeriodClose, null);
+  assert.match(next.plannedPeriodCloseReason, /fallback cash walk whose trust is not established/);
+  assert.doesNotMatch(next.plannedPeriodCloseReason, /carries from/, 'no stale carry provenance');
+  assert.equal(after.plannedPeriodClose, null, 'a carry from an unqualified fallback stays unknown');
+  assert.equal(after.plannedPeriodCloseTrust, 'unknown');
 });
