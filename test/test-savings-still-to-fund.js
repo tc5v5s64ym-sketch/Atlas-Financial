@@ -43,15 +43,51 @@ test('current period: each goal row publishes Still to fund = max(0, Needed - Sa
 
 test('future periods: Still to fund follows the period close, estimated, never negative', () => {
   const a = advice(scenario());
+  let readyCloses = 0;
   for (const view of a.savingsFunding.periodViews.filter(p => p.start > a.savingsFunding.asOf)) {
     const p = F.savingsFundingPublication(a.savingsFunding, { asOf: a.savingsFunding.asOf, advice: a, periodId: view.id });
     const c = p?.forecastClosing;
     if (c?.status !== 'ready') continue;
-    for (const r of c.rows) {
+    readyCloses++;
+    for (const r of [...c.rows, ...c.items]) {
       assertGap({ ...r, savedForGap: r.forecastSaved }, `${view.start} ${r.key}`);
       assert.ok(r.stillToFund >= 0);
     }
   }
+  assert.ok(readyCloses >= 2, 'fixture: at least two ready future closes are actually checked');
+});
+
+// Pre-review finding: rows copied from today's packet must never carry
+// today's numeric gap beside a historical or projected period's null Saved.
+test('non-current packets never carry today\'s gap: rows, items and planned requirements are unknown', () => {
+  for (const x of [scenario(), (() => { const y = input(); y.opts.currentPeriodActuals.coverageStart = '2026-10-20'; return y; })()]) {
+    const a = advice(x);
+    let checked = 0;
+    for (const view of a.savingsFunding.periodViews.filter(v => v.packet)) {
+      const p = view.packet;
+      const lists = [p.rows, p.backing.items, p.unresolved, p.plannedRequirements?.items, p.plannedRequirements?.rows]
+        .filter(Array.isArray);
+      for (const r of lists.flat()) {
+        if (r.saved !== null && r.saved !== undefined) continue;
+        checked++;
+        assert.equal(r.stillToFund, null, `${view.start} ${r.key}: no gap beside an unknown Saved`);
+        assert.equal(r.stillToFundTrust, 'unknown', `${view.start} ${r.key}: trust unknown`);
+      }
+    }
+    assert.ok(checked > 0, 'fixture: non-current packet rows were actually checked');
+  }
+});
+
+test('current per-goal items and lens items carry Still to fund beside their Saved', () => {
+  const a = advice(scenario());
+  const item = a.savingsFunding.backing.items.find(i => i.id === 'a');
+  // Hand-derived: 1,500 needed, 119 reported Saved on the earlier goal.
+  assert.equal(item.saved, 119);
+  assert.equal(cents(item.stillToFund), 150000 - 11900);
+  assert.equal(item.stillToFundTrust, 'estimated');
+  const lens = a.savingsFunding.lenses.find(l => l.key === 'today').items.find(i => i.requirementId === 'a');
+  assert.equal(cents(lens.stillToFund), 150000 - 11900);
+  assert.equal(lens.stillToFundTrust, 'estimated');
 });
 
 test('a goal fully saved shows zero Still to fund, not Unknown', () => {
