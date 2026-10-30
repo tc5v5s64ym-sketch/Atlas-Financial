@@ -10259,6 +10259,40 @@
   // Budget. The payday-boundary opening is not a term. Predicted Ending
   // Balance as a pooled remaining-household-money identity is superseded
   // on this surface.
+  // PA-4 (owner direction 2026-10-30; adopted packet #787 6526949494): the
+  // opening-inclusive planned period close, published under its own name so
+  // the balance-after-deductions identity (no opening) is unchanged. The
+  // value is the incumbent walk's cash after bills and household budget;
+  // a negative value is a deficit and is published, never clamped. While
+  // card purchase/payment matching is unresolved it is a plan, not
+  // verified safe-to-spend cash, so it carries estimated trust and a reason.
+  function plannedPeriodClosePublication(value, terms, trusts, cardMatchUnresolved) {
+    const known = typeof value === 'number' && Number.isFinite(value)
+      && [terms.opening, terms.incomeAdded, terms.periodBillLoad, terms.budgetHold, terms.annualSavingsNeed]
+        .every(v => typeof v === 'number' && Number.isFinite(v));
+    if (!known) {
+      return { plannedPeriodClose: null, plannedPeriodCloseTrust: 'unknown', plannedPeriodCloseTerms: null,
+        plannedPeriodCloseReason: 'The planned period close is unavailable: its opening or a deduction is not known.' };
+    }
+    const base = periodWaterfallCombinedTrust(...trusts);
+    const trust = base === 'unavailable' ? 'unknown'
+      : cardMatchUnresolved || base === 'estimated' ? 'estimated' : 'calculated';
+    if (trust === 'unknown') {
+      return { plannedPeriodClose: null, plannedPeriodCloseTrust: 'unknown', plannedPeriodCloseTerms: null,
+        plannedPeriodCloseReason: 'The planned period close is unavailable: a deduction has unavailable trust.' };
+    }
+    const close = roundCent(value);
+    return {
+      plannedPeriodClose: close,
+      plannedPeriodCloseTrust: trust,
+      plannedPeriodCloseTerms: { ...terms, identity: 'opening-plus-income-minus-bills-budget-and-annual-savings',
+        deficit: close < 0 },
+      plannedPeriodCloseReason: cardMatchUnresolved
+        ? 'Planned remainder: card purchase and payment matching is unresolved, so this is an estimated plan, not verified safe-to-spend cash or proof that card balances are paid.'
+        : null,
+    };
+  }
+
   function composeBalanceAfterDeductionsTerms(
     periodIncome, assignedBills, householdBudgetHold, balanceAfterDeductions
   ) {
@@ -12186,6 +12220,11 @@
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
           ? 'balance-after-deductions' : null,
         predictedEndingBalanceTerms,
+        ...plannedPeriodClosePublication(lookback ? null : cashAfterHouseholdBudget, {
+          opening: paydayBoundaryOpening ? opening : null, incomeAdded, periodBillLoad,
+          budgetHold: planUnavailable ? null : budget.hold, annualSavingsNeed,
+        }, [balanceAfterDeductionsTrust, opts.s1CurrentBoundaryCreditEstimated === true && projected
+          ? 'estimated' : 'calculated'], !lookback && cardCoverage.status === 'unavailable'),
 
         extraDebt,
         firstCard: cards.firstCard,

@@ -21,9 +21,33 @@ module.exports = function incumbentAdvice(value, asOf) {
   const s1Chains = { '/payPeriodViews': { swept: 0 }, '/defaultView/calendarPeriods': { swept: 0 } };
   let s1Validated = 0;
   let s1NumericSweeps = 0;
+  // PA-4 authorized addition (owner direction 2026-10-30; adopted packet
+  // #787 6526949494): each period publication carries an opening-inclusive
+  // planned close under its own name. Frozen engines predate it. Validate
+  // each one concretely (identity reconciles to its published terms, trust
+  // and reason are coherent, unknown is null) and exclude only these fields.
+  let pa4Validated = 0;
+  const PA4 = ['plannedPeriodClose', 'plannedPeriodCloseTrust', 'plannedPeriodCloseTerms', 'plannedPeriodCloseReason'];
   const visit = (row, path) => {
     if (Array.isArray(row)) return row.map((child, index) => visit(child, path + '/' + index));
     if (!row || typeof row !== 'object') return row;
+    if (Object.hasOwn(row, 'plannedPeriodClose')) {
+      assert(/^\/(payPeriodViews|defaultView\/calendarPeriods|pastPeriodViews)\/\d+$/.test(path),
+        'plannedPeriodClose appears only on period publications: ' + path);
+      const close = row.plannedPeriodClose, t = row.plannedPeriodCloseTerms;
+      if (close === null) {
+        assert.equal(row.plannedPeriodCloseTrust, 'unknown'); assert.equal(t, null);
+        assert.equal(typeof row.plannedPeriodCloseReason, 'string');
+      } else {
+        assert(['calculated', 'estimated'].includes(row.plannedPeriodCloseTrust));
+        const cc = v => Math.round(v * 100);
+        assert.equal(cc(close), cc(t.opening) + cc(t.incomeAdded) - cc(t.periodBillLoad)
+          - cc(t.budgetHold) - cc(t.annualSavingsNeed), 'planned close reconciles to its published terms');
+        assert.equal(t.deficit, close < 0);
+      }
+      const rest = { ...row }; for (const key of PA4) delete rest[key];
+      row = rest; pa4Validated++;
+    }
     if (Object.hasOwn(row, 'paydaySweep')) {
       const chain = /^\/(payPeriodViews|defaultView\/calendarPeriods)\/\d+$/.exec(path);
       const past = /^\/pastPeriodViews\/\d+$/.exec(path);
@@ -97,5 +121,6 @@ module.exports = function incumbentAdvice(value, asOf) {
   assert.equal(etransferPublications, 1, 'validate the current-period outgoing e-transfer publication');
   assert(s1Validated > 0, 'S1 paydaySweep publications were concretely validated before exclusion');
   assert(s1NumericSweeps > 0, 'at least one future period publishes a numeric S1 sweep in these controls');
+  assert(pa4Validated > 0, 'PA-4 planned closes were concretely validated before exclusion');
   return copy;
 };

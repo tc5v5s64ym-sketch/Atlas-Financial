@@ -262,6 +262,23 @@ const stripS1Sweep=(current,baseline)=>{
     delete period.paydaySweep; validated++;
   }
   assert(validated>0&&numeric>0,'S1 sweeps were concretely validated in this control');
+  // PA-4 authorized addition (adopted packet #787 6526949494): validate each
+  // opening-inclusive planned close against its own published terms, then
+  // exclude only those four fields from the frozen comparison.
+  let pa4=0;
+  for(const period of [...current.payPeriodViews,...current.defaultView.calendarPeriods,...current.pastPeriodViews]){
+    assert(Object.hasOwn(period,'plannedPeriodClose'),'every period publishes the PA-4 planned close field');
+    const t=period.plannedPeriodCloseTerms;
+    if(period.plannedPeriodClose===null){
+      assert.equal(period.plannedPeriodCloseTrust,'unknown');assert.equal(t,null);
+    }else{
+      assert.equal(cents(period.plannedPeriodClose),cents(t.opening+t.incomeAdded-t.periodBillLoad-t.budgetHold-t.annualSavingsNeed),
+        'PA-4 planned close reconciles to its published terms');
+    }
+    for(const key of ['plannedPeriodClose','plannedPeriodCloseTrust','plannedPeriodCloseTerms','plannedPeriodCloseReason'])delete period[key];
+    pa4++;
+  }
+  assert(pa4>0,'PA-4 planned closes were concretely validated in this control');
 };
 const totalFixture=require('./fixtures/other-period-target');
 for(const [spent,opts] of [[137.26,{}],[618.73,{}],[1034.19,{}],[814.63,{}],
