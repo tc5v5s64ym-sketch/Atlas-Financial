@@ -5199,12 +5199,29 @@ function budgetDailySavingsFor(ctx, periodId = null) {
     period: { status: 'unavailable', proposal: null, actualSaved: null } };
 }
 
+// periodContext 'estimate' (Decision 1): a projected period whose Forecast
+// close is a reported-balance estimate. Saved and contribution figures keep
+// the visible estimated marker instead of the plain period-context money.
 function budgetSavingsMoney(amount, trust, periodContext = false) {
+  if (periodContext === 'estimate') return budgetV3Money(amount, budgetV3Known(amount, trust) ? 'estimated' : 'unknown');
   return periodContext ? budgetV3Known(amount, trust) ? money2(amount)
     : budgetV3Money(null, 'unknown') : budgetV3Money(amount, trust);
 }
+const budgetSavingsEstimateClose = packet => packet?.period?.kind === 'projected'
+  && packet.forecastClosing?.status === 'ready' && packet.forecastClosing.nature === 'reported-balance-estimate';
+const budgetSavingsPeriodContext = packet => budgetSavingsEstimateClose(packet) ? 'estimate'
+  : packet?.period?.kind === 'projected';
+function budgetSavingsEstimateBasisHtml(packet) {
+  if (!budgetSavingsEstimateClose(packet)) return '';
+  const c = packet.forecastClosing;
+  return '<p data-budget-savings-estimate-basis>' + budgetV3Escape('Estimated from the reported Savings balance dated '
+    + c.balanceAsOf + '. ' + (c.assumptions || []).join(' ') + ' Verified backing is withheld: ' + c.verifiedReason) + '</p>';
+}
 
+// Needed is a requirement, never the estimate, so 'estimate' renders as the
+// ordinary projected context here.
 function budgetDailyNeededHtml(row, periodContext = false) {
+  if (periodContext === 'estimate') periodContext = true;
   return row.neededRange ? budgetSavingsMoney(row.neededRange.min, row.trust, periodContext)
     + ' - ' + budgetSavingsMoney(row.neededRange.max, row.trust, periodContext)
     : budgetSavingsMoney(row.needed, row.neededTrust ?? row.trust, periodContext);
@@ -5438,14 +5455,15 @@ function budgetSavingsCostHtml(packet, row, withheld = false) {
 
 function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null, context = {}) {
   const projected = packet.period?.kind === 'projected';
-  const value = (amount, trust) => budgetSavingsMoney(amount, trust, projected);
+  const periodMode = budgetSavingsPeriodContext(packet);
+  const value = (amount, trust) => budgetSavingsMoney(amount, trust, periodMode);
   const listed = budgetDailySavingsRows(packet, inventory);
   const annualBillNote = budgetSavingsAnnualBillNoteHtml(listed);
   const rows = listed.map(row => {
     const needed = budgetDailyNeededHtml(row, projected);
     const group = budgetSavingsRowMembers(packet, row);
     const members = group ? `<ul class="budget-savings-members">${group.members.map(member => {
-      const figures = budgetSavingsMemberFigures(member, row.thisPeriodTrust, group.historical, projected);
+      const figures = budgetSavingsMemberFigures(member, row.thisPeriodTrust, group.historical, periodMode);
       return `<li data-budget-savings-member="${budgetV3Escape(member.key)}">
       <span>${budgetV3Escape(figures.name)}${figures.date ? ` <small>${budgetV3Escape(fmtDate(figures.date))}</small>` : ''}</span>
       <span><span data-budget-savings-member-saved>${figures.saved}</span> / <span data-budget-savings-member-needed>${figures.needed}</span><small>Saved / needed</small></span>
@@ -7419,7 +7437,8 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
     // today's gap.
     const liveSchedule = budgetGoalScheduleContext(period, daily) ? schedule : null;
     const projected = daily.period?.kind === 'projected';
-    const value = (amount, trust) => budgetSavingsMoney(amount, trust, projected);
+    const periodMode = budgetSavingsPeriodContext(daily);
+    const value = (amount, trust) => budgetSavingsMoney(amount, trust, periodMode);
     const roster = [...(period.plannedCostFunding?.items || []), ...(period.plannedCostFunding?.unscheduled || [])];
     const listed = budgetDailySavingsRows(daily, ctx.advice?.savingsInventory, roster);
     const annualBillNote = budgetSavingsAnnualBillNoteHtml(listed);
@@ -7434,7 +7453,7 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
         ? ` data-budget-goal-required-amount="${row.needed}"` : '';
       const group = budgetSavingsRowMembers(daily, row);
       const members = group ? `<div class="budget-goal-members">${group.members.map(member => {
-        const figures = budgetSavingsMemberFigures(member, row.thisPeriodTrust, group.historical, projected);
+        const figures = budgetSavingsMemberFigures(member, row.thisPeriodTrust, group.historical, periodMode);
         return `<div class="budget-goal-member" data-budget-savings-member="${budgetV3Escape(member.key)}"><span>${budgetV3Escape(figures.name)}${figures.date ? ` <small>${budgetV3Escape(fmtDate(figures.date))}</small>` : ''}</span><span><span data-budget-savings-member-saved>${figures.saved}</span> / <span data-budget-savings-member-needed>${figures.needed}</span><small>Saved / needed</small></span><span><span data-budget-savings-member-proposed>${figures.proposed}</span><small>This period</small></span></div>`;
       }).join('')}</div>` : '';
       return `<li data-budget-savings-goal="${budgetV3Escape(row.key)}"${savedStamp}${requiredStamp}><button type="button" class="budget-goal-row" data-budget-goal-open="${budgetV3Escape(row.key)}" aria-haspopup="dialog">
@@ -7444,7 +7463,7 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
       <p class="budget-goal-context">${value(row.thisPeriod, row.thisPeriodTrust)} this period<span class="budget-goal-evidence">Info <span aria-hidden="true">></span></span></p>${members}
     </button></li>`;
     }).join('');
-    return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3>${projected ? '<p data-budget-savings-forecast-stock>Savings at period close: ' + value(daily.forecastClosing?.stock, daily.forecastClosing?.trust) + '.</p>' : ''}${projected && daily.forecastClosing?.status === 'ready' ? '<p data-budget-savings-forecast-bills>Bills at period close: ' + value(daily.forecastClosing.operatingCash, daily.forecastClosing.trust) + '.</p>' : ''}${daily.forecastClosing?.gap ? daily.forecastClosing?.status === 'ready' ? '<p data-budget-savings-forecast-gap>Bills shortfall of ' + value(daily.forecastClosing.gap.shortBy, daily.forecastClosing.gap.trust) + ' on ' + budgetV3Escape(fmtDate(daily.forecastClosing.gap.date)) + '.</p>' : '<p>' + budgetV3Escape(daily.forecastClosing.reason) + '</p>' : ''}<ul>${named || (projected && (daily.plannedRequirements?.rows.length === 0 && !daily.forecastClosing?.gap || daily.forecastClosing?.status === 'ready') ? '<li>No remaining Savings requirements.</li>' : '<li>Named savings unavailable.</li>')}</ul>${annualBillNote}
+    return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3>${projected ? '<p data-budget-savings-forecast-stock>Savings at period close: ' + value(daily.forecastClosing?.stock, daily.forecastClosing?.trust) + '.</p>' + budgetSavingsEstimateBasisHtml(daily) : ''}${projected && daily.forecastClosing?.status === 'ready' ? '<p data-budget-savings-forecast-bills>Bills at period close: ' + value(daily.forecastClosing.operatingCash, daily.forecastClosing.trust) + '.</p>' : ''}${daily.forecastClosing?.gap ? daily.forecastClosing?.status === 'ready' ? '<p data-budget-savings-forecast-gap>Bills shortfall of ' + value(daily.forecastClosing.gap.shortBy, daily.forecastClosing.gap.trust) + ' on ' + budgetV3Escape(fmtDate(daily.forecastClosing.gap.date)) + '.</p>' : '<p>' + budgetV3Escape(daily.forecastClosing.reason) + '</p>' : ''}<ul>${named || (projected && (daily.plannedRequirements?.rows.length === 0 && !daily.forecastClosing?.gap || daily.forecastClosing?.status === 'ready') ? '<li>No remaining Savings requirements.</li>' : '<li>Named savings unavailable.</li>')}</ul>${annualBillNote}
       <button type="button" class="budget-surface-link" data-budget-funding-inventory aria-haspopup="dialog">Accounts &amp; evidence</button>
       <div data-budget-funding-savings hidden>${daily ? budgetDailySavingsHtml(daily, '', ctx.advice?.savingsInventory, { asOf: ctx.asOf || ctx.advice?.defaultView?.asOf, period }) : 'Daily savings unavailable.'}</div></div>`;
   }

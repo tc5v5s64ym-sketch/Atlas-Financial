@@ -163,3 +163,57 @@ test('openings and sweeps derived from the estimated credit carry the estimated 
   for (const v of advice(scenario(false)).payPeriodViews)
     assert.ok(!('openingTrust' in v) && !('paydaySweepTrust' in v), v.start + ' verified rows gain no new fields');
 });
+
+// Systems Review BLOCKING 5711938781 (#797): the primary Budget consumer
+// must carry the estimate qualification, not only the hidden inventory.
+function budgetContext() {
+  const fs = require('node:fs'), vm = require('node:vm');
+  const root = process.env.ATLAS_TEST_APP_ROOT || path.resolve(__dirname, '..');
+  const stub = () => ({ innerHTML: '', value: '', dataset: {}, style: {}, classList: { add() {}, remove() {}, toggle() {} },
+    addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; }, appendChild() {}, replaceChildren() {} });
+  const ctx = vm.createContext({ Forecast: F, console, setTimeout, clearTimeout, addEventListener() {},
+    document: { getElementById: stub, querySelectorAll() { return []; }, addEventListener() {}, documentElement: { dataset: {}, style: {} } },
+    localStorage: { getItem() { return null; }, setItem() {} }, location: { pathname: '/', search: '' } });
+  ctx.window = ctx; ctx.matchMedia = () => ({ matches: false, addEventListener() {} });
+  for (const script of ['app', 'bill-detail', 'savings-inventory', 'budget-surface', 'plan']) {
+    if (script === 'bill-detail') vm.runInContext('App.boot=()=>{};', ctx);
+    vm.runInContext(fs.readFileSync(path.join(root, 'public', script + '.js'), 'utf8'), ctx);
+  }
+  vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];', ctx);
+  return { ctx, run: code => vm.runInContext(code, ctx) };
+}
+function budgetCard(unqualified, start) {
+  const x = scenario(unqualified), a = advice(x), { ctx, run } = budgetContext();
+  ctx.src = { plan: x.plan, debts: [], asOf: x.asOf, advice: a, liveOverlay: x.opts.liveOverlay || null, weekly: 0, weeklyOverride: 0 };
+  ctx.period = a.payPeriodViews.find(p => p.start === start);
+  return run('budgetSavingsGoalsHtml(src,period,null)');
+}
+const markerless = html => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+
+test('primary Budget card: estimated close and per-goal Saved carry the marker and named basis', () => {
+  const html = budgetCard(true, '2026-10-30');
+  const stock = html.split('data-budget-savings-forecast-stock>')[1].split('</p>')[0];
+  assert.match(stock, /≈/, 'Savings at period close is marked estimated');
+  assert.match(markerless(stock), /estimated \$1,599\.00/);
+  const basis = html.split('data-budget-savings-estimate-basis>')[1]?.split('</p>')[0];
+  assert.ok(basis, 'the basis/reason is shown on the primary card, not only in the hidden panel');
+  assert.match(basis, /reported Savings balance dated 2026-10-07/);
+  assert.ok(basis.includes(MOVEMENT_REASON), 'the withheld verified reason is named');
+  const goal = html.split('data-budget-savings-goal="commitment:a"')[1].split('</li>')[0];
+  const saved = goal.split('class="budget-goal-amount">')[1].split('</span><small>Saved')[0];
+  assert.match(saved, /≈/, 'per-goal Saved is marked estimated');
+  assert.match(markerless(saved), /estimated \$1,500\.00/);
+  const needed = goal.split('class="budget-goal-amount">')[2].split('<small>')[0];
+  assert.doesNotMatch(needed, /≈/, 'Needed is a requirement, not an estimate');
+});
+
+test('primary Budget card: the verified projected close stays unmarked (clean control)', () => {
+  const html = budgetCard(false, '2026-10-30');
+  const stock = html.split('data-budget-savings-forecast-stock>')[1].split('</p>')[0];
+  assert.match(stock, /\$1,599\.00/);
+  assert.doesNotMatch(stock, /≈|estimated/);
+  assert.ok(!html.includes('data-budget-savings-estimate-basis'), 'no estimate basis on the verified path');
+  const goal = html.split('data-budget-savings-goal="commitment:a"')[1].split('</li>')[0];
+  const saved = goal.split('class="budget-goal-amount">')[1].split('</span><small>Saved')[0];
+  assert.doesNotMatch(saved, /≈/);
+});
