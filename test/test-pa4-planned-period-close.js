@@ -596,3 +596,28 @@ test('future carry: an estimated receipt reaches the next close through a negati
   assert.equal(n1.plannedPeriodCloseTrust, 'estimated');
   assert.equal(a1.plannedPeriodCloseTrust, 'estimated', 'the carry depends on the estimated receipt');
 });
+
+// Re-pre-review of 499b8462: the future-carry budget term is live. A dated
+// retired reserve covers 10-16 only, so 10-30's own budget is calculated and
+// it inherits the estimate solely through the carry (the deficit carries in
+// full). Invented: 500 opening; 1000 pay; 3000 bill on the 20th.
+test('future carry: an estimated budget reserve in one period reaches the next close only through the carry', () => {
+  const run1 = targetHistory => {
+    const p = { ...plan(), opening: { asOf: '2026-10-02', representedEvents: [{ id: 'payroll', date: '2026-10-02' }] },
+      startingCash: { breakdown: [{ id: 'chequing-a', value: 500 }] },
+      bills: [{ id: 'b1', label: 'Synthetic bill', frequency: 'monthly', day: 20, amount: 3000, confidence: 'confirmed' }],
+      budget: { categories: [{ id: 'other-spend', label: 'Other', targetHistory }] } };
+    return periods(F.recommend(p, '2026-10-02', { weeklyVariable: 0, debts: [] }));
+  };
+  const [, c16, c30] = run1([]);
+  assert.deepEqual([c(c16.plannedPeriodClose), c(c30.plannedPeriodClose), c30.plannedPeriodCloseTrust],
+    [-150000, -50000, 'calculated']);
+  const [, r16, r30] = run1([{ effectiveThrough: '2026-10-16', futurePayPeriodReserve: 100 }]);
+  assert.deepEqual([r16.budgetHold, r16.budgetHoldTrust, c(r16.plannedPeriodClose), r16.plannedPeriodCloseTrust],
+    [100, 'estimated', -160000, 'estimated']); // 500 + 1000 - 3000 - 100
+  assert.equal(r30.budgetHold, 0);
+  assert.notEqual(r30.budgetHoldTrust, 'estimated', 'fixture: the next period budget is not itself estimated');
+  assert.equal(c(r30.opening), -160000, 'the deficit carries in full');
+  assert.equal(c(r30.plannedPeriodClose), -60000);
+  assert.equal(r30.plannedPeriodCloseTrust, 'estimated', 'inherited through the carry budget term');
+});
