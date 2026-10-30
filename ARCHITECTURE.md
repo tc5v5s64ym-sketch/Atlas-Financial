@@ -989,9 +989,11 @@ from later periods; retirement is not erasure — the goal remains
 visible in its own period.
 
 **Decision 2 (settled): Still to fund = max(0, Needed − Saved), tagged
-estimated, in current and future periods.** It is never "Unknown" and
-never presented as verified. Paid stays as-is until paid tracking
-exists.
+estimated, in current and future periods, when both Needed and Saved
+are known.** When both inputs are known it is never "Unknown" and
+never presented as verified; when either input is unavailable, the
+unavailable input is preserved as unknown and no numeric funding gap
+is manufactured. Paid stays as-is until paid tracking exists.
 
 **Decision 3 (settled): Scenario 6 is narrowed.** A failed refresh
 shows the last good data with its date; nothing is counted twice;
