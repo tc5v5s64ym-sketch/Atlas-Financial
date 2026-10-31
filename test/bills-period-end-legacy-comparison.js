@@ -120,7 +120,12 @@ module.exports = function incumbentAdvice(value, asOf) {
   assert(comparisons > 0, 'new comparison paths were concretely checked; every existing field remains compared');
   assert.equal(etransferPublications, 1, 'validate the current-period outgoing e-transfer publication');
   assert(s1Validated > 0, 'S1 paydaySweep publications were concretely validated before exclusion');
-  assert(s1NumericSweeps > 0, 'at least one future period publishes a numeric S1 sweep in these controls');
+  // PA-4a-2b C7 (Muse #812 6541361235 / 6541501158): a card-held control's
+  // withheld close feeds no numeric carry, so it publishes no numeric sweep;
+  // every card-clean control still publishes at least one.
+  if (value.cardPurchaseCoverage && value.cardPurchaseCoverage.status === 'unavailable') {
+    assert.equal(s1NumericSweeps, 0, 'a card-held control publishes no numeric S1 sweep');
+  } else assert(s1NumericSweeps > 0, 'at least one future period publishes a numeric S1 sweep in these controls');
   assert(pa4Validated > 0, 'PA-4 planned closes were concretely validated before exclusion');
   return copy;
 };

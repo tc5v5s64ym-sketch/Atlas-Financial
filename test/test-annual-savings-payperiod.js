@@ -4,7 +4,19 @@ const test = require('node:test');
 const F = require('../public/forecast');
 const { ledger } = require('./fixtures/chronological-savings-data');
 const { advance, clone } = require('./fixtures/savings-daily-allocation-contract');
-const snapshotFixture = require('./fixtures/annual-snapshot-carry-data');
+const cardHeldSnapshot = require('./fixtures/annual-snapshot-carry-data');
+// PA-4a-2b (Muse #812 6541361235): the shared ledger pays the annual cost on
+// a card with an untagged card-payment pair, a HARD card hold. Under C7 a
+// hard-held close feeds no numeric dependent opening, so the annual-carry
+// assertions run on the same 200 - 100 = 100 ledger paid directly from Bills
+// (card-clean). The card-held scene is kept and asserted null separately.
+const snapshotFixture = () => {
+  const i = cardHeldSnapshot();
+  i.plan.bills.find(b => b.id === 'annual').payingAccount = 'chequing-a';
+  i.opts.currentPeriodActuals.transactions = [{ id: 'annual-posted', date: '2026-10-10', amount: 100,
+    pending: false, currency: 'CAD', atlasAccountId: 'chequing-a', accountRole: 'household-cash', billId: 'annual' }];
+  return i;
+};
 
 // Independent invented ledger: 80 operating + 119 savings; 60 club due
 // October 21, 17.29 annual premium due October 25, 77 receipt November 2.
@@ -175,8 +187,8 @@ test('known zero savings leaves the full annual expense and its dated shortfall 
   assert.equal(s.moneyMovementPermission, 'not-granted');
 });
 
-function markedSnapshot() {
-  const i = snapshotFixture();
+function markedSnapshot(base = snapshotFixture) {
+  const i = base();
   // Classification only: existing purpose-reserve schema, no stock or
   // historical funding invented. Missing evidence still withholds proposals.
   i.plan.savingsEarmarks = { version: 1, currency: 'CAD', history: [], pools: [
@@ -204,7 +216,10 @@ test('represented annual payment after the original payday snapshot cannot infla
       assert.equal(row.opening, date === '2026-11-06' ? 0 : expected,
         `${date}: snapshot minus paid cost plus subsequent receipts, less any sweep that landed on that payday`);
       assert.equal(native.daily.find(r => r.date === date).balance, expected);
-      assert.equal(row.plannedCostFunding.status, 'unavailable');
+      // Proposals stay withheld for the marked scene (missing evidence) and
+      // in every card-held scene (asserted below); the card-clean plain scene
+      // is the one whose only withholding cause was the card hold.
+      if (i.plan.savingsEarmarks) assert.equal(row.plannedCostFunding.status, 'unavailable');
       assert.equal(row.extraDebt.status, 'unavailable');
     }
     assert.equal(period(a, '2026-10-23').paydaySweep, 200 - 100 + 77,
@@ -214,6 +229,24 @@ test('represented annual payment after the original payday snapshot cannot infla
     assert.equal(period(a, '2026-10-23').openingSource, marked ? 'cutover-walk' : 'carry-forward');
     assert.equal(F.expandEvents(i.plan, i.asOf, '2026-11-19').filter(e => e.id === 'annual').length, 0,
       'represented expense must not be replayed after the observed opening');
+    assert.equal(JSON.stringify(i), original);
+  }
+  // The original card-held ledger (hard hold: untagged card-payment pair).
+  // C7: its withheld close feeds no numeric dependent opening or sweep, while
+  // the native walk, proposal withholding and no-replay facts are unchanged.
+  for (const i of [cardHeldSnapshot(), markedSnapshot(cardHeldSnapshot)]) {
+    const original = JSON.stringify(i), a = run(i);
+    const native = F.simulate(i.plan, i.asOf, i.opts);
+    assert.equal(a.cardPurchaseCoverage.status, 'unavailable');
+    for (const [date, expected] of [['2026-10-23', 200 - 100], ['2026-11-06', 200 - 100 + 77]]) {
+      const row = period(a, date);
+      assert.equal(row.opening, null, `${date}: a hard-held close carries no numeric opening`);
+      assert.equal(row.paydaySweep, null, `${date}: and no numeric sweep`);
+      assert.equal(native.daily.find(r => r.date === date).balance, expected);
+      assert.equal(row.plannedCostFunding.status, 'unavailable');
+      assert.equal(row.extraDebt.status, 'unavailable');
+    }
+    assert.equal(F.expandEvents(i.plan, i.asOf, '2026-11-19').filter(e => e.id === 'annual').length, 0);
     assert.equal(JSON.stringify(i), original);
   }
 });

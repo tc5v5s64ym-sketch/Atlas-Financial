@@ -157,6 +157,9 @@ test('estimated trust carries forward into periods that open from an estimated c
 
 test('card reserve shortfall: disclosed on the active period, estimated, never deducted from the plan', () => {
   const p = plan(), pkt = actuals(true);
+  // PA-4a-2b (Atlas 6538656590, ruling 8): the below-reserve branch is soft
+  // only on qualified operating cash, so both chequing rows are present.
+  p.startingCash.breakdown.push({ id: 'chequing-b', value: 0 });
   pkt.transactions[0].amount = 5000; // a purchase larger than the known Bills balance
   const a = F.recommend(p, ASOF, { weeklyVariable: 0, debts: [], currentPeriodActuals: pkt });
   assert.deepEqual(a.cardPurchaseCoverage.issues.map(i => i.code).sort(),

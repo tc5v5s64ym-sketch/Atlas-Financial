@@ -71,6 +71,28 @@ function numbers(value, path = '', out = {}) {
   return out;
 }
 const incumbentNumbers = value => numbers(incumbentAdvice(value, NOW));
+// PA-4a-2b C7 (Muse #812 6541501158): a card-held close feeds no numeric
+// dependent opening. In a card-held publication each projected period's
+// opening-dependent chain is null (the frozen engine carried numbers), its
+// sweep is null, and every other monetary or null publication still equals
+// the frozen engine exactly. A card-clean publication is compared whole.
+function frozenEq(r, frozenR, label = 'frozen monetary/null publications') {
+  if (r.cardPurchaseCoverage?.status !== 'unavailable') return eq(incumbentNumbers(r), numbers(frozenR), label);
+  const current = incumbentNumbers(r), frozen = numbers(frozenR);
+  const chain = /^\/(payPeriodViews|defaultView\/calendarPeriods)\/(\d+)\/(opening|openingAsOf|openingSource|currentBalance|incomeAdded|leftover\/currentBalance)$/;
+  const projected = (list, index) => {
+    const p = list === 'payPeriodViews' ? r.payPeriodViews[index] : r.defaultView.calendarPeriods[index];
+    return !!p && p.projected === true;
+  };
+  let nulled = 0;
+  for (const key of new Set([...Object.keys(current), ...Object.keys(frozen)])) {
+    const m = chain.exec(key);
+    if (m && projected(m[1], Number(m[2]))) { eq(current[key], null, label + ': C7 null chain ' + key); nulled++; }
+    else eq(current[key], frozen[key], label + ' ' + key);
+  }
+  ok(nulled > 0, label + ': the card-held scene withholds its dependent chain');
+  for (const p of r.payPeriodViews.filter(p => p.projected)) eq(p.paydaySweep, null, label + ': no numeric sweep from a withheld close');
+}
 {
   const x = fixture(null), { r } = publication(x), baseline = numbers(publication(x, oldF).r);
   const changedBalance = { ...r, binding: { ...r.binding, balance: r.binding.balance + 0.01 } };
@@ -113,7 +135,7 @@ for (const [name, records, action, paid] of cases) {
   eq(row.householdPaymentStatus, action, name + ': independent full/partial/no-recorded-action oracle');
   eq(render.presentation(row).kind === 'paid', paid, name + ': household Paid display');
   eq(JSON.stringify(x.data), input, 'read/render does not mutate financial data');
-  eq(incumbentNumbers(r), numbers(publication(x, oldF).r), 'every monetary/null publication unchanged ' + name);
+  frozenEq(r, publication(x, oldF).r, 'every monetary/null publication unchanged ' + name);
   eq([row.date, row.occurrenceKey], ['2026-10-08', 'triangle@2026-10-07']);
   // Independent cents sum: 3,117 prior + 5,233 recurring + 4,739 statement.
   eq(Math.round(period.totalBillsThisPeriod * 100), 13089, 'three original requirements counted exactly once');
@@ -142,7 +164,7 @@ for (const reverse of [false, true]) {
   const { r, period } = publication(x);
   eq(period.bills.filter(row => ['triangle', 'mbna'].includes(row.id))
     .some(row => render.presentation(row).kind === 'paid'), false, 'one debit reused across obligations cannot establish either action');
-  eq(incumbentNumbers(r), numbers(publication(x, oldF).r), 'cross-obligation conflict preserves every incumbent monetary field');
+  frozenEq(r, publication(x, oldF).r, 'cross-obligation conflict preserves every incumbent monetary field');
 }
 // Independent issuer settlement takes precedence over the household send's
 // partial/estimated classification. The action qualifier and funding holds
@@ -163,7 +185,7 @@ for (const mode of ['partial', 'estimated']) for (const receipt of [false, true]
     : mode === 'partial' ? 'Partial payment sent' : 'Money sent; minimum amount unconfirmed', name + ': qualifier retained');
   eq([row.status, row.settlement, row.remaining, row.issuerMinimumStatus, row.cashInclusionStatus],
     [baseline.row.status, baseline.row.settlement, baseline.row.remaining, baseline.row.issuerMinimumStatus, baseline.row.cashInclusionStatus], name + ': existing authority unchanged');
-  eq(incumbentNumbers(r), numbers(baseline.r), name + ': all monetary/null publications unchanged');
+  frozenEq(r, baseline.r, name + ': all monetary/null publications unchanged');
   eq(JSON.stringify(x.data), immutable, name + ': read/render remains immutable');
   if (conflict || !receipt || !inclusion) eq(r.sim.ending, null, name + ': unresolved funding remains unavailable');
   else {
@@ -183,7 +205,7 @@ for (const receipt of [false, true]) for (const inclusion of [false, true]) {
   eq(render.presentation(row).kind, 'paid');
   eq([row.issuerMinimumStatus, row.cashInclusionStatus], [receipt ? 'satisfied' : 'unconfirmed', inclusion ? 'included' : 'unconfirmed']);
   eq(r.sim.ending === null, !(receipt && inclusion), 'both separate confirmations needed to release cash publication');
-  eq(incumbentNumbers(r), numbers(publication(x, oldF).r));
+  frozenEq(r, publication(x, oldF).r);
   if (receipt && inclusion) {
     const sim = F.simulate(x.data.plan, NOW, { horizonDays: 10, weeklyVariable: 0 });
     eq(Math.round(sim.ending * 100), 170167, 'independent cash: 78517 - 3117 - 5233 + 100000, both unresolved Amazon cycles and no second Triangle debit');
@@ -198,7 +220,7 @@ for (const receipt of [false, true]) for (const inclusion of [false, true]) {
   eq([row.issuerMinimumStatus, row.cashInclusionStatus], [receipt ? 'satisfied' : 'unconfirmed', inclusion ? 'included' : 'unconfirmed']);
   ok(html.includes('Payment allocation unconfirmed') && !html.includes('<dt>Money sent</dt>'));
   ok(html.includes('<dt>Lender minimum confirmation</dt><dd>' + (receipt ? 'Confirmed' : 'Not confirmed') + '</dd>'));
-  eq(incumbentNumbers(r), numbers(publication(x, oldF).r), 'settled conflict preserves incumbent money and funding holds');
+  frozenEq(r, publication(x, oldF).r, 'settled conflict preserves incumbent money and funding holds');
 }
 {
   const x = fixture([sent()]); delete x.data.plan.obligations[0].statementOccurrences;
@@ -206,7 +228,7 @@ for (const receipt of [false, true]) for (const inclusion of [false, true]) {
   eq(row.householdPaymentStatus, 'sent', 'estimated requirement does not establish complete payment');
   eq(render.presentation(row).kind === 'paid', false);
   ok(Detail.html(row, x.data, {}).includes('full required amount is not confirmed'));
-  eq(incumbentNumbers(r), numbers(publication(x, oldF).r));
+  frozenEq(r, publication(x, oldF).r);
 }
 const { period } = publication(fixture([sent()]));
 const amazon = period.bills.filter(row => ['mbna-aug31', 'mbna'].includes(row.id));

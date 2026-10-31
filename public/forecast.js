@@ -10228,11 +10228,15 @@
     if (!rowIsSettledBill(row)) return false;
     if (row.date < openingAsOf) return true;
     if (row.date > openingAsOf) return false;
-    if (openingSource === 'snapshot' || openingSource === 'cutover-walk'
-        || openingSource === 'carry-forward') {
-      return false;
-    }
-    return true;
+    return openingMayHoldSameDayCash(openingSource);
+  }
+  // The one opening-source contract for same-day cash: a snapshot, a
+  // completeness walk and a carry-forward are cash before that day's flows;
+  // any other opening (payday-morning, posted cutover) may already include a
+  // same-day posted debit.
+  function openingMayHoldSameDayCash(openingSource) {
+    return !(openingSource === 'snapshot' || openingSource === 'cutover-walk'
+      || openingSource === 'carry-forward');
   }
 
   function billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource) {
@@ -10309,13 +10313,20 @@
   // a negative value is a deficit and is published, never clamped. While
   // card purchase/payment matching is unresolved it is a plan, not
   // verified safe-to-spend cash, so it carries estimated trust and a reason.
-  function plannedPeriodClosePublication(value, terms, trusts, cardState, cardReason, unavailableReason) {
+  function plannedPeriodClosePublication(value, terms, trusts, cardState, cardReason, unavailableReason, cardDetail) {
     if (cardState === 'hard') {
       // A card hold caused by anything other than unresolved MATCHING
       // (missing history or amounts, unknown Bills, unavailable minimum)
       // leaves the plan's cash basis unknown: never a number, never zero.
       return { plannedPeriodClose: null, plannedPeriodCloseTrust: 'unknown', plannedPeriodCloseTerms: null,
         plannedPeriodCloseReason: ['The planned period close is unavailable: card coverage is unavailable for a reason other than matching.',
+          cardReason].filter(Boolean).join(' ') };
+    }
+    if (cardState === 'unqualified') {
+      // PA-4a-2b option (b): the close's own card qualification is unknown.
+      return { plannedPeriodClose: null, plannedPeriodCloseTrust: 'unknown', plannedPeriodCloseTerms: null,
+        plannedPeriodCloseReason: ['The planned period close is unavailable: '
+          + (CARD_MATCH_UNKNOWN_TEXT[cardDetail] || 'card purchase matching evidence cannot qualify it') + '.',
           cardReason].filter(Boolean).join(' ') };
     }
     const cardMatchUnresolved = cardState === 'match';
@@ -11552,9 +11563,278 @@
     if (codes.includes('coverage-bills-backing-unconfirmed')) {
       const bills = (plan?.startingCash?.breakdown || []).filter(row => row && row.id === BILLS_ACCOUNT_ID);
       if (bills.length !== 1 || typeof bills[0].value !== 'number' || !Number.isFinite(bills[0].value)
-        || bills[0].unknown === true) return false;
+        || savingsCents(bills[0].value, true) == null || bills[0].unknown === true
+        || [bills[0].confidence, bills[0].status].some(tag => tag != null
+          && !['verified', 'confirmed', 'calculated', 'estimated'].includes(tag))) return false;
     }
     return true;
+  }
+  // Atlas 6538656590 (8): the below-reserve branch is soft for an estimate
+  // only after S1 Bills stock qualification (recommend's qualified operating
+  // cash, equal to the opening row). Absent or unequal support stays hard.
+  function cardMatchEstimateEligible(plan, coverage, opts) {
+    if (!cardMatchOnlyHold(plan, coverage)) return false;
+    if (!(coverage.issues || []).some(issue => issue && issue.code === 'coverage-bills-backing-unconfirmed')) return true;
+    const stock = opts && opts.s1BillsStockQualifiedCents;
+    const bills = (plan.startingCash.breakdown || []).find(row => row && row.id === BILLS_ACCOUNT_ID);
+    return Number.isSafeInteger(stock) && stock === savingsCents(bills.value, true);
+  }
+  // PA-4a-2b (Astra #787 6534140193 §1-2; Atlas 6531287856): under an eligible
+  // card-MATCHING-only hold, a current-cycle card purchase inside H has not
+  // left Bills cash unless a qualified settlement shows it. The remaining
+  // household requirement relieves each row by its cash spending only
+  // (the incumbent pooled scope otherwise unchanged), less qualified card
+  // settlements F. With no qualified settlement evidence at all, complete
+  // card coverage history establishes F = 0. A reconciled payment's confirmed
+  // allocation to a purchase inside H is Bills funding of that purchase: its
+  // cash already left the observed stock, so it relieves H once and is never
+  // a second future debit. Any other unresolved payment, a reversal, or an
+  // unidentifiable row leaves F, and so the requirement, unknown (null).
+  // Atlas 6538656590 (6): an unresolved payment/credit is excluded from F only
+  // when its card is unambiguous and holds no purchase inside H at all.
+  // Atlas #787 6538656590 (1): a remaining scheduled card payment whose
+  // possible overlap with this remaining H could change D, with no evidence
+  // qualifying that overlap, leaves the requirement unknown. A payment row
+  // whose card is a different, unambiguous card is disjoint and stays numeric;
+  // one with no card identity is ambiguous and holds.
+  // PA-4a-2b option (b) (Atlas #812 6540159717; Muse 6540609418): ONE
+  // qualified result per accounting basis. `basis.rows` are exactly the rows
+  // the consuming expression deducts (its own billBelongsOnPaydayWaterfall
+  // membership, never a date approximation). `basis.kind` is 'cutover' (the
+  // observed-stock S1 seed and the Savings walks: posted settlements are
+  // already in the stock) or 'close' (the original-snapshot planned close:
+  // posted settlements after the snapshot are period cash flows). Every
+  // unsuccessful path returns status 'unknown' with its reason; only
+  // 'qualified' may be published or carried.
+  function cardMatchQualification(plan, coverage, budget, basis, opts) {
+    const unknown = reason => ({ status: 'unknown', reason, remainingCents: null });
+    if (!cardMatchEstimateEligible(plan, coverage, opts)) return unknown('card-hold-not-matching-only');
+    if (!budget || !Array.isArray(budget.items)) return unknown('household-budget-unavailable');
+    const rows = (basis && basis.rows) || [];
+    const kind = basis && basis.kind;
+    if (kind !== 'cutover' && kind !== 'close') return unknown('basis-unavailable');
+    const obligations = new Map(((plan && plan.obligations) || []).filter(o => o && o.id).map(o => [o.id, o]));
+    const cardPaymentRow = row => {
+      const source = row && row.kind === 'obligation' ? obligations.get(row.id) : null;
+      return source && (source.effect === 'payment' || source.debtId != null) ? source : null;
+    };
+    // Each recon row is classified from its own packet transaction with the
+    // reconciler's predicate (accountRole or a known card id) and one
+    // unambiguous account identity. A row that cannot be traced holds.
+    const packet = currentPeriodActualsPacket(opts || {});
+    const transactions = packet && Array.isArray(packet.transactions) ? packet.transactions : [];
+    const byId = new Map();
+    for (const tx of transactions) {
+      if (!tx || tx.id == null) continue;
+      const id = String(tx.id);
+      byId.set(id, byId.has(id) && JSON.stringify(byId.get(id)) !== JSON.stringify(tx) ? null : tx);
+    }
+    const rowSource = r => {
+      const tx = r && r.id != null ? byId.get(String(r.id)) : null;
+      const ids = tx ? [tx.atlasAccountId, tx.accountId, tx.account].filter(id => id != null && id !== '') : [];
+      if (!tx || !ids.length || ids.some(id => String(id) !== String(ids[0]))) return null;
+      return { tx, account: String(ids[0]), card: isRevolvingCardAccount(tx),
+        ref: tx.coverageRef == null ? null : String(tx.coverageRef) };
+    };
+    // heldRefs: each held card purchase reference and how many held recon
+    // rows own it, under the same row-source validation and pending-twin
+    // exclusion as the remaining-requirement loop below.
+    const heldCards = new Set(), heldRefs = new Map();
+    for (const row of budget.items) for (const r of (row && row.recon) || []) {
+      if (!r || (r.pendingPostedDuplicate === true && r.pending === true)) continue;
+      const source = rowSource(r);
+      if (!source) return unknown('household-row-untraceable');
+      if (source.card) heldCards.add(source.account);
+      if (source.card && source.ref != null) heldRefs.set(source.ref, (heldRefs.get(source.ref) || 0) + 1);
+    }
+    const policy = plan && plan.cardPurchaseCoverage;
+    if (policy && (policy.reversals || []).length) return unknown('card-reversal-unqualified');
+    const records = policy && Array.isArray(policy.payments) ? policy.payments : [];
+    const unresolved = (coverage.issues || [])
+      .filter(issue => issue && issue.code === 'coverage-payment-or-credit-purpose-unconfirmed').length;
+    // The incumbent reconciler's own diagnostic pass (identity and conflict
+    // checks) is the only evidence read here; no date/amount heuristic
+    // assigns settlement purpose or card identity.
+    const diag = records.length || unresolved ? reconcileCardPurchases(transactions,
+      { plan, asOf: financialDate(opts && opts.asOf || coverage.asOf), packet: packet || {}, debts: opts && opts.debts,
+        paymentDiagnostics: true }) : null;
+    if (diag && (!diag.paymentAllocations || JSON.stringify((diag.publication.issues || []).map(i => i.code))
+      !== JSON.stringify((coverage.issues || []).map(i => i && i.code)))) return unknown('card-diagnostic-mismatch');
+    if (unresolved) {
+      // Atlas 6538656590 (6): each unresolved row raises one issue. Every one
+      // must be an unpaired card-side credit whose own card is unambiguous
+      // and holds no H purchase.
+      const byRef = new Map();
+      for (const tx of transactions) {
+        if (tx && tx.coverageRef != null) byRef.set(String(tx.coverageRef),
+          byRef.has(String(tx.coverageRef)) ? null : tx);
+      }
+      let proved = 0;
+      for (const [ref, verdict] of diag.paymentAllocations) {
+        if (!verdict || verdict.status === 'reconciled') continue;
+        const tx = byRef.get(String(ref));
+        const ids = tx ? [tx.atlasAccountId, tx.accountId, tx.account].filter(id => id != null && id !== '') : [];
+        if (!tx || !ids.length || ids.some(id => String(id) !== String(ids[0]))
+          || !isRevolvingCardAccount(tx) || heldCards.has(String(ids[0]))) return unknown('card-payment-purpose-unresolved');
+        proved += 1;
+      }
+      if (proved !== unresolved) return unknown('card-payment-purpose-unresolved');
+    }
+    // Qualified settlements: their allocations (F) and the deducted rows their
+    // own debit leg represents (identity across any card or bill shape).
+    // Atlas 6541992380 (2): linkage is lossless and order-independent. Each
+    // occurrence keeps the full set of distinct debit identities that
+    // represent it; an exact duplicate entry adds no identity.
+    const representedBy = new Map();
+    for (const entry of (packet && packet.representedActuals) || []) {
+      if (!entry || entry.transactionId == null) continue;
+      const key = entry.id + '@' + entry.date;
+      if (!representedBy.has(key)) representedBy.set(key, new Set());
+      representedBy.get(key).add(String(entry.transactionId));
+    }
+    // Atlas 6542560178 (4): the occurrences each debit identity claims. A
+    // settlement debit claimed by more than one occurrence cannot be
+    // attributed once on either basis.
+    const claimedBy = new Map();
+    for (const [key, ids] of representedBy) for (const id of ids) {
+      if (!claimedBy.has(id)) claimedBy.set(id, new Set());
+      claimedBy.get(id).add(key);
+    }
+    // Atlas 6541992380 (1): on the close basis, whether the opening already
+    // holds each settlement's cash is part of the basis. (3)/Q6: a non-H
+    // share leaving after the opening is outside the scoped plan, so the
+    // close may stand but its cash carry has no inspectable term.
+    const openingAsOf = kind === 'close' ? basis.openingAsOf : null;
+    if (kind === 'close' && !savingsDate(openingAsOf)) return unknown('basis-unavailable');
+    // Atlas 6542560178 (3): a cutover-walk opening with no gap is the plan's
+    // dated reading itself, not a reconstructed morning stock, so it may
+    // already hold same-day posted cash.
+    const zeroGapWalk = kind === 'close' && basis.openingSource === 'cutover-walk'
+      && plan && plan.opening && plan.opening.asOf === openingAsOf;
+    let carryReason = null;
+    const settled = new Map();
+    for (const record of records) {
+      const verdict = record && diag.paymentAllocations.get(record.creditRef);
+      if (!verdict || verdict.status !== 'reconciled' || verdict.kind !== 'payment') return unknown('card-settlement-unqualified');
+      const parts = Array.isArray(record.allocations) ? record.allocations : [];
+      const debit = transactions.filter(tx => tx && tx.coverageRef != null && String(tx.coverageRef) === String(record.debitRef));
+      if (debit.length !== 1 || debit[0].id == null || !savingsDate(debit[0].date)) return unknown('card-settlement-unqualified');
+      let alloc = 0, heldAlloc = 0;
+      for (const part of parts) {
+        const cents = part && savingsCents(part.amount);
+        if (!part || part.purchaseRef == null || cents == null || cents <= 0) return unknown('card-settlement-unqualified');
+        settled.set(String(part.purchaseRef), (settled.get(String(part.purchaseRef)) || 0) + cents);
+        alloc += cents;
+        const owners = heldRefs.get(String(part.purchaseRef)) || 0;
+        // Ambiguous ownership cannot be attributed to H exactly once.
+        if (owners > 1) return unknown('card-settlement-unqualified');
+        if (owners === 1) heldAlloc += cents;
+      }
+      const debitCents = savingsCents(debit[0].amount, true);
+      if (debitCents == null || Math.abs(debitCents) < alloc) return unknown('card-settlement-unqualified');
+      // Only allocations to purchases this hold contains fund H. Everything
+      // else (prior debt, purchases before the cycle or outside any budget
+      // row) left Bills outside the scoped plan.
+      const outsideH = Math.abs(debitCents) - heldAlloc;
+      if (kind === 'close') {
+        const day = debit[0].date;
+        const inOpening = day < openingAsOf ? true : day > openingAsOf ? false
+          : openingMayHoldSameDayCash(basis.openingSource) || zeroGapWalk ? null : false;
+        // Ambiguous inclusion changes the close whenever the debit funds H.
+        if (inOpening === null && heldAlloc > 0) return unknown('card-settlement-opening-ambiguous');
+        // Known inclusion: the unreduced hold would deduct the funded H a
+        // second time, and no qualified term restores it.
+        if (inOpening === true && heldAlloc > 0) return unknown('card-settlement-opening-included');
+        if (inOpening !== true && outsideH > 0) carryReason = 'card-settlement-carry-unreconciled';
+      }
+      // A deducted row represented by any of this settlement's debit
+      // identities (one row or several) holds on either basis. Cutover: the
+      // stock already holds this cash, so the row would be paid twice.
+      // Original-snapshot close (pre-review of 0a152542): the row could be
+      // counted in B and in unreduced H, and no inspectable term in the
+      // published close identity carries a restoration, so the close is
+      // unknown rather than adjusted. Unrepresented, the settlement's H share
+      // is inside H and its non-H share is outside the scoped plan (Q6 above).
+      if ((claimedBy.get(String(debit[0].id)) || new Set()).size > 1 || rows.some(row => {
+        const ids = representedBy.get(row.id + '@' + row.date);
+        return ids != null && ids.has(String(debit[0].id));
+      })) return unknown('card-settlement-overlap-unresolved');
+    }
+    // Atlas Q3/C3 (6540253159; Muse 6540609418 requirement 3): the
+    // accounting horizon decides overlap. A held-card (or card-less) payment
+    // obligation with any occurrence after the as-of could pay purchases in
+    // remaining H in a dependent later period; nothing qualifies that, so it
+    // holds. A once-only payment dated before the as-of is judged by rows.
+    if (heldCards.size) for (const o of (plan && plan.obligations) || []) {
+      if (!o || !(o.effect === 'payment' || o.debtId != null)) continue;
+      if (o.debtId != null && !heldCards.has(String(o.debtId))) continue;
+      if (o.frequency === 'once' && savingsDate(o.date) && o.date < financialDate(opts && opts.asOf || coverage.asOf)) continue;
+      return unknown('card-payment-overlap-unresolved');
+    }
+    // Atlas 6538656590 (1) on the consuming basis: a deducted held-card (or
+    // card-less) payment row not represented by a qualified settlement could
+    // overlap remaining H; nothing qualifies that overlap, so it holds.
+    if (heldCards.size) for (const row of rows) {
+      const source = cardPaymentRow(row);
+      if (source && (source.debtId == null || heldCards.has(String(source.debtId)))) {
+        return unknown('card-payment-overlap-unresolved');
+      }
+    }
+    let remaining = 0;
+    for (const row of budget.items) {
+      const hold = savingsCents(row && row.hold), spent = savingsCents(row && row.spent, true);
+      if (hold == null || spent == null) return unknown('household-budget-unavailable');
+      // F is posted cash spending plus qualified settlement allocations.
+      // Pending cash has not left Bills, so it stays inside the requirement.
+      let card = 0, funded = 0, pendingCash = 0, bound = 0;
+      for (const r of (row.recon || [])) {
+        if (!r || (r.pendingPostedDuplicate === true && r.pending === true)) continue;
+        const source = rowSource(r);
+        const cents = savingsCents(r.amount, true);
+        if (!source || cents == null) return unknown('household-row-untraceable');
+        if (!source.card) {
+          if (r.pending === true) pendingCash += cents;
+          continue;
+        }
+        card += cents;
+        let share = 0;
+        if (settled.size && source.ref != null && settled.has(source.ref)) {
+          share = settled.get(source.ref);
+          settled.delete(source.ref);
+        }
+        funded += share;
+        if (cents > 0) bound += Math.max(0, cents - share);
+      }
+      const rowRemaining = Math.max(0, hold - (spent - card - pendingCash) - funded);
+      // Atlas 6538656590 (9): each eligible purchase's unknown remaining is
+      // bounded by its gross less qualified settlement. Only when this
+      // maximum dominates pending cash plus that bound can the unknown
+      // per-purchase floor not change it; otherwise it stays unknown.
+      if (rowRemaining < Math.max(0, pendingCash) + bound) return unknown('card-floor-unqualified');
+      remaining += rowRemaining;
+    }
+    if (!Number.isSafeInteger(remaining)) return unknown('cents-unsafe');
+    return { status: 'qualified', reason: null, remainingCents: remaining, carryReason };
+  }
+  const CARD_MATCH_UNKNOWN_TEXT = {
+    'card-payment-overlap-unresolved': 'a scheduled card payment this close deducts could also pay card purchases already in the household hold',
+    'card-settlement-overlap-unresolved': 'a confirmed card settlement may also be a scheduled payment this close deducts, so it could be counted twice',
+    'card-settlement-opening-ambiguous': 'a confirmed card settlement falls on the opening date, so whether the opening includes it is unknown',
+    'card-settlement-opening-included': 'a confirmed card settlement is already inside the opening cash, so the household hold would count it a second time',
+    'card-payment-purpose-unresolved': 'a card payment or credit has an unconfirmed purpose that could fund card purchases in the household hold',
+  };
+  // The cutover basis (observed stock at the as-of) for one period: rows it
+  // deducts are exactly billBelongsOnPaydayWaterfall(row, asOf, 'cutover-opening').
+  function cardMatchCutoverQualification(plan, coverage, period, asOf, opts) {
+    return cardMatchQualification(plan, coverage, { items: (period && period.householdBudget) || [] },
+      { kind: 'cutover', rows: ((period && period.bills) || []).filter(row => row
+        && billBelongsOnPaydayWaterfall(row, asOf, 'cutover-opening')) }, { ...(opts || {}), asOf });
+  }
+  // One card-corrected remaining household allowance (cents) for a period:
+  // the S1 seed, the Savings daily walk and the closing walk share it.
+  function cardMatchPeriodRemaining(plan, coverage, period, asOf, opts) {
+    const result = cardMatchCutoverQualification(plan, coverage, period, asOf, opts);
+    return result.status === 'qualified' ? result.remainingCents : null;
   }
   // PA-4 (Atlas 6527529634): when the only Bills issue is a known balance
   // below the matching-derived reserve, disclose that gap on its own. It is a
@@ -11609,6 +11889,22 @@
   }
 
 
+  // PA-4a-2b (Atlas 6538656590, ruling 7): when the active seed rests on the
+  // card-matching estimate, the published periods keep the seed unknown (the
+  // same chain as any unknown seed). A private second pass carries the
+  // estimated chain, attached beside each projected period, never as it.
+  function attachCardMatchingChain(periods, chain) {
+    const marked = periods.find(p => p.cardMatchingEstimate);
+    const { basis, reason } = marked.cardMatchingEstimate;
+    for (const period of periods) {
+      if (!period.projected) continue;
+      const twin = chain.find(row => row.id === period.id && row.start === period.start && row.end === period.end);
+      period.cardMatchingEstimate = twin && twin.opening != null ? { trust: 'estimated', basis, reason,
+        opening: twin.opening, paydaySweep: twin.paydaySweep ?? null,
+        plannedPeriodClose: twin.plannedPeriodClose ?? null } : { trust: 'unknown', basis, reason,
+        opening: null, paydaySweep: null, plannedPeriodClose: null };
+    }
+  }
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
@@ -11708,6 +12004,11 @@
     // from the inputs that carry actually uses. Null whenever no numeric
     // carry exists, so no stale provenance reaches a fallback opening.
     let carryTrust = null;
+    // PA-4a-2b: the active seed used the card-matching estimate. Atlas
+    // 6538656590 (7): until the sequenced consumer recognises that nature,
+    // the projected opening it would seed stays unknown and the typed
+    // estimate rides beside the next period, never as its opening.
+    let cardMatchSeedEstimated = false, cardMatchOpeningEstimate = null;
     let unavailableOpeningLost = false;
     let openingChainLost = false;
     const heldCycleStarts = new Set();
@@ -12088,7 +12389,7 @@
         : periodWaterfallCombinedTrust(...startingCashOpeningRows(plan).map(startingCashRowTrust));
       const plannedOpeningTrust = !projected ? activeOpeningTrust
         : periodWaterfallCombinedTrust(openingCarried ? (incomingCarryTrust || 'unavailable') : 'unavailable',
-          opts.s1CurrentBoundaryCreditEstimated === true ? 'estimated' : 'calculated');
+          opts.s1CurrentBoundaryCreditEstimated === true || cardMatchSeedEstimated ? 'estimated' : 'calculated');
       // The planned close and its carry add only incomeAdded (receipts not
       // already inside the opening); the BAD identity keeps incomeTrust.
       const incomeAddedTrust = periodWaterfallTotalTrust(incomeAddedRows, 0, calendarIncomeContribution);
@@ -12122,6 +12423,20 @@
         && calendarOccurrenceRepresented(representedSavings, observedSavings, e.id, e.date));
       const cashAfterHouseholdBudget = cashAfterBills != null && !annualSavingsUnknown && !annualSnapshotCarryUnknown
         ? roundCent(cashAfterBills - budget.hold - annualSavingsNeed) : null;
+      // PA-4a-2b option (b): under a card hold the active planned close and
+      // its dependent carry consume ONE qualified result on the close's own
+      // basis (the rows this close deducts, from its opening). Only a
+      // qualified result is published or carried, with any evidenced
+      // settlement overlap counted once; every other path is unknown.
+      const activeCardClose = role === 'active' && !lookback && !planUnavailable && cardCoverage.status === 'unavailable'
+        ? (!cardMatchEstimateEligible(plan, cardCoverage, opts) ? { status: 'hard', reason: null }
+          : cardMatchQualification(plan, cardCoverage, budget, { kind: 'close', openingAsOf, openingSource,
+            rows: assignedBillRows.filter(row => billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)) },
+          { ...opts, asOf }))
+        : null;
+      const plannedCloseCash = !activeCardClose ? cashAfterHouseholdBudget
+        : activeCardClose.status === 'qualified' && cashAfterHouseholdBudget != null
+          ? cashAfterHouseholdBudget : null;
       // S1 payday sweep (owner direction 2026-10-14 via Atlas, superseding
       // the net-surplus-only sweep of PR #616 where they conflict): one
       // Forecast-owned sweep per future period, published on the period
@@ -12237,8 +12552,21 @@
             const stock = opts.s1CurrentBillsStockCents;
             const remainingBudgetKnown = budget.items.every(row =>
               savingsCents(row.hold) != null && savingsCents(row.spent, true) != null);
-            const remainingBudget = remainingBudgetKnown ? budget.items.reduce((sum, row) =>
-              sum + Math.max(0, savingsCents(row.hold) - savingsCents(row.spent, true)), 0) : null;
+            // PA-4a-2b: under a card hold, card spend is not relieved as if
+            // Bills cash had left. Only an eligible matching-only hold with
+            // qualified settlement terms seeds an ESTIMATED opening.
+            const cardHeld = cardCoverage.status === 'unavailable';
+            let remainingBudget = !remainingBudgetKnown ? null
+              : cardHeld ? cardMatchPeriodRemaining(plan, cardCoverage,
+                { householdBudget: budget.items, bills: assignedBillRows }, asOf, opts)
+              : budget.items.reduce((sum, row) =>
+                sum + Math.max(0, savingsCents(row.hold) - savingsCents(row.spent, true)), 0);
+            // One D: when Savings planning qualified the same card-corrected
+            // allowance, the seed must agree with it to the cent.
+            const cardRemainingAgrees = !cardHeld || !Object.hasOwn(opts, 's1CardRemainingHouseholdCents')
+              || opts.s1CardRemainingHouseholdCents === remainingBudget;
+            if (!cardRemainingAgrees) remainingBudget = null;
+            if (cardHeld && remainingBudget != null) cardMatchSeedEstimated = true;
             const futureIncome = income.filter(row => row.date > asOf
               && !row.alreadyInCash && !row.notReliedUpon
               && !['represented', 'opening', 'not-relied-upon'].includes(row.settlement));
@@ -12259,6 +12587,13 @@
             // account to make this Bills-only seam work. Preserve its current
             // funding disclosure, but withhold the dependent projection.
             previousEnding = Number.isSafeInteger(seed) && !(credit > 0 && seed < 0) ? seed / 100 : null;
+            if (previousEnding != null && cardMatchSeedEstimated && opts.cardMatchingPrivateChain !== true) {
+              cardMatchOpeningEstimate = { opening: previousEnding, trust: 'estimated',
+                basis: opts.s1CurrentBoundaryCreditEstimated === true
+                  ? 'reported-balance-movement-and-card-matching' : 'card-matching-unresolved',
+                reason: 'Estimated opening withheld until card purchase matching is recognised here: ' + cardCoverage.reason };
+              previousEnding = null;
+            }
             if (previousEnding == null) openingChainLost = true;
             else {
               // Seed provenance: qualified Bills stock (calculated), the
@@ -12291,7 +12626,13 @@
             }
           } else {
             // Incumbent noncombined publication, with no Savings sweep consumer.
-            previousEnding = cashAfterHouseholdBudget;
+            // PA-4a-2b (C7): a card-held close that is not qualified cannot
+            // feed a numeric dependent opening; a qualified one carries its
+            // reconciled value.
+            // Q6 (Atlas 6541992380 (3)): a qualified scoped close whose cash
+            // carry has no inspectable reconciliation term is not carried.
+            previousEnding = activeCardClose && activeCardClose.carryReason ? null : plannedCloseCash;
+            if (activeCardClose && previousEnding == null) openingChainLost = true;
             let splitBillsStockTrust = null;
             if (previousEnding != null && openingKnown && opening != null) {
               const rows = (plan.startingCash?.breakdown || []).filter(r =>
@@ -12399,22 +12740,33 @@
         afterHouseholdBudget,
         balanceAfterDeductions,
         paydaySweep,
-        ...(opts.s1CurrentBoundaryCreditEstimated === true && projected
+        // Decision 1 / PA-4a-2b: openings and sweeps derived from an
+        // estimated basis carry the estimated tag and their typed basis.
+        ...(opts.s1CurrentBoundaryCreditEstimated === true && !cardMatchSeedEstimated && projected
           ? { openingTrust: 'estimated', paydaySweepTrust: 'estimated',
             openingBasis: 'reported-balance-movement-hold' } : {}),
+        ...(cardMatchSeedEstimated && projected && opts.cardMatchingPrivateChain === true
+          ? { openingTrust: 'estimated', paydaySweepTrust: 'estimated' } : {}),
+        ...(projected && cardMatchOpeningEstimate ? (() => {
+          const estimate = cardMatchOpeningEstimate;
+          cardMatchOpeningEstimate = null;
+          return { cardMatchingEstimate: estimate };
+        })() : {}),
         predictedEndingBalance: afterHouseholdBudget,
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
           ? 'balance-after-deductions' : null,
         predictedEndingBalanceTerms,
-        ...plannedPeriodClosePublication(lookback ? null : cashAfterHouseholdBudget, {
+        ...plannedPeriodClosePublication(lookback ? null : plannedCloseCash, {
           opening: paydayBoundaryOpening ? opening : null, incomeAdded, periodBillLoad,
           budgetHold: planUnavailable ? null : budget.hold, annualSavingsNeed,
         }, [plannedTermsTrust, annualSavingsNeedTrust, plannedOpeningTrust],
         lookback || cardCoverage.status !== 'unavailable' ? 'none'
-          : cardMatchOnlyHold(plan, cardCoverage) ? 'match' : 'hard', cardCoverage.reason,
+          : activeCardClose ? (activeCardClose.status === 'qualified' ? 'match'
+            : activeCardClose.status === 'hard' ? 'hard' : 'unqualified')
+          : cardMatchEstimateEligible(plan, cardCoverage, opts) ? 'match' : 'hard', cardCoverage.reason,
         projected && openingKnown && !openingCarried
           ? 'The planned period close is unavailable: its opening comes from a fallback cash walk whose trust is not established.'
-          : null),
+          : null, activeCardClose && activeCardClose.reason),
         ...(role === 'active' && cardReserveShortfallDisclosure(plan, cardCoverage)
           ? { cardReserveShortfall: cardReserveShortfallDisclosure(plan, cardCoverage) } : {}),
 
@@ -12455,6 +12807,10 @@
         operatingCashExplanationWindow(active, asOf),
         calendarOpts);
       active.billsAccountPeriodBalance = billsAccountPeriodBalance(plan, asOf, calendarOpts);
+    }
+    if (opts.cardMatchingPrivateChain !== true && periods.some(p => p.cardMatchingEstimate)) {
+      attachCardMatchingChain(periods, calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts,
+        { ...opts, cardMatchingPrivateChain: true }).calendarPeriods || []);
     }
     return {
       calendarPeriods: periods,
@@ -15058,7 +15414,11 @@
       evidenceFailures: orderedFailures([...(current ? spendingFailures(current, true) : []),
         ...cashFailures(), ...failures]),
     });
+    // PA-4a-2b: under an admitted card-matching hold every withheld return
+    // keeps the incumbent card publication byte-identical.
+    let heldPublication = null;
     const unavailable = (reason, failures) => {
+      if (heldPublication) [reason, failures] = heldPublication;
       if (current && !current.fromTodayFunding) current.fromTodayFunding = todayUnavailable(reason, failures);
       for (const p of periods || []) p.plannedCostFunding = {
         status: 'unavailable', reason, contribution: null, trust: 'unavailable',
@@ -15220,9 +15580,17 @@
       }
       return issues;
     };
-    if (coverage.status === 'unavailable') return unavailable(coverage.reason,
-      [failure('card-purchase-coverage-unconfirmed', coverage.reason, {},
-        'Confirm the opening and explicit purchase/payment allocations; amount and timing alone cannot establish intent.')]);
+    // PA-4a-2b: an eligible matching-only card hold still builds the private
+    // closing walk from the one card-corrected remaining allowance; this
+    // publication stays unavailable exactly as before.
+    const cardRemaining = coverage.status === 'unavailable' && current
+      ? cardMatchPeriodRemaining(plan, coverage, current, asOf, opts) : null;
+    if (coverage.status === 'unavailable') {
+      heldPublication = [coverage.reason,
+        [failure('card-purchase-coverage-unconfirmed', coverage.reason, {},
+          'Confirm the opening and explicit purchase/payment allocations; amount and timing alone cannot establish intent.')]];
+      if (cardRemaining == null) return unavailable();
+    }
     if (!full.length) return unavailable('No complete future Budget pay period is available.',
       [failure('funding-periods-unavailable', 'No complete future Budget pay period is available.')]);
     // The incumbent sequence omits absent amounts and accepts legacy numeric
@@ -15357,6 +15725,7 @@
         const currentItems = current.householdBudget || [];
         const evidenceKnown = spendingFailures(current, true).length === 0;
         if (opts.operatingPlan === 'unavailable' || !cashKnown || !evidenceKnown) {
+          if (heldPublication) return unavailable();
           current.fromTodayFunding = todayUnavailable(opts.operatingPlan === 'unavailable'
             ? opts.operatingPlanNote || 'Current cash evidence is stale; refresh before setting money aside.'
             : !cashKnown ? 'Dated, complete household chequing cash is unavailable.'
@@ -15364,7 +15733,8 @@
         } else {
           // Even on payday, observed consumption has already happened. Do
           // not replay it, or add today's scheduled salary to observed cash.
-          const remaining = roundCent(currentItems.reduce((s, r) => s + Math.max(0, r.hold - r.spent), 0));
+          const remaining = cardRemaining != null ? cardRemaining / 100
+            : roundCent(currentItems.reduce((s, r) => s + Math.max(0, r.hold - r.spent), 0));
           const forwardDaily = new Map(daily);
           budgetAllowanceDays(forwardDaily, asOf, current.end, remaining, current.bills);
           const forwardOpts = Object.assign({}, walkOpts, {
@@ -15378,7 +15748,10 @@
           });
           const forwardSim = simulateModel(plan, asOf, forwardOpts);
           savingsClosingWalks.set(periods, { sim: forwardSim, periods: ordered,
-            through: end, trust: basisTrust });
+            through: end, trust: heldPublication ? 'estimated' : basisTrust,
+            ...(heldPublication ? { estimateBasis: 'card-matching-unresolved',
+              cardRemainingHouseholdCents: cardRemaining } : {}) });
+          if (heldPublication) return unavailable();
           const forwardBasis = new Map(basis);
           const { cash, income, walkCapacity, capacity, deductions, bills } =
             budgetSavingsCashSeed(plan, asOf, current.end, remaining, forwardSim, seq);
@@ -15804,10 +16177,12 @@
         .find(w => w && w.role === 'active');
       const s1BasisOpening = s1RiskWindow
         ? resolvePaydayPeriodOpening(plan, asOf, s1RiskWindow, paydayOpts, null, null) : null;
-      if (plan.savingsEarmarks?.allocationPolicy != null) {
-        paydayOpts.s1CurrentBillsStockCents = (() => {
-          const cents = value => typeof value === 'number' && Number.isFinite(value)
-            ? savingsCents(value, true) : null;
+      const cents = value => typeof value === 'number' && Number.isFinite(value)
+        ? savingsCents(value, true) : null;
+      // The qualified operating cash (basis opening, as-of, operating plan,
+      // unique trusted rows and aligned fresh observations). PA-4a-2b reuses
+      // it for the below-reserve card branch (Atlas 6538656590, ruling 8).
+      const s1QualifiedCash = (() => {
           if (!s1RiskWindow || !s1BasisOpening?.openingKnown
               || plan.opening?.asOf !== asOf || paydayOpts.operatingPlan === 'unavailable') return null;
           const rows = plan.startingCash?.breakdown;
@@ -15835,6 +16210,13 @@
                     && !['verified', 'confirmed', 'calculated'].includes(tag))) return null;
             }
           }
+          return cash;
+      })();
+      paydayOpts.s1BillsStockQualifiedCents = s1QualifiedCash ? s1QualifiedCash.get(BILLS_ACCOUNT_ID) : null;
+      if (plan.savingsEarmarks?.allocationPolicy != null) {
+        paydayOpts.s1CurrentBillsStockCents = (() => {
+          const cash = s1QualifiedCash;
+          if (!cash) return null;
           const packet = currentPeriodActualsPacket(paydayOpts);
           const direct = s1BasisOpening.source === 'payday-morning'
             && s1RiskWindow.start === asOf;
@@ -15923,7 +16305,8 @@
       // (proven transfers only), so future sweeps and the estimated Savings
       // walk exist; future Budget rows are projections either way.
       if (earlySavingsFunding && (earlySavingsFunding.backing?.status === 'ready'
-          || savingsPlanning.current?.estimateBasis === 'reported-balance-movement-hold')
+          || ['reported-balance-movement-hold', 'reported-balance-movement-and-card-matching']
+            .includes(savingsPlanning.current?.estimateBasis))
         && savingsPlanning.current?.status === 'ready'
         && !(earlySavingsFunding.unresolved || []).length) {
         const fp = savingsPlanning.current;
@@ -15976,7 +16359,11 @@
               paydayOpts.s1CurrentBoundaryCreditCents = creditCents - fp.unreceivedCents;
               // Decision 1: openings and sweeps derived from an estimated
               // basis carry the estimated tag end-to-end.
-              if (fp.estimateBasis === 'reported-balance-movement-hold') paydayOpts.s1CurrentBoundaryCreditEstimated = true;
+              if (['reported-balance-movement-hold', 'reported-balance-movement-and-card-matching']
+                .includes(fp.estimateBasis)) paydayOpts.s1CurrentBoundaryCreditEstimated = true;
+              if (Number.isSafeInteger(fp.cardRemainingHouseholdCents)) {
+                paydayOpts.s1CardRemainingHouseholdCents = fp.cardRemainingHouseholdCents;
+              }
             }
           }
         }
@@ -22214,9 +22601,19 @@
     // conserved walk runs from the dated REPORTED balance and each close is
     // published as a named estimate. Verified backing stays withheld.
     const reported = funding.stock?.reportedStock;
-    const estimate = funding.backing.status !== 'ready'
-      && planning?.estimateBasis === 'reported-balance-movement-hold'
+    const movementBasis = ['reported-balance-movement-hold', 'reported-balance-movement-and-card-matching']
+      .includes(planning?.estimateBasis);
+    const estimate = funding.backing.status !== 'ready' && movementBasis
       && reported?.status === 'ready' && savingsDate(reported.balanceThrough || reported.checkedAsOf);
+    // PA-4a-2b: a card-matching estimate needs the Budget walk built from the
+    // same card-corrected allowance; either side alone holds.
+    const cardBasis = ['card-matching-unresolved', 'reported-balance-movement-and-card-matching']
+      .includes(planning?.estimateBasis);
+    if (planning?.status === 'ready' && context?.sim && (cardBasis !== (context?.estimateBasis === 'card-matching-unresolved')
+        || cardBasis && (!Number.isSafeInteger(planning.cardRemainingHouseholdCents)
+          || planning.cardRemainingHouseholdCents !== context.cardRemainingHouseholdCents))) {
+      return hold('The card-matching estimate and the Budget cash walk do not share one remaining household allowance.');
+    }
     if (funding.allocationMode !== 'combined' || (funding.backing.status !== 'ready' && !estimate)
         || planning?.status !== 'ready') return hold(planning?.reason || funding.period.reason || funding.backing.reason
           || 'Current-period receipt inclusion is not proved; a remaining surplus cannot be added to reported savings.');
@@ -22357,8 +22754,12 @@
       // now withholds the dependent closes; net surplus is not a fallback.
       // Current-period expected salary remains a hypothetical planning input;
       // matched received/transferred amounts are already in the observed pot.
-      const publishedSweep = !current && typeof period.paydaySweep === 'number'
-        ? savingsCents(period.paydaySweep) : null;
+      // PA-4a-2b: under the card-matching estimate the published sweep is
+      // withheld; the close reads the typed estimated sweep beside it.
+      const sweepValue = cardBasis ? period.cardMatchingEstimate?.trust === 'estimated'
+        && period.cardMatchingEstimate.paydaySweep : period.paydaySweep;
+      const publishedSweep = !current && typeof sweepValue === 'number'
+        ? savingsCents(sweepValue) : null;
       if (!current && publishedSweep == null) {
         for (const dependent of ordered.slice(index)) result.set(dependent.end, {
           status: 'unavailable', reason: 'The shared Bills sweep is unavailable.',
@@ -22366,7 +22767,7 @@
           start: dependent.start, end: dependent.end, asOf, currency: 'CAD',
           source: 'Forecast.recommend.savingsFunding', actionPermission: 'not-granted',
           moneyMovementPermission: 'not-granted' });
-        return result;
+        return labelEstimates();
       }
       let eligible = current ? net + overlap - saved - transferred
         : publishedSweep;
@@ -22449,19 +22850,54 @@
         actionPermission: 'not-granted', moneyMovementPermission: 'not-granted',
         reason: 'Forecast at period close. Each period\'s eligible surplus is swept into Savings on the following payday; routine Bills deficits are shown, not covered from Savings. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.' });
     }
-    if (estimate) {
-      const balanceAsOf = reported.balanceThrough || reported.checkedAsOf;
-      const assumptions = [
-        'Starts from the reported Savings balance dated ' + balanceAsOf + '.',
-        'An unqualified Savings movement may or may not already be included in that reported balance.',
-        'The current-period sweep counts proven household transfers only.',
-      ];
-      for (const [end, row] of result) if (row.status === 'ready') result.set(end, { ...row,
-        nature: 'reported-balance-estimate', balanceAsOf, assumptions, verifiedReason: planning.verifiedReason,
-        reason: 'Estimated from the reported Savings balance dated ' + balanceAsOf
-          + '. Verified backing is withheld: ' + planning.verifiedReason });
+    return labelEstimates();
+    // Every return of computed closes passes through here, so a ready close
+    // never escapes its estimate labels (Codex P1 on #812: the missing-sweep
+    // return below skipped them, for the movement estimate too).
+    function labelEstimates() {
+      if (estimate) {
+        const balanceAsOf = reported.balanceThrough || reported.checkedAsOf;
+        const assumptions = [
+          'Starts from the reported Savings balance dated ' + balanceAsOf + '.',
+          'An unqualified Savings movement may or may not already be included in that reported balance.',
+          'The current-period sweep counts proven household transfers only.',
+        ];
+        for (const [end, row] of result) if (row.status === 'ready') result.set(end, { ...row,
+          nature: 'reported-balance-estimate', balanceAsOf, assumptions, verifiedReason: planning.verifiedReason,
+          reason: 'Estimated from the reported Savings balance dated ' + balanceAsOf
+            + '. Verified backing is withheld: ' + planning.verifiedReason });
+      }
+      if (cardBasis) {
+        // Never the clean nature: card purchases whose payment matching is
+        // unconfirmed are funded from the household allowance, not as Bills cash
+        // already spent. Atlas 6538656590 (7): until the sequenced consumer
+        // recognises this nature, the published close stays unknown and the
+        // typed estimate rides beside it, never as the close's own total.
+        const cardAssumption = 'Card purchases whose payment matching is unconfirmed are funded from the remaining household allowance; card spending is not counted as Bills cash already spent.';
+        // C1 (Atlas 6540253159): a computed negative-pot close (status
+        // unavailable with a gap) carries money in its gap, diagnostics and
+        // reason. It crosses the same boundary as a ready close.
+        for (const [end, row] of result) if (row.status === 'ready' || row.gap) {
+          const typed = { ...row,
+            nature: estimate ? 'reported-balance-and-card-matching-estimate' : 'card-matching-estimate',
+            estimateBasis: planning.estimateBasis, estimateReasons: planning.estimateReasons.slice(),
+            assumptions: [...(row.assumptions || []), cardAssumption],
+            verifiedReason: planning.verifiedReason,
+            reason: (estimate ? row.reason + ' ' : '') + 'Card purchase matching is unconfirmed: '
+              + planning.estimateReasons.at(-1) };
+          result.set(end, { status: 'unavailable', stock: null, items: [], rows: [], actualSaved: null,
+            trust: 'unknown', start: row.start, end: row.end, asOf, currency: 'CAD',
+            source: 'Forecast.recommend.savingsFunding',
+            actionPermission: 'not-granted', moneyMovementPermission: 'not-granted',
+            estimateBasis: typed.estimateBasis, estimateReasons: typed.estimateReasons.slice(),
+            // No amount crosses into the published reason.
+            reason: 'The estimated close is withheld until card purchase matching is recognised here. Card purchase matching is unconfirmed: '
+              + planning.estimateReasons.at(-1),
+            cardMatchingEstimate: typed });
+        }
+      }
+      return result;
     }
-    return result;
   }
 
   // Private current-period planning basis, reached only after the incumbent
@@ -22544,7 +22980,10 @@
       // Decision 2: every published goal row carries Still to fund beside its
       // Saved, whether the packet is ready or withheld.
       rows: (derived.rows || []).map(row => ({ ...row, ...savingsStillToFund(row.needed, row.saved) })) };
-    const unknown = reason => ({ ...shell, status: 'unavailable', reason,
+    // PA-4a-2b: once an eligible card-matching hold is admitted below, the
+    // published packet keeps the incumbent card reason on every later return.
+    let heldReason = null;
+    const unknown = reason => (reason = heldReason || reason, { ...shell, status: 'unavailable', reason,
       period: { status: 'unavailable', reason, entitlement: null, transferred: null,
         remainingEntitlement: null, availableNow: null, proposal: null, unassigned: null, actualSaved: null } });
     const income = incomeReconciliationState(plan, day);
@@ -22639,7 +23078,11 @@
     const seq = fundingSequence(plan, day, opts);
     if (seq.some(c => c.flexibility !== 'optional' && c.date && c.date < day && (c.need ?? c.bounds?.floor) > 0)) return unknown('Unpaid past requirements remain protected until evidenced settlement.');
     const coverage = cardCoverageState(plan, day, opts);
-    if (!['incumbent', 'ready'].includes(coverage.status)) return unknown(coverage.reason);
+    // PA-4a-2b: an eligible matching-only card hold may still supply a private
+    // ESTIMATED planning basis. Every other card hold returns here unchanged.
+    const cardEstimate = coverage.status === 'unavailable' && cardMatchEstimateEligible(plan, coverage, opts);
+    if (!['incumbent', 'ready'].includes(coverage.status) && !cardEstimate) return unknown(coverage.reason);
+    if (cardEstimate) heldReason = coverage.reason;
     const bound = payPeriodTimelineBound(plan, day, opts);
     const windows = timelinePayPeriodWindows(plan, day, bound.through).filter(window => window.end <= bound.through);
     if (!windows.some(window => window.start === cycle.start)) return unknown('The current full cycle lies beyond supported income authority.');
@@ -22694,16 +23137,25 @@
       .reduce((sum, tx) => sum - savingsCents(tx.amount, true), 0);
     if (planningContext) planningContext.current = currentSavingsPlanningBasis(plan, day, {
       current, packet, unique, opts, nativePeriodSurplus, nativeReceived, evidencedIncome, alreadySavedIncome, transferred });
-    if (movementEstimate) {
+    if (movementEstimate || cardEstimate) {
       // Transfers above are the proven pairs only (an unmatched household
       // transfer already returned unknown), so the boundary credit cannot
       // count a Bills transfer twice. The remaining uncertainty is whether
       // the dated reported balance includes the unqualified movement; the
       // estimate names that assumption and never becomes verified backing.
-      if (planningContext?.current?.status === 'ready' && nativeReceived === evidencedIncome) {
+      // PA-4a-2b: a card-matching hold adds its own named uncertainty and the
+      // one card-corrected remaining allowance the walks below must reuse.
+      const cardRemaining = cardEstimate ? cardMatchPeriodRemaining(plan, coverage, current, day, opts) : null;
+      const reasons = [movementEstimate ? derived.reason : null, cardEstimate ? coverage.reason : null].filter(Boolean);
+      if (planningContext?.current?.status === 'ready' && nativeReceived === evidencedIncome
+          && (!cardEstimate || cardRemaining != null)) {
         planningContext.current = { ...planningContext.current,
-          estimateBasis: 'reported-balance-movement-hold', verifiedReason: derived.reason };
-      } else if (planningContext) planningContext.current = { status: 'unavailable', reason: derived.reason };
+          estimateBasis: !cardEstimate ? 'reported-balance-movement-hold'
+            : movementEstimate ? 'reported-balance-movement-and-card-matching' : 'card-matching-unresolved',
+          verifiedReason: reasons[0],
+          ...(cardEstimate ? { estimateReasons: reasons, cardRemainingHouseholdCents: cardRemaining } : {}) };
+      } else if (planningContext) planningContext.current = { status: 'unavailable',
+        reason: cardEstimate && cardRemaining == null ? coverage.reason : reasons[0] };
       return unknown(derived.reason);
     }
     if (nativeReceived !== evidencedIncome) return unknown('Native received income does not reconcile to the complete posted receipt evidence.');
