@@ -145,54 +145,146 @@ test('ruling 5: a settlement that could also be a scheduled card bill the seed s
   assert.equal(estimated(seedCase({ pay: 2000, alloc: 2000, obligation: paid }).next), 3750);
 });
 
-test('Atlas #812 B2: the active planned close never deducts a settlement twice (bill in B and unreduced H)', () => {
-  // Snapshot 8000 on 10-02; card purchase 4250 on 10-05; a confirmed 2000
-  // Bills payment on 10-06 allocated to it; observed Bills 6000. The same-card
-  // 2000 minimum on 10-06 is represented by that payment, so the close (from
-  // the 10-02 snapshot) still deducts it: 8000 - 2000 - 4250 = 1750 double-counts
-  // the 2000. The qualified answer is 6000 - (4250 - 2000) = 3750.
-  const ob = { ...cardMinimum('tdcc'), firstDue: '2026-10-06', day: 6, amount: 20 };
-  const represented = [{ id: 'card-min', date: '2026-10-06', actual: 20, transactionId: 'PAY-D' }];
-  const run = (rows, shape = 'obligation') => {
-    const x = ledger();
-    x.plan.income = x.plan.income.filter(r => r.id === 'payroll');
-    x.plan.budget = { categories: [{ id: 'groceries', label: 'Groceries', monthly: 0, essential: true }] };
-    if (shape === 'obligation') x.plan.obligations = [ob];
-    // The same cash under another card's id, or as a plain bill row: its
-    // representation by the settlement's own debit still identifies it.
-    if (shape === 'other-card') x.plan.obligations = [{ ...ob, debtId: 'travelvisa' }];
-    if (shape === 'bill') x.plan.bills = [{ id: 'card-min', label: 'Invented card bill', frequency: 'monthly',
-      day: 6, amount: 20, confidence: 'confirmed' }];
-    x.plan.startingCash.breakdown[0].value = 60;
-    x.plan.cardPurchaseCoverage = { payments: [{ id: 'p1', confirmed: true, creditRef: 'pay-c', debitRef: 'pay-d',
-      allocations: [{ purchaseRef: 'cov-1', amount: 20 }], otherAmount: 0 }], refunds: [], reversals: [] };
-    x.opts.currentPeriodActuals.transactions = [purchase(42.5),
-      posted({ id: 'PAY-D', date: '2026-10-06', amount: 20, atlasAccountId: 'chequing-a',
-        accountRole: 'household-cash', categoryLabel: 'Credit Card Payment', coverageRef: 'pay-d' }),
-      posted({ id: 'PAY-C', date: '2026-10-06', amount: -20, atlasAccountId: 'tdcc',
-        accountRole: 'revolving-credit', categoryLabel: 'Credit Card Payment', coverageRef: 'pay-c' })];
-    x.opts.currentPeriodActuals.representedActuals = rows;
-    const a = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: DEBTS });
-    return a.payPeriodViews.filter(v => v.role !== 'lookback');
-  };
-  const [active, next] = run(represented);
+// PA-4a-2b option (b) (Atlas #812 6540159717; Muse #787 6540609418): one
+// qualified result per accounting basis. Shared invented scene: snapshot 8000
+// on 10-02, a 4250 Groceries card purchase on 10-05, a 2000 Bills payment
+// (PAY-D / PAY-C) on 10-06, observed Bills 6000 at the 10-07 as-of. Every
+// expected value is a hand ledger:
+//   close basis (snapshot)  = 8000 - B - 4250 + (H share of a represented
+//                             settlement, counted once) - (unrepresented
+//                             non-H settlement share);
+//   cutover basis (seed)    = 6000 - deducted remaining B - (4250 - F).
+function b2Case({ obligations = [], bills = [], represented = [], extra = [], record = true, alloc = 2000,
+  other = 0, payDate = '2026-10-06', policy = true, otherCash = 0 } = {}) {
+  const x = ledger();
+  x.plan.income = x.plan.income.filter(r => r.id === 'payroll');
+  x.plan.budget = { categories: [{ id: 'groceries', label: 'Groceries', monthly: 0, essential: true }] };
+  if (!policy) delete x.plan.savingsEarmarks.allocationPolicy;
+  x.plan.obligations = obligations;
+  x.plan.bills = bills;
+  const pay = (alloc + other) / 100;
+  x.plan.startingCash.breakdown[0].value = 80 - pay - otherCash / 100;
+  if (record) x.plan.cardPurchaseCoverage = { payments: [{ id: 'p1', confirmed: true, creditRef: 'pay-c', debitRef: 'pay-d',
+    allocations: alloc ? [{ purchaseRef: 'cov-1', amount: alloc / 100 }] : [], otherAmount: other / 100,
+    ...(other ? { otherPurpose: 'prior-debt' } : {}) }], refunds: [], reversals: [] };
+  x.opts.currentPeriodActuals.transactions = [purchase(42.5),
+    posted({ id: 'PAY-D', date: payDate, amount: pay, atlasAccountId: 'chequing-a',
+      accountRole: 'household-cash', categoryLabel: 'Credit Card Payment', coverageRef: 'pay-d' }),
+    posted({ id: 'PAY-C', date: payDate, amount: -pay, atlasAccountId: 'tdcc',
+      accountRole: 'revolving-credit', categoryLabel: 'Credit Card Payment', coverageRef: 'pay-c' })].concat(extra);
+  x.opts.currentPeriodActuals.representedActuals = represented;
+  const before = JSON.stringify(x);
+  const a = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: DEBTS });
+  assert.equal(JSON.stringify(x), before, 'no input mutation');
+  const views = a.payPeriodViews.filter(v => v.role !== 'lookback');
+  const est = v => v.cardMatchingEstimate && v.cardMatchingEstimate.trust === 'estimated' ? cents(v.cardMatchingEstimate.opening) : null;
+  return { a, active: views[0], next: views[1], later: views[2], seed: est(views[1]) };
+}
+const minimum = (o = {}) => ({ ...cardMinimum('tdcc'), firstDue: '2026-10-06', day: 6, amount: 20, ...o });
+const repBy = (id, date) => [{ id, date, actual: 20, transactionId: 'PAY-D' }];
+const closeOf = v => [cents(v.plannedPeriodClose), v.plannedPeriodCloseTrust];
+
+test('B2 witness: a represented settlement counted once on the close basis; the seed is its own basis', () => {
+  // 8000 - 2000 - 4250 + 2000 (H share restored once) = 3750; seed 6000 - 2250 = 3750.
+  const { active, seed } = b2Case({ obligations: [minimum()], represented: repBy('card-min', '2026-10-06') });
+  assert.deepEqual(closeOf(active), [3750, 'estimated']);
   assert.notEqual(cents(active.plannedPeriodClose), 1750, 'never the double-deducted close');
-  assert.equal(active.plannedPeriodClose, null);
-  assert.equal(active.plannedPeriodCloseTrust, 'unknown');
-  assert.match(active.plannedPeriodCloseReason, /could deduct it twice/);
-  // The seed reads the observed stock, where the bill is already paid: 3750.
-  assert.equal(estimated(next), 3750);
-  // Control: unrepresented, the bill sits inside the opening and is not
-  // deducted, so the estimated close is the qualified 3750.
-  const [control] = run([]);
-  assert.equal(control.plannedPeriodCloseTrust, 'estimated');
-  assert.equal(cents(control.plannedPeriodClose), 3750);
-  for (const shape of ['other-card', 'bill']) {
-    const [held] = run(represented, shape);
-    assert.equal(held.plannedPeriodClose, null, `${shape}: never the double-deducted 1750`);
-    const [open] = run([], shape);
-    assert.equal(cents(open.plannedPeriodClose), 3750, `${shape}: unrepresented, the bill is inside the opening`);
+  assert.equal(seed, 3750);
+  // The same identity holds through another card's id or a plain bill row.
+  assert.deepEqual(closeOf(b2Case({ obligations: [minimum({ debtId: 'travelvisa' })], represented: repBy('card-min', '2026-10-06') }).active), [3750, 'estimated']);
+  const bill = { id: 'card-min', label: 'Invented card bill', frequency: 'monthly', day: 6, amount: 20, confidence: 'confirmed' };
+  assert.deepEqual(closeOf(b2Case({ bills: [bill], represented: repBy('card-min', '2026-10-06') }).active), [3750, 'estimated']);
+  // Unrepresented, that bill is inside the opening and not deducted: 8000 - 4250 = 3750.
+  assert.deepEqual(closeOf(b2Case({ bills: [bill] }).active), [3750, 'estimated']);
+});
+
+test('B2 without a Savings policy: the noncombined carry consumes the same qualified close', () => {
+  const { active, next } = b2Case({ obligations: [minimum()], represented: repBy('card-min', '2026-10-06'), policy: false });
+  assert.deepEqual(closeOf(active), [3750, 'estimated']);
+  assert.equal(cents(next.opening), 3750);
+  assert.equal(cents(next.plannedPeriodClose), 3750);
+});
+
+test('early-paid future-dated bill represented by the settlement: close counts it once; the seed basis holds', () => {
+  const { active, seed } = b2Case({ obligations: [minimum({ firstDue: '2026-10-10', day: 10 })],
+    represented: repBy('card-min', '2026-10-10') });
+  assert.deepEqual(closeOf(active), [3750, 'estimated']);
+  // On the observed stock the cash already left; a represented row this basis
+  // still deducts would double, so the seed is unknown, never 1750.
+  assert.equal(seed, null);
+});
+
+test('every unsuccessful qualification is unknown on the close and its carry, never a generic estimate', () => {
+  const credit = posted({ id: 'CR-X', date: '2026-10-06', amount: -5, atlasAccountId: 'tdcc',
+    accountRole: 'revolving-credit', categoryLabel: 'Credit Card Payment', coverageRef: 'cr-x' });
+  const cases = {
+    'unresolved credit on the held card': [{ obligations: [minimum()], represented: repBy('card-min', '2026-10-06'), extra: [credit] }, /unconfirmed purpose/],
+    'unrepresented same-card bill the close deducts': [{ obligations: [minimum({ firstDue: '2026-10-10', day: 10 })] }, /scheduled card payment/],
+    'card-less payment obligation': [{ obligations: [minimum({ debtId: undefined, firstDue: '2026-10-10', day: 10 })] }, /scheduled card payment/],
+  };
+  for (const [name, [input, reason]] of Object.entries(cases)) for (const policy of [true, false]) {
+    const { active, next, seed } = b2Case({ ...input, policy });
+    assert.equal(active.plannedPeriodClose, null, `${name} (policy ${policy}): close`);
+    assert.equal(active.plannedPeriodCloseTrust, 'unknown', `${name}: trust`);
+    if (reason) assert.match(active.plannedPeriodCloseReason, reason, name);
+    if (!policy) assert.equal(next.opening, null, `${name}: the rejected close feeds no numeric opening`);
+    assert.equal(seed, null, `${name}: seed`);
   }
+});
+
+test('overdue once-only unverified obligation the seed deducts holds both bases (no date filter)', () => {
+  const once = { id: 'card-pay', debtId: 'tdcc', effect: 'payment', label: 'Invented card payment', frequency: 'once',
+    date: '2026-10-06', firstDue: '2026-10-06', amount: 20, confidence: 'confirmed', payingAccount: 'chequing-a' };
+  const held = b2Case({ obligations: [once] });
+  assert.equal(held.active.plannedPeriodClose, null);
+  assert.equal(held.seed, null);
+  // Represented by the settlement: counted once, 3750 on both bases.
+  const ok = b2Case({ obligations: [once], represented: repBy('card-pay', '2026-10-06') });
+  assert.deepEqual(closeOf(ok.active), [3750, 'estimated']);
+  assert.equal(ok.seed, 3750);
+});
+
+test('positive controls: proved disjoint, unrepresented non-H share once, and an independent seed', () => {
+  // Disjoint: a different card's unrepresented 10-10 minimum.
+  // Close 8000 - 2000 - 4250 = 1750; seed 6000 - 2000 - 2250 = 1750.
+  const disjoint = b2Case({ obligations: [minimum({ debtId: 'travelvisa', firstDue: '2026-10-10', day: 10 })] });
+  assert.deepEqual(closeOf(disjoint.active), [1750, 'estimated']);
+  assert.equal(disjoint.seed, 1750);
+  // A 3000 settlement, 2000 to H and 1000 prior debt, unrepresented: the
+  // non-H share is cash outside B and H, deducted once on the close basis.
+  // Close 8000 - 4250 - 1000 = 2750; seed 5000 - 2250 = 2750.
+  const mixed = b2Case({ other: 1000 });
+  assert.deepEqual(closeOf(mixed.active), [2750, 'estimated']);
+  assert.equal(mixed.seed, 2750);
+  // Independent bases: a same-card 10-04 minimum paid by its own Bills debit
+  // (MIN-1). The snapshot close deducts it and nothing links it to the
+  // settlement, so the close is unknown; on the observed stock it is already
+  // paid, so the seed qualifies: (8000 - 2000 - 2000) - 2250 = 1750.
+  const independent = b2Case({ otherCash: 2000,
+    obligations: [minimum({ firstDue: '2026-10-04', day: 4 })],
+    represented: [{ id: 'card-min', date: '2026-10-04', actual: 20, transactionId: 'MIN-1' }],
+    extra: [posted({ id: 'MIN-1', date: '2026-10-04', amount: 20, atlasAccountId: 'chequing-a',
+      accountRole: 'household-cash', categoryLabel: 'Bills', coverageRef: 'min-1' })] });
+  assert.equal(independent.active.plannedPeriodClose, null);
+  assert.match(independent.active.plannedPeriodCloseReason, /scheduled card payment/);
+  assert.equal(independent.seed, 1750);
+});
+
+test('C7: a hard card hold without a Savings policy feeds no numeric dependent opening', () => {
+  const p = { windowDays: 120, defaults: { targetBuffer: 0, extraDebtMonthly: 0, scenario: 'expected' },
+    opening: { asOf: '2026-10-07', paydaySnapshot: { periodStart: '2026-10-02', asOf: '2026-10-02', opening: 500 },
+      representedEvents: [{ id: 'payroll', date: '2026-10-02' }] },
+    startingCash: { breakdown: [{ id: 'chequing-a', value: 500 }] },
+    income: [{ id: 'payroll', frequency: 'biweekly', anchor: '2026-10-02', amount: 1000, confidence: 'confirmed' }],
+    bills: [], obligations: [], commitments: [], budget: { categories: [] } };
+  const pkt = { schema: 'atlas-current-period-actuals/v1', observationAsOf: '2026-10-07', coverageStart: '2026-09-01',
+    coverageThrough: '2026-10-07', pendingCoverage: 'complete', transactionCoverage: 'complete', representedActuals: [],
+    transactions: [purchase(5000)] };
+  const a = F.recommend(p, '2026-10-07', { weeklyVariable: 0, debts: [], currentPeriodActuals: pkt });
+  const [active, next] = a.payPeriodViews.filter(v => v.role !== 'lookback');
+  assert.equal(active.plannedPeriodClose, null);
+  assert.equal(next.opening, null, 'never the -3500.00 carried from a withheld close');
+  assert.equal(next.plannedPeriodClose, null);
 });
 
 test('a confirmed reversal is not yet qualified by this slice: unknown, never the unreversed figure', () => {
@@ -371,4 +463,30 @@ test('a missing later sweep keeps the movement-only estimate label on earlier cl
   assert.equal(cents(first.stock), 51900);
   assert.equal(first.nature, 'reported-balance-estimate');
   assert.ok(first.verifiedReason, 'the withheld verified reason is named');
+});
+
+test('C1: a negative-pot card close withholds its gap, diagnostics and amounts beside a typed gap', () => {
+  const run = charge => {
+    const x = closingInput();
+    x.plan.income.push({ id: 'p0', label: 'Invented current receipt', frequency: 'once',
+      date: '2026-10-09', amount: 400, confidence: 'confirmed' });
+    // An invented 520.00 goal cost on 10-20 overdraws the pot at the 10-29 close.
+    x.plan.commitments.push({ id: 'big', label: 'Invented goal', date: '2026-10-20', amount: 520,
+      confidence: 'confirmed', sinkingFund: true });
+    if (charge) x.opts.currentPeriodActuals.transactions = (x.opts.currentPeriodActuals.transactions || [])
+      .concat([purchase(charge / 100)]);
+    const a = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [] });
+    return a.savingsFunding.periodViews.find(p => p.start === FUTURE[0]).packet.forecastClosing;
+  };
+  // Clean control: the published gap is 100 (one dollar short).
+  const clean = run(0);
+  assert.equal(cents(clean.gap.shortBy), 100);
+  // Card estimate: 100 + 4250 = 4350 short, typed only.
+  const card = run(4250);
+  assert.equal(card.status, 'unavailable');
+  assert.equal(card.gap, undefined, 'no primary gap');
+  assert.equal(card.diagnostics, undefined, 'no primary diagnostics');
+  assert.doesNotMatch(card.reason, /\$/, 'no amount in the published reason');
+  assert.equal(cents(card.cardMatchingEstimate.gap.shortBy), 4350);
+  assert.equal(card.cardMatchingEstimate.nature, 'card-matching-estimate');
 });
