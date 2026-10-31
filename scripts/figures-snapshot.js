@@ -167,12 +167,27 @@ const put = (key, value) => {
   if (typeof value === 'function' || typeof value === 'bigint' || typeof value === 'symbol') {
     throw new Error('unserializable snapshot value: ' + key);
   }
-  out[key] = typeof value === 'number' ? round(value) : value;
+  if (typeof value === 'number') {
+    // Validated before AND after rounding: a finite value whose cents are not
+    // a safe integer (1e308 * 100 overflows to Infinity, which JSON writes as
+    // null) is corrupt numerical output, never a legitimate null or zero.
+    if (!Number.isSafeInteger(Math.round(value * 100))) throw new Error('unrepresentable snapshot value: ' + key);
+    const rounded = round(value);
+    if (!Number.isFinite(rounded)) throw new Error('unrepresentable snapshot value: ' + key);
+    out[key] = rounded;
+    return;
+  }
+  out[key] = value;
 };
 // A summed term: an absent term is zero, but a nonfinite one is a failure
 // and must not be coerced to a legitimate zero by `|| 0`.
 const term = (value, key) => {
   if (value === null || value === undefined) return 0;
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('nonfinite snapshot value: ' + key);
+  return value;
+};
+// A required summed term: it must be a finite number. Absent is not zero here.
+const finite = (value, key) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('nonfinite snapshot value: ' + key);
   return value;
 };
@@ -190,8 +205,10 @@ put('meta.scenario', plan.defaults.scenario);
 /* ---- the cash position ------------------------------------------------- */
 put('cash.spendableToday', F.startingCashAmount(plan));
 for (const h of plan.startingCash.heldElsewhere || []) {
-  put(`cash.elsewhere.${(h.class || 'unclassified')}`,
-    (out[`cash.elsewhere.${h.class || 'unclassified'}`] || 0) + h.value);
+  const key = `cash.elsewhere.${(h.class || 'unclassified')}`;
+  // A missing value makes its class total unknown (null), never a zero.
+  const prior = Object.prototype.hasOwnProperty.call(out, key) ? out[key] : 0;
+  put(key, prior === null || h.value === null || h.value === undefined ? null : prior + finite(h.value, key));
 }
 
 /* ---- the recommendation, which is the point of the whole page ---------- */
@@ -348,20 +365,29 @@ for (const c of proj.crossings || []) {
 
 /* ---- the balance sheet -------------------------------------------------- */
 put('balance.assets', F.publicationTotals(data).assets);
-put('balance.debts',
-  data.debts.reduce((s, x) => s + (x.balance || 0), 0));
+// A total over balances: a missing balance makes the total unknown (null),
+// never a zero; a non-numeric or nonfinite one is a failure. A missing
+// pending amount is no pending charge.
+const balanceTotal = (rows, key, withPending = false) => {
+  let sum = 0;
+  for (const x of rows) {
+    if (x.balance === null || x.balance === undefined) return null;
+    sum += finite(x.balance, key);
+    if (withPending) sum += term(x.pending, key);
+  }
+  return sum;
+};
+const unsecuredDebts = data.debts.filter(x => !x.secured);
+put('balance.debts', balanceTotal(data.debts, 'balance.debts'));
 // POSTED only, and named so. The scoreboard's consumer-debt figure is posted
 // PLUS known pending, because a pending charge is money already spent; these
 // two sat in one report as `balance.consumerDebt` $29,842.83 against
 // `scoreboard.today.consumerDebt` $30,090.01 with nothing saying why.
-put('balance.consumerDebtPosted',
-  data.debts.filter(x => !x.secured).reduce((s, x) => s + x.balance, 0));
+put('balance.consumerDebtPosted', balanceTotal(unsecuredDebts, 'balance.consumerDebtPosted'));
 put('balance.consumerDebtPending',
-  data.debts.filter(x => !x.secured).reduce((s, x) => s + (x.pending || 0), 0));
-put('balance.consumerDebtEffective',
-  data.debts.filter(x => !x.secured).reduce((s, x) => s + x.balance + (x.pending || 0), 0));
-put('balance.securedDebt',
-  data.debts.filter(x => x.secured).reduce((s, x) => s + x.balance, 0));
+  unsecuredDebts.reduce((s, x) => s + term(x.pending, 'balance.consumerDebtPending'), 0));
+put('balance.consumerDebtEffective', balanceTotal(unsecuredDebts, 'balance.consumerDebtEffective', true));
+put('balance.securedDebt', balanceTotal(data.debts.filter(x => x.secured), 'balance.securedDebt'));
 
 const helocSnap = F.compactSnapshot(data.debts, data.helocHistory);
 if (helocSnap.heloc) {
@@ -474,9 +500,9 @@ if (advice.operatingPlanUnavailable === true) {
 } else {
   const knowledge = advice.knowledge || {};
   if (knowledge.end) put('planning.horizonEnd', knowledge.end);
-  if (knowledge.encumbered != null && isFinite(Number(knowledge.encumbered))) {
-    put('planning.encumbered', knowledge.encumbered);
-  }
+  // Absent stays absent; a present value must be a finite number. A
+  // nonfinite or non-numeric one is a collector failure, never filtered out.
+  if (knowledge.encumbered != null) put('planning.encumbered', finite(knowledge.encumbered, 'planning.encumbered'));
   const alloc = advice.paydayAllocation || {};
   const paydayRows = [...(alloc.futureCosts || []), ...(alloc.optional || [])];
   const unresolvedIds = new Set((alloc.unresolved || []).map(r => r && r.id).filter(Boolean));
@@ -607,22 +633,76 @@ function putPayPeriods(put, putField, advice) {
 /* ---- Savings: Forecast.savingsFundingPublication, the selector the Budget and Savings pages call */
 // For each period the page can select: whether the selector published or
 // withheld the packet, the projected Savings close with its nature and trust,
-// each goal row's Saved / Needed / Still to fund, the planned requirements,
-// and the current period's surplus and rows. Copied, never recomputed.
+// and every figure the Budget savings card and its evidence sheet render from
+// that packet: each goal row's Saved / Needed (point or range endpoints, with
+// the trust the page falls back to) / This period / Still to fund / Paid
+// facts, each grouped member's Saved / Needed / This period, the published
+// member allocations, and the current period's surplus. The row and member
+// rosters follow the page's own selection (budgetDailySavingsRows and
+// budgetSavingsRowMembers in public/plan.js). Copied, never recomputed.
 const CLOSE_FIELDS = ['status', 'nature', 'trust', 'stock', 'operatingCash', 'contribution', 'projectedContributions',
   'projectedDraws', 'projectedDeficitCoverage', 'unallocated', 'balanceAsOf', 'verifiedReason', 'reason'];
-const CLOSE_ROW_FIELDS = ['forecastSaved', 'forecastContribution', 'needed', 'stillToFund', 'stillToFundTrust'];
-const CLOSE_ITEM_FIELDS = ['forecastSaved', 'needed', 'stillToFund', 'stillToFundTrust'];
-const PLANNED_ROW_FIELDS = ['needed', 'stillToFund', 'stillToFundTrust'];
-const CURRENT_ROW_FIELDS = ['saved', 'savedTrust', 'needed', 'neededTrust', 'thisPeriod', 'thisPeriodTrust',
+const CLOSE_ROW_FIELDS = ['forecastSaved', 'forecastContribution', 'needed', 'neededTrust', 'trust', 'stillToFund',
+  'stillToFundTrust'];
+const CLOSE_ITEM_FIELDS = ['forecastSaved', 'forecastTrust', 'needed', 'neededTrust', 'trust', 'stillToFund',
+  'stillToFundTrust'];
+const PLANNED_ROW_FIELDS = ['needed', 'neededTrust', 'trust', 'stillToFund', 'stillToFundTrust'];
+const PLANNED_ITEM_FIELDS = ['needed', 'neededTrust', 'trust', 'stillToFund', 'stillToFundTrust'];
+const CURRENT_ROW_FIELDS = ['saved', 'savedTrust', 'needed', 'neededTrust', 'trust', 'thisPeriod', 'thisPeriodTrust',
   'remainingThisPeriod', 'stillToFund', 'stillToFundTrust'];
+const CURRENT_ITEM_FIELDS = ['saved', 'trust', 'needed', 'neededTrust', 'stillToFund', 'stillToFundTrust'];
+const COST_FACTS = ['originalCost', 'confirmedLinkedPaid', 'unpaidCost'];
 
-function putRows(put, putField, prefix, rows, fields) {
+// A structured sub-figure the page renders: present means a plain object with
+// the published members; anything else is corrupt, never silently skipped.
+function subFigure(key, value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) throw new Error('malformed snapshot value: ' + key);
+  return value;
+}
+
+// What a row or member renders beyond its scalar fields: the Needed range
+// endpoints (budgetDailyNeededHtml) and the Paid / original / unpaid cost
+// facts (budgetGoalPaidProgressHtml, SavingsInventory.commitmentCostHtml).
+function putFigureParts(put, putField, prefix, row) {
+  const range = subFigure(prefix + '.neededRange', row.neededRange);
+  if (range) {
+    putField(prefix + '.neededRange.min', range, 'min');
+    putField(prefix + '.neededRange.max', range, 'max');
+  }
+  const cost = subFigure(prefix + '.commitmentCost', row.commitmentCost);
+  if (!cost) return;
+  for (const name of COST_FACTS) {
+    const fact = subFigure(prefix + '.cost.' + name, cost[name]);
+    if (!fact) continue;
+    putField(prefix + '.cost.' + name + '.status', fact, 'status');
+    putField(prefix + '.cost.' + name + '.amount', fact, 'amount');
+    const factRange = subFigure(prefix + '.cost.' + name + '.range', fact.range);
+    if (factRange) {
+      putField(prefix + '.cost.' + name + '.range.min', factRange, 'min');
+      putField(prefix + '.cost.' + name + '.range.max', factRange, 'max');
+    }
+  }
+}
+
+function putRows(put, putField, prefix, rows, fields, identity = 'key') {
   const used = new Set();
   for (const row of Array.isArray(rows) ? rows : []) {
-    const r = uniqueKey(used, prefix + segment(row && row.key));
+    const r = uniqueKey(used, prefix + segment(row && row[identity]));
     for (const field of fields) putField(r + '.' + field, row, field);
-    if (row && Array.isArray(row.members)) put(r + '.members', row.members.map(String).join(','));
+    if (!row) continue;
+    putFigureParts(put, putField, r, row);
+    if (Array.isArray(row.members)) put(r + '.members', row.members.map(String).join(','));
+  }
+}
+
+// The member distribution: one amount per published allocation identity,
+// exactly the entries budgetSavingsRowMembers joins to a member.
+function putAllocations(put, prefix, allocations) {
+  const used = new Set();
+  for (const part of Array.isArray(allocations) ? allocations : []) {
+    const a = uniqueKey(used, prefix + segment(part && part.id));
+    put(a + '.amount', part ? part.amount : undefined);
   }
 }
 
@@ -640,13 +720,12 @@ function putSavingsPublication(put, putField, advice, asOf) {
     put(p + '.publication', packet ? 'published' : 'withheld');
     if (!packet) continue;
     putField(p + '.status', packet, 'status');
+    const kind = packet.period && packet.period.kind;
+    const close = kind === 'projected' ? packet.forecastClosing : null;
     if (current) {
       putField(p + '.nativePeriodSurplus', packet.period, 'nativePeriodSurplus');
       putField(p + '.trust', packet.period, 'trust');
-      putRows(put, putField, p + '.row.', packet.rows, CURRENT_ROW_FIELDS);
-      continue;
     }
-    const close = packet.forecastClosing;
     if (close) {
       for (const field of CLOSE_FIELDS) putField(p + '.close.' + field, close, field);
       if (close.gap) {
@@ -656,9 +735,24 @@ function putSavingsPublication(put, putField, advice, asOf) {
       }
       putRows(put, putField, p + '.close.row.', close.rows, CLOSE_ROW_FIELDS);
       putRows(put, putField, p + '.close.item.', close.items, CLOSE_ITEM_FIELDS);
+      putAllocations(put, p + '.close.allocation.', close.allocations);
     }
-    if (packet.plannedRequirements) {
+    if (kind === 'projected' && packet.plannedRequirements) {
       putRows(put, putField, p + '.planned.row.', packet.plannedRequirements.rows, PLANNED_ROW_FIELDS);
+      putRows(put, putField, p + '.planned.item.', packet.plannedRequirements.items, PLANNED_ITEM_FIELDS);
+    }
+    // Every other packet renders its own rows (budgetDailySavingsRows): the
+    // current period, a historical period, and a projected period that
+    // publishes no close. Members join backing and unresolved items and the
+    // period's cycle allocations; a historical packet withholds member
+    // figures on the page, so none are captured for it.
+    if (!close) {
+      putRows(put, putField, p + '.row.', packet.rows, CURRENT_ROW_FIELDS);
+      if (kind !== 'historical' && !(kind === 'projected' && packet.plannedRequirements)) {
+        const members = [...((packet.backing && packet.backing.items) || []), ...(packet.unresolved || [])];
+        putRows(put, putField, p + '.item.', members, CURRENT_ITEM_FIELDS);
+        putAllocations(put, p + '.allocation.', packet.period && packet.period.cycleAllocations);
+      }
     }
   }
 }

@@ -219,6 +219,121 @@ test('collector-to-publication mapping: every input copies the page-equivalent r
   }
 });
 
+// Atlas 6547632560 finding 1: the Savings figures the Budget card renders
+// beyond the group totals. Each edit is applied to the published packet, at
+// the selector boundary, and must move exactly the keys that carry it.
+const inputById = id => inputs.find(i => i.id === id);
+const figuresOf = (input, edit) => json(perturb('savingsFundingPublication', (packet, funding, context) => {
+  if (!packet || !edit) return packet;
+  const copy = structuredClone(packet);
+  edit(copy, context);
+  return copy;
+}, () => Snapshot.buildFiguresSnapshot(input.doc.data, input.doc.periods)));
+const movedKeys = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])]
+  .filter(k => JSON.stringify(a[k]) !== JSON.stringify(b[k])).sort();
+// Apply an edit to the first packet that satisfies `when`, once per snapshot.
+const once = (when, edit) => {
+  let done = false;
+  return (packet, context) => { if (!done && when(packet)) { done = true; edit(packet, context); } };
+};
+const readyClose = p => p.period && p.period.kind === 'projected' && p.forecastClosing
+  && p.forecastClosing.status === 'ready';
+
+test('Savings member distribution, Needed ranges and trust-only changes move captured keys', () => {
+  const input = inputById('savings-estimated-close');
+  const before = figuresOf(input);
+  // Member distribution: two published allocations trade 10 cents. Every row,
+  // item and group total is untouched, so only the distribution moves.
+  const shifted = figuresOf(input, once(p => readyClose(p) && p.forecastClosing.allocations.length >= 2, p => {
+    const [a, b] = p.forecastClosing.allocations;
+    if (b.amount >= 0.1) { a.amount += 0.1; b.amount -= 0.1; } else { a.amount -= 0.1; b.amount += 0.1; }
+  }));
+  const distribution = movedKeys(before, shifted);
+  assert.equal(distribution.length, 2, 'two member allocations move: ' + distribution.length);
+  for (const key of distribution) assert.match(key, /^savings\.period\.[^.]+\.close\.allocation\.[^.]+\.amount$/);
+
+  // Trust only: a projected row's Needed trust goes estimated -> unknown with
+  // Needed unchanged; the page prints Unavailable instead of an amount.
+  const trustOnly = figuresOf(input, once(p => readyClose(p) && p.forecastClosing.rows.length > 0, p => {
+    const row = p.forecastClosing.rows[0];
+    assert.notEqual(row.needed, null);
+    row.neededTrust = row.neededTrust === 'unknown' ? 'estimated' : 'unknown';
+  }));
+  const trustMoved = movedKeys(before, trustOnly);
+  assert.equal(trustMoved.length, 1);
+  assert.match(trustMoved[0], /^savings\.period\.[^.]+\.close\.row\.[^.]+\.neededTrust$/);
+  // The trust the page falls back to (row.trust) is captured too.
+  const fallback = figuresOf(input, once(p => readyClose(p) && p.forecastClosing.rows.length > 0, p => {
+    const row = p.forecastClosing.rows[0];
+    delete row.neededTrust;
+    row.trust = 'unknown';
+  }));
+  assert.ok(movedKeys(before, fallback).some(k => /\.close\.row\.[^.]+\.trust$/.test(k)), 'trust fallback captured');
+
+  // Needed range endpoints, on a row and on a member item: only the max moves.
+  const ranged = max => figuresOf(input, once(readyClose, p => {
+    const row = p.forecastClosing.rows[0], item = p.forecastClosing.items[0];
+    for (const target of [row, item]) { target.needed = null; target.neededRange = { min: 100, max }; }
+  }));
+  const rangeMoved = movedKeys(ranged(250), ranged(300));
+  assert.equal(rangeMoved.length, 2, 'row and member range max');
+  for (const key of rangeMoved) assert.match(key, /^savings\.period\.[^.]+\.close\.(row|item)\.[^.]+\.neededRange\.max$/);
+  assert.throws(() => figuresOf(input, once(readyClose, p => { p.forecastClosing.rows[0].neededRange = 5; })),
+    /malformed snapshot value/);
+
+  // A member item's own trust (the page's Saved mark) is captured.
+  const memberTrust = figuresOf(input, once(p => readyClose(p) && p.forecastClosing.items.length > 0, p => {
+    p.forecastClosing.items[0].forecastTrust = 'unknown';
+  }));
+  assert.ok(movedKeys(before, memberTrust).every(k => /\.close\.item\.[^.]+\.forecastTrust$/.test(k)));
+  assert.equal(movedKeys(before, memberTrust).length, 1);
+});
+
+test('current, historical, planned and close-less packets capture the rows and members the page renders', () => {
+  for (const id of ['savings-chained-closes', 'savings-live-partial']) {
+    const input = inputById(id);
+    const before = figuresOf(input);
+    // Current period: the cycle allocations the members print as This period.
+    const current = figuresOf(input, once(p => p.period && p.period.kind === undefined
+      && (p.period.cycleAllocations || []).length > 0, p => { p.period.cycleAllocations[0].amount += 1; }));
+    const moved = movedKeys(before, current);
+    assert.equal(moved.length, 1, id);
+    assert.match(moved[0], /^savings\.current\.allocation\.[^.]+\.amount$/);
+    // Current member Saved and Paid facts.
+    const member = figuresOf(input, once(p => p.period && p.period.kind === undefined
+      && (p.backing.items || []).length > 0, p => { p.backing.items[0].saved = (p.backing.items[0].saved || 0) + 1; }));
+    assert.deepEqual(movedKeys(before, member).map(k => k.replace(/item\.[^.]+/, 'item.*')), ['savings.current.item.*.saved']);
+  }
+  // A historical packet renders its own rows; their figures are captured, its
+  // members are withheld on the page and are not.
+  const chained = inputById('savings-chained-closes');
+  const base = figuresOf(chained);
+  const historical = figuresOf(chained, once(p => p.period && p.period.kind === 'historical' && p.rows.length > 0,
+    p => { p.rows[0].thisPeriodTrust = p.rows[0].thisPeriodTrust === 'unknown' ? 'estimated' : 'unknown'; }));
+  assert.deepEqual(movedKeys(base, historical).map(k => k.replace(/^savings\.period\.[^.]+\.row\.[^.]+/, 'H')),
+    ['H.thisPeriodTrust']);
+  assert.ok(!Object.keys(base).some(k => /^savings\.period\.[^.]+\.(item|allocation)\./.test(k)
+    && !/\.(close|planned)\./.test(k)), 'no historical member figures');
+  // Paid facts on a row the page renders.
+  const paid = amount => figuresOf(chained, once(p => p.period && p.period.kind === undefined
+    && p.rows.some(r => r.commitmentCost), p => {
+    const row = p.rows.find(r => r.commitmentCost);
+    row.commitmentCost.confirmedLinkedPaid = { status: 'known', amount, range: null };
+  }));
+  const paidMoved = movedKeys(paid(7), paid(8));
+  assert.equal(paidMoved.length, 1, 'only the Paid amount moves');
+  assert.match(paidMoved[0], /^savings\.current\.row\.[^.]+\.cost\.confirmedLinkedPaid\.amount$/);
+  // Planned requirements: member items and a row's Needed trust.
+  const plannedInput = inputs.find(i => Object.keys(figuresOf(i)).some(k => /\.planned\.item\./.test(k)));
+  assert.ok(plannedInput, 'an invented input publishes planned member items');
+  const plannedBase = figuresOf(plannedInput);
+  const planned = figuresOf(plannedInput, once(p => p.plannedRequirements && p.plannedRequirements.items.length > 0,
+    p => { p.plannedRequirements.items[0].neededTrust = 'unknown'; p.plannedRequirements.rows.forEach(r => { r.neededTrust = 'unknown'; }); }));
+  const plannedMoved = movedKeys(plannedBase, planned);
+  assert.ok(plannedMoved.some(k => /\.planned\.item\.[^.]+\.neededTrust$/.test(k)), 'planned member trust');
+  assert.ok(plannedMoved.every(k => /\.planned\.(item|row)\.[^.]+\.neededTrust$/.test(k)));
+});
+
 test('pristine: head against head reads unchanged with every declared class observed, and posts green', async () => {
   const body = summary(BASE, BASE);
   assert.equal(line(body, 'Comparison:'), 'Comparison: unchanged.');
@@ -418,6 +533,42 @@ test('legitimate zero is observed money; explicit null and missing are not; tran
   }, () => Snapshot.buildFiguresSnapshot(inputs[0].doc.data, null)), /nonfinite snapshot value: payday\.riskShortfall/);
   assert.throws(() => perturb('recommend', advice => { advice.payPeriodViews[0].opening = { amount: 1 }; return advice; },
     () => Snapshot.buildFiguresSnapshot(inputs[0].doc.data, null)), /structured snapshot value/);
+  // Atlas 6547632560 finding 2: a present encumbered figure must be finite; it
+  // is never filtered out. Absent stays absent and is not a failure.
+  for (const bad of [NaN, Infinity, 'twelve', '12']) {
+    assert.throws(() => perturb('recommend', advice => { advice.knowledge = { ...(advice.knowledge || {}), encumbered: bad }; return advice; },
+      () => Snapshot.buildFiguresSnapshot(inputs[0].doc.data, null)), /nonfinite snapshot value: planning\.encumbered/, String(bad));
+  }
+  const absent = json(perturb('recommend', advice => { if (advice.knowledge) delete advice.knowledge.encumbered; return advice; },
+    () => Snapshot.buildFiguresSnapshot(inputs[0].doc.data, null)));
+  assert.ok(!('planning.encumbered' in absent), 'absent encumbered stays absent');
+  const zero = json(perturb('recommend', advice => { advice.knowledge = { ...(advice.knowledge || {}), encumbered: 0 }; return advice; },
+    () => Snapshot.buildFiguresSnapshot(inputs[0].doc.data, null)));
+  assert.equal(zero['planning.encumbered'], 0, 'a legitimate zero is kept');
+  // A finite value whose cents overflow, or are not a safe integer, is corrupt
+  // output: it fails rather than serializing as null.
+  for (const huge of [1e308, -1e308, 1e14]) {
+    assert.throws(() => perturb('recommend', advice => { advice.payPeriodViews[0].opening = huge; return advice; },
+      () => Snapshot.buildFiguresSnapshot(inputs[0].doc.data, null)), /unrepresentable snapshot value/, String(huge));
+  }
+  // Summed input terms: a non-numeric balance or held-elsewhere value fails
+  // instead of concatenating into a string or reading as zero.
+  const withData = edit => () => {
+    const data = structuredClone(inputs[0].doc.data);
+    edit(data);
+    return Snapshot.buildFiguresSnapshot(data, inputs[0].doc.periods);
+  };
+  assert.throws(withData(d => { d.debts.find(x => !x.secured).balance = true; }),
+    /nonfinite snapshot value: balance\.debts/);
+  assert.throws(withData(d => { d.debts.find(x => !x.secured).pending = NaN; }),
+    /nonfinite snapshot value: balance\.consumerDebtPending/);
+  // A missing balance is unknown, not zero: the totals it enters read null.
+  const missing = json(withData(d => { d.debts.find(x => !x.secured).balance = null; })());
+  assert.equal(missing['balance.debts'], null);
+  assert.equal(missing['balance.consumerDebtPosted'], null);
+  assert.equal(missing['balance.consumerDebtEffective'], null);
+  assert.throws(withData(d => { d.plan.startingCash.heldElsewhere = [{ class: 'other', value: '5' }]; }),
+    /nonfinite snapshot value: cash\.elsewhere\.other/);
 });
 
 test('deterministic across runs and time zones, and the CLI emits exactly the check snapshot', () => {

@@ -157,7 +157,10 @@ What one comparison observes:
   such and withholds acceptance, never reading as an engine move.
 - **Fields.** Plan, every Budget pay period (opening, bill load, hold, Balance
   After Deductions, sweep, planned close and each bill row), Savings closes and
-  goal rows, Bills, Subscriptions, Credit and Planning, each with its trust tag,
+  every goal row and grouped member the Budget savings card renders (Saved,
+  Needed or its range endpoints, This period, Still to fund, Paid facts and the
+  member allocations), Bills, Subscriptions, Credit and Planning, each with its
+  trust tag,
   read through Forecast's own publications with the Budget page's default
   `recommend()` options. That is an engine-input parity subset, not page parity.
 - **Declared field classes.** A fixed vocabulary in `scripts/figures-comment.js`,
