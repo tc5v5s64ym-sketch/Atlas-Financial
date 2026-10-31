@@ -1,0 +1,3473 @@
+/* Design tokens. Warm neutral page, white surfaces, one blue accent, and a
+   restrained status palette. Money is the loudest thing on every page, so
+   surfaces stay quiet: hairline borders, at most one soft shadow. */
+:root {
+  color-scheme: light;
+  --surface-1:#ffffff; --plane:#f4f4f1;
+  --text-primary:#151513; --text-secondary:#5b5a55; --muted:#75746d;
+  --grid:#e7e6e0; --axis:#c9c8bf; --border:rgba(21,21,19,0.10);
+  --s1:#2a6fd0; --s2:#eb6834; --s3:#1baf7a;
+  --good:#1a9a4a; --warning:#e0a112; --serious:#d9773f; --critical:#c73737;
+  --success-text:#1b7a3d;
+  --div-pos:#2a6fd0; --div-neg:#c73737;
+  --raised:#ffffff;
+  --shadow-1:0 1px 2px rgba(21,21,19,.05), 0 1px 1px rgba(21,21,19,.03);
+  --radius-lg:16px; --radius-md:12px; --radius-sm:8px;
+  --nav-dock-inset:10px; --nav-dock-lift:12px; --nav-dock-height:66px;
+  --nav-icon-budget:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='7' width='18' height='13' rx='2.5'/%3E%3Cpath d='M3 10h18'/%3E%3Cpath d='M16 14.5h2'/%3E%3C/svg%3E");
+  --nav-icon-bills:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 3.5h8.5v17l-2.1-1.3-2.15 1.3-2.15-1.3L8 20.5V3.5z'/%3E%3Cpath d='M10.2 8h4.6M10.2 11.5h4.6M10.2 15h3'/%3E%3C/svg%3E");
+  --nav-icon-subscriptions:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 7.2A6.2 6.2 0 0 1 17.4 9.1'/%3E%3Cpath d='M17.5 5.5v3.6h-3.6'/%3E%3Cpath d='M17 16.8A6.2 6.2 0 0 1 6.6 14.9'/%3E%3Cpath d='M6.5 18.5v-3.6h3.6'/%3E%3C/svg%3E");
+  --nav-icon-credit:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='6' width='18' height='12' rx='2'/%3E%3Cpath d='M3 10h18'/%3E%3Cpath d='M7 15h3.5'/%3E%3C/svg%3E");
+  --nav-icon-planning:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='5' width='17' height='15.5' rx='2'/%3E%3Cpath d='M3.5 9.5h17'/%3E%3Cpath d='M8 3.5v4M16 3.5v4'/%3E%3C/svg%3E");
+  --nav-icon-plan-spend:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 7h11M8 12h11M8 17h8'/%3E%3Cpath d='M4.5 7h.01M4.5 12h.01M4.5 17h.01'/%3E%3C/svg%3E");
+  --hypo-accent:#7848be;
+  --hypo-border:rgba(120,72,190,.42);
+  --hypo-bg:rgba(120,72,190,.07);
+  --hypo-banner-bg:rgba(120,72,190,.11);
+  --road-hero-shadow:var(--shadow-1);
+  --road-stage-1:var(--s1);
+  --road-stage-2:var(--s2);
+  --road-stage-3:var(--s3);
+  /* Road Ahead — DESIGN §9 trust / status (presentation) */
+  --road-trust-confirmed:var(--muted);
+  --road-trust-estimated:var(--warning);
+  --road-trust-planned:var(--s1);
+  --road-trust-unavailable:var(--muted);
+  --road-gap:var(--critical);
+  --road-surplus:var(--good);
+  --road-pressure:var(--serious);
+  --card-coverage-bg:#f3e8ff; --card-coverage-accent:#6b21a8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface-1:#1b1b1a; --plane:#0e0e0d;
+    --text-primary:#f5f5f2; --text-secondary:#b9b8b1; --muted:#8f8e87;
+    --grid:#2c2c2a; --axis:#3d3d3a; --border:rgba(255,255,255,0.10);
+    --s1:#5a95ea; --s2:#d95926; --s3:#199e70;
+    --good:#34b35f; --serious:#e08a55; --critical:#e05252;
+    --success-text:#4cbf73;
+    --div-pos:#5a95ea; --div-neg:#e05252;
+    --raised:#3d3d39;
+    --shadow-1:0 1px 2px rgba(0,0,0,.35);
+    --hypo-accent:#a67ee8;
+    --hypo-border:rgba(166,126,232,.48);
+    --hypo-bg:rgba(120,72,190,.14);
+    --hypo-banner-bg:rgba(120,72,190,.2);
+    --card-coverage-bg:#302039; --card-coverage-accent:#d8b4fe;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-1:#1b1b1a; --plane:#0e0e0d;
+  --text-primary:#f5f5f2; --text-secondary:#b9b8b1; --muted:#8f8e87;
+  --grid:#2c2c2a; --axis:#3d3d3a; --border:rgba(255,255,255,0.10);
+  --s1:#5a95ea; --s2:#d95926; --s3:#199e70;
+  --good:#34b35f; --serious:#e08a55; --critical:#e05252;
+  --success-text:#4cbf73;
+  --div-pos:#5a95ea; --div-neg:#e05252;
+  --raised:#3d3d39;
+  --shadow-1:0 1px 2px rgba(0,0,0,.35);
+  --hypo-accent:#a67ee8;
+  --hypo-border:rgba(166,126,232,.48);
+  --hypo-bg:rgba(120,72,190,.14);
+  --hypo-banner-bg:rgba(120,72,190,.2);
+  --card-coverage-bg:#302039; --card-coverage-accent:#d8b4fe;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin:0; background:var(--plane); color:var(--text-primary);
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  line-height:1.5; padding:0 0 96px;
+  -webkit-text-size-adjust:100%;
+}
+.wrap { max-width:1080px; margin:0 auto; padding:0 16px; }
+/* Reading pages — lists and short tables — sit in a narrower measure so a
+   label and its amount stay within one eye-span on a wide screen. */
+.wrap-reading { max-width:52rem; }
+section[id] { scroll-margin-top: 96px; }
+:focus-visible { outline:2px solid var(--s1); outline-offset:2px; }
+button, input, select { font-family:inherit; }
+
+/* ---------------------------------------------------------------- login */
+.login-page { display:grid; place-items:center; min-height:100vh; padding:24px 16px; }
+.login-card {
+  background:var(--surface-1); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:32px 28px; max-width:380px; width:100%; box-shadow:var(--shadow-1);
+}
+.login-card h1 { font-size:1.4rem; margin:0 0 6px; letter-spacing:-.015em; }
+.login-card .muted { color:var(--text-secondary); font-size:.92rem; margin:0 0 22px; }
+.login-card label { display:block; font-size:.84rem; color:var(--text-secondary); margin-bottom:6px; }
+.login-card input {
+  width:100%; min-height:48px; padding:11px 14px; font-size:1rem; border-radius:var(--radius-md);
+  border:1px solid var(--axis); background:var(--plane); color:var(--text-primary);
+}
+.login-card input:focus-visible { border-color:var(--s1); outline-offset:0; }
+.login-card button {
+  width:100%; min-height:48px; margin-top:14px; padding:11px; font-size:1rem; font-weight:600;
+  border:none; border-radius:var(--radius-md); background:var(--s1); color:#fff; cursor:pointer;
+}
+.login-card button:hover { filter:brightness(1.08); }
+.login-error { color:var(--critical); font-size:.88rem; margin:0 0 14px; }
+
+/* ---------------------------------------------------------------- header */
+.site-head {
+  position:sticky; top:0; z-index:40;
+  background:var(--plane);
+  border-bottom:1px solid var(--border);
+}
+@supports ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {
+  .site-head {
+    background:color-mix(in srgb, var(--plane) 82%, transparent);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  }
+}
+.site-head-inner { max-width:1080px; margin:0 auto; padding:10px 16px 0; }
+.has-observation-controls { flex-wrap:wrap; }
+.observation-controls { display:flex; align-items:center; justify-content:flex-end; gap:8px;
+  flex-wrap:wrap; min-width:0; max-width:100%; font-size:12px; }
+.observation-controls [data-observation-check] { min-width:0; max-width:100%; overflow-wrap:anywhere; }
+.observation-controls button { flex-shrink:0; font:inherit; padding:5px 10px; border:1px solid var(--border);
+  border-radius:var(--radius-sm); color:var(--text-primary); background:var(--surface-1); cursor:pointer; }
+.observation-controls button:disabled { cursor:wait; }
+.site-head-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-height:36px; }
+.brand { font-weight:650; font-size:.98rem; letter-spacing:-0.01em; color:var(--text-primary); }
+.spacer { flex:1; }
+.site-head-row form { margin:0; }
+/* The as-at line is context, not a control: plain muted text, no pill. It
+   carries a sentence on the live overlay and wraps rather than forcing the
+   page to scroll sideways on a phone. */
+.site-head-row .chip {
+  border:0; padding:0; font-size:.8rem; color:var(--muted);
+  white-space:normal; max-width:100%; line-height:1.4; text-align:left;
+}
+.linkbtn {
+  background:none; border:1px solid var(--border); color:var(--text-secondary);
+  border-radius:999px; padding:6px 13px; min-height:34px; font-size:.8rem; cursor:pointer; font-family:inherit;
+  white-space:nowrap;
+}
+.linkbtn:hover { color:var(--text-primary); border-color:var(--axis); background:var(--surface-1); }
+
+.sitenav { display:flex; gap:4px; overflow-x:auto; scrollbar-width:none; margin:4px -16px 0; padding:0 16px; }
+.sitenav::-webkit-scrollbar { display:none; }
+.sitenav a {
+  flex:0 0 auto; display:inline-flex; align-items:center; gap:0;
+  min-height:42px; padding:6px 12px 8px; font-size:.88rem; color:var(--text-secondary);
+  text-decoration:none; border-bottom:2px solid transparent; white-space:nowrap;
+}
+.sitenav a:hover { color:var(--text-primary); }
+.sitenav a[aria-current] { color:var(--text-primary); border-bottom-color:var(--s1); font-weight:600; }
+.sitenav-icon {
+  display:none; flex:0 0 auto;
+  width:22px; height:22px;
+  background-color:currentColor;
+  -webkit-mask:var(--nav-icon) center / 22px 22px no-repeat;
+  mask:var(--nav-icon) center / 22px 22px no-repeat;
+}
+.sitenav a[data-nav="budget"] { --nav-icon:var(--nav-icon-budget); }
+.sitenav a[data-nav="bills"] { --nav-icon:var(--nav-icon-bills); }
+.sitenav a[data-nav="subscriptions"] { --nav-icon:var(--nav-icon-subscriptions); }
+.sitenav a[data-nav="credit"] { --nav-icon:var(--nav-icon-credit); }
+.sitenav a[data-nav="forecast"] { --nav-icon:var(--nav-icon-planning); }
+.sitenav a[data-nav="plan-spend"] { --nav-icon:var(--nav-icon-plan-spend); }
+.sitenav-label { display:inline; }
+.subnav a[aria-current] { color:var(--s1); }
+
+/* Phone: household destinations become a floating dock above the iOS
+   home indicator. The header stops being sticky so a long Budget page
+   is not read through a letterbox. Diagnostic pages keep the shared
+   text sitenav — they are not a six-column dock. */
+@media (max-width:640px) {
+  .observation-controls { grid-column:1 / -1; flex-basis:100%; justify-content:flex-start; margin:6px 0; }
+  body:has(.sitenav-household) {
+    padding-bottom:calc(var(--nav-dock-height) + var(--nav-dock-lift) + 18px + env(safe-area-inset-bottom, 0px));
+  }
+  body:has(.sitenav-household) .site-head { position:static; border-bottom:0; background:var(--plane); }
+  @supports ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {
+    body:has(.sitenav-household) .site-head { background:var(--plane); backdrop-filter:none; -webkit-backdrop-filter:none; }
+  }
+  .site-head-inner { padding:12px 16px 0; }
+  .site-head-row { gap:8px; }
+  .brand { order:1; }
+  .spacer { order:2; }
+  #theme-btn { order:3; }
+  .site-head-row form { order:4; }
+  .site-head-row .chip { order:5; flex:0 0 100%; font-size:.78rem; margin-top:2px; }
+  .sitenav-household {
+    position:fixed; z-index:40; margin:0;
+    left:calc(var(--nav-dock-inset) + env(safe-area-inset-left, 0px));
+    right:calc(var(--nav-dock-inset) + env(safe-area-inset-right, 0px));
+    bottom:calc(var(--nav-dock-lift) + env(safe-area-inset-bottom, 0px));
+    display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:2px;
+    min-height:var(--nav-dock-height);
+    padding:5px 4px 6px;
+    background:var(--surface-1);
+    border:1px solid var(--border);
+    border-radius:24px;
+    box-shadow:var(--shadow-1), 0 12px 32px color-mix(in srgb, var(--text-primary) 12%, transparent);
+  }
+  @supports ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px))) {
+    .sitenav-household {
+      background:color-mix(in srgb, var(--surface-1) 88%, transparent);
+      backdrop-filter:blur(16px) saturate(1.2);
+      -webkit-backdrop-filter:blur(16px) saturate(1.2);
+    }
+  }
+  .sitenav-household a {
+    position:relative;
+    flex-direction:column; justify-content:center; align-items:center; gap:3px;
+    min-width:0; min-height:52px; padding:4px 1px 3px; border-bottom:0;
+    border-radius:16px; font-size:clamp(.52rem, 2.4vw, .6rem); font-weight:560; letter-spacing:-.03em;
+    line-height:1.1; text-align:center; white-space:nowrap;
+    transition:color .16s ease, background-color .16s ease, transform .14s ease;
+  }
+  .sitenav-household .sitenav-icon {
+    display:block; width:22px; height:22px;
+    -webkit-mask-size:22px 22px; mask-size:22px 22px;
+  }
+  .sitenav-household a[aria-current]::before {
+    content:""; position:absolute; top:3px; left:50%;
+    width:28px; height:26px; margin-left:-14px;
+    border-radius:9px; background:var(--s1); z-index:0;
+  }
+  .sitenav-household a[aria-current] .sitenav-icon {
+    position:relative; z-index:1; background-color:#fff;
+  }
+  .sitenav-household .sitenav-label {
+    position:relative; z-index:1; display:block; max-width:100%;
+    overflow:hidden; white-space:nowrap; overflow-wrap:normal;
+  }
+  .sitenav-household a[aria-current] {
+    color:var(--s1); font-weight:650; background:transparent;
+  }
+  .sitenav-household a:active { transform:scale(.96); }
+  .sitenav-household a:focus-visible { outline-offset:0; border-radius:16px; }
+  .subnav { margin:8px -16px 0; padding:0 16px 8px; gap:6px; }
+  .subnav a {
+    min-height:36px; padding:6px 12px; border:1px solid var(--border); border-radius:999px;
+    font-size:.8rem; background:var(--surface-1);
+  }
+  .subnav a[aria-current] { border-color:var(--s1); color:var(--s1); }
+  section[id] { scroll-margin-top:12px; }
+}
+
+@media (max-width:640px) and (prefers-reduced-motion: reduce) {
+  .sitenav-household a { transition:none; }
+  .sitenav-household a:active { transform:none; }
+}
+
+/* ---------------------------------------------------------------- headings */
+.kicker {
+  display:flex; align-items:center; gap:12px;
+  font-size:.72rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--s1); margin:52px 0 4px;
+}
+.kicker::after { content:""; height:1px; background:var(--grid); flex:1; }
+section:first-of-type .kicker { margin-top:28px; }
+
+h1 { font-size:1.85rem; margin:2px 0 6px; letter-spacing:-0.02em; line-height:1.15; }
+.sub { color:var(--text-secondary); font-size:.95rem; margin:0 0 4px; max-width:70ch; }
+.disc { color:var(--muted); font-size:.8rem; margin:0 0 22px; max-width:70ch; }
+h2 { font-size:1.2rem; margin:36px 0 8px; letter-spacing:-0.012em; line-height:1.25; }
+h3 { font-size:1rem; margin:28px 0 6px; letter-spacing:-0.01em; }
+.lede { color:var(--text-secondary); font-size:.92rem; margin:0 0 16px; max-width:70ch; }
+.lede.tight { margin:0; }
+.lede.footnote { margin:12px 0 0; }
+.period-summary { margin:14px 0 0; }
+.control.tight { margin:0; }
+
+/* ---------------------------------------------------------------- cards */
+.card {
+  background:var(--surface-1); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:20px 22px; margin-bottom:16px;
+  box-shadow:var(--shadow-1);
+}
+
+.tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:12px; }
+.tile {
+  position:relative; overflow:hidden;
+  background:var(--surface-1); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:16px 18px 15px;
+  box-shadow:var(--shadow-1);
+}
+.tile::before { content:""; position:absolute; top:0; left:0; right:0; height:3px; background:var(--axis); }
+.tile.alert::before { background:var(--critical); }
+.tile.warn::before { background:var(--serious); }
+.tile .lab { font-size:.72rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
+.tile .val { font-size:1.75rem; font-weight:700; margin:7px 0 3px; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; }
+.tile.alert .val { color:var(--critical); }
+.tile.warn .val { color:var(--serious); }
+.tile .subval { font-size:.98rem; font-weight:650; letter-spacing:-0.01em; margin:0 0 3px; font-variant-numeric:tabular-nums; }
+.tile .subval span { color:var(--muted); font-weight:400; font-size:.75rem; letter-spacing:0; }
+.tile .note { font-size:.8rem; color:var(--text-secondary); line-height:1.45; max-width:48ch; }
+
+.nextdue {
+  display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
+  background:var(--surface-1); border:1px solid var(--border); border-left:3px solid var(--s1);
+  border-radius:var(--radius-md); padding:12px 16px; margin:0 0 8px; font-size:.9rem;
+}
+.nextdue .nd-lab { font-size:.72rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--s1); }
+
+/* ---------------------------------------------------------------- commitments */
+.commit { padding:14px 0; border-bottom:1px solid var(--grid); }
+.commit:first-child { padding-top:2px; }
+.commit-top { display:flex; justify-content:space-between; align-items:baseline; gap:14px; }
+.commit-what { font-weight:600; font-size:.95rem; }
+.commit-amt { font-weight:650; font-size:1.1rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.commit-meta { display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+               font-size:.8rem; color:var(--text-secondary); margin-top:4px; }
+.commit-note { margin:7px 0 0; font-size:.83rem; color:var(--muted); max-width:70ch; }
+.commit.sched { padding-top:16px; }
+.sched-head { margin:0 0 10px; font-weight:600; color:var(--text-primary); }
+.sched-row { display:grid; grid-template-columns:88px minmax(60px,1fr) 62px; align-items:center;
+             column-gap:12px; row-gap:2px; padding:5px 0; font-size:.85rem; }
+.sched-bar { height:8px; border-radius:4px; background:var(--grid); overflow:hidden; }
+.sched-bar > span { display:block; height:100%; background:var(--serious); border-radius:4px; }
+.sched-amt { text-align:right; font-weight:650; font-variant-numeric:tabular-nums; }
+.sched-note { grid-column:2 / -1; font-size:.78rem; color:var(--muted); }
+@media (max-width:520px) {
+  .sched-row { grid-template-columns:80px 1fr 58px; }
+  .sched-note { grid-column:1 / -1; }
+}
+
+.commit.total { border-bottom:none; border-top:1px solid var(--axis); padding-bottom:2px; }
+.commit.total .commit-what, .commit.total .commit-amt { color:var(--serious); }
+
+/* ---------------------------------------------------------------- tables */
+table { width:100%; border-collapse:collapse; font-size:.88rem; }
+.scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+th { text-align:left; font-weight:700; color:var(--muted); font-size:.72rem;
+     text-transform:uppercase; letter-spacing:.06em; padding:8px 10px;
+     border-bottom:1px solid var(--axis); white-space:nowrap; }
+td { padding:10px 10px; border-bottom:1px solid var(--grid); vertical-align:top; }
+td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+tr:last-child td { border-bottom:none; }
+tr.paid td { color:var(--muted); }
+tr.soon td { background:color-mix(in srgb, var(--serious) 6%, transparent); }
+tr.soon td:first-child { font-weight:600; }
+
+/* Phone: a table with three or more columns cannot be read through a
+   sideways scroll. app.js labels each cell with its column heading and marks
+   the table `stackable`; here every row becomes a short block — identity
+   first, then each labelled value on its own line, numbers kept right. */
+@media (max-width:640px) {
+  .scroll table.stackable, .scroll table.stackable tbody, .scroll table.stackable tr,
+  .scroll table.stackable td { display:block; width:100%; }
+  .scroll table.stackable thead { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+  .scroll table.stackable tr { padding:12px 0; border-bottom:1px solid var(--grid); }
+  .scroll table.stackable tr:first-child { padding-top:2px; }
+  .scroll table.stackable tr:last-child { border-bottom:none; padding-bottom:2px; }
+  .scroll table.stackable td { padding:3px 0; border:0; text-align:left; white-space:normal; font-size:.9rem; }
+  .scroll table.stackable td:first-child { font-weight:600; color:var(--text-primary); padding-bottom:5px; }
+  .scroll table.stackable tr.paid td:first-child { color:var(--text-secondary); }
+  .scroll table.stackable td::before {
+    content:attr(data-label); display:block; font-size:.68rem; font-weight:700;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:1px;
+  }
+  .scroll table.stackable td:first-child::before { display:none; }
+  .scroll table.stackable td.num { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
+  .scroll table.stackable td.num::before { display:inline; margin:0; }
+  .scroll table.stackable tr.soon td { background:none; }
+  .scroll table.stackable tr.soon { background:color-mix(in srgb, var(--serious) 6%, transparent); margin:0 -16px; padding-left:16px; padding-right:16px; width:auto; }
+}
+
+.chip { display:inline-block; font-size:.69rem; padding:2px 7px; border-radius:999px;
+        border:1px solid var(--border); color:var(--text-secondary); white-space:nowrap; }
+.chip.v { color:var(--success-text); border-color:currentColor; }
+.chip.c { color:var(--critical); border-color:currentColor; }
+.chip.w { color:var(--serious); border-color:currentColor; }
+.chip.e { color:var(--muted); }
+.neg { color:var(--critical); }
+.pos { color:var(--success-text); }
+
+/* ---------------------------------------------------------------- figures */
+figure { margin:0; }
+figcaption { font-size:.81rem; color:var(--text-secondary); margin-top:10px; }
+.legend { display:flex; gap:16px; flex-wrap:wrap; font-size:.79rem; color:var(--text-secondary); margin:2px 0 12px; }
+.legend span { display:inline-flex; align-items:center; gap:6px; }
+.sw { width:11px; height:11px; border-radius:3px; display:inline-block; }
+svg { display:block; width:100%; height:auto; overflow:visible; }
+
+.note-box { border-left:3px solid var(--s2); padding:10px 0 10px 14px; margin:14px 0 0;
+            font-size:.87rem; color:var(--text-secondary); }
+.note-box.crit { border-left-color:var(--critical); }
+
+/* ------------------------------------------------------- boot treatment
+   Shown only while data is genuinely loading; indeterminate by design —
+   never a percentage or a progress claim. The whole page IS the loading
+   screen: two layers, one composition — a large brand mark over the
+   ATLAS wordmark over the status line, on --plane with a restrained
+   radial brand glow (CSS only, no assets). .boot-static is index.html
+   markup for the pre-script interval and is removed by App.boot the
+   moment scripts run. The live layer is the boot notice itself: app.js
+   stamps it [data-boot-notice] at creation (an attribute, because
+   load() rewrites its className on every attempt) and builds the
+   .boot-treatment mark inside it on every attempt; the treatment
+   leaves with the notice — removed on success, and on the crit
+   surface the loading copy is wiped with the crit text and a
+   static copy is re-appended, so the terminated surface keeps the
+   branding with all motion stopped. .note-box is shared with in-content
+   plan.js boxes, so every overlay rule below is scoped to .boot-static
+   or [data-boot-notice] and can never reach them. Branding in both
+   layers is aria-hidden decoration. The static layer exposes loading
+   text as role="status" until the boot notice replaces it as the single
+   announcer. Isolation: the static layer intercepts pointer events
+   while it covers the page, and index.html bakes the keyboard/AT
+   isolation for the pre-script interval into the shell markup
+   itself (inert + aria-hidden + data-boot-inert on the header and
+   each .wrap child); when scripts run, app.js takes the same
+   isolation over — every covered top-level subtree inert, prior
+   state captured (a baked element's prior state is the natural
+   one) and restored exactly on arrival. Motion: the mark's
+   four blocks gently separate, bump against each other, settle, and
+   hold — transform-only, one phased keyframe loop driven by per-block
+   offset variables, staggered like the pulse it replaces. It runs
+   only in the loading state; the crit surface is fully static, and
+   reduced motion is fully static in both layers. */
+.boot-static { position:fixed; inset:0; z-index:100; display:flex;
+  flex-direction:column; align-items:center; justify-content:center;
+  gap:14px; padding:24px; text-align:center;
+  color:var(--text-secondary); font-size:.95rem;
+  background:radial-gradient(340px 340px at 50% 42%, rgba(86,80,224,.16), rgba(86,80,224,0) 70%), var(--plane); }
+.boot-static-mark { width:96px; height:96px; flex:none; }
+.boot-mark-bg { fill:#0b0c10; }
+.boot-mark-a { fill:#0c9a6a; }
+.boot-mark-b { fill:#5650e0; }
+.boot-mark-c { fill:#d23f8a; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .boot-mark-bg { fill:#f4f5f7; }
+}
+:root[data-theme="dark"] .boot-mark-bg { fill:#f4f5f7; }
+.boot-wordmark { font-size:1.05rem; font-weight:700; letter-spacing:.42em;
+  padding-left:.42em; color:var(--text-primary); }
+.boot-static-text { font-weight:600; color:var(--text-primary); letter-spacing:-.01em; }
+[data-boot-notice] { position:fixed; inset:0; z-index:100; margin:0;
+  border-left:none; padding:24px; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:14px; text-align:center;
+  font-size:.95rem; color:var(--text-secondary);
+  background:radial-gradient(340px 340px at 50% 42%, rgba(86,80,224,.16), rgba(86,80,224,0) 70%), var(--plane); }
+.boot-treatment { order:-1; pointer-events:none; display:flex;
+  flex-direction:column; align-items:center; gap:14px; }
+.boot-treatment-mark { width:96px; height:96px; flex:none; }
+.boot-blocks-mark rect.boot-mark-a { --sx:-.8px; --sy:-.55px; --nx:.42px; --ny:.3px; --ad:0s; }
+.boot-blocks-mark rect:nth-of-type(3) { --sx:.8px; --sy:-.65px; --nx:-.42px; --ny:.34px; --ad:.12s; }
+.boot-blocks-mark rect:nth-of-type(4) { --sx:-.8px; --sy:.65px; --nx:.42px; --ny:-.34px; --ad:.24s; }
+.boot-blocks-mark rect.boot-mark-c { --sx:.8px; --sy:.55px; --nx:-.42px; --ny:-.3px; --ad:.36s; }
+.boot-static .boot-blocks-mark rect:not(.boot-mark-bg),
+[data-boot-notice].is-loading .boot-blocks-mark rect:not(.boot-mark-bg) {
+  animation:boot-blocks 3.6s ease-in-out var(--ad, 0s) infinite; }
+@keyframes boot-blocks {
+  0% { transform:translate(0, 0); }
+  20% { transform:translate(var(--sx, 0), var(--sy, 0)); }
+  27% { transform:translate(var(--nx, 0), var(--ny, 0)); }
+  35% { transform:translate(calc(var(--sx, 0) * .55), calc(var(--sy, 0) * .55)); }
+  48%, 100% { transform:translate(0, 0); }
+}
+[data-boot-notice].crit, [data-boot-notice].crit * { animation:none; }
+@media (prefers-reduced-motion: reduce) {
+  .boot-static .boot-blocks-mark rect:not(.boot-mark-bg),
+  [data-boot-notice].is-loading .boot-blocks-mark rect:not(.boot-mark-bg) { animation:none; transform:none; }
+}
+@media (max-width:480px) {
+  .boot-static, [data-boot-notice] { padding:20px 16px; }
+  .boot-static-mark, .boot-treatment-mark { width:76px; height:76px; }
+}
+
+/* ---------------------------------------------------------------- modeller */
+.model { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+@media (max-width:760px) { .model { grid-template-columns:1fr; } }
+.control { margin-bottom:18px; }
+.control label { display:flex; justify-content:space-between; align-items:baseline;
+                 font-size:.84rem; color:var(--text-secondary); margin-bottom:8px; gap:12px; }
+.control label b { color:var(--text-primary); font-size:1.05rem; font-weight:650; }
+input[type=range] { width:100%; accent-color:var(--s1); height:26px; }
+.select {
+  width:100%; min-height:44px; padding:9px 12px; border-radius:var(--radius-md); border:1px solid var(--axis);
+  background:var(--plane); color:var(--text-primary); font-family:inherit; font-size:.95rem;
+}
+.presets { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.preset { font-size:.8rem; min-height:34px; padding:5px 12px; border-radius:999px; cursor:pointer;
+          border:1px solid var(--border); background:none; color:var(--text-secondary); font-family:inherit; }
+.preset:hover { border-color:var(--axis); color:var(--text-primary); background:var(--surface-1); }
+.preset[aria-pressed=true] { border-color:var(--s1); color:var(--s1); background:color-mix(in srgb, var(--s1) 8%, transparent); font-weight:600; }
+
+.outcome { background:var(--plane); border:1px solid var(--border); border-radius:var(--radius-md); padding:16px 18px; }
+.outcome .row { display:flex; justify-content:space-between; gap:12px; padding:7px 0;
+                border-bottom:1px solid var(--grid); font-size:.88rem; }
+.outcome .row:last-child { border-bottom:none; }
+.outcome .row span:first-child { color:var(--text-secondary); }
+.outcome .row span:last-child { font-variant-numeric:tabular-nums; font-weight:600; }
+.outcome .big { font-size:1.45rem; font-weight:650; letter-spacing:-0.02em; margin:2px 0 10px; }
+.outcome .warnline { color:var(--critical); font-size:.85rem; margin-top:10px; }
+.outcome .goodline { color:var(--success-text); font-size:.85rem; margin-top:10px; }
+
+/* ---------------------------------------------------------------- questions */
+.qcard { border-left:3px solid var(--critical); padding:2px 0 2px 14px; margin:0 0 18px; }
+.qcard.t2 { border-left-color:var(--serious); }
+.qcard.t3 { border-left-color:var(--muted); }
+.qcard h3 { font-size:.94rem; margin:0 0 4px; }
+.qcard p { margin:0 0 5px; font-size:.85rem; color:var(--text-secondary); }
+.qcard .chg { color:var(--text-primary); }
+.qcard:last-child { margin-bottom:0; }
+
+/* ---------------------------------------------------------------- misc */
+.tip { position:fixed; pointer-events:none; opacity:0; transition:opacity .09s;
+       background:var(--surface-1); border:1px solid var(--border); border-radius:8px;
+       padding:8px 11px; font-size:.79rem; color:var(--text-primary);
+       box-shadow:0 6px 22px rgba(0,0,0,.16); z-index:50; max-width:250px; }
+.tip b { display:block; margin-bottom:3px; }
+.tip .m { color:var(--text-secondary); }
+
+footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
+         font-size:.8rem; line-height:1.5; color:var(--muted); max-width:70ch; }
+footer a { color:var(--text-secondary); }
+footer strong { color:var(--text-secondary); font-weight:600; }
+
+/* ---------------------------------------------------------------- plan page */
+@media (min-width:641px) {
+  .subnav { margin-top:0; }
+  .subnav a { font-size:.8rem; min-height:36px; padding:4px 10px 6px; }
+}
+
+.statusband {
+  border-radius:12px; padding:14px 18px; margin:6px 0 14px;
+  font-size:.95rem; border:1px solid var(--border);
+  background:var(--surface-1); color:var(--text-secondary);
+}
+.statusband b { color:var(--text-primary); }
+.statusband.good { border-left:4px solid var(--good); }
+.statusband.good b { color:var(--success-text); }
+.statusband.warn { border-left:4px solid var(--serious); }
+.statusband.warn b { color:var(--serious); }
+.statusband.crit { border-left:4px solid var(--critical);
+  background:color-mix(in srgb, var(--critical) 5%, var(--surface-1)); }
+.statusband.crit b { color:var(--critical); }
+
+/* ---------------------------------------------------------------- Plan
+   The operating surface is one statement read top to bottom: Current
+   Balance, what still comes in, what has to go out, and what is left after
+   each step. One centred column at every width — the phone is the primary
+   target and the desktop is the same layout with more air, not a different
+   one. Presentation only: every figure is the incumbent Forecast result. */
+#operating-surface { max-width:44rem; margin:0 auto; }
+#operating-surface h1 { margin:8px 0 2px; font-size:1.7rem; letter-spacing:-.02em; line-height:1.1; }
+#operating-surface .lede { margin:0 0 6px; font-size:.92rem; max-width:none; line-height:1.35; }
+.operating-card { background:none; border:0; border-radius:0; box-shadow:none; overflow:visible; }
+.payday-operating-sheet { display:flex; flex-direction:column; gap:14px; }
+
+/* Secondary view picker: the week and next-period printouts stay one tap
+   away, without competing with the pay-period switch below it. */
+.plan-look { max-width:100%; font-size:.84rem; }
+.plan-look-summary {
+  display:inline-flex; align-items:center; gap:4px; cursor:pointer; list-style:none;
+  padding:8px 10px; min-height:44px; color:var(--text-secondary); font-weight:600;
+  border-radius:var(--radius-sm);
+}
+.plan-look-summary:hover { color:var(--text-primary); }
+.plan-look-summary::-webkit-details-marker { display:none; }
+.plan-look-summary::after { content:"▾"; font-size:.9em; }
+.plan-look[open] .plan-look-summary::after { content:"▴"; }
+.plan-look-field { display:flex; flex-direction:column; gap:6px; padding:6px 0 4px; min-width:16rem; }
+.plan-look-label {
+  font-size:.74rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--text-secondary);
+}
+.plan-look .numin { width:100%; max-width:none; min-height:44px; }
+/* Inside the switch row the disclosure is one more quiet control; opened,
+   it takes its own line so the select has room. */
+.calendar-period-picker .plan-look { flex:0 0 auto; }
+.calendar-period-picker .plan-look[open] { flex:1 1 100%; }
+.payday-operating-sheet > .plan-look { align-self:stretch; }
+
+/* Payday carryover trend: a compact chronological list of Forecast-published
+   completed-period leftover-at-payday. Bars are display scale only, diverging
+   from center so a known deficit grows left and leftover grows right. Unknown
+   is a dashed track plus the word Unknown — never a $0 bar. */
+.carryover-list {
+  list-style:none; margin:0; padding:8px 4px 14px;
+  display:flex; flex-direction:column; gap:8px;
+}
+.carryover-row {
+  display:grid; grid-template-columns:4.6rem minmax(0,1fr) auto;
+  gap:10px; align-items:center; min-height:44px;
+  font-variant-numeric:tabular-nums;
+}
+.carryover-when {
+  color:var(--text-secondary); font-weight:600; font-size:.9rem;
+}
+.carryover-track {
+  height:10px; background:var(--grid); border-radius:999px; overflow:hidden;
+  min-width:0; position:relative;
+}
+.carryover-spine {
+  position:absolute; left:50%; top:-1px; bottom:-1px; width:1px;
+  background:var(--text-secondary); opacity:.45; transform:translateX(-50%);
+}
+.carryover-bar {
+  position:absolute; top:0; height:100%; border-radius:999px;
+}
+.carryover-bar-positive {
+  left:50%; background:var(--s1);
+}
+.carryover-bar-negative {
+  right:50%; background:var(--critical);
+}
+.carryover-row[data-carryover-sign="negative"] .carryover-amount {
+  color:var(--critical);
+}
+.carryover-track-unknown {
+  background:repeating-linear-gradient(
+    -45deg, var(--grid), var(--grid) 4px, transparent 4px, transparent 8px);
+}
+.carryover-amount {
+  margin:0; font-weight:700; font-size:1rem; text-align:right; white-space:nowrap;
+}
+.carryover-unknown {
+  color:var(--muted); font-weight:600; font-style:italic;
+}
+[data-payday-carryover-trend] > .operating-note { padding:0 4px 4px; }
+
+/* Centered month and pay-period wheels. Slots leave the previous and next
+   labels readable; the selected item is the only full-emphasis label. */
+.calendar-waterfalls { display:flex; flex-direction:column; gap:14px; }
+.pay-period-timeline.calendar-waterfalls { gap:4px; }
+.pay-period-navigator { min-width:0; padding:0; }
+.budget-wheel {
+  overflow:hidden; touch-action:pan-y pinch-zoom; user-select:none;
+  -webkit-mask-image:linear-gradient(to right, transparent, #000 3%, #000 97%, transparent);
+  mask-image:linear-gradient(to right, transparent, #000 3%, #000 97%, transparent);
+}
+.budget-wheel-track {
+  display:flex; width:100%; align-items:center;
+  transform:translateX(var(--wheel-offset));
+  transition:transform .46s cubic-bezier(.16, 1, .3, 1);
+}
+.budget-wheel-track.is-moving { animation:budget-wheel-center .46s cubic-bezier(.16, 1, .3, 1); }
+.budget-wheel-track.is-dragging { transition:none; animation:none; }
+.budget-wheel-item {
+  flex:0 0 var(--wheel-slot); min-width:0; min-height:40px; padding:2px 1px;
+  border:0; border-radius:0; background:transparent; color:var(--text-secondary);
+  font:inherit; font-size:.8rem; font-weight:560; opacity:.62;
+  white-space:nowrap; cursor:pointer; text-align:center;
+}
+.budget-wheel-month .budget-wheel-item {
+  text-transform:uppercase; letter-spacing:.035em; font-size:.78rem; line-height:1.05;
+  min-height:42px; padding-top:1px; padding-bottom:1px;
+}
+.budget-wheel-year {
+  display:block; visibility:hidden; font-size:.62rem; line-height:1.05;
+  letter-spacing:.03em; font-weight:650; margin-top:1px;
+}
+.budget-wheel-item[aria-current="true"] .budget-wheel-year { visibility:visible; }
+.budget-wheel-period .budget-wheel-item {
+  font-variant-numeric:tabular-nums; font-size:.8rem; letter-spacing:-.01em;
+}
+.budget-wheel-month .budget-wheel-item[aria-current="true"] { font-size:.98rem; letter-spacing:.02em; }
+.budget-wheel-period .budget-wheel-item[aria-current="true"] { font-size:.98rem; letter-spacing:-.02em; }
+.budget-wheel-item[aria-current="true"] { color:var(--text-primary); font-weight:750; opacity:1; }
+.budget-wheel-item:focus-visible { outline:2px solid var(--s1); outline-offset:-3px; border-radius:6px; }
+.pay-period-navigator > p {
+  margin:0; text-align:center; color:var(--text-secondary); font-size:.68rem; line-height:1.2;
+}
+.pay-period-navigator .sr-only {
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0;
+}
+.pay-period-timeline .calendar-waterfall-head { display:none; }
+.pay-period-timeline .plan-look-summary { min-height:36px; padding-top:0; padding-bottom:0; }
+@keyframes budget-wheel-center {
+  from { transform:translateX(var(--wheel-from)); }
+  to { transform:translateX(var(--wheel-offset)); }
+}
+@media (prefers-reduced-motion:reduce) {
+  .budget-wheel-track { animation:none !important; transition:none; }
+}
+.live-current-balance {
+  padding:4px 4px 8px;
+}
+.live-current-balance-label {
+  margin:0; font-size:.72rem; font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--text-secondary);
+}
+.live-current-balance-amount {
+  margin:4px 0 0; font-size:2.4rem; font-weight:750; letter-spacing:-.03em;
+  line-height:1.1; color:var(--text-primary);
+}
+.live-current-balance-date {
+  margin:6px 0 0; font-size:.88rem; color:var(--text-secondary);
+}
+
+/* Selected Budget period: the existing Forecast print, with inline details. */
+.budget-stepped-sheet { --budget-blue:#1d62ac; }
+.budget-stepped-sheet .live-current-balance { padding:8px 4px 20px; }
+.budget-stepped-sheet .live-current-balance-amount { color:var(--s1); }
+.live-current-balance-account { margin:6px 0 0; font-size:.8rem; color:var(--text-secondary); }
+.budget-stepped-sheet .pay-period-navigator { margin-bottom:16px; }
+.budget-period-full-dates { display:block; margin:8px 0 4px; font-size:.8rem; font-variant-numeric:tabular-nums; }
+.budget-stepped-sheet .budget-wheel-item[aria-current="true"] { color:var(--s1); }
+.budget-stepped-sheet .calendar-waterfall {
+  border:0; border-radius:0; background:transparent; box-shadow:none; overflow:visible;
+}
+.budget-stepped-sheet .budget-step {
+  padding:0; margin-bottom:10px; border:1px solid color-mix(in srgb, var(--budget-blue) 32%, var(--border));
+  border-radius:12px; overflow:hidden; background:var(--surface-1);
+}
+.budget-stepped-sheet .budget-step[data-operating-question="04"] { margin-inline-start:12px; }
+.budget-stepped-sheet .budget-step[data-operating-question="05"] { margin-inline-start:24px; }
+.budget-stepped-sheet .budget-step[data-operating-question="06"] { margin-inline-start:36px; }
+.budget-stepped-sheet .budget-step[data-operating-question="07"] { margin-inline-start:48px; }
+.budget-step-summary {
+  display:grid; grid-template-columns:24px minmax(0,1fr) auto 16px; gap:12px; align-items:center;
+  min-height:76px; padding:16px 18px; background:var(--budget-blue); color:#fff;
+  cursor:pointer; list-style:none;
+}
+.budget-step-summary::-webkit-details-marker { display:none; }
+.budget-step-summary:focus-visible { outline:3px solid var(--s1); outline-offset:-4px; }
+.budget-stepped-sheet .budget-step-summary .operating-number {
+  display:block; position:static; margin:0; font-size:1.4rem; color:inherit; font-weight:600;
+}
+.budget-step-title .operating-prompt {
+  display:block; margin:0; color:inherit; font-size:1rem; line-height:1.3;
+  font-weight:650; text-transform:none; letter-spacing:0;
+}
+.budget-step-caption { display:block; margin-top:4px; font-size:.76rem; line-height:1.35; color:#e3efff; }
+.budget-step-value { font-size:1.16rem; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
+.budget-step-value .est { display:block; font-size:.7rem; color:inherit; font-weight:500; }
+.budget-step-value[data-sign="negative"] { text-decoration:underline; text-underline-offset:4px; }
+.budget-step-chevron { font-size:1.2rem; transition:transform .15s; }
+.budget-step-details[open] > .budget-step-summary .budget-step-chevron { transform:rotate(180deg); }
+.budget-step-body { padding:18px 20px; }
+.budget-step-body .operating-lines { margin-top:0; }
+.budget-receipt-date { display:block; margin-top:3px; color:var(--text-secondary); font-size:.76rem; }
+.budget-stepped-sheet .budget-step-balance .budget-step-summary { background:#174f8b; }
+.budget-stepped-sheet [data-operating-question="07"] .budget-step-summary { background:#123e70; }
+.budget-secondary-details {
+  margin-top:16px; padding:12px 16px; border:1px solid var(--border); border-radius:12px;
+  background:var(--surface-1);
+}
+.budget-secondary-details > summary { min-height:32px; cursor:pointer; font-weight:600; }
+.budget-secondary-details > summary:focus-visible { outline:2px solid var(--s1); outline-offset:4px; }
+.budget-secondary-details .payday-instruction-shell { margin-top:12px; }
+@media (max-width:640px) {
+  .budget-stepped-sheet .budget-step[data-operating-question="04"] { margin-inline-start:4px; }
+  .budget-stepped-sheet .budget-step[data-operating-question="05"] { margin-inline-start:8px; }
+  .budget-stepped-sheet .budget-step[data-operating-question="06"] { margin-inline-start:12px; }
+  .budget-stepped-sheet .budget-step[data-operating-question="07"] { margin-inline-start:16px; }
+  .budget-step-summary { grid-template-columns:16px minmax(0,1fr) auto 12px; gap:8px; padding:14px 12px; }
+  .budget-step-title .operating-prompt { font-size:.88rem; }
+  .budget-step-caption { font-size:.67rem; }
+  .budget-step-value { font-size:1rem; }
+  .budget-step-body { padding:16px 12px; }
+}
+@media (prefers-reduced-motion:reduce) { .budget-step-chevron { transition:none; } }
+.calendar-period-picker { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:0; }
+.calendar-period-label {
+  position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden;
+  clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0;
+}
+.calendar-period-switch {
+  flex:1 1 18rem; display:grid; grid-template-columns:1fr 1fr; gap:3px; padding:3px;
+  border-radius:14px; background:var(--grid);
+}
+.calendar-period-btn {
+  font-family:inherit; font-size:.9rem; padding:8px 12px; border-radius:11px; cursor:pointer;
+  border:0; background:none; color:var(--text-secondary); min-height:44px;
+}
+.calendar-period-switch .calendar-period-btn {
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+  padding:8px 10px; min-height:54px; line-height:1.25;
+}
+.calendar-period-switch .calendar-period-btn[aria-pressed="true"] {
+  background:var(--raised); color:var(--text-primary); box-shadow:0 1px 3px rgba(21,21,19,.12);
+}
+.calendar-period-name { font-weight:650; font-size:.92rem; }
+.calendar-period-dates { font-size:.76rem; color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.calendar-period-both {
+  flex:0 0 auto; padding:8px 10px; font-size:.84rem; font-weight:600; color:var(--text-secondary);
+  text-decoration:underline; text-decoration-color:var(--axis); text-underline-offset:3px;
+}
+.calendar-period-both:hover { color:var(--text-primary); }
+.calendar-period-both[aria-pressed="true"] { color:var(--s1); text-decoration-color:currentColor; }
+
+/* The statement card. Sections are separated by hairlines, not nested cards. */
+.calendar-waterfall, .plan-sheet {
+  border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden;
+  background:var(--surface-1); box-shadow:var(--shadow-1);
+}
+.calendar-waterfall .payday-group.calendar-waterfall-head {
+  margin:0; padding:16px 20px 0; border:0; text-transform:none; letter-spacing:0;
+  font-size:1.02rem; font-weight:650; color:var(--text-primary);
+}
+/* When the switch already names the one period on show, the card does not
+   repeat it. Both periods on show keep their captions. */
+.calendar-waterfalls:has(.calendar-period-switch):not(:has(.calendar-period-both[aria-pressed="true"]))
+  .calendar-waterfall-head { display:none; }
+/* "Projected." / "Lookback." — a trust caption on the card, not a sentence. */
+.calendar-waterfall > .operating-note {
+  margin:0; padding:12px 20px 0; font-size:.72rem; font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--serious);
+}
+.calendar-waterfall > .payday-group + .operating-note { padding-top:4px; }
+.calendar-waterfall .operating-question:last-child { border-bottom:none; }
+
+/* Running-balance thread: every "balance after…" step is a tinted band with
+   the label and the amount on one line, so the eye can follow the money
+   down the page. The end state is stronger than the steps before it. */
+.operating-balance, .operating-ending {
+  display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:baseline;
+  column-gap:16px; padding:14px 20px; background:var(--plane);
+}
+.operating-balance .operating-prompt, .operating-ending .operating-prompt {
+  margin:0; text-transform:none; letter-spacing:0; font-size:.95rem; font-weight:600;
+  color:var(--text-primary); line-height:1.35;
+}
+.operating-balance .operating-answer, .operating-ending .operating-answer { justify-self:end; }
+.operating-balance .operating-amount { font-size:1.3rem; font-weight:700; margin:0; letter-spacing:-.015em; }
+.payday-leftover { text-align:right; }
+.payday-leftover[data-sign="negative"] .operating-amount { color:var(--critical); }
+.operating-ending {
+  background:color-mix(in srgb, var(--s1) 8%, var(--surface-1));
+  border-top:2px solid color-mix(in srgb, var(--s1) 40%, transparent);
+  padding:18px 20px 20px;
+}
+.operating-ending .operating-prompt { font-size:1rem; font-weight:650; }
+.operating-ending .operating-amount { font-size:1.9rem; font-weight:750; margin:0; letter-spacing:-.025em; }
+.operating-ending:has([data-sign="negative"]) {
+  background:color-mix(in srgb, var(--critical) 7%, var(--surface-1));
+  border-top-color:color-mix(in srgb, var(--critical) 40%, transparent);
+}
+
+/* The opening figure: the one number the household starts from. */
+.operating-opening .operating-amount {
+  font-size:2.5rem; font-weight:750; letter-spacing:-.03em; line-height:1.1; margin-top:2px;
+}
+.operating-opening .operating-note { margin-top:8px; }
+
+/* Row states. Text carries the meaning ("PAID", "still due", "arriving");
+   weight and colour only echo it, so nothing depends on colour alone. */
+.operating-line[data-bill-status="PAID"],
+.operating-line[data-bill-status="PAID"] span:last-child,
+.operating-line[data-income-status="received"],
+.operating-line[data-income-status="received"] span:last-child,
+.operating-line[data-income-status="already in balance"],
+.operating-line[data-income-status="already in balance"] span:last-child,
+.operating-line[data-income-status="not-relied-upon"],
+.operating-line[data-income-status="not-relied-upon"] span:last-child {
+  color:var(--text-secondary); font-weight:450;
+}
+.operating-line[data-income-status="not-relied-upon"] span:last-child { text-decoration:line-through; text-decoration-color:var(--axis); }
+.operating-line[data-bill-status="still due"] span:last-child,
+.operating-line[data-bill-status="pending"] span:last-child { font-weight:650; }
+.operating-line[data-income-status="arriving"] span:last-child { font-weight:650; color:var(--success-text); }
+.operating-line[data-bill-status="needs confirmation"] span:last-child { font-weight:600; }
+
+/* Totals under a list. */
+.payday-totals { margin-top:10px; padding-top:8px; border-top:1px solid var(--axis); }
+.payday-qual.payday-total {
+  display:flex; justify-content:space-between; align-items:baseline; gap:14px;
+  margin:0; padding:4px 0; font-size:.9rem; color:var(--text-secondary);
+}
+.payday-qual.payday-total span:last-child { font-variant-numeric:tabular-nums; font-weight:600; color:var(--text-primary); white-space:nowrap; }
+.payday-total-strong { color:var(--text-primary); font-weight:600; }
+.payday-total-strong span:last-child { font-weight:700; }
+.payday-period-income > .payday-totals { margin-top:10px; }
+
+/* Extra repayment: the card, its terms, and the extra amount as the answer. */
+.payday-first-card .operating-lead { font-size:1rem; font-weight:650; }
+.payday-first-card .operating-note { margin-top:3px; }
+.payday-first-card .payday-extra-line {
+  margin-top:10px; font-size:1.05rem; font-weight:700; color:var(--text-primary);
+  font-variant-numeric:tabular-nums;
+}
+.payday-first-card[data-extra="zero"] .payday-extra-line { font-size:.9rem; font-weight:500; color:var(--text-secondary); }
+.calendar-waterfall .payday-group.payday-subgroup, .plan-sheet .payday-group.payday-subgroup {
+  margin:18px 0 2px; padding:0; border:0; font-size:.72rem; letter-spacing:.07em; color:var(--muted);
+}
+
+/* Bills that still need a date sit outside both periods, and look it. */
+.calendar-undated {
+  padding:14px 20px 16px; border:1px dashed var(--axis); border-radius:var(--radius-md);
+  background:var(--surface-1);
+}
+.calendar-undated .payday-group { margin:0 0 4px; padding:0; border:0; color:var(--serious); }
+.calendar-undated .operating-note { margin:8px 0 0; font-size:.84rem; }
+
+/* Warnings: calm callouts, not loose red paragraphs. */
+[data-operating-warnings] { display:flex; flex-direction:column; gap:8px; }
+[data-operating-warnings] .operating-limit.warn {
+  margin:0; padding:12px 16px; border-radius:var(--radius-md); color:var(--text-primary);
+  border:1px solid color-mix(in srgb, var(--critical) 35%, transparent);
+  background:color-mix(in srgb, var(--critical) 6%, var(--surface-1));
+  font-size:.92rem; line-height:1.45;
+}
+
+/* Refresh-trust strip (live overlay provenance), when present. */
+.refresh-trust {
+  padding:16px 24px 14px; border-bottom:1px solid var(--grid);
+  background:color-mix(in srgb, var(--s3) 6%, var(--surface-1));
+}
+.refresh-trust.caution {
+  background:color-mix(in srgb, var(--warning) 8%, var(--surface-1));
+}
+.refresh-trust.warn {
+  background:color-mix(in srgb, var(--critical) 6%, var(--surface-1));
+}
+.refresh-trust-state {
+  margin:0; font-size:.78rem; font-weight:750; letter-spacing:.06em;
+  text-transform:uppercase;
+}
+.refresh-trust-asof, .refresh-trust-path, .refresh-trust-proposal,
+.refresh-trust-question {
+  margin:6px 0 0; font-size:.88rem; line-height:1.4;
+}
+.refresh-trust-path, .refresh-trust-asof { color:var(--text-secondary); }
+.refresh-trust-limits, .refresh-trust-unresolved {
+  margin:8px 0 0; padding:0 0 0 18px; color:var(--text-secondary); font-size:.88rem;
+}
+.refresh-trust.warn .refresh-trust-state,
+.refresh-trust.warn .refresh-trust-question { color:var(--critical); }
+.refresh-trust.caution .refresh-trust-state { color:var(--serious); }
+.operating-question {
+  display:flex; flex-direction:column; gap:0; padding:18px 20px;
+  border-bottom:1px solid var(--grid); min-width:0;
+}
+.operating-question:last-child { border-bottom:none; }
+.payday-cash .operating-amount { margin-top:0; }
+[data-last-trusted-opening] [data-last-trusted-opening-amount] {
+  display:block; margin-top:2px; font-size:1.15rem; font-weight:600;
+  font-variant-numeric:tabular-nums; color:var(--text-secondary);
+}
+.payday-must-leave .operating-line [data-unverified-bill],
+.operating-line[data-unverified-bill] span:first-child { color:var(--serious); }
+/* Step numbers were engineering scaffolding; the order is the page order. */
+.operating-number { display:none; }
+.operating-prompt {
+  margin:0 0 10px; font-size:.76rem; font-weight:700; letter-spacing:.07em;
+  text-transform:uppercase; color:var(--text-secondary); line-height:1.3;
+}
+.operating-answer { min-width:0; }
+.operating-answer > :first-child { margin-top:0; }
+.operating-answer > :last-child { margin-bottom:0; }
+.operating-lead { margin:0; font-size:1rem; font-weight:600; line-height:1.4; overflow-wrap:anywhere; }
+.operating-amount {
+  display:block; margin-top:4px; font-size:1.9rem; font-weight:750;
+  letter-spacing:-.025em; font-variant-numeric:tabular-nums; line-height:1.15;
+}
+.operating-note { margin:6px 0 0; color:var(--text-secondary); font-size:.86rem; line-height:1.45; }
+.operating-lines { margin:0; }
+
+/* The financial row: what it is on the left, wrapping as it must; how much
+   on the right, in a tabular column that never moves. */
+.operating-line {
+  display:grid; grid-template-columns:minmax(0,1fr) fit-content(45%); column-gap:14px; align-items:baseline;
+  padding:9px 0; border-bottom:1px solid var(--grid); font-size:.95rem; line-height:1.4;
+  min-width:0;
+}
+.operating-line:last-child { border-bottom:none; }
+.operating-line > span { min-width:0; }
+.operating-line span:first-child { overflow-wrap:anywhere; }
+.operating-line span:last-child {
+  font-weight:600; font-variant-numeric:tabular-nums; text-align:right;
+  overflow-wrap:anywhere;
+}
+
+/* Secondary inventories (other cards, big purchases) stack their detail
+   under the name on a phone; the value is a description, not a decision. */
+.payday-other-cards .operating-line, .payday-big-purchases .operating-line {
+  grid-template-columns:minmax(0,1fr); row-gap:1px; padding:8px 0;
+}
+.payday-other-cards .operating-line span:last-child,
+.payday-big-purchases .operating-line span:last-child {
+  text-align:left; font-weight:500; color:var(--text-secondary); font-size:.88rem;
+}
+
+/* Household budget: name, its weekly basis, then Planned / Spent / Remaining
+   as a key-value grid with Remaining the easiest line to find. Forecast's
+   payday deduction prints once as Household Budget Total after the rows. */
+.payday-household-budget { min-width:0; }
+.payday-household-budget > .household-budget-total {
+  margin-top:12px; padding-top:10px;
+}
+.payday-household-budget [data-household-budget-total] {
+  font-size:1.02rem; color:var(--text-primary);
+}
+.payday-household-budget [data-household-budget-total] span:last-child {
+  font-size:1.28rem; font-weight:750; letter-spacing:-.02em;
+}
+.household-budget-cycle {
+  margin:0 0 6px; color:var(--text-secondary); font-size:.86rem; line-height:1.35;
+  overflow-wrap:anywhere;
+}
+.household-budget-list {
+  display:grid; grid-template-columns:minmax(0,1fr); gap:0 28px; margin:0; min-width:0;
+}
+.household-budget-category,
+.household-budget-other {
+  min-width:0; padding:12px 0; border-bottom:1px solid var(--grid);
+}
+.household-budget-category:last-child, .household-budget-other:last-child { border-bottom:none; padding-bottom:2px; }
+.household-budget-other { grid-column:1 / -1; }
+.household-budget-name {
+  margin:0; font-size:.97rem; font-weight:650; line-height:1.3;
+  overflow-wrap:anywhere;
+}
+.household-budget-context {
+  margin:1px 0 0; color:var(--text-secondary); font-size:.82rem; line-height:1.35;
+  overflow-wrap:anywhere;
+}
+.household-budget-metrics {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:2px 14px;
+  margin:8px 0 0; min-width:0;
+}
+.household-budget-metric { display:contents; }
+.household-budget-metrics dt {
+  margin:0; min-width:0; color:var(--text-secondary); font-size:.88rem; font-weight:450;
+  overflow-wrap:anywhere;
+}
+.household-budget-metrics dd {
+  margin:0; min-width:0; text-align:right; font-size:.92rem; font-weight:500;
+  font-variant-numeric:tabular-nums; overflow-wrap:anywhere; color:var(--text-secondary);
+}
+.household-budget-remaining dt { color:var(--text-primary); font-weight:650; padding-top:3px; }
+.household-budget-remaining dd {
+  font-weight:700; color:var(--text-primary); padding-top:3px;
+}
+.household-budget-spent-openable {
+  display:grid; grid-column:1 / -1; position:relative;
+  grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:2px 14px;
+  align-items:start;
+}
+.household-budget-spent-openable > dt {
+  position:absolute; width:1px; height:1px; overflow:hidden;
+  clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0;
+}
+.household-budget-spent-openable > dd {
+  grid-column:1 / -1; margin:0; text-align:unset; font-weight:inherit; color:inherit;
+}
+.household-budget-spent-detail { min-width:0; }
+.household-budget-spent-summary {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:2px 14px;
+  align-items:center; cursor:pointer; list-style:none; min-height:44px;
+  color:inherit;
+}
+.household-budget-spent-summary::-webkit-details-marker { display:none; }
+.household-budget-spent-summary::marker { content:""; }
+.household-budget-spent-label {
+  min-width:0; color:var(--s1); font-size:.88rem; font-weight:650;
+  overflow-wrap:anywhere;
+}
+.household-budget-spent-amount {
+  min-width:0; text-align:right; font-size:.92rem; font-weight:650;
+  font-variant-numeric:tabular-nums; color:var(--s1);
+  text-decoration:underline; text-decoration-color:color-mix(in srgb, var(--s1) 45%, transparent);
+  text-underline-offset:3px; overflow-wrap:anywhere;
+}
+.household-budget-spent-summary:hover .household-budget-spent-label,
+.household-budget-spent-summary:hover .household-budget-spent-amount {
+  color:var(--text-primary);
+}
+.household-budget-breakdown {
+  margin:4px 0 2px; padding:8px 0 2px; border-top:1px solid var(--grid);
+}
+.household-budget-txs { list-style:none; margin:0; padding:0; min-width:0; }
+.household-budget-tx {
+  display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:2px 10px;
+  align-items:baseline; padding:7px 0; font-size:.86rem; min-width:0;
+}
+.household-budget-tx time {
+  color:var(--text-secondary); font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.household-budget-tx-payee { min-width:0; overflow-wrap:anywhere; }
+.household-budget-tx.is-card-coverage-open {
+  background:var(--card-coverage-bg); border-inline-start:3px solid var(--card-coverage-accent);
+  border-radius:4px; padding-inline:7px; margin-block:3px;
+}
+.household-budget-tx-card {
+  display:block; margin-top:3px; font-size:.78rem; line-height:1.45;
+  color:var(--text-secondary); overflow-wrap:anywhere;
+}
+.is-card-coverage-open .household-budget-tx-card { color:var(--card-coverage-accent); }
+.household-budget-tx-card svg {
+  display:inline-block; width:1em; height:.8em; margin-right:.3em;
+  fill:none; stroke:currentColor; stroke-width:1.5; vertical-align:-.05em;
+}
+.household-budget-tx-pending {
+  margin-left:.35em; color:var(--text-secondary); font-size:.78rem; font-weight:500;
+}
+.household-budget-tx-alert {
+  display:block; margin-top:2px; color:var(--critical); font-size:.78rem; font-weight:650;
+}
+.household-budget-tx-amount {
+  font-variant-numeric:tabular-nums; text-align:right; font-weight:500; white-space:nowrap;
+}
+.household-budget-tx-total {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:2px 10px;
+  margin:4px 0 0; padding:8px 0 0; border-top:1px solid var(--grid);
+  font-size:.88rem; font-weight:650;
+}
+.household-budget-tx-total span:last-child {
+  text-align:right; font-variant-numeric:tabular-nums;
+}
+.other-income-openable { min-width:0; }
+.other-income-detail { min-width:0; }
+.other-income-summary {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:2px 14px;
+  align-items:center; cursor:pointer; list-style:none; min-height:44px;
+  color:inherit;
+}
+.other-income-summary::-webkit-details-marker { display:none; }
+.other-income-summary::marker { content:""; }
+.other-income-label {
+  min-width:0; color:var(--s1); font-size:.88rem; font-weight:650;
+  overflow-wrap:anywhere;
+}
+.other-income-amount {
+  min-width:0; text-align:right; font-size:.92rem; font-weight:650;
+  font-variant-numeric:tabular-nums; color:var(--s1);
+  text-decoration:underline; text-decoration-color:color-mix(in srgb, var(--s1) 45%, transparent);
+  text-underline-offset:3px; overflow-wrap:anywhere;
+}
+.other-income-summary:hover .other-income-label,
+.other-income-summary:hover .other-income-amount {
+  color:var(--text-primary);
+}
+.other-income-breakdown {
+  margin:4px 0 2px; padding:8px 0 2px; border-top:1px solid var(--grid);
+}
+.other-income-txs { list-style:none; margin:0; padding:0; min-width:0; }
+.other-income-tx {
+  display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:2px 10px;
+  align-items:baseline; padding:7px 0; font-size:.86rem; min-width:0;
+}
+.other-income-tx time {
+  color:var(--text-secondary); font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.other-income-tx-payee { min-width:0; overflow-wrap:anywhere; }
+.other-income-tx-pending, .other-income-tx-received {
+  margin-left:.35em; color:var(--text-secondary); font-size:.78rem; font-weight:500;
+}
+.other-income-tx-amount {
+  font-variant-numeric:tabular-nums; text-align:right; font-weight:500; white-space:nowrap;
+}
+.other-income-tx-total {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:2px 10px;
+  margin:4px 0 0; padding:8px 0 0; border-top:1px solid var(--grid);
+  font-size:.88rem; font-weight:650;
+}
+.other-income-tx-total span:last-child {
+  text-align:right; font-variant-numeric:tabular-nums;
+}
+@media (min-width:640px) {
+  .household-budget-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+.payday-budget-digest {
+  padding:22px 24px; border-bottom:1px solid var(--grid);
+}
+.payday-budget-digest .operating-lead { margin-bottom:4px; }
+.future-gravity-current { margin-bottom:14px; }
+.future-gravity-current h3, .future-gravity-heading {
+  margin:0 0 7px; color:var(--muted); font-size:.72rem; font-weight:750;
+  letter-spacing:.06em; text-transform:uppercase;
+}
+.future-gravity-optional { margin-top:14px; }
+.future-gravity { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+.future-gravity-row {
+  min-width:0; padding:12px 13px; border:1px solid var(--grid); border-radius:11px;
+  background:var(--plane);
+}
+.future-gravity-row.at-risk { border-left:3px solid var(--serious); }
+.future-gravity-row.funding-gap { border-left:3px solid var(--critical); }
+.future-gravity-head { display:flex; justify-content:space-between; align-items:start; gap:9px; }
+.future-gravity-head > b { font-size:.92rem; line-height:1.3; }
+.future-gravity-facts {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(105px,1fr)); gap:8px;
+  margin-top:10px;
+}
+.future-gravity-facts > div { min-width:0; }
+.future-gravity-facts b {
+  display:block; font-size:.9rem; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;
+}
+.future-gravity-facts small {
+  display:block; margin-top:2px; color:var(--muted); font-size:.7rem; line-height:1.25;
+}
+.future-gravity-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-top:10px; }
+.future-gravity-meta > span:first-child { margin-right:auto; color:var(--text-secondary); font-size:.78rem; }
+.future-gravity-row > p, .future-gravity-note {
+  margin:8px 0 0; color:var(--text-secondary); font-size:.72rem; line-height:1.35;
+}
+.future-gravity-note { font-size:.78rem; }
+.operating-limit { margin:7px 0 0; color:var(--text-secondary); font-size:.88rem; }
+.operating-limit.warn { color:var(--critical); }
+.allocation-sheet { margin-top:14px; }
+.allocation-available, .allocation-remainder, .allocation-reconcile {
+  display:flex; justify-content:space-between; gap:18px; align-items:baseline;
+  font-variant-numeric:tabular-nums;
+}
+.allocation-available { padding:14px 16px; border-radius:12px; background:var(--plane); }
+.allocation-available span { font-size:.82rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.allocation-available b { font-size:1.65rem; letter-spacing:-.02em; }
+.allocation-list { margin-top:12px; border-top:1px solid var(--grid); }
+.allocation-line {
+  display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:10px; align-items:start;
+  padding:13px 0; border-bottom:1px solid var(--grid);
+}
+.allocation-step {
+  display:grid; place-items:center; width:22px; height:22px; margin-top:1px; border-radius:50%;
+  background:var(--plane); color:var(--s1); font-size:.68rem; font-weight:750;
+}
+.allocation-label { font-size:.96rem; font-weight:650; line-height:1.35; }
+.allocation-action {
+  display:inline-block; margin-right:7px; color:var(--s1); font-size:.68rem; font-weight:750;
+  letter-spacing:.06em; text-transform:uppercase;
+}
+.allocation-trust { margin-top:3px; color:var(--text-secondary); font-size:.78rem; line-height:1.35; }
+.allocation-value { font-weight:750; font-variant-numeric:tabular-nums; min-width:0; overflow-wrap:anywhere; text-align:right; }
+.allocation-state {
+  display:flex; justify-content:space-between; gap:18px; align-items:start; padding:10px 0;
+  border-bottom:1px solid var(--grid); color:var(--text-secondary); font-size:.88rem;
+}
+.allocation-state b { color:var(--text-primary); }
+.allocation-state small { display:block; margin-top:2px; line-height:1.35; }
+.allocation-state > span:last-child { font-weight:700; font-variant-numeric:tabular-nums; min-width:0; overflow-wrap:anywhere; }
+.allocation-empty { margin:12px 0; color:var(--text-secondary); }
+.allocation-remainder { margin-top:12px; padding-top:12px; border-top:2px solid var(--border); font-size:.96rem; }
+.allocation-reconcile { margin-top:8px; color:var(--text-secondary); font-size:.79rem; }
+.allocation-unresolved { margin-top:12px; color:var(--text-secondary); font-size:.84rem; }
+.allocation-unresolved summary { cursor:pointer; font-weight:650; color:var(--critical); }
+.allocation-unresolved ul { margin:8px 0 0; padding-left:20px; }
+.allocation-unresolved li { margin:7px 0; }
+.allocation-unresolved li span { display:block; margin-top:2px; }
+.allocation-safety {
+  margin:12px 0 0; padding:9px 11px; border-left:3px solid var(--border);
+  color:var(--text-secondary); font-size:.8rem; line-height:1.4;
+}
+.allocation-unavailable { margin-top:10px; padding:12px; border:1px solid var(--border); border-radius:10px; }
+.current-period-card { margin-top:2px; }
+.current-period-meta {
+  display:flex; justify-content:space-between; gap:16px; align-items:baseline;
+  padding:12px 14px; border-radius:11px; background:var(--plane);
+}
+.current-period-meta span, .current-period-quick-item > span {
+  color:var(--muted); font-size:.75rem; font-weight:750; letter-spacing:.06em; text-transform:uppercase;
+}
+.current-period-meta b { text-align:right; font-size:.92rem; }
+.current-period-quick { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+.current-period-quick-item { padding:11px 13px; border:1px solid var(--grid); border-radius:10px; }
+.current-period-quick-item > span { display:block; margin-bottom:4px; }
+.current-period-quick-item b { font-size:.94rem; }
+.current-period-quick-item .operating-amount { margin:0; font-size:1.35rem; }
+.current-period-quick-item .payday-refuse { font-size:.88rem; }
+.current-period-block { margin-top:16px; }
+.current-period-block h3 {
+  margin:0 0 6px; color:var(--muted); font-size:.75rem; font-weight:750;
+  letter-spacing:.06em; text-transform:uppercase;
+}
+.current-period-row {
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:16px; align-items:start;
+  padding:10px 0; border-bottom:1px solid var(--grid); font-size:.9rem;
+}
+.current-period-row > div:first-child > span,
+.current-period-values span,
+.current-period-category > div > span {
+  display:block; margin-top:3px; color:var(--text-secondary); font-size:.77rem; line-height:1.35;
+}
+.current-period-values { text-align:right; font-variant-numeric:tabular-nums; min-width:0; overflow-wrap:anywhere; }
+.current-period-values span:first-child { margin-top:0; color:var(--text-primary); font-weight:650; }
+.current-period-empty { margin:7px 0 0; color:var(--text-secondary); font-size:.84rem; }
+.current-period-category-head, .current-period-category {
+  display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:14px; align-items:baseline;
+}
+.current-period-category-head {
+  padding:7px 0; color:var(--muted); font-size:.7rem; font-weight:750;
+  letter-spacing:.05em; text-transform:uppercase;
+}
+.current-period-category {
+  padding:9px 0; border-bottom:1px solid var(--grid); font-size:.88rem;
+  font-variant-numeric:tabular-nums;
+}
+.current-period-category > span { min-width:78px; text-align:right; }
+.current-period-withheld {
+  margin:7px 0; color:var(--critical); font-size:.82rem; line-height:1.4;
+}
+.current-period-category .current-period-withheld { margin:0; }
+.current-period-unavailable { padding:12px; border:1px solid var(--border); border-radius:10px; }
+#payday-answer[hidden],
+#road-ahead[hidden] { display:none !important; }
+.secondary-section { margin-top:24px; }
+.secondary-disclose > summary { background:var(--surface-1); }
+.secondary-body { padding-top:2px; }
+.secondary-body .kicker { margin-top:28px; }
+@media (max-width:700px) {
+  /* One full-width column on a phone. Rows keep the amount on the right;
+     labels wrap; nothing is clipped and nothing scrolls sideways. */
+  .operating-question {
+    grid-template-columns:minmax(0,1fr);
+    padding:16px 16px;
+  }
+  .operating-number { display:none; }
+  .operating-prompt { margin:0 0 8px; }
+  .operating-answer { grid-column:auto; min-width:0; }
+  .future-gravity { grid-template-columns:1fr; }
+  .operating-amount { font-size:1.75rem; }
+  .operating-opening .operating-amount { font-size:2.25rem; }
+  .operating-balance, .operating-ending { padding:13px 16px; }
+  .operating-ending { padding:16px 16px 18px; }
+  .operating-ending .operating-amount { font-size:1.7rem; }
+  .operating-balance .operating-amount { font-size:1.2rem; }
+  .calendar-waterfall .payday-group.calendar-waterfall-head { padding:12px 16px 0; }
+  .calendar-waterfall > .operating-note { padding-left:16px; padding-right:16px; }
+  .calendar-undated { padding:12px 16px 14px; }
+  .plan-look { align-self:stretch; }
+  .plan-look-field { min-width:0; }
+  .carryover-list { padding-left:16px; padding-right:16px; }
+  [data-payday-carryover-trend] > .operating-note { padding-left:16px; padding-right:16px; }
+  .allocation-line { grid-template-columns:25px minmax(0,1fr); gap:8px; }
+  .allocation-value { grid-column:2; justify-self:start; text-align:left; }
+  .allocation-available { flex-wrap:wrap; }
+  .allocation-available b { font-size:1.45rem; overflow-wrap:anywhere; }
+  .allocation-reconcile { display:block; }
+  .allocation-reconcile span { display:block; margin-top:3px; }
+  .allocation-state { flex-wrap:wrap; }
+  .allocation-state > span:last-child { text-align:left; }
+  .current-period-meta { display:block; }
+  .current-period-meta b { display:block; margin-top:4px; text-align:left; overflow-wrap:anywhere; }
+  .current-period-row { grid-template-columns:minmax(0,1fr); gap:6px; }
+  .current-period-values { text-align:left; }
+  .operating-line { grid-template-columns:minmax(0,1fr) fit-content(38%); column-gap:12px; font-size:.92rem; }
+  .current-period-category-head, .current-period-category {
+    grid-template-columns:minmax(0,1fr) minmax(0,auto) minmax(0,auto); gap:8px;
+  }
+  .current-period-category > span { min-width:0; overflow-wrap:anywhere; }
+}
+
+.payday-card { padding:22px 24px; }
+.payday-span { margin:0 0 20px; font-size:1.05rem; color:var(--text-secondary); }
+.payday-list { display:flex; flex-direction:column; gap:0; margin:0; }
+.payday-group { font-size:.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+                color:var(--muted); margin:22px 0 8px; padding-top:16px; border-top:1px solid var(--grid); }
+.payday-group:first-child { margin-top:0; padding-top:0; border-top:none; }
+.payday-hero { margin:0; font-size:2.25rem; font-weight:750; line-height:1.15;
+               font-variant-numeric:tabular-nums; letter-spacing:-0.02em; color:var(--text-primary); }
+.payday-hero-unit { font-size:1.1rem; font-weight:650; margin-left:6px; color:var(--text-secondary); }
+.payday-qual { margin:8px 0 0; font-size:.95rem; color:var(--text-secondary); }
+.payday-spend { margin:0; }
+.payday-refuse { margin:0; font-size:1.05rem; line-height:1.45; color:var(--text-primary);
+                 border-left:4px solid var(--critical); padding:8px 0 8px 12px; }
+.payday-sheet { width:100%; border-collapse:collapse; }
+.payday-sheet th { text-align:left; font-size:.78rem; font-weight:700; letter-spacing:.06em;
+                   text-transform:uppercase; color:var(--muted); padding:0 0 8px; }
+.payday-sheet th:last-child, .payday-sheet td:last-child { text-align:right; }
+.payday-sheet td { padding:14px 0; font-size:1.05rem; border-bottom:1px solid var(--grid);
+                   vertical-align:baseline; color:var(--text-primary); }
+.payday-sheet tr:last-child td { border-bottom:none; }
+.payday-sheet td:last-child { font-variant-numeric:tabular-nums; font-weight:650; white-space:nowrap; }
+.payday-when { color:var(--text-secondary); font-weight:500; }
+.payday-item-note { margin-top:4px; font-size:.82rem; font-weight:500; color:var(--text-secondary); line-height:1.35; }
+.payday-status { margin:0 0 16px; font-size:.95rem; color:var(--text-secondary); }
+.payday-status.warn { color:var(--critical); }
+.payday-done td { color:var(--text-secondary); }
+.payday-action-empty { margin:8px 0 0; font-size:1.05rem; }
+@media (max-width:640px) {
+  .payday-card { padding:18px 16px; }
+  .payday-hero { font-size:2rem; }
+  .payday-hero-unit { font-size:1rem; }
+  .payday-sheet td { font-size:1.05rem; padding:16px 0; }
+}
+
+.hero-tiles { grid-template-columns:repeat(3,1fr); }
+@media (max-width:640px) { .hero-tiles { grid-template-columns:1fr 1fr; }
+  .hero-tiles .tile:first-child { grid-column:1 / -1; } }
+
+.ledger { font-size:.9rem; }
+.ledger-row { display:flex; justify-content:space-between; gap:14px; padding:8px 0;
+              border-bottom:1px solid var(--grid); align-items:baseline; }
+.ledger-row:last-child { border-bottom:none; }
+.ledger-row span:first-child { color:var(--text-secondary); }
+.ledger-row span:last-child { font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+.ledger-row.in span:last-child { color:var(--text-primary); }
+.ledger-row.sum { border-top:1px solid var(--axis); }
+.ledger-row.sum span { color:var(--text-primary); }
+.ledger-row.neg span:last-child { color:var(--critical); }
+.ledger-row .warnline { flex-basis:100%; }
+.mutedtext { color:var(--muted); font-weight:400; font-size:.8em; }
+.ledger-sub { padding-left:16px; border-left:2px solid var(--grid); margin:0 0 0 2px; }
+.ledger-sub .ledger-row { padding:5px 0; font-size:.83rem; }
+.ledger-sub .ledger-row span { color:var(--muted); }
+
+/* Estimated amounts are never dressed as confirmed ones. */
+.est { color:var(--serious); font-style:italic; }
+
+/* weekly forecast table + cards */
+.wk-table { min-width:760px; }
+.wk-table td, .wk-table th { padding:8px 8px; }
+.wk-table .mutedtext { font-size:.72rem; white-space:nowrap; }
+tr.wk-low td { background:color-mix(in srgb, var(--serious) 7%, transparent); }
+tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
+
+.wk-cards { display:none; }
+.wk-card { background:var(--surface-1); border:1px solid var(--border); border-radius:12px;
+           padding:12px 14px; margin-bottom:10px; font-size:.86rem; }
+.wk-card.wk-low { border-left:3px solid var(--serious); }
+.wk-card.wk-neg { border-left:3px solid var(--critical); }
+.wk-card-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+.wk-close { font-weight:650; font-size:1.05rem; font-variant-numeric:tabular-nums; }
+.wk-card-grid { display:grid; grid-template-columns:1fr 1fr; gap:2px 12px; margin-top:6px;
+                color:var(--text-secondary); font-size:.8rem; }
+.wk-flag { margin-top:7px; font-size:.8rem; color:var(--serious); font-weight:600; }
+.wk-flag.neg { color:var(--critical); }
+.wk-events { margin:7px 0 0; padding-left:18px; color:var(--muted); font-size:.78rem; }
+.wk-events li { margin:1px 0; }
+
+@media (max-width:760px) {
+  .wk-table-wrap { display:none; }
+  .wk-cards { display:block; }
+}
+
+/* the 90-day calendar */
+.cal-months { display:flex; flex-direction:column; gap:22px; }
+.cal { table-layout:fixed; border-collapse:collapse; width:100%; }
+.cal caption { text-align:left; font-weight:650; font-size:.95rem; padding:0 0 8px; color:var(--text-primary); }
+.cal th { text-align:center; font-size:.68rem; padding:4px 0; border-bottom:1px solid var(--axis); }
+.cal td { vertical-align:top; height:78px; padding:4px 5px; border:1px solid var(--grid);
+          font-size:.7rem; overflow:hidden; position:relative; }
+.cal td.dim { background:var(--plane); border-color:var(--plane); }
+.cal td.low-day { background:color-mix(in srgb, var(--serious) 8%, transparent); }
+.cal td.neg-day { background:color-mix(in srgb, var(--critical) 10%, transparent); }
+.cal td.today { outline:2px solid var(--s1); outline-offset:-2px; }
+.cal td.need-day { outline:2px dashed var(--serious); outline-offset:-2px; }
+.cal-n { font-weight:600; color:var(--text-secondary); margin-bottom:2px; }
+.cal-badge { font-size:.58rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+             color:var(--s1); }
+.cal-badge.low { color:var(--serious); }
+.cal-badge.need { color:var(--serious); }
+.cal-ev { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+          line-height:1.45; color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.cal-ev.in { color:var(--s1); font-weight:600; }
+.cal-ev.commit { color:var(--serious); }
+.cal-bal { position:absolute; right:5px; bottom:3px; color:var(--muted); font-size:.64rem;
+           font-variant-numeric:tabular-nums; }
+.cal-bal.neg { color:var(--critical); }
+
+.cal-agenda { display:none; }
+.cal-ag-month { margin:16px 0 6px; font-size:.9rem; }
+.cal-ag-month:first-child { margin-top:0; }
+.cal-ag-day { padding:8px 10px; border-left:3px solid var(--grid); margin-bottom:6px; font-size:.82rem; }
+.cal-ag-day.low-day { border-left-color:var(--serious);
+                      background:color-mix(in srgb, var(--serious) 6%, transparent); }
+.cal-ag-day.neg-day { border-left-color:var(--critical);
+                      background:color-mix(in srgb, var(--critical) 8%, transparent); }
+.cal-ag-head { display:flex; gap:8px; align-items:baseline; }
+.cal-ag-head > span:first-child { font-weight:600; }
+.cal-ag-bal { margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums; }
+.cal-ag-evs .cal-ev { white-space:normal; }
+
+@media (max-width:760px) {
+  .cal-months { display:none; }
+  .cal-agenda { display:block; }
+}
+
+/* covering the gap */
+.fund-list { display:flex; flex-direction:column; }
+.fund { padding:14px 0; border-bottom:1px solid var(--grid); }
+.fund:first-child { padding-top:2px; }
+.fund:last-child { border-bottom:none; padding-bottom:2px; }
+.fund-top { display:flex; justify-content:space-between; gap:14px; align-items:baseline; }
+.fund-lab { font-weight:600; font-size:.93rem; }
+.fund-amt { font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.fund-verdict { margin-top:3px; font-size:.82rem; font-weight:600; }
+.fund-verdict .ok { color:var(--success-text); }
+.fund-verdict .no { color:var(--muted); }
+.fund-note { margin:6px 0 0; font-size:.83rem; color:var(--text-secondary); max-width:72ch; }
+.fund-no .fund-lab, .fund-no .fund-amt { color:var(--muted); font-weight:600; }
+.fund-yes { border-left:3px solid var(--good); padding-left:12px; }
+.cal-ev.noncash { color:var(--muted); font-style:italic; }
+.cal-ev.external { color:var(--muted); font-style:italic; }
+.tie { color:var(--serious); margin-right:2px; }
+
+.wk-track { margin-top:6px; font-size:.78rem; color:var(--muted); }
+.wk-track.neg { color:var(--critical); font-weight:600; }
+.transfer-note { border-left:3px solid var(--s2); padding-left:12px; }
+
+/* numeric inputs — sliders are for the modellers; the plan uses precise entry */
+.numin {
+  width:100%; max-width:220px; padding:9px 11px; border-radius:9px; border:1px solid var(--axis);
+  background:var(--plane); color:var(--text-primary); font-family:inherit; font-size:.95rem;
+  font-variant-numeric:tabular-nums;
+}
+.inline-input { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.toggles { display:flex; flex-direction:column; gap:7px; }
+.toggle { display:flex; gap:9px; align-items:baseline; font-size:.85rem; color:var(--text-secondary); cursor:pointer; }
+.toggle input { accent-color:var(--s1); }
+
+/* budget categories */
+.cats { display:flex; flex-direction:column; gap:2px; }
+.cat-row { display:grid; grid-template-columns:minmax(130px,220px) minmax(60px,1fr) 90px 130px;
+           align-items:center; column-gap:12px; padding:6px 0; font-size:.85rem;
+           border-bottom:1px solid var(--grid); }
+.cat-row:last-child { border-bottom:none; }
+.cat-lab { color:var(--text-secondary); }
+.cat-bar { height:8px; border-radius:4px; background:var(--grid); overflow:hidden; }
+.cat-bar > span { display:block; height:100%; background:var(--s1); border-radius:4px; }
+.cat-amt { text-align:right; font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.cat-hist { color:var(--muted); font-size:.75rem; text-align:right; white-space:nowrap; }
+@media (max-width:560px) {
+  .cat-row { grid-template-columns:1fr 90px; }
+  .cat-bar { display:none; }
+  .cat-hist { grid-column:1 / -1; text-align:left; }
+}
+
+/* next actions */
+.action { display:flex; gap:14px; padding:14px 0; border-bottom:1px solid var(--grid); }
+.action:first-child { padding-top:2px; }
+.action:last-child { border-bottom:none; padding-bottom:2px; }
+.action.done { opacity:.55; }
+.action-n { flex:0 0 auto; width:26px; height:26px; border-radius:999px; background:var(--plane);
+            border:1px solid var(--axis); display:grid; place-items:center;
+            font-size:.8rem; font-weight:700; color:var(--text-secondary); }
+.action-body { flex:1; min-width:0; }
+.action-top { display:flex; justify-content:space-between; gap:12px; align-items:baseline; }
+.action-what { font-weight:600; font-size:.93rem; }
+.action-amt { font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.action-meta { display:flex; gap:7px; flex-wrap:wrap; margin-top:4px; }
+.action-why { margin:7px 0 0; font-size:.83rem; color:var(--text-secondary); max-width:70ch; }
+
+.snap-tiles .tile .val { font-size:1.3rem; }
+.h-sub { margin-top:40px; }
+
+/* records */
+.assump { margin:0; padding-left:20px; font-size:.87rem; color:var(--text-secondary); }
+.assump li { margin:7px 0; }
+.details-card summary { cursor:pointer; font-weight:600; font-size:.93rem; }
+.deriv { padding:10px 0; border-bottom:1px solid var(--grid); }
+.deriv:last-child { border-bottom:none; }
+.deriv-top { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; font-size:.88rem; }
+.deriv-top span:first-child { font-weight:600; }
+.deriv-amt { margin-left:auto; font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
+.deriv-note { margin:5px 0 0; font-size:.8rem; color:var(--muted); max-width:75ch; }
+.details-card h3 { margin:16px 0 4px; }
+
+@media (max-width:640px) {
+  /* One tile per row on a phone: the notes under each figure are sentences,
+     and two 170px columns turn them into ribbons. */
+  .tiles { grid-template-columns:minmax(0,1fr); gap:10px; }
+  .tile { padding:14px 16px 13px; }
+  .tile .val { font-size:1.6rem; }
+  .tile .note { max-width:none; }
+  h1 { font-size:1.6rem; }
+  h2 { font-size:1.12rem; }
+  .card { padding:16px; }
+  .kicker { margin-top:40px; }
+  .action-top { flex-direction:column; gap:2px; }
+  footer { margin-top:40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior:auto; }
+  .tip { transition:none; }
+}
+
+/* ===================================================================
+   THE DECISION LAYER
+   Plan reads top to bottom as: what to do, what it costs, where it
+   leaves us. These components carry that and nothing else; the
+   forensic material below keeps the styles it already had.
+   =================================================================== */
+
+/* The derived one-line mission, directly under the h1. */
+.mission {
+  font-size: 1.05rem; line-height: 1.45; font-weight: 550;
+  color: var(--text-primary); margin: 2px 0 8px; max-width: 62ch;
+}
+
+/* NEXT MOVE — deliberately the loudest thing on the page. */
+.nextmove {
+  border-left: 4px solid var(--critical);
+  padding: 16px 18px;
+}
+.nm-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 16px;
+  margin-bottom: 8px;
+}
+.nm-what { font-size: 1.15rem; font-weight: 650; line-height: 1.3; flex: 1 1 16ch; }
+.nm-amt {
+  font-size: 1.65rem; font-weight: 700; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; color: var(--critical); white-space: nowrap;
+}
+.nm-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.nm-why, .nm-after { margin-top: 10px; }
+.nm-why b, .nm-after b {
+  display: block; font-size: .7rem; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--text-secondary); margin-bottom: 3px;
+}
+.nm-why p, .nm-after p { margin: 0; font-size: .87rem; line-height: 1.5; }
+.nm-after { border-top: 1px solid var(--border); padding-top: 10px; }
+
+/* THE WEEKLY HOUSEHOLD CAP, split so it cannot read as fun money. */
+.capcard { padding: 18px; }
+.capline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 14px; }
+.cap-amt { font-size: 2.6rem; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.cap-per { font-size: 1.05rem; color: var(--text-secondary); font-weight: 550; }
+.cap-qual { font-size: .82rem; color: var(--muted); flex: 1 1 100%; }
+.capsplit { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.cap-part {
+  border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
+  background: var(--plane);
+}
+.cap-part.essential { border-left: 3px solid var(--s1); }
+.cap-part.optional { border-left: 3px solid var(--axis); }
+.cap-part.total { border-left: 3px solid var(--text-primary); }
+.cap-part-lab {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+  font-weight: 600; color: var(--text-secondary);
+}
+.cap-part-amt {
+  font-size: 1.5rem; font-weight: 650; letter-spacing: -0.02em;
+  margin: 5px 0 4px; font-variant-numeric: tabular-nums;
+}
+.cap-part-amt span { font-size: .8rem; font-weight: 400; color: var(--muted); }
+.cap-part-note { font-size: .78rem; color: var(--muted); line-height: 1.45; }
+
+/* THE NEXT 14 DAYS */
+.agenda14 { display: flex; flex-direction: column; }
+.ag14 {
+  display: grid; grid-template-columns: 4.5rem 5.5rem 1fr auto;
+  gap: 10px; align-items: baseline;
+  padding: 7px 0; border-bottom: 1px solid var(--border);
+}
+.ag14:last-child { border-bottom: 0; }
+.ag14-key { background: color-mix(in srgb, var(--critical) 8%, transparent); }
+.ag14-date { font-size: .8rem; color: var(--text-secondary); white-space: nowrap; }
+.ag14-amt { font-variant-numeric: tabular-nums; font-weight: 650; text-align: right; }
+.ag14-amt.pos { color: var(--success-text); }
+.ag14-amt.neg { color: var(--text-primary); }
+.ag14.external .ag14-amt { color: var(--muted); font-weight: 600; }
+.ag14-lab { font-size: .87rem; line-height: 1.35; }
+.ag14-conf { text-align: right; }
+
+/* 30 / 60 / 90 PHASES */
+.phases {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px; margin-top: 12px;
+}
+.phase {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; background: var(--surface-1);
+}
+.phase-range {
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .06em;
+  font-weight: 600; color: var(--muted);
+}
+.phase-title { font-weight: 650; margin: 3px 0 5px; }
+.phase p { margin: 0; font-size: .82rem; line-height: 1.5; color: var(--text-secondary); }
+
+/* WHAT COULD BREAK THE PLAN */
+.risk { padding: 11px 0; border-bottom: 1px solid var(--border); }
+.risk:first-child { padding-top: 0; }
+.risk:last-child { border-bottom: 0; padding-bottom: 0; }
+.risk-what { font-weight: 600; font-size: .92rem; line-height: 1.4; }
+.risk-change {
+  margin: 4px 0 0; font-size: .83rem; line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* PROGRESSIVE DISCLOSURE — evidence kept, not deleted. */
+.disclose { margin: 10px 0 18px; }
+.disclose > summary {
+  cursor: pointer; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-1); font-weight: 600; font-size: .88rem;
+  list-style: none; display: flex; align-items: center; gap: 8px;
+}
+.disclose > summary::-webkit-details-marker { display: none; }
+.disclose > summary::after { content: "›"; margin-left: auto; font-size: 1.1rem; color: var(--muted); }
+.disclose[open] > summary::after { content: "⌄"; }
+.disclose > summary:hover { border-color: var(--axis); }
+.disclose[open] > summary { margin-bottom: 12px; }
+
+.assumptions { margin: 0; padding-left: 1.1rem; }
+.assumptions li { font-size: .84rem; line-height: 1.55; margin-bottom: 8px; color: var(--text-secondary); }
+
+/* Phones. The decision layer has to survive a 360px screen without any
+   sideways scrolling — a plan you have to pan around is not a plan. */
+@media (max-width: 560px) {
+  .mission { font-size: 1rem; }
+  .nm-amt { font-size: 1.4rem; }
+  .cap-amt { font-size: 2.1rem; }
+  .capsplit { grid-template-columns: 1fr; }
+  .ag14 {
+    grid-template-columns: 4.2rem 1fr auto;
+    grid-template-areas: "date lab lab" "date amt conf";
+    row-gap: 2px;
+  }
+  .ag14-date { grid-area: date; }
+  .ag14-lab  { grid-area: lab; }
+  .ag14-amt  { grid-area: amt; text-align: left; }
+  .ag14-conf { grid-area: conf; }
+}
+
+/* The scoreboard is four checkpoints wide. On a phone that means sideways
+   scrolling on the one table the household most needs to read, so below the
+   breakpoint each checkpoint becomes its own card — the same trade the weekly
+   forecast table already makes. */
+.score-cards { display: none; }
+.score-card {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; margin-bottom: 10px; background: var(--surface-1);
+}
+.score-card-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  border-bottom: 1px solid var(--border); padding-bottom: 7px; margin-bottom: 8px;
+}
+.score-card-when { font-weight: 650; }
+.score-card-date { font-size: .78rem; color: var(--muted); }
+.score-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 3px 0; font-size: .87rem;
+}
+.score-row span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; }
+.score-row.neg span:last-child { color: var(--critical); }
+
+@media (max-width: 720px) {
+  .score-table-wrap { display: none; }
+  .score-cards { display: block; }
+}
+
+/* --------------------------------------------------- financial fact cards */
+/* Shared chrome for Credit, Bills, and Subscriptions. Credit remains the
+   visual reference: one card, heading + confidence, a prominent amount,
+   then labelled facts. These selectors only place Forecast output. */
+.fact-card-list, .credit-list { display:flex; flex-direction:column; gap:12px; margin:18px 0 0; }
+.credit-list-cards { margin-top:8px; }
+.credit-section-head { margin-top:36px; }
+.fact-card, .credit-account {
+  position:relative; overflow:hidden; min-width:0;
+  background:var(--surface-1); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:16px 18px 15px; box-shadow:var(--shadow-1);
+}
+.fact-card::before, .credit-account::before { content:""; position:absolute; top:0; left:0; right:0; height:3px; background:var(--axis); }
+.credit-secured-term::before, .credit-secured-revolving::before { background:var(--s1); }
+.fact-card-head, .credit-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+.fact-card-head h2, .fact-card-head h3, .credit-head h2, .credit-head h3 { margin:0; font-size:1.05rem; line-height:1.3; letter-spacing:-0.01em; }
+.credit-secured-term .credit-head h2, .credit-secured-revolving .credit-head h2 { font-size:1.2rem; }
+.fact-card-amount, .credit-balance { margin:8px 0 4px; }
+.fact-card-amount .lab, .credit-balance .lab { display:block; font-size:.72rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
+.fact-card-amount b, .credit-balance b { display:block; font-size:1.55rem; font-weight:700; margin:4px 0 0; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; }
+.credit-secured-term .credit-balance b, .credit-secured-revolving .credit-balance b { font-size:1.85rem; }
+.credit-pending { margin-top:2px; font-size:.82rem; color:var(--serious); font-variant-numeric:tabular-nums; }
+.fact-card-facts, .credit-facts {
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 14px;
+  margin:12px 0 0; padding:12px 0 0; border-top:1px solid var(--grid);
+}
+.fact-card-fact, .credit-fact { min-width:0; }
+.fact-card-fact dt, .credit-fact dt { font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
+.fact-card-fact dd, .credit-fact dd { margin:3px 0 0; font-size:.98rem; font-weight:650; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.fact-card-fact dd small, .credit-fact dd small { display:block; margin-top:2px; font-size:.74rem; font-weight:400; color:var(--text-secondary); line-height:1.3; }
+.credit-fact[data-credit-noncash="true"] dd { color:var(--text-secondary); }
+.credit-fact[data-credit-over-limit="true"] dd { color:var(--critical); }
+.fact-unknown, .credit-unknown { color:var(--muted); font-weight:600; }
+.credit-structure { margin:12px 0 0; font-size:.8rem; color:var(--muted); line-height:1.4; }
+@media (min-width:641px) {
+  .fact-card-facts, .credit-facts { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .fact-card-list, .credit-list-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .fact-card-list .fact-card-facts, .credit-list-cards .credit-facts { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+
+/* ----------------------------------------------------- bills / subscriptions */
+/* Totals stay a comparison footer under the shared fact-card list. */
+.bills-total, .subscriptions-total { margin-top:16px; padding-top:14px; border-top:1px solid var(--axis); }
+.bills-total [data-bills-total],
+.subscriptions-total [data-subscriptions-total] {
+  display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap;
+}
+.bills-total [data-bills-total] span,
+.subscriptions-total [data-subscriptions-total] span {
+  font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+}
+.bills-total [data-bills-total] b,
+.subscriptions-total [data-subscriptions-total] b { font-size:1.2rem; font-variant-numeric:tabular-nums; }
+.bills-total-note, .subscriptions-total-note { margin:6px 0 0; font-size:.82rem; color:var(--text-secondary); line-height:1.4; }
+
+/* -------------------------------------------------------------- planning page */
+/* Forecast page cards stay the roomy planning-row. Plan Spend uses the
+   tighter plan-spend-card so a phone can see more commitments at once. */
+.planning-list { display:flex; flex-direction:column; gap:10px; margin:16px 0 0; }
+.planning-row {
+  min-width:0; padding:14px 15px; border:1px solid var(--border); border-radius:var(--radius-lg);
+  background:var(--surface-1); box-shadow:var(--shadow-1);
+}
+.planning-row.at-risk { border-left:3px solid var(--serious); }
+.planning-row.funding-gap { border-left:3px solid var(--critical); }
+.planning-head { display:flex; justify-content:space-between; align-items:start; gap:9px; }
+.planning-head h2 { margin:0; font-size:1rem; line-height:1.3; letter-spacing:-0.01em; }
+.planning-facts {
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 14px; margin-top:10px;
+}
+.planning-facts > div { min-width:0; }
+.planning-facts b { display:block; font-size:.98rem; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.planning-facts small { display:block; margin-top:2px; color:var(--muted); font-size:.7rem; line-height:1.25; }
+.planning-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-top:10px; }
+.planning-meta > span:first-child { margin-right:auto; color:var(--text-secondary); font-size:.82rem; }
+
+/* Plan Spend: the collapsed card carries the household decision. */
+.plan-spend-funding { margin:16px 0 22px; }
+.plan-spend-action { padding:20px; border:1px solid var(--border); border-radius:16px; background:var(--surface, var(--card)); }
+.plan-spend-action h2 { margin:5px 0 12px; font-size:1.45rem; }
+.plan-spend-action-amount { display:block; font-size:clamp(1.65rem,5vw,2.3rem); line-height:1.15; font-variant-numeric:tabular-nums; }
+.plan-spend-action-lines { list-style:none; margin:14px 0; padding:0; }
+.plan-spend-action-lines li { display:flex; justify-content:space-between; gap:12px; padding:5px 0; }
+.plan-spend-action-lines b { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.plan-spend-action-totals { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:18px 0 0; padding-top:14px; border-top:1px solid var(--border); }
+.plan-spend-action-totals dt { color:var(--text-secondary); font-size:.78rem; }
+.plan-spend-action-totals dd { margin:4px 0 0; font-weight:700; font-variant-numeric:tabular-nums; }
+.plan-spend-payday-plan { margin-top:14px; }
+.plan-spend-payday-plan summary { cursor:pointer; font-weight:700; }
+.plan-spend-payday-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:10px; margin-top:14px; }
+.plan-spend-payday { padding:12px; border:1px solid var(--border); border-radius:10px; }
+.plan-spend-payday h3 { margin:0 0 6px; font-size:1rem; }
+.plan-spend-payday p { margin:8px 0 0; font-size:.83rem; color:var(--text-secondary); }
+.plan-spend-glance > p { grid-column:1 / -1; margin:0; font-size:.83rem; color:var(--text-secondary); }
+.plan-spend-list.planning-list { gap:10px; margin-top:12px; }
+.plan-spend-list .plan-spend-card {
+  padding:14px 16px;
+}
+.plan-spend-glance {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  grid-template-areas:
+    "name amount"
+    "when when"
+    "status status"
+    "explanation explanation"
+    "facts facts";
+  column-gap:14px;
+  row-gap:8px;
+  align-items:start;
+}
+.plan-spend-glance h2 {
+  grid-area:name; margin:0; font-size:1.08rem; line-height:1.25; letter-spacing:-0.01em;
+  overflow-wrap:anywhere;
+}
+.plan-spend-glance [data-plan-spend-fact="requirement"],
+.plan-spend-glance [data-plan-spend-fact="schedule-remaining"] {
+  grid-area:amount; text-align:right; min-width:0;
+}
+.plan-spend-glance [data-plan-spend-fact="requirement"] b,
+.plan-spend-glance [data-plan-spend-fact="schedule-remaining"] b {
+  display:block; font-size:1.14rem; line-height:1.2; font-variant-numeric:tabular-nums;
+  overflow-wrap:anywhere;
+}
+.plan-spend-glance [data-plan-spend-fact="requirement"] small,
+.plan-spend-glance [data-plan-spend-fact="schedule-remaining"] small {
+  display:block; margin-top:2px; color:var(--muted); font-size:.72rem; line-height:1.15;
+  text-transform:lowercase;
+}
+.plan-spend-glance [data-plan-spend-when] {
+  grid-area:when; color:var(--text-secondary); font-size:.85rem; line-height:1.3;
+  overflow-wrap:anywhere;
+}
+.plan-spend-status {
+  grid-area:status; display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+}
+.plan-spend-card .chip { font-size:.68rem; padding:2px 7px; line-height:1.4; }
+.plan-spend-explanation { grid-area:explanation; margin:0; font-size:.88rem; line-height:1.4; }
+.plan-spend-facts { grid-area:facts; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 18px; margin:2px 0 0; }
+.plan-spend-facts > div, .plan-spend-member-period > div { min-width:0; }
+.plan-spend-facts dt, .plan-spend-member-period dt { color:var(--text-secondary); font-size:.73rem; line-height:1.3; }
+.plan-spend-facts dd, .plan-spend-member-period dd { margin:2px 0 0; font-size:.85rem; font-weight:650; line-height:1.3; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.plan-spend-facts [data-plan-spend-fact="due-period"] { grid-column:1 / -1; border-top:1px solid var(--border-subtle, var(--border)); padding-top:8px; }
+.plan-spend-more { margin-top:10px; font-size:.83rem; color:var(--text-secondary); }
+.plan-spend-more summary { cursor:pointer; color:var(--link, var(--text)); font-size:.83rem; font-weight:650; }
+.plan-spend-more summary:focus-visible { outline:2px solid var(--focus, currentColor); outline-offset:2px; }
+.plan-spend-path p { margin:8px 0 0; line-height:1.45; }
+.plan-spend-path-gap { color:var(--serious); font-weight:650; }
+.plan-spend-schedule { list-style:none; margin:10px 0 0; padding:0; }
+.plan-spend-schedule li {
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 10px; align-items:baseline;
+  padding:9px 0; border-top:1px solid var(--border-subtle, var(--border));
+}
+.plan-spend-schedule li b { font-variant-numeric:tabular-nums; }
+.plan-spend-schedule li time, .plan-spend-schedule li .chip, .plan-spend-member-period { grid-column:1 / -1; }
+.plan-spend-schedule li time { color:var(--text-secondary); }
+.plan-spend-member-period { margin:3px 0 0; }
+@media (max-width:380px) {
+  .plan-spend-glance {
+    grid-template-areas:
+      "name name"
+      "amount amount"
+      "when when"
+      "status status"
+      "explanation explanation"
+      "facts facts";
+    row-gap:7px;
+  }
+  .plan-spend-glance [data-plan-spend-fact="requirement"],
+  .plan-spend-glance [data-plan-spend-fact="schedule-remaining"] { text-align:left; }
+  .plan-spend-facts { grid-template-columns:1fr; }
+}
+.planning-trajectory { margin:12px 0 0; }
+.planning-trajectory-table td { vertical-align:top; }
+.planning-trajectory-reason { display:block; margin-top:4px; color:var(--text-secondary); font-size:.72rem; line-height:1.35; }
+.planning-trajectory-period-dates,
+.planning-trajectory-partial { display:block; margin-top:3px; color:var(--text-secondary); font-size:.72rem; line-height:1.35; font-weight:400; }
+.planning-trajectory-partial { color:var(--serious); }
+.planning-trajectory-table [data-trajectory-debt] { margin-bottom:4px; }
+.planning-trajectory-table [data-trajectory-debt] b { font-variant-numeric:tabular-nums; }
+.planning-trajectory-pressure { margin:12px 0 0; }
+.planning-trajectory-pressure-list { margin:0; padding-left:1.25rem; }
+.planning-trajectory-pressure-item { margin:0 0 12px; }
+.planning-trajectory-pressure-kind { display:block; font-weight:600; margin-bottom:4px; }
+.planning-trajectory-pressure-field { display:block; margin-top:3px; color:var(--text-secondary); font-size:.72rem; line-height:1.35; }
+.planning-trajectory-pressure-field b { font-variant-numeric:tabular-nums; color:var(--text-primary); }
+.planning-trajectory-pressure-attribution { margin-top:8px; padding-top:8px; border-top:1px solid var(--border-subtle); }
+.planning-trajectory-debt-direction { margin:12px 0 0; }
+.planning-trajectory-debt-direction-household { margin:12px 0; padding:12px; border:1px solid var(--border-subtle); border-radius:8px; }
+.planning-trajectory-debt-direction-balance { margin-top:6px; }
+.planning-trajectory-debt-direction-groups { margin:16px 0; }
+.planning-trajectory-debt-direction-idlist { margin:4px 0 12px; padding-left:1.25rem; }
+.planning-trajectory-debt-direction-list { margin:0; padding-left:1.25rem; }
+.planning-trajectory-debt-direction-item { margin:0 0 14px; }
+.planning-trajectory-debt-direction-debt-title { display:block; font-weight:600; margin-bottom:4px; }
+.planning-trajectory-debt-direction-milestone { margin-top:6px; }
+.planning-trajectory-attribution-change { display:block; margin-bottom:4px; color:var(--text-secondary); font-size:.72rem; }
+.planning-trajectory-attribution-change b { font-variant-numeric:tabular-nums; color:var(--text-primary); }
+.planning-trajectory-attribution-drivers,
+.planning-trajectory-attribution-facts { margin:4px 0 0; padding-left:1.1rem; }
+.planning-trajectory-attribution-driver,
+.planning-trajectory-attribution-fact { margin:0 0 6px; font-size:.72rem; color:var(--text-secondary); line-height:1.35; }
+.planning-trajectory-attribution-driver-kind,
+.planning-trajectory-attribution-fact-kind { font-weight:600; color:var(--text-primary); }
+.planning-trajectory-attribution-driver b { font-variant-numeric:tabular-nums; color:var(--text-primary); }
+.planning-trajectory-month-select {
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: inherit;
+}
+.planning-trajectory-month-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.planning-trajectory-month-row.planning-trajectory-month-selected { outline:2px solid var(--accent); outline-offset:-2px; }
+.planning-trajectory-funding { margin:12px 0 0; }
+.planning-trajectory-funding-picker-wrap { margin:8px 0 12px; }
+.planning-trajectory-granularity {
+  display:inline-flex; flex-wrap:wrap; gap:4px; margin-right:12px; margin-bottom:8px;
+  padding:2px; border:1px solid var(--border-subtle); border-radius:8px;
+}
+.planning-trajectory-granularity-btn {
+  font:inherit; font-size:.82rem; padding:6px 12px; border:0; border-radius:6px;
+  background:transparent; cursor:pointer;
+}
+.planning-trajectory-granularity-btn[aria-pressed="true"] {
+  background:var(--surface-raised, rgba(127,127,127,.12)); font-weight:600;
+}
+.planning-trajectory-funding-picker { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:.85rem; }
+.planning-trajectory-funding-picker-label { font-weight:600; }
+.planning-trajectory-funding-select { font:inherit; padding:4px 8px; }
+.planning-trajectory-funding-stages { display:grid; gap:12px; }
+@media (min-width:720px) {
+  .planning-trajectory-funding-stages { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+}
+.planning-trajectory-funding-stage { padding:12px; border:1px solid var(--border-subtle); border-radius:8px; }
+.planning-trajectory-funding-stage-title { margin:0 0 8px; font-size:.95rem; }
+.planning-trajectory-funding-result b { font-variant-numeric:tabular-nums; }
+.planning-trajectory-funding-components { margin-top:10px; font-size:.78rem; }
+.planning-trajectory-funding-component { margin-top:6px; }
+.planning-trajectory-funding-component-label { font-weight:600; }
+.planning-trajectory-funding-component b { font-variant-numeric:tabular-nums; }
+
+/* Planning — Your Financial Road Ahead (trajectory dashboard compose) */
+.planning-road-ahead { margin: 8px 0 28px; }
+.planning-road-intro { margin-bottom: 16px; }
+.planning-trajectory-scenario-form {
+  display: grid;
+  gap: 12px;
+  margin: 12px 16px;
+  max-width: 28rem;
+}
+.planning-trajectory-scenario-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.planning-trajectory-scenario-label { font-size: .82rem; font-weight: 600; }
+.planning-trajectory-scenario-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.planning-trajectory-scenario-apply,
+.planning-trajectory-scenario-clear {
+  font: inherit;
+  padding: 8px 14px;
+  min-height: 44px;
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(0,0,0,.15));
+  background: var(--surface, #fff);
+  cursor: pointer;
+}
+.planning-trajectory-scenario-compare { margin: 12px 16px 0; }
+.planning-trajectory-scenario-table th[scope="row"] { text-align: left; }
+.planning-trajectory-scenario-disclaimer { margin-top: 10px; }
+
+.planning-road-scenario-sheet {
+  margin: 0 0 16px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.planning-road-scenario-sheet > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 52px;
+  padding: 14px 16px;
+  font-weight: 650;
+  font-size: .97rem;
+  cursor: pointer;
+  list-style: none;
+}
+.planning-road-scenario-sheet > summary::-webkit-details-marker { display: none; }
+.planning-road-scenario-summary-chevron {
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.planning-road-scenario-sheet[open] .planning-road-scenario-summary-chevron {
+  transform: rotate(90deg);
+}
+.planning-road-scenario-intro {
+  margin: 0 16px 8px;
+  font-size: .8rem;
+  color: var(--text-secondary);
+}
+.planning-road-scenario-note {
+  margin: 8px 16px 16px;
+  font-size: .78rem;
+  color: var(--text-secondary);
+}
+.planning-road-whatif-preview {
+  margin: 8px 16px 16px;
+}
+.planning-road-whatif-preview-title {
+  margin: 0 0 8px;
+  font-size: .88rem;
+}
+.planning-road-whatif-preview-grid {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--border);
+  background: var(--surface);
+}
+.planning-road-whatif-preview-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: .82rem;
+}
+.planning-road-whatif-preview-head {
+  font-weight: 650;
+  color: var(--text-secondary);
+  font-size: .75rem;
+}
+.planning-road-whatif-preview-hint { font-size: .82rem; margin: 0; }
+
+/* Planning — Road Ahead phone-native shell (presentation only)
+ *
+ * Implements the Fable frames: hero (Frame 01), horizon band, Month | Pay
+ * period control, trajectory strip, numbered stage spine with narrative and
+ * delta pills, projected-result bar (Frame 03), breakdown groups (Frame 06).
+ * Extra-debt scenario is a secondary disclosure after the breakdown, not a
+ * primary hero. Nothing here decides a number: every sign class is set from
+ * a Forecast figure by planning.js.
+ */
+.planning-road-shell {
+  /* DESIGN §9 tints, scoped to Road Ahead so no other page palette moves.
+     Dark is re-tuned toward the surface, not inverted. */
+  --road-gap-tint: #fdf1ef;
+  --road-gap-edge: rgba(199, 55, 55, .28);
+  --road-surplus-tint: #edf7f2;
+  --road-surplus-edge: rgba(26, 154, 74, .26);
+  --road-est-tint: #fbf3e2;
+  --road-unav-tint: #eef0f4;
+  --road-node-tint: #e6edfb;
+  --road-node-ink: var(--s1);
+  --road-pill-tint: rgba(21, 21, 19, .05);
+  margin: 0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .planning-road-shell {
+    --road-gap-tint: #2c1518;
+    --road-gap-edge: rgba(224, 82, 82, .38);
+    --road-surplus-tint: #10251c;
+    --road-surplus-edge: rgba(52, 179, 95, .34);
+    --road-est-tint: #2a2212;
+    --road-unav-tint: #1e2432;
+    --road-node-tint: rgba(90, 149, 234, .18);
+    --road-pill-tint: rgba(255, 255, 255, .08);
+  }
+}
+:root[data-theme="dark"] .planning-road-shell {
+  --road-gap-tint: #2c1518;
+  --road-gap-edge: rgba(224, 82, 82, .38);
+  --road-surplus-tint: #10251c;
+  --road-surplus-edge: rgba(52, 179, 95, .34);
+  --road-est-tint: #2a2212;
+  --road-unav-tint: #1e2432;
+  --road-node-tint: rgba(90, 149, 234, .18);
+  --road-pill-tint: rgba(255, 255, 255, .08);
+}
+
+.planning-road-shell :where(.planning-road-lead-amount b,
+  .planning-road-timeline-value,
+  .planning-road-horizon-stat-value,
+  .planning-trajectory-funding-result b,
+  .planning-road-breakdown-value b) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------- page identity */
+.planning-road-app-head {
+  margin: 0 0 14px;
+  padding: 0;
+}
+.planning-road-app-head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.planning-road-app-eyebrow {
+  display: block;
+  margin: 0 0 2px;
+  font-size: .69rem;
+  font-weight: 750;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--s1);
+}
+.planning-road-app-title {
+  margin: 0;
+  font-size: 1.85rem;
+  line-height: 1.1;
+  letter-spacing: -.025em;
+  font-weight: 750;
+}
+.planning-road-app-sub {
+  margin: 4px 0 0;
+  font-size: .9rem;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+.planning-road-freshness {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin: 4px 0 0;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  font-size: .76rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.planning-road-freshness-icon {
+  width: 13px;
+  height: 13px;
+  background-color: var(--s1);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20.5 12a8.5 8.5 0 1 1-2.6-6.1'/%3E%3Cpath d='M20.5 4v5h-5'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20.5 12a8.5 8.5 0 1 1-2.6-6.1'/%3E%3Cpath d='M20.5 4v5h-5'/%3E%3C/svg%3E");
+  -webkit-mask-size: 13px 13px;
+  mask-size: 13px 13px;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+/* ------------------------------------------------------------------- hero */
+.planning-road-primary { margin-bottom: 14px; }
+.planning-road-lead {
+  padding: 16px 18px;
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface-1);
+}
+.planning-road-hero-card {
+  border-radius: 20px;
+  box-shadow: var(--shadow-1);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+}
+.planning-road-hero-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.planning-road-hero-icon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background-color: var(--road-unav-tint);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 20px 20px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235b5a55' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='5' width='17' height='15.5' rx='2'/%3E%3Cpath d='M3.5 9.5h17'/%3E%3Cpath d='M8 3.5v4M16 3.5v4'/%3E%3C/svg%3E");
+}
+.planning-road-hero-icon-gap {
+  background-color: var(--road-gap-tint);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c73737' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='5' width='17' height='15.5' rx='2'/%3E%3Cpath d='M3.5 9.5h17'/%3E%3Cpath d='M8 3.5v4M16 3.5v4'/%3E%3C/svg%3E");
+}
+.planning-road-hero-icon-pressure {
+  background-color: var(--road-est-tint);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e0a112' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4.5 20.5 19.5H3.5z'/%3E%3Cpath d='M12 10v4.2M12 17h.01'/%3E%3C/svg%3E");
+}
+.planning-road-hero-icon-clear {
+  background-color: var(--road-surplus-tint);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231a9a4a' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 13.5 9 18.5 20 6.5'/%3E%3C/svg%3E");
+}
+.planning-road-hero-heading { min-width: 0; }
+.planning-road-hero-eyebrow {
+  margin: 0 0 3px;
+  font-size: .69rem;
+  font-weight: 750;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.planning-road-lead-gap .planning-road-hero-eyebrow { color: var(--road-gap); }
+.planning-road-lead-pressure .planning-road-hero-eyebrow { color: var(--road-pressure); }
+.planning-road-hero-when {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+}
+.planning-road-hero-period { color: var(--text-primary); }
+.planning-road-hero-relative { color: var(--text-secondary); font-weight: 600; }
+.planning-road-lead-kind {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+.planning-road-lead-noamount .planning-road-lead-kind {
+  font-size: 1.4rem;
+  font-weight: 750;
+  letter-spacing: -.02em;
+}
+.planning-road-lead-amount {
+  margin: 2px 0 8px;
+  font-size: 2.6rem;
+  line-height: 1.02;
+  letter-spacing: -.025em;
+}
+.planning-road-lead-amount b { font-weight: 750; }
+.planning-road-lead-gap .planning-road-lead-amount b { color: var(--road-gap); }
+.planning-road-lead-pressure .planning-road-lead-amount b { color: var(--text-primary); }
+.planning-road-hero-narrative {
+  margin: 0;
+  font-size: .87rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.planning-road-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: .85rem;
+}
+.planning-road-hero-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 48px;
+  margin: 14px 0 0;
+  padding: 12px 16px;
+  font: inherit;
+  font-size: .97rem;
+  font-weight: 650;
+  color: #fff;
+  background: var(--s1);
+  border: 0;
+  border-radius: 14px;
+  cursor: pointer;
+}
+.planning-road-hero-cta > span:first-child {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.planning-road-hero-cta-chevron { font-size: 1.05rem; line-height: 1; }
+.planning-road-hero-cta:active { filter: brightness(.96); }
+
+/* ---------------------------------------------------------- horizon band */
+.planning-road-trajectory-band { margin: 0 0 18px; }
+.planning-road-horizon {
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.planning-road-horizon-stats {
+  display: flex;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+.planning-road-horizon-stat {
+  flex: 1 1 50%;
+  min-width: 0;
+  padding: 12px 13px 13px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  text-align: left;
+}
+.planning-road-horizon-stat-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 0 0 8px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+.planning-road-horizon-stat-dot-surplus { background: var(--road-surplus); }
+.planning-road-horizon-stat-dot-gap { background: var(--road-gap); }
+.planning-road-horizon-stat-value {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 750;
+  line-height: 1.05;
+  letter-spacing: -.02em;
+}
+.planning-road-horizon-stat-label {
+  display: block;
+  margin-top: 4px;
+  font-size: .78rem;
+  line-height: 1.3;
+  color: var(--text-secondary);
+}
+.planning-road-horizon-caption {
+  margin: 0 0 4px;
+  font-size: .78rem;
+  color: var(--text-secondary);
+}
+.planning-road-horizon-lede {
+  margin: 0;
+  font-size: .76rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* ------------------------------------------- Month | Pay period + strip */
+.planning-road-period-nav { margin: 0; }
+.planning-road-strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+.planning-road-strip-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.015em;
+}
+/* Segmented control base — one component at every width; the phone block
+   only changes its size and the strip head layout. */
+.planning-road-segmented.planning-trajectory-granularity,
+.planning-road-granularity.planning-trajectory-granularity {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  gap: 0;
+  margin: 0;
+  padding: 3px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--grid);
+}
+.planning-road-segmented .planning-trajectory-granularity-btn,
+.planning-road-granularity .planning-trajectory-granularity-btn {
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: .85rem;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.planning-road-segmented .planning-trajectory-granularity-btn[aria-selected="true"],
+.planning-road-granularity .planning-trajectory-granularity-btn[aria-selected="true"] {
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.planning-road-view-note {
+  margin: 0 0 12px;
+  padding: 11px 13px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  font-size: .82rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.planning-road-view-note b { color: var(--text-primary); }
+.planning-road-timeline-wrap { margin: 0; }
+.planning-road-granularity { margin-bottom: 0; }
+.planning-road-timeline {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 10px;
+  margin: 0 -2px;
+  list-style: none;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.planning-road-timeline-item {
+  flex: 0 0 auto;
+  min-width: 4.9rem;
+  scroll-snap-align: center;
+}
+.planning-road-timeline[data-road-timeline-granularity="pay-period"] .planning-road-timeline-item {
+  min-width: 7.6rem;
+}
+.planning-road-timeline-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 8px 8px;
+  font: inherit;
+  text-align: center;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+}
+.planning-road-timeline-label {
+  display: block;
+  font-size: .82rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.planning-road-timeline-year {
+  display: block;
+  margin-top: 1px;
+  font-size: .66rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: .01em;
+}
+.planning-road-timeline-plot {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 38px;
+  margin: 7px 0 6px;
+}
+.planning-road-timeline-plot::before {
+  content: "";
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 50%;
+  height: 1px;
+  background: var(--axis);
+}
+.planning-road-timeline-bar {
+  position: absolute;
+  left: 50%;
+  width: 12px;
+  min-height: 3px;
+  height: calc(var(--road-bar, 20%) * .5);
+  transform: translateX(-50%);
+  border-radius: 3px;
+  background: var(--muted);
+}
+.planning-road-timeline-bar-surplus {
+  bottom: 50%;
+  background: var(--road-surplus);
+}
+.planning-road-timeline-bar-gap {
+  top: 50%;
+  background: var(--road-gap);
+}
+.planning-road-timeline-bar-withheld {
+  top: calc(50% - 1px);
+  height: 3px;
+  background: var(--muted);
+  opacity: .5;
+}
+.planning-road-timeline-value {
+  display: block;
+  font-weight: 650;
+  font-size: .76rem;
+  letter-spacing: -.01em;
+}
+.planning-road-timeline-item-surplus .planning-road-timeline-value { color: var(--success-text); }
+.planning-road-timeline-item-gap .planning-road-timeline-value { color: var(--road-gap); }
+.planning-road-timeline-item.is-selected .planning-road-timeline-btn {
+  border-color: var(--axis);
+  box-shadow: 0 0 0 2px var(--road-pill-tint), var(--shadow-1);
+}
+.planning-road-timeline-item-gap.is-selected .planning-road-timeline-btn {
+  background: var(--road-gap-tint);
+  border-color: var(--road-gap-edge);
+  box-shadow: 0 0 0 2px var(--road-gap-edge), var(--shadow-1);
+}
+.planning-road-timeline-item-surplus.is-selected .planning-road-timeline-btn {
+  background: var(--road-surplus-tint);
+  border-color: var(--road-surplus-edge);
+  box-shadow: 0 0 0 2px var(--road-surplus-edge), var(--shadow-1);
+}
+
+/* ------------------------------------------------ selected period header */
+.planning-road-period-detail { margin: 18px 0 18px; }
+.planning-road-selected {
+  margin-top: 0;
+  padding: 0;
+  border: 0;
+}
+.planning-road-selected-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px 12px;
+  margin: 0 0 14px;
+}
+.planning-road-selected-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.planning-road-selected-title {
+  margin: 0;
+  font-size: 1.38rem;
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: -.025em;
+}
+.planning-road-selected-title:focus-visible { outline: 2px solid var(--s1); outline-offset: 3px; }
+.planning-road-selected-sub {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: .85rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+.planning-road-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 650;
+  white-space: nowrap;
+  background: var(--road-pill-tint);
+  color: var(--text-secondary);
+}
+.planning-road-status-gap {
+  background: var(--road-gap-tint);
+  color: var(--road-gap);
+  border: 1px solid var(--road-gap-edge);
+}
+.planning-road-status-surplus {
+  background: var(--road-surplus-tint);
+  color: var(--success-text);
+  border: 1px solid var(--road-surplus-edge);
+}
+.planning-road-selected-nav {
+  display: flex;
+  gap: 8px;
+  justify-self: end;
+}
+.planning-road-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-height: 40px;
+  font: inherit;
+  font-size: 1.15rem;
+  line-height: 1;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+}
+.planning-road-nav-btn.is-disabled {
+  color: var(--muted);
+  opacity: .45;
+  box-shadow: none;
+}
+
+/* ----------------------------------------------- numbered stage spine */
+.planning-road-spine {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.planning-road-spine-step {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  position: relative;
+  margin: 0;
+  padding: 0 0 14px;
+  border: 0;
+  background: transparent;
+}
+.planning-road-spine-step:last-child { padding-bottom: 4px; }
+.planning-road-spine-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: .82rem;
+  top: 1.85rem;
+  bottom: 0;
+  width: 2px;
+  background: var(--grid);
+}
+.planning-road-fable-stage {
+  position: relative;
+  background: transparent;
+  border: 0;
+}
+.planning-road-fable-stage-1,
+.planning-road-fable-stage-2,
+.planning-road-fable-stage-3 { border-left: 0; }
+.planning-road-stage-index,
+.planning-road-spine-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: .2rem 0 0;
+  border-radius: 999px;
+  font-size: .82rem;
+  font-weight: 750;
+  color: var(--road-node-ink);
+  background: var(--road-node-tint);
+  position: relative;
+  z-index: 1;
+}
+.planning-road-spine-body { min-width: 0; }
+.planning-road-stage-card {
+  padding: 13px 15px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+.planning-road-stage-headrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.planning-road-spine-body .planning-trajectory-funding-stage-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+.planning-road-stage-card .planning-trajectory-funding-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: 1.1rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.planning-road-stage-card .planning-trajectory-funding-result .planning-road-trust-chip {
+  margin: 3px 0 0;
+}
+.planning-road-stage-card .planning-trajectory-funding-result b { font-weight: 750; }
+.planning-road-stage-includes {
+  margin: 6px 0 0;
+  font-size: .77rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.planning-road-stage-note {
+  margin: 7px 0 0;
+  font-size: .87rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+.planning-road-stage-pill {
+  display: inline-flex;
+  align-items: center;
+  margin: 11px 0 0;
+  padding: 5px 11px;
+  border-radius: 9px;
+  background: var(--road-pill-tint);
+  font-size: .78rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+/* ------------------------------------------------- projected result bar */
+.planning-road-final-result,
+.planning-road-projected-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  padding: 15px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+}
+.planning-road-projected-result-gap {
+  background: var(--road-gap-tint);
+  border-color: var(--road-gap-edge);
+}
+.planning-road-projected-result-surplus {
+  background: var(--road-surplus-tint);
+  border-color: var(--road-surplus-edge);
+}
+.planning-road-final-label {
+  display: block;
+  margin: 0;
+  font-size: .97rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+.planning-road-projected-result-gap .planning-road-final-label { color: var(--road-gap); }
+.planning-road-projected-result-surplus .planning-road-final-label { color: var(--success-text); }
+.planning-road-projected-result .planning-trajectory-funding-result {
+  font-size: 1.3rem;
+  font-weight: 750;
+  text-align: right;
+}
+/* ------------------------------------------------------- trust badges */
+.planning-road-trust-chip {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 2px 7px;
+  border-radius: 7px;
+  font-size: .67rem;
+  font-weight: 650;
+  letter-spacing: .01em;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.planning-road-trust-confirmed {
+  color: var(--road-trust-confirmed);
+  background: var(--road-pill-tint);
+  font-weight: 550;
+}
+.planning-road-trust-calculated {
+  color: var(--text-secondary);
+  background: var(--road-pill-tint);
+  font-weight: 550;
+}
+.planning-road-trust-estimated {
+  color: var(--road-trust-estimated);
+  background: var(--road-est-tint);
+}
+.planning-road-trust-unavailable {
+  color: var(--road-trust-unavailable);
+  background: var(--road-unav-tint);
+  border: 1px dashed var(--axis);
+  font-weight: 550;
+}
+.planning-road-trust-planned {
+  color: var(--road-trust-planned);
+  background: var(--road-node-tint);
+}
+.planning-road-amount-unavailable {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* --------------------------------------------------- breakdown groups */
+.planning-road-breakdown-band { margin: 0 0 4px; }
+.planning-road-breakdown-sheet {
+  margin: 0 0 12px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.planning-road-breakdown-sheet > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 52px;
+  padding: 14px 16px;
+  font-weight: 650;
+  font-size: .97rem;
+  cursor: pointer;
+  list-style: none;
+}
+.planning-road-breakdown-sheet > summary::-webkit-details-marker { display: none; }
+.planning-road-breakdown-summary-chevron {
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.planning-road-breakdown-sheet[open] .planning-road-breakdown-summary-chevron {
+  transform: rotate(90deg);
+}
+.planning-road-breakdown-intro {
+  margin: 0 16px 12px;
+  font-size: .8rem;
+  color: var(--text-secondary);
+}
+.planning-road-breakdown-group { margin: 0 16px 14px; }
+.planning-road-breakdown-group-title {
+  margin: 0 0 4px;
+  font-size: .67rem;
+  font-weight: 750;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.planning-road-breakdown-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.planning-road-breakdown-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--grid);
+}
+.planning-road-breakdown-row:last-child { border-bottom: 0; }
+.planning-road-breakdown-label {
+  font-size: .89rem;
+  color: var(--text-primary);
+}
+.planning-road-breakdown-value {
+  font-size: .92rem;
+  font-weight: 650;
+  text-align: right;
+}
+.planning-road-breakdown-value b { font-weight: 650; }
+.planning-road-breakdown-row.unavailable .planning-trajectory-reason {
+  flex: 1 1 100%;
+  color: var(--muted);
+  font-size: .75rem;
+}
+.planning-road-breakdown-stage-result .planning-road-breakdown-label { font-weight: 650; }
+.planning-road-breakdown-planned-note {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  font-size: .72rem;
+  color: var(--text-secondary);
+}
+
+/* ------------------------------------------ Budget-waterfall primary UX */
+.planning-road-horizon-band { margin: 0 0 8px; }
+.planning-road-horizon-caption {
+  margin: 0 0 8px;
+  font-size: .78rem;
+  color: var(--text-secondary);
+}
+.planning-road-horizon-chips.planning-road-timeline {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 4px 2px 10px;
+  margin: 0;
+  list-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+.planning-road-horizon-chips .planning-road-timeline-item {
+  flex: 0 0 auto;
+  scroll-snap-align: center;
+  width: auto;
+}
+.planning-road-horizon-chips .planning-road-timeline-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 52px;
+  min-height: 64px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.planning-road-horizon-chips .planning-road-timeline-label {
+  font-size: .82rem;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+.planning-road-horizon-chips .planning-road-timeline-year {
+  font-size: .62rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.planning-road-horizon-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+.planning-road-horizon-chip-dot-surplus { background: var(--road-surplus); }
+.planning-road-horizon-chip-dot-gap { background: var(--road-gap); }
+.planning-road-horizon-chip-dot-neutral,
+.planning-road-horizon-chip-dot-withheld { background: var(--muted); opacity: .7; }
+.planning-road-horizon-chips .planning-road-timeline-item.is-selected .planning-road-timeline-btn {
+  border-color: var(--axis);
+  box-shadow: 0 0 0 2px var(--road-pill-tint), var(--shadow-1);
+}
+
+.planning-road-selected-head {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+.planning-road-selected-head .planning-road-segmented {
+  align-self: flex-start;
+}
+
+.planning-road-hero-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.planning-road-hero-kind {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 750;
+  letter-spacing: -.01em;
+}
+.planning-road-lead.planning-road-lead-surplus,
+.planning-road-lead.planning-road-lead-clear {
+  background: var(--road-surplus-tint);
+  border-color: var(--road-surplus-edge);
+}
+.planning-road-lead.planning-road-lead-gap {
+  background: var(--road-gap-tint);
+  border-color: var(--road-gap-edge);
+}
+.planning-road-lead-surplus .planning-road-hero-kind,
+.planning-road-lead-surplus .planning-road-lead-amount b { color: var(--success-text); }
+.planning-road-lead-gap .planning-road-hero-kind,
+.planning-road-lead-gap .planning-road-lead-amount b { color: var(--road-gap); }
+.planning-road-lead-amount {
+  margin: 0;
+  font-size: 2.35rem;
+  line-height: 1.02;
+  letter-spacing: -.03em;
+  text-align: right;
+}
+.planning-road-hero-card .planning-road-hero-narrative {
+  margin: 8px 0 0;
+}
+.planning-road-decision {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.planning-road-decision-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--grid);
+}
+.planning-road-decision-step:last-child { border-bottom: 0; padding-bottom: 0; }
+.planning-road-decision-label {
+  flex: 1 1 12rem;
+  font-size: .95rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.planning-road-decision-amount {
+  margin-left: auto;
+  font-size: 1.35rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.planning-road-decision-gap .planning-road-decision-label,
+.planning-road-decision-gap .planning-road-decision-amount b { color: var(--road-gap); }
+.planning-road-decision-surplus .planning-road-decision-label,
+.planning-road-decision-surplus .planning-road-decision-amount b { color: var(--success-text); }
+.planning-road-decision-lines {
+  flex: 1 1 100%;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 0 0 12px;
+}
+.planning-road-decision-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--grid);
+  font-size: .9rem;
+  font-weight: 550;
+}
+.planning-road-decision-line-label { flex: 1 1 10rem; line-height: 1.35; }
+.planning-road-decision-line-amount {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.planning-road-hero-kind {
+  flex: 1 1 100%;
+  margin: 0 0 2px;
+}
+.planning-road-debt-strategy {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-1);
+}
+.planning-road-debt-strategy summary {
+  min-height: 48px;
+  padding: 14px 16px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.planning-road-debt-strategy details[open] > summary { border-bottom: 1px solid var(--grid); }
+.planning-road-debt-strategy .planning-road-wf-block,
+.planning-road-debt-strategy .planning-road-wf-result { margin: 12px; }
+
+.planning-road-waterfall {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.planning-road-wf-block {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+.planning-road-wf-kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 16px;
+  font-size: .78rem;
+  font-weight: 750;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.planning-road-wf-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--road-pill-tint);
+  color: var(--text-primary);
+  font-size: .85rem;
+  font-weight: 750;
+}
+.planning-road-wf-badge-income {
+  background: var(--road-surplus-tint);
+  color: var(--success-text);
+}
+.planning-road-wf-badge-income::before { content: "+"; }
+.planning-road-wf-badge-bills {
+  background: var(--road-gap-tint);
+  color: var(--road-gap);
+}
+.planning-road-wf-badge-bills::before { content: "B"; }
+.planning-road-wf-badge-obligations {
+  background: var(--road-est-tint);
+  color: var(--road-trust-estimated);
+}
+.planning-road-wf-badge-obligations::before { content: "D"; }
+.planning-road-wf-badge-household-budget {
+  background: var(--road-surplus-tint);
+  color: var(--success-text);
+}
+.planning-road-wf-badge-household-budget::before { content: "H"; }
+.planning-road-wf-badge-planned-spending {
+  background: var(--road-unav-tint);
+  color: var(--text-primary);
+}
+.planning-road-wf-badge-planned-spending::before { content: "P"; }
+.planning-road-wf-badge-extra-debt {
+  background: var(--road-unav-tint);
+  color: var(--text-primary);
+}
+.planning-road-wf-badge-extra-debt::before { content: "E"; }
+.planning-road-wf-income .planning-road-wf-kicker {
+  color: var(--success-text);
+  background: var(--road-surplus-tint);
+  border-bottom: 1px solid var(--road-surplus-edge);
+}
+.planning-road-wf-block[data-planning-road-wf="bills"] .planning-road-wf-kicker {
+  color: var(--road-gap);
+  background: var(--road-gap-tint);
+  border-bottom: 1px solid var(--road-gap-edge);
+}
+.planning-road-wf-block[data-planning-road-wf="obligations"] .planning-road-wf-kicker {
+  color: var(--road-trust-estimated);
+  background: var(--road-est-tint);
+  border-bottom: 1px solid rgba(224, 161, 18, .28);
+}
+.planning-road-wf-block[data-planning-road-wf="household-budget"] .planning-road-wf-kicker {
+  color: var(--success-text);
+  background: var(--road-surplus-tint);
+  border-bottom: 1px solid var(--road-surplus-edge);
+}
+.planning-road-wf-block[data-planning-road-wf="planned-spending"] .planning-road-wf-kicker,
+.planning-road-wf-block[data-planning-road-wf="extra-debt"] .planning-road-wf-kicker {
+  color: var(--text-primary);
+  background: var(--road-unav-tint);
+  border-bottom: 1px solid var(--border);
+}
+.planning-road-wf-list,
+.planning-road-wf-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0 16px 8px;
+}
+.planning-road-wf-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--grid);
+  font-size: .95rem;
+}
+.planning-road-wf-row:last-child { border-bottom: 0; }
+.planning-road-wf-label {
+  flex: 1 1 11rem;
+  min-width: 0;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+.planning-road-wf-amount {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: auto;
+  gap: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.planning-road-wf-about { color: var(--text-secondary); font-size: .82rem; margin-right: 4px; }
+.planning-road-wf-income .planning-road-wf-amount b { color: var(--success-text); }
+.planning-road-wf-row[data-road-result-sign="surplus"] .planning-road-amount-value { color: var(--success-text); }
+.planning-road-wf-row[data-road-result-sign="gap"] .planning-road-amount-value { color: var(--road-gap); }
+.planning-road-decision-gap .planning-road-hero-kind { color: var(--road-gap); }
+.planning-road-decision-surplus .planning-road-hero-kind { color: var(--success-text); }
+.planning-road-lead-neutral {
+  background: var(--surface-1);
+  border-color: var(--border);
+}
+.planning-road-wf-expand { margin: 0; }
+.planning-road-wf-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  cursor: pointer;
+  list-style: none;
+  padding: 0 16px;
+}
+.planning-road-wf-summary::-webkit-details-marker { display: none; }
+.planning-road-wf-summary .planning-road-wf-row {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 12px 0;
+}
+.planning-road-wf-chevron {
+  flex: 0 0 auto;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transform-origin: 50% 50%;
+  transition: transform .15s ease;
+}
+.planning-road-wf-expand[open] .planning-road-wf-chevron {
+  transform: rotate(225deg);
+}
+.planning-road-wf-expand .planning-road-wf-lines { padding-top: 0; }
+.planning-road-wf-empty {
+  margin: 0;
+  padding: 4px 16px 14px 2.35rem;
+  font-size: .82rem;
+  color: var(--text-secondary);
+}
+.planning-road-wf-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+}
+.planning-road-wf-result-surplus {
+  background: var(--road-surplus-tint);
+  border-color: var(--road-surplus-edge);
+  color: var(--success-text);
+}
+.planning-road-wf-result-gap {
+  background: var(--road-gap-tint);
+  border-color: var(--road-gap-edge);
+  color: var(--road-gap);
+}
+.planning-road-wf-result-label {
+  flex: 1 1 16rem;
+  min-width: 0;
+  line-height: 1.35;
+  font-weight: 700;
+  font-size: .95rem;
+}
+.planning-road-wf-result-value {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 1.15rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.planning-road-wf-footnote {
+  margin: 2px 4px 0;
+  font-size: .72rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.planning-trajectory-funding-result[data-trajectory-funding-result-sign="gap"] b {
+  color: var(--road-gap);
+}
+.planning-trajectory-funding-result[data-trajectory-funding-result-sign="surplus"] b {
+  color: var(--success-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planning-road-breakdown-sheet[open] .planning-road-breakdown-summary-chevron {
+    transform: none;
+  }
+  .planning-road-wf-chevron { transition: none; }
+}
+
+/* ------------------------------------------------ phone-first overrides */
+@media (max-width:640px) {
+  #planning > .kicker,
+  #planning > h1,
+  #planning > .sub,
+  #planning > .planning-road-title,
+  #planning > .planning-road-sub {
+    display: none;
+  }
+  body:has(#planning) .site-head-row .brand,
+  body:has(#planning) .site-head-row .spacer,
+  body:has(#planning) .site-head-row .chip {
+    display: none;
+  }
+  body:has(#planning) .site-head-row {
+    justify-content: flex-end;
+  }
+  body:has(#planning) .wrap-reading {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .planning-road-intro-inline { display: none; }
+  /* The title and the freshness pill share one row at 390pt. Below that the
+     title scales rather than wrapping "Road Ahead" onto two lines. */
+  .planning-road-app-title { font-size: clamp(1.66rem, 7.6vw, 2rem); }
+  .planning-road-lead,
+  .planning-road-hero-card {
+    padding: 18px 18px 18px;
+    margin-bottom: 16px;
+  }
+  .planning-road-lead-amount { font-size: 2.85rem; }
+  .planning-road-segmented.planning-trajectory-granularity,
+  .planning-road-granularity.planning-trajectory-granularity {
+    display: flex;
+    flex-wrap: nowrap;
+    flex: 0 0 auto;
+    width: 10.5rem;
+    margin: 0;
+    padding: 3px;
+    border: 0;
+    gap: 0;
+    border-radius: 999px;
+    background: var(--grid);
+  }
+  .planning-road-segmented .planning-trajectory-granularity-btn,
+  .planning-road-granularity .planning-trajectory-granularity-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 40px;
+    padding: 6px 4px;
+    font-size: .82rem;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-secondary);
+  }
+  .planning-road-segmented .planning-trajectory-granularity-btn[aria-selected="true"],
+  .planning-road-granularity .planning-trajectory-granularity-btn[aria-selected="true"],
+  .planning-road-segmented .planning-trajectory-granularity-btn[aria-pressed="true"],
+  .planning-road-granularity .planning-trajectory-granularity-btn[aria-pressed="true"] {
+    background: var(--surface-1);
+    box-shadow: var(--shadow-1);
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .planning-road-selected > .subhead,
+  .planning-road-selected > .lede {
+    display: none;
+  }
+  .planning-road-selected .planning-trajectory-funding-stages,
+  .planning-road-stages .planning-trajectory-funding-stages,
+  .planning-road-spine {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .planning-road-selected .planning-trajectory-funding-stage,
+  .planning-road-stages .planning-trajectory-funding-stage {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .planning-road-selected .planning-trajectory-funding-stage:not(:last-child)::after,
+  .planning-road-stages .planning-trajectory-funding-stage:not(:last-child)::after {
+    content: none;
+  }
+  .planning-road-wf-result {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .planning-road-wf-result-label {
+    flex: 1 1 auto;
+  }
+  .planning-road-wf-result-value {
+    text-align: right;
+    margin-left: 0;
+  }
+}
+
+@media (min-width:641px) {
+  .planning-road-app-head { display: none; }
+  .planning-road-waterfall,
+  .planning-road-stages {
+    display: flex;
+    flex-direction: column;
+  }
+  .planning-road-selected .planning-trajectory-funding-stages,
+  .planning-road-stages .planning-trajectory-funding-stages {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .planning-road-spine-step {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .planning-road-spine-step:not(:last-child)::before { content: none; }
+  .planning-road-spine-index { margin-bottom: 8px; }
+  .planning-road-stage-card { height: 100%; }
+  .planning-road-hero-cta { max-width: 22rem; }
+}
+
+@media (min-width:641px) {
+  .planning-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+.budget-funding-item { padding: 1rem 0; border-top: 1px solid #d8e6f5; }
+.budget-funding-item h3 { margin: 0 0 .6rem; font-size: 1rem; color: #123b65; }
+.budget-funding-item .operating-line { gap: .75rem; }
+.budget-funding-item .operating-line > span:last-child { text-align: right; }
+.from-today-evidence { margin: .75rem 0; padding-inline-start: 1.25rem; overflow-wrap: anywhere; }
+.from-today-evidence li + li { margin-top: 1rem; }
+/* Historical cash membership remains readable inside the scrolling table. */
+.recorded-cash-scope { min-width: 15rem; max-width: 30rem; white-space: normal; overflow-wrap: anywhere; }
+.recorded-cash-scope summary { cursor: pointer; }
+.recorded-cash-scope ul { margin: .5rem 0; padding-left: 1.25rem; }
+.recorded-balance-history td:not(.num) { overflow-wrap: anywhere; }

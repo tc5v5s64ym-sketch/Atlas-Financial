@@ -1,0 +1,155 @@
+section,category,label,value_cad,rate_or_apr,payment_amount,payment_frequency,due_or_renewal_date,months_observed,confidence,notes
+ACCOUNT,Chequing,Chequing A,876.98,,,,,18,VERIFIED_TD,Available 876.98; no overdraft limit shown
+ACCOUNT,Chequing,Chequing B,-517.72,,,,,18,VERIFIED_TD,Available 82.28; overdraft limit 600.00; NEGATIVE
+ACCOUNT,Savings,Savings,90.58,,,,,18,VERIFIED_TD,Receives 15.00/month; drawn down periodically
+ACCOUNT,Credit Card,Credit Card,1799.97,24.99% purchases / 27.99% cash - PENALTY,94.03,Monthly,2026-08-17,18,VERIFIED_TD,Limit 2000; available 200; utilization 90%; rate from decrypted statement PDF
+CARD,Penalty rate,Current purchase APR,,24.99%,,,,,VERIFIED_TD,Penalty rate currently applied
+CARD,Penalty rate,Current cash advance APR,,27.99%,,,,,VERIFIED_TD,
+CARD,Penalty rate,Normal rate if restored,,17.20% (TD Prime +12.75%),,,,,CALCULATED,TD Prime 4.45% as of 2026-08-09
+CARD,Penalty rate,Rate reduction available,,7.79 percentage points,,,,,CALCULATED,HIGHEST return-per-dollar action in this review
+CARD,Penalty rate,Restoration condition,,,94.03,12 consecutive on-time minimums,,,VERIFIED_TD,Last month minimum NOT received as of 2026-07-23
+CARD,History,Penalty trigger,,,,,2026-02-23,,VERIFIED_TD,Two consecutive missed minimums Dec 2025 and Jan 2026
+CARD,History,Missed minimums in 12 months,4,,,,,12,VERIFIED_TD,Dec 2025 Jan 2026 Apr 2026 Jul 2026
+CARD,History,Months over the 2000 limit,4,,,,,4,VERIFIED_TD,Oct 2025 to Jan 2026; peak balance 2384.27
+CARD,History,Peak balance,2384.27,,,,,1,VERIFIED_TD,Dec 2025 - 384.27 over limit
+CARD,History,Position in 12-period count,0,,,,,,ESTIMATE,Reset by the July 2026 miss; restarts Aug 2026 statement
+CARD,History,Earliest rate restoration,,17.20%,,,2027-08,,CALCULATED,Only if every minimum from Aug 2026 lands on time
+CARD,History,Net balance change Sep2025-Jul2026,-390.58,,,,,11,VERIFIED_TD,From 2290.55 to 1899.97; card is dormant with no purchases
+CARD,Saving,Annual interest at penalty rate,450.00,24.99%,,,,12,CALCULATED,
+CARD,Saving,Annual interest at normal rate,310.00,17.20%,,,,12,CALCULATED,
+CARD,Saving,Annual saving from restoration,140.00,7.79 points,,,,12,CALCULATED,Real value is payment history plus 2000 restored credit
+COVERAGE,Transaction history,Credit card statements,11,,,,,12,COMPLETE,Sep 2025 to Jul 2026; Aug 2025 not retrieved; PDFs decrypted locally
+CARD,Projection,Estimated payoff at minimums only,1899.97,24.99%,94.03,Monthly,,182,VERIFIED_TD,15 years 2 months per TD statement
+CARD,Statement,Jun24-Jul23 payments,0.00,,,,,1,VERIFIED_TD,No payment received in the cycle
+CARD,Statement,Jun24-Jul23 purchases,0.00,,,,,1,VERIFIED_TD,Card is dormant - no spending on it
+CARD,Statement,Jun24-Jul23 interest,37.51,24.99%,,,,1,VERIFIED_TD,
+CARD,Rule change,Interest now compounds,,,,,2026-07-02,,VERIFIED_TD,TD now charges interest on unpaid interest
+FLAG,Needs confirmation,TFR-TO C/C destination unknown,47047.93,,,,,18,NEEDS_OWNER,24817.93 from chequing + 22230 from HELOC; card received 0.00 and has no purchases
+ACCOUNT,Mortgage,Mortgage,546026.58,3.64% variable (Mtg Prime -0.96%),1600.00,Bi-Weekly,2027-05-01 maturity,18,VERIFIED_TD,Next pmt Aug 14 2026; 17y9m4d remaining of orig 30y; orig 648000
+ACCOUNT,HELOC,HELOC,201586.16,4.90% variable (Prime +0.45%),814.18,Monthly,2026-08-21,18,VERIFIED_TD,Limit 202654; available 1067.84; utilization 99.5%; INTEREST-ONLY
+MORTGAGE,Payment split,Interest per bi-weekly payment,762.27,3.64%,,Bi-Weekly,,,CALCULATED,47.6% of payment; model reproduces TD stated amortization
+MORTGAGE,Payment split,Principal per bi-weekly payment,837.73,,,Bi-Weekly,,,CALCULATED,52.4% of payment; grows ~1.17 per payment
+MORTGAGE,Annual,Interest per year,19441.00,3.64%,,,,12,CALCULATED,26 payments totalling 41600
+MORTGAGE,Annual,Principal per year,22159.00,,,,,12,CALCULATED,
+MORTGAGE,Prepayment,Annual prepayment limit,97200.00,,,,,,VERIFIED_TD,15% of original amount
+MORTGAGE,Prepayment,2026 prepayment used,0.00,,,,,,VERIFIED_TD,Full room available; no penalty barrier
+MORTGAGE,Schedule,Voluntary overpayment per year,6110.00,,235.00,Per payment,,,CALCULATED,Required pmt ~1365 vs actual 1600
+MORTGAGE,Schedule,Amortization years removed,8,,,,,51,CALCULATED,17y9m remaining vs 25y9m straight-line
+MORTGAGE,Projection,Remaining interest if unchanged,195893.00,3.64%,,,,,ESTIMATE,Assumes rate holds 17+ years; scale not forecast
+HELOC,Structure,Annual interest cost,9877.72,4.90%,,,,12,CALCULATED,Permanent - minimum payment reduces principal by zero
+HELOC,Structure,Minimum equals interest charge,814.18,,814.18,Monthly,2026-08-21,1,VERIFIED_TD,Jul 31 interest charge was identical to minimum due
+HELOC,Trend,Balance 18mo change,7536.96,,,,,18,VERIFIED_TD,GREW from 194049.20 to 201586.16; 208 transactions captured
+HELOC,Trend,Balance rise since Feb 2026 paydown,13525.55,,,,,6,VERIFIED_TD,Risen every month since the 16100 bonus paydown
+HELOC,Trend,Total interest charged 18mo,15029.18,4.90%,835.00,Monthly avg,,18,VERIFIED_TD,CAPITALIZED - repayments below advances so interest was borrowed
+HELOC,Usage,Total advances 18mo,86513.51,,,,,18,VERIFIED_TD,
+HELOC,Usage,Total repayments 18mo,78176.55,,,,,18,VERIFIED_TD,76435 of it from chequing
+HELOC,Usage,Credit card paid direct from HELOC 18mo,22230.00,,,,,18,VERIFIED_TD,32 items; on top of 24817.93 paid from chequing
+HELOC,Usage,E-transfers out 18mo,13061.90,,,,,18,VERIFIED_TD,26 items; possible resale inventory - CONFIRM
+HELOC,Usage,Transfers to chequing 18mo,17466.00,,,,,18,VERIFIED_TD,54 items
+HELOC,Usage,Large unidentified advances,18301.43,,,,,18,NEEDS_OWNER,Only 5 items - large and uncategorized
+COVERAGE,Caveat,Cashflow model excludes HELOC-direct flows,35292.00,,1960.00,Monthly,,18,CALCULATED,Real outflow ~18650/month not 16700 as stated in section 1
+HELOC,Usage,Card payments drawn from HELOC in 20 days,2910.00,,,,,1,VERIFIED_TD,Five transfers to credit card
+HELOC,Usage,E-transfers out from HELOC in 20 days,2850.00,,,,,1,VERIFIED_TD,Five transfers; possible resale inventory - CONFIRM
+HELOC,Usage,CRA tax paid from HELOC,400.00,,,,,1,VERIFIED_TD,Tax debt being financed - accountant question
+RENEWAL,Key date,Mortgage maturity,,3.64%,,,2027-05-01,,VERIFIED_TD,Under 9 months away; prime -0.96% discount ends
+RENEWAL,Decision,HELOC consolidation into mortgage,201586.16,4.90% vs 3.64%,,,,,RECOMMENDATION,Biggest available lever; requires mortgage professional
+OPTIMALITY,Issue 1,Overpaying cheapest debt,6110.00,3.64% vs 4.90%,,,,,CALCULATED,1.26pt spread; ~77/year forgone plus lost credit headroom
+OPTIMALITY,Issue 2,HELOC never amortizes,201586.16,4.90%,,,,,CALCULATED,Needs ~1700/month principal to clear in ~10 years
+OPTIMALITY,Issue 3,Card paid from HELOC,2910.00,24% vs 4.90%,,,,,ESTIMATE,~19pt saving but converts unsecured debt to home-secured
+ACCOUNT,Investment,RESP,31555.85,,,,,0,VERIFIED_TD,Restricted to education; not emergency cash
+ACCOUNT,Investment,TFSA,0.00,,,,,0,VERIFIED_TD,Zero balance; open/dormant/closed unknown
+ACCOUNT,Investment,US TFSA,0.00,,,,,0,VERIFIED_TD,USD; zero balance
+ACCOUNT,Investment,Mutual Fund TFSA,0.00,,,,,0,VERIFIED_TD,Zero balance
+ACCOUNT,Investment,Mutual Fund RESP,0.00,,,,,0,VERIFIED_TD,Zero balance; family plan
+BALANCE_SHEET,Assets,Cash subtotal,449.84,,,,,,CALCULATED,Sum of three deposit accounts
+BALANCE_SHEET,Assets,Investments subtotal,31555.85,,,,,,CALCULATED,RESP only; all others zero
+BALANCE_SHEET,Assets,Total visible assets,32005.69,,,,,,CALCULATED,Excludes home vehicles pensions non-TD accounts
+BALANCE_SHEET,Liabilities,Credit card debt,1799.97,,,,,,VERIFIED_TD,
+BALANCE_SHEET,Liabilities,HELOC debt,201586.16,,,,,,VERIFIED_TD,
+BALANCE_SHEET,Liabilities,Mortgage debt,546026.58,,,,,,VERIFIED_TD,
+BALANCE_SHEET,Liabilities,Total TD-visible debt,749412.71,,,,,,CALCULATED,Excludes all non-TD debts
+NET_WORTH,Financial accounts,Financial-account net worth,-717407.02,,,,,,CALCULATED,NOT household net worth; excludes home equity
+NET_WORTH,Incomplete,Total household net worth,NOT CALCULABLE,,,,,,INCOMPLETE,Home value vehicles pensions external accounts all missing
+EXTERNAL_DEBT,Credit card,Canadian Tire Mastercard,BALANCE UNKNOWN,UNKNOWN,,Irregular,UNKNOWN,13,PAYMENTS_ONLY,9334.00 paid over window in 22 payments
+EXTERNAL_DEBT,Credit card,MBNA Mastercard,BALANCE UNKNOWN,UNKNOWN,,Irregular,UNKNOWN,2,PAYMENTS_ONLY,750.00 paid; NEW since June 2026
+EXTERNAL_DEBT,BNPL,Affirm / Flexiti,BALANCE UNKNOWN,UNKNOWN,44.59,Monthly,UNKNOWN,15,PAYMENTS_ONLY,1052.62 paid over window
+INCOME,Employment,Payroll,186152.89,,4468.69,Biweekly,,18,VERIFIED_TD,41 deposits; avg 10342/month; Feb spikes = bonus
+INCOME,Self-employment,Resale / other e-transfer,54213.00,,,Irregular,,17,MEDIUM,avg 3012/month; range 795 to 15622; owner-confirmed as resale
+INCOME,Spouse,Spouse e-transfer,21700.00,,1100.00,Monthly,,15,MEDIUM,STOPPED after May 2026 - absent Jun Jul Aug
+INCOME,Government,Child benefit,2764.63,,153.59,Monthly,,18,VERIFIED_TD,
+INCOME,Other,Insurance reimbursement,500.04,,,One-off,,1,MEDIUM,
+INCOME,Total,Total identified income,265330.56,,,,,18,CALCULATED,avg ~14740/month
+FINANCING,Borrowing,HELOC draws,15466.00,,,Irregular,,15,VERIFIED_TD,53 draws; borrowed money NOT income
+SPENDING,Essential,Groceries,29141.76,,1619.00,Monthly avg,,19,HIGH,238 transactions
+SPENDING,Discretionary,Shopping,16051.67,,892.00,Monthly avg,,19,MEDIUM,243 transactions
+SPENDING,Unknown,Uncategorized,15678.75,,871.00,Monthly avg,,19,LOW,476 transactions; TD truncates merchant names
+SPENDING,Discretionary,Restaurants & takeout,13199.84,,733.00,Monthly avg,,19,MEDIUM,419 transactions
+SPENDING,Essential,Fuel & transportation,11322.45,,629.00,Monthly avg,,19,HIGH,202 transactions
+SPENDING,Unknown,E-transfers out,10138.10,,563.00,Monthly avg,,17,MEDIUM,58 transactions; recipients unknown
+SPENDING,Unknown,Uncategorized (PayPal rail),9950.94,,553.00,Monthly avg,,19,LOW,307 charges; underlying merchants not visible
+SPENDING,Mixed,Household,7015.41,,390.00,Monthly avg,,18,MEDIUM,81 transactions
+SPENDING,Essential,Utilities,6289.75,,349.00,Monthly avg,,17,HIGH,40 transactions
+SPENDING,Discretionary,Entertainment,4054.58,,225.00,Monthly avg,,16,LOW,102 transactions
+SPENDING,Essential,Property taxes,3567.91,,198.00,Monthly avg,,5,HIGH,12 transactions; annual/instalment pattern
+SPENDING,Essential,Medical & pharmacy,2193.54,,122.00,Monthly avg,,16,MEDIUM,26 transactions
+SPENDING,Essential,Insurance,2014.19,,112.00,Monthly avg,,18,HIGH,23 transactions
+SPENDING,Unknown,Cash withdrawals,1791.48,,100.00,Monthly avg,,11,HIGH,19 transactions
+SPENDING,Discretionary,Subscriptions,1782.94,,99.00,Monthly avg,,18,MEDIUM,127 charges
+SPENDING,Discretionary,Personal care,720.41,,40.00,Monthly avg,,8,MEDIUM,9 transactions
+SPENDING,Discretionary,Fitness,557.56,,31.00,Monthly avg,,18,HIGH,41 charges
+SPENDING,Essential,Union dues,450.00,,25.00,Monthly,,18,HIGH,18 transactions
+SPENDING,Total,Total spending,135921.28,,7551.00,Monthly avg,,18,CALCULATED,Excludes internal transfers and debt payments
+SPENDING,Caveat,Low-confidence share,25629.69,,,,,18,CALCULATED,~19% of spending uncategorized
+SPENDING,Caveat,Card spending not visible,~1300.00,,,Monthly est,,18,ESTIMATE,Runs through credit card; category detail unavailable
+DEBT_PAYMENT,Secured,Mortgage payments,64000.00,,1600.00,Biweekly,,18,VERIFIED_TD,40 payments; principal/interest split unknown
+DEBT_PAYMENT,Secured,HELOC payments,63396.55,,,Irregular,,17,VERIFIED_TD,39 payments; includes 16100 and 10000 bonus paydowns
+DEBT_PAYMENT,Unsecured,TD credit card payments,24817.93,,299.01,Irregular,,19,VERIFIED_TD,83 payments; see reconciliation caveat in report
+DEBT_PAYMENT,Unsecured,Non-TD credit card payments,10084.00,,,Irregular,,14,VERIFIED_TD,25 payments
+DEBT_PAYMENT,Unsecured,BNPL instalments,1052.62,,44.59,Monthly,,15,VERIFIED_TD,19 payments
+DEBT_PAYMENT,Total,Total debt payments,163351.10,,9075.00,Monthly avg,,18,CALCULATED,
+DEBT_PAYMENT,Net effect,HELOC net paydown,-47930.55,,,,,18,CALCULATED,Draws 15466 minus payments 63396.55; genuine deleveraging
+FEES,Avoidable,Bank fees interest and overdraft,1135.93,,63.00,Monthly avg,,18,VERIFIED_TD,127 charges
+FEES,Avoidable,NSF paid fees,210.00,,5.00,Per event,,10,VERIFIED_TD,42 separate NSF events
+FEES,Avoidable,Overdraft interest,151.23,,5.21,Per charge,,18,VERIFIED_TD,29 charges; present in all 18 months
+FEES,Avoidable,Overdraft protection fee,90.00,,5.00,Monthly,,18,VERIFIED_TD,
+FEES,Reviewable,Monthly account fees,636.20,,17.67,Monthly,,18,VERIFIED_TD,Across two accounts
+RECURRING,Essential,Mortgage payment,1600.00,,1600.00,Biweekly,,18,HIGH,Fixed amount
+RECURRING,Essential,Gas utility,123.22,,123.22,Monthly,,14,HIGH,Varies
+RECURRING,Essential,Auto insurance,85.53,,85.53,Monthly,,18,HIGH,Fixed
+RECURRING,Essential,Union dues,25.00,,25.00,Monthly,,18,HIGH,Fixed
+RECURRING,Debt service,TD card payment,299.01,,299.01,Irregular,,19,HIGH,Varies widely
+RECURRING,Debt service,BNPL instalment,44.59,,44.59,Monthly,,15,HIGH,Varies
+RECURRING,Review,PayPal rail,31.75,,31.75,~16x monthly,,18,LOW,9950.94 total; merchants not visible - REVIEW
+RECURRING,Review,Amazon Channels,11.72,,11.72,~4x monthly,,17,MEDIUM,808.66 total
+RECURRING,Review,Fitness membership,13.15,,13.15,~2x monthly,,18,HIGH,512.76 total; two charges per month
+RECURRING,Review,Google / Google TV,15.00,,15.00,Monthly,,9,MEDIUM,Last seen Jan-Feb 2026
+RECURRING,Review,Prime Video,16.23,,16.23,Monthly,,6,MEDIUM,97.38 total
+RECURRING,Internal,Savings auto-deposit,15.00,,15.00,Monthly,,17,HIGH,Not spending
+CASHFLOW,Summary,Cumulative net over window,8432.71,,,,,18,CALCULATED,Excludes borrowing
+CASHFLOW,Summary,Negative months,9,,,,,18,CALCULATED,Out of 18 complete months
+CASHFLOW,Summary,Worst month 2025-12,-4329.02,,,,,1,CALCULATED,Highest spending month
+CASHFLOW,Summary,Best month 2026-07,11675.09,,,,,1,CALCULATED,Bonus plus strong resale
+CASHFLOW,Summary,Months with overdraft activity,18,,,,,18,CALCULATED,All months in window
+LIQUIDITY,Position,Immediately available cash,449.84,,,,,,VERIFIED_TD,
+LIQUIDITY,Position,Overdraft headroom remaining,82.28,,,,,,VERIFIED_TD,
+LIQUIDITY,Position,Available credit on card,200.00,,,,,,VERIFIED_TD,
+LIQUIDITY,Position,Total immediate liquidity,732.12,,,,,,CALCULATED,Two-thirds is borrowed capacity not savings
+LIQUIDITY,Estimate,Essential spending per month,3054.00,,,,,,ESTIMATE,From categorized essentials only
+LIQUIDITY,Estimate,Months of essentials covered,0.15,,,,,,CALCULATED,Under five days
+LIQUIDITY,Target,Near-term cash floor,1500.00-2000.00,,,,,,RECOMMENDATION,Enough to clear overdraft and absorb a bad week
+LIQUIDITY,Target,Conventional 3-6 month reserve,9162.00-18324.00,,,,,,RECOMMENDATION,Longer-term; not an immediate target
+FLAG,Needs confirmation,Unidentified account #1,16945.00 out / 2570.00 in,,,,,18,NEEDS_OWNER,Not a TD account on this profile
+FLAG,Needs confirmation,Unidentified account #2,33598.00 in / 5914.00 out,,,,,18,NEEDS_OWNER,142 inbound transactions; large funding source
+FLAG,Needs confirmation,Spouse transfer stopped,-1100.00,,,Monthly,,3,NEEDS_OWNER,Absent Jun Jul Aug 2026
+FLAG,Needs confirmation,Resale tax treatment,54213.00,,,,,17,NEEDS_OWNER,Discuss with an accountant - not advice
+FLAG,Risk,NSF events,42,,,,,10,VERIFIED_TD,Payments presented against insufficient funds
+FLAG,Risk,Card utilization,90%,,,,,7,CALCULATED,Balance static for seven months
+FLAG,Risk,Card payment due,94.03,,94.03,Monthly,2026-08-17,,VERIFIED_TD,CONFIRM whether Aug 5 payment satisfies this
+COVERAGE,Transaction history,Chequing A,1285,,,,,18,COMPLETE,2025-02-10 to 2026-08-10 via CSV export
+COVERAGE,Transaction history,Chequing B,2705,,,,,18,COMPLETE,2025-02-10 to 2026-08-10 via CSV export
+COVERAGE,Transaction history,Savings,24,,,,,18,COMPLETE,Low activity account
+COVERAGE,Transaction history,Credit Card,2,,,,,7,PARTIAL,Only payment and interest visible; download failed
+COVERAGE,Transaction history,Mortgage,0,,,,,0,NOT_CAPTURED,Page not reachable
+COVERAGE,Transaction history,HELOC,0,,,,,0,NOT_CAPTURED,Page not reachable
+COVERAGE,Transaction history,WebBroker accounts,0,,,,,0,BLOCKED,Requires accepting exchange agreements - owner decision
+COVERAGE,Total,All transactions analyzed,4014,,,,,18,COMPLETE,TD caps custom date filter at 18 months

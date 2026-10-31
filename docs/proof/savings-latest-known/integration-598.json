@@ -1,0 +1,70 @@
+{
+  "outcome": "PASS",
+  "sourceCommit": "e9a43b790e12e0a55c151f7aad0d356c4ea6fb45",
+  "main": "a773a950c1927e450fea7dafd3bef6b35ed0b8a6",
+  "reviewedChange": 598,
+  "preservedMainPaths": 12,
+  "preserved": [
+    {
+      "file": "docs/proof/card-panel-lead-2026-10-12/panel-lead-unavailable-390-dark.png",
+      "mainBlob": "b4961610a3cc71e1e301bc0214b4cec33cd1f6be",
+      "headBlob": "b4961610a3cc71e1e301bc0214b4cec33cd1f6be"
+    },
+    {
+      "file": "docs/proof/card-panel-lead-2026-10-12/panel-lead-zero-390-light.png",
+      "mainBlob": "ee81fc13c809190a1f6f5b08170df9caad444473",
+      "headBlob": "ee81fc13c809190a1f6f5b08170df9caad444473"
+    },
+    {
+      "file": "docs/proof/card-panel-lead-2026-10-12/panel-open-1440-dark.png",
+      "mainBlob": "8c3d9d9e1a4b1d4fb812f21c404c16e3bb00fb6e",
+      "headBlob": "8c3d9d9e1a4b1d4fb812f21c404c16e3bb00fb6e"
+    },
+    {
+      "file": "docs/proof/card-panel-lead-2026-10-12/panel-open-390-light.png",
+      "mainBlob": "9ff1367e8d3a6429e4f9af12b2cfa23f12cff1c4",
+      "headBlob": "9ff1367e8d3a6429e4f9af12b2cfa23f12cff1c4"
+    },
+    {
+      "file": "docs/proof/card-panel-lead-2026-10-12/panel-strip-320-light.png",
+      "mainBlob": "6d0b7d496496c5d294f11e5ec617e5aa1529070d",
+      "headBlob": "6d0b7d496496c5d294f11e5ec617e5aa1529070d"
+    },
+    {
+      "file": "docs/proof/card-panel-lead-2026-10-12/proof.json",
+      "mainBlob": "c55e3b52cd39e07ae41fded906e35a091412156e",
+      "headBlob": "c55e3b52cd39e07ae41fded906e35a091412156e"
+    },
+    {
+      "file": "public/budget-blend.css",
+      "mainBlob": "33198266e5fd7044371c4f9395f4d83c15f0c7c6",
+      "headBlob": "33198266e5fd7044371c4f9395f4d83c15f0c7c6"
+    },
+    {
+      "file": "public/budget-blend.js",
+      "mainBlob": "50d7eb97c0fc7756c5647f6b945ac58dda408acc",
+      "headBlob": "50d7eb97c0fc7756c5647f6b945ac58dda408acc"
+    },
+    {
+      "file": "public/budget-card-movements.js",
+      "mainBlob": "d19ab8847f3615aed1d09bc768d7bc8b18fc23d3",
+      "headBlob": "d19ab8847f3615aed1d09bc768d7bc8b18fc23d3"
+    },
+    {
+      "file": "test/browser-card-panel-lead.js",
+      "mainBlob": "7d63092cbcff15e79908a4687305c8e5a9825844",
+      "headBlob": "7d63092cbcff15e79908a4687305c8e5a9825844"
+    },
+    {
+      "file": "test/browser-card-period-movements.js",
+      "mainBlob": "48130a709dd8598beb70cc0dafc747e63e333ced",
+      "headBlob": "48130a709dd8598beb70cc0dafc747e63e333ced"
+    },
+    {
+      "file": "test/test-card-panel-lead.js",
+      "mainBlob": "109be3ebed990ac8b620c4cbb01356b85b0180db",
+      "headBlob": "109be3ebed990ac8b620c4cbb01356b85b0180db"
+    }
+  ],
+  "registryPreserved": true
+}

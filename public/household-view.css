@@ -1,0 +1,252 @@
+@import url('/nav-glass.css');
+
+/* Plain-language household presentation overrides.
+ * No financial meaning lives here; public/plan.js still renders the source
+ * answer and public/household-view.js only rearranges that rendered content.
+ * The statement layout itself lives in styles.css; this file styles the
+ * pieces household-view.js adds (primary sentence, facts, disclosures,
+ * trust strip) so they read as part of the same surface.
+ */
+
+#operating-surface .lede {
+  max-width: 44rem;
+}
+
+#operating-surface-body.household-view-ready {
+  display: block;
+}
+
+/* Prompt above answer, one column, at every width. */
+.household-view-ready .operating-question {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Running-balance bands keep label and amount on one line. */
+.household-view-ready .operating-balance,
+.household-view-ready .operating-ending {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+}
+
+.household-view-ready .operating-number {
+  display: none;
+}
+
+.household-view-ready .operating-answer {
+  margin: 0;
+  min-width: 0;
+}
+
+.household-primary {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.household-primary.household-tight {
+  color: var(--critical);
+}
+
+.household-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .6rem;
+  margin-top: .9rem;
+}
+
+.household-fact {
+  min-width: 0;
+  padding: .75rem .85rem;
+  border: 1px solid var(--grid);
+  border-radius: var(--radius-md);
+  background: var(--plane);
+}
+
+.household-fact span,
+.household-fact b {
+  display: block;
+}
+
+.household-fact span {
+  margin-bottom: .2rem;
+  color: var(--text-secondary);
+  font-size: .74rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-weight: 700;
+}
+
+.household-fact b {
+  font-size: 1.05rem;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.household-today-actions {
+  margin-top: .8rem;
+}
+
+.future-gravity-on-track {
+  margin-top: .85rem;
+}
+
+.future-gravity-on-track-list {
+  margin: .45rem 0 0;
+  padding-left: 1.15rem;
+}
+
+.future-gravity-on-track-list li + li {
+  margin-top: .3rem;
+}
+
+.future-gravity-meaning {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: .8rem;
+  line-height: 1.4;
+}
+
+.operating-certainty {
+  margin: .2rem 0 0;
+  padding: .9rem 1.1rem;
+  border: 1px solid var(--grid);
+  border-radius: var(--radius-md);
+}
+
+.payday-decision .operating-lines {
+  margin-top: .8rem;
+}
+
+/* Disclosures: a plain link-coloured line with a comfortable tap target. */
+.household-inline-details,
+.household-trust-details {
+  margin-top: .8rem;
+}
+
+.household-inline-details > summary,
+.household-trust-details > summary {
+  cursor: pointer;
+  color: var(--s1);
+  font-weight: 600;
+  font-size: .92rem;
+  list-style-position: inside;
+  padding: .35rem 0;
+}
+
+.household-inline-details[open] > summary,
+.household-trust-details[open] > summary {
+  margin-bottom: .6rem;
+}
+
+.household-future-details .future-gravity-heading:first-of-type {
+  margin-top: .35rem;
+}
+
+.household-period-details .current-period-card {
+  margin-top: 0;
+}
+
+.household-view-ready .refresh-trust {
+  margin: 0 0 14px;
+  padding: .85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.household-view-ready .refresh-trust-state {
+  margin: 0;
+  font-size: .9rem;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 700;
+}
+
+.household-view-ready .refresh-trust-asof {
+  margin: .2rem 0 0;
+  font-size: .88rem;
+}
+
+.household-view-ready .household-trust-details ul {
+  margin-top: .7rem;
+}
+
+.household-view-ready .household-trust-details li + li {
+  margin-top: .45rem;
+}
+
+.household-view-ready .operating-question[data-operating-question="04"] .operating-note {
+  margin-top: .5rem;
+}
+
+/* The between-paydays digest, when present, is one more section of the
+   same statement. */
+.household-view-ready .payday-budget-digest {
+  margin: 0;
+  padding: 18px 20px;
+  border-top: 1px solid var(--grid);
+}
+
+.household-view-ready [data-payday-still-due] .operating-lead {
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.household-view-ready [data-payday-already-paid] .operating-lead {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.household-view-ready .payday-still-due-lines .operating-line span:last-child {
+  font-weight: 650;
+}
+
+.household-view-ready .payday-already-paid-lines .operating-line,
+.household-view-ready .payday-already-paid-lines .operating-line span:last-child {
+  color: var(--text-secondary);
+  font-weight: 450;
+}
+
+@media (max-width: 700px) {
+  #operating-surface {
+    padding-top: .25rem;
+  }
+
+  #operating-surface h1 {
+    font-size: 1.55rem;
+    margin-top: 4px;
+  }
+
+  #operating-surface .lede {
+    font-size: .9rem;
+    line-height: 1.35;
+    margin-bottom: 4px;
+  }
+
+  .household-primary {
+    font-size: 1.25rem;
+  }
+
+  .household-facts {
+    gap: .5rem;
+  }
+
+  .household-fact {
+    padding: .7rem .75rem;
+  }
+
+  .household-view-ready .payday-budget-digest {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 400px) {
+  .household-facts {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "provider": "lunchmoney",
+  "fetchedAt": "2026-08-16T18:00:00.000Z",
+  "source": "synthetic Lunch Money v2-shaped fixture for the connectivity spike. Not a live institution pull.",
+  "accounts": [
+    {
+      "id": 1001,
+      "name": "TD Chequing Everyday",
+      "type": "cash",
+      "subtype": "checking",
+      "institution_name": "TD Canada Trust",
+      "balance": 79.84,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 1002,
+      "name": "Spending Chequing",
+      "type": "cash",
+      "subtype": "checking",
+      "institution_name": "TD Canada Trust",
+      "balance": 0,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 2001,
+      "name": "TD Visa",
+      "type": "credit",
+      "subtype": "credit_card",
+      "institution_name": "TD Canada Trust",
+      "balance": 4500.11,
+      "credit_limit": 8000,
+      "available_balance": 3200.5,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 2002,
+      "name": "Home Equity Line",
+      "type": "loan",
+      "subtype": "line_of_credit",
+      "institution_name": "TD Canada Trust",
+      "balance": 201586.16,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 2003,
+      "name": "TD Mortgage",
+      "type": "loan",
+      "subtype": "mortgage",
+      "institution_name": "TD Canada Trust",
+      "balance": 412000,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 9999,
+      "name": "Mystery Account",
+      "type": "cash",
+      "institution_name": "Unknown Bank",
+      "balance": 12.34,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    }
+  ],
+  "transactions": [
+    {
+      "id": 88001,
+      "account_id": 1001,
+      "date": "2026-08-14",
+      "amount": 2485.5,
+      "payee": "TENNIS BC PAYROLL",
+      "is_pending": false,
+      "status": "reviewed"
+    },
+    {
+      "id": 88002,
+      "account_id": 2001,
+      "date": "2026-08-16",
+      "amount": -42.18,
+      "payee": "PENDING GROCER",
+      "is_pending": true,
+      "status": "unreviewed"
+    },
+    {
+      "id": 88002,
+      "account_id": 2001,
+      "date": "2026-08-16",
+      "amount": -42.18,
+      "payee": "GROCER POSTED NAME CHANGE",
+      "is_pending": false,
+      "status": "reviewed"
+    }
+  ]
+}

@@ -1,0 +1,148 @@
+{
+  "sourceBinding": {
+    "head": "4c98234cc7e10d97c8301edcb667d805c80e6964",
+    "tree": "a693c9777dca0cd283c5c4f4e6a3e08b1396d236",
+    "files": {
+      "public/index.html": {
+        "sha256": "f3a3bb1b3e749310bec43dc7cc482355c5ee1049828ff726264aee60fc8242fa",
+        "blob": "ca13c1404c18780d26d8a8992394600f32b8ca15"
+      },
+      "public/fonts/Geist.woff2": {
+        "sha256": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
+        "blob": "d99d90af25861255c31732154a68fe8c16ab7a94"
+      },
+      "public/fonts.css": {
+        "sha256": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
+        "blob": "9a66cfaee2545afbb8169f7ef7009b4f0da6211a"
+      },
+      "public/styles.css": {
+        "sha256": "77dca1a796719370425fd225e2ff5f6a9d732a38d75a250f7296e8d4ef41aef5",
+        "blob": "c25d723d02cfc40c56e88b38f0e80d9624f68af7"
+      },
+      "public/household-view.css": {
+        "sha256": "e5cb08cfe7d5663fab76da2eb51f68d4890b1c4b550cf80eb1f61930a749620e",
+        "blob": "0322e266247f9595f9ed9289585d9b20a7118378"
+      },
+      "public/budget-polish.css": {
+        "sha256": "29be9b313c3c7b4d402ff730abe76dfd09e07f38df4dfd04a26a12fa479d16fe",
+        "blob": "58305d757ab6eb1d7969413f9c7f5cfa7f66970f"
+      },
+      "public/bill-detail.css": {
+        "sha256": "df5e707892d09bded4516822edd1c8a056b472e092c353062a645d7a79ef69c0",
+        "blob": "a9dc66e49d30e8c1992e7bb0cfc37985f3bfa307"
+      },
+      "public/savings-inventory.css": {
+        "sha256": "39591b0f8fbb0c8109f5f2fe71dd707067dbaf54e85d467989ed96342e4e1a58",
+        "blob": "75f0d408c35ad33fe983711efedb5c67d934bb1a"
+      },
+      "public/running-build.css": {
+        "sha256": "1121433390812139a1c0fc810a882a7b97903e17a6d42f19dcc93fa05a5327d5",
+        "blob": "9bea95d13ca7b75cba3f90092145a1fb3abac272"
+      },
+      "public/budget-surface.css": {
+        "sha256": "6883e2e496495b446def0342d4d4066a90f4ae7067b621b988ea694a489d6162",
+        "blob": "88f07cce7be39074dc7a63b3c39c5c3214e077d8"
+      },
+      "public/budget-blend.css": {
+        "sha256": "8f3cd39e7cc381f0dc095ac17cf312bd384ffed467417eeb8e7533f6bd55ad6c",
+        "blob": "beed82f562dcbf094702fd4ae620c1d5e5712f10"
+      },
+      "public/budget-gface.css": {
+        "sha256": "5e1ad89bdc773f70ce1c5bc4f550a43a91f50ea7b0a1e110cb08835cf7be2b7e",
+        "blob": "8500695cb746a3c7a88e6e7f377259120fba36c2"
+      },
+      "public/budget-sheet-motion.css": {
+        "sha256": "4924d183ec9a07b874745859d972ec1a94ef4e2d783aec8ca4055749839043ea",
+        "blob": "bde06d9c6bcf5033c4e14d2a1d605a022c1f9ce3"
+      },
+      "public/app.js": {
+        "sha256": "c43a8e662fcb66520b93e1c24394aad674a368bb687f5a39b0471ddedf3569ec",
+        "blob": "74909f85f9857f9f2543e92fdc9afec6c936c515"
+      },
+      "public/forecast-card-period.js": {
+        "sha256": "a0e1c461354da0a6e8c73ee55a2ba76510d6a9c8e840e4f729df3b627df9fb3b",
+        "blob": "d54e3415eae6c209c3c3a253502c962bd41e809e"
+      },
+      "public/forecast.js": {
+        "sha256": "883bee2ce9a3a47162575c32e9147bac8ad0503c5b2a509b19201681587cddd9",
+        "blob": "f6ce66e94781c1a8bf59752e8b08cb78f100e27e"
+      },
+      "public/forecast-chequing.js": {
+        "sha256": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
+        "blob": "0e8971f32b00b667e0b2305b644c5027ad112b89"
+      },
+      "public/balance-history.js": {
+        "sha256": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
+        "blob": "85496092c51dde7127b29f597a8168777849baf6"
+      },
+      "public/bill-detail.js": {
+        "sha256": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
+        "blob": "5c0b65d4f7623878489970d406e88eef4c6daf31"
+      },
+      "public/savings-inventory.js": {
+        "sha256": "bc3f0f2213fa93b611442cd25d22025fd379a74cf389df00a5b36d0df83b375d",
+        "blob": "5ed70b047d0bb94cdee5bbf0bb7f4ad5e440007c"
+      },
+      "public/budget-surface.js": {
+        "sha256": "0259779a5f68b1f127d0ab40daf054022529865c5d1c72d505ae4d0bd2ad19ab",
+        "blob": "2f3cb84d34834b27ab768fa952d26e5bd80ec0c0"
+      },
+      "public/budget-card-movements.js": {
+        "sha256": "8ab3a885776c9b8b1e0653bf3003b69ee08eaf9d18b0e6cbfc5528c43aca24a2",
+        "blob": "fa1f2876a6c94fcee136cec5ea25e771289a3b74"
+      },
+      "public/budget-sheet-motion.js": {
+        "sha256": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
+        "blob": "d9fe27b2980f4ba3da71edd7fd4fd1220337d65c"
+      },
+      "public/plan.js": {
+        "sha256": "aa43b1a82aa748cdd49f680fc3e149b903cb8158c0ea2f9aabf8e7df55d2536f",
+        "blob": "d4c4dd522b600127419e20c4880afa902b780dab"
+      },
+      "public/household-view.js": {
+        "sha256": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
+        "blob": "504314430c9a4378194edb4ddcff42af51777ef3"
+      },
+      "public/budget-polish.js": {
+        "sha256": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
+        "blob": "c2f6f645a11e0f0bd1d8be9c8726c2461a5db10e"
+      },
+      "public/aurora.js": {
+        "sha256": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
+        "blob": "ddf5f5d5887ec87b79d1696ee0546d31df3839ba"
+      },
+      "public/budget-river.js": {
+        "sha256": "e6e90e515006bcf37d7ffec9b0728791af97e8e6164317d596c684bac2ffb8c9",
+        "blob": "ef0980127b9e86c4f11da2107fa0e896fde4aae8"
+      },
+      "public/budget-blend.js": {
+        "sha256": "27eef404171da6fb6eba8d18f913d5847ec9294d3f53723cee5036766adc6f32",
+        "blob": "10e6009090c2f962bc95ab1a9e95025a5b84ba00"
+      },
+      "public/nav-glass.css": {
+        "sha256": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010",
+        "blob": "34f952c427e9cf67881a14ff3f784b1c4944d7d8"
+      }
+    }
+  },
+  "backgroundActivates": false,
+  "dayOpensFirstOnly": true,
+  "roster": 14,
+  "heights": [
+    121.546875,
+    121.546875,
+    121.546875,
+    121.546875,
+    121.546875,
+    121.546875,
+    121.546875,
+    121.546875,
+    121.546875,
+    121.546875,
+    121.546875,
+    121.546875,
+    121.546875,
+    121.546875
+  ],
+  "amountSize": "40px"
+}

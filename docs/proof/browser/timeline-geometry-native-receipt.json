@@ -1,0 +1,727 @@
+{
+  "proof": "timeline-geometry-native-harness",
+  "harness": "test/browser-budget-river-port.js",
+  "syntheticOnly": true,
+  "runtime": {
+    "node": "v24.20.0",
+    "chromium": "152.0.7977.82"
+  },
+  "sourceBinding": {
+    "sourceCommit": "f6614bbbd899602820b0baba735d253b9c66ed67",
+    "sourceTree": "3db73cdb70aec943d8c922a2a6a36d355ae2442a",
+    "baseCommit": null,
+    "cleanAtStart": true,
+    "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
+    "files": {
+      "public/budget-blend.css": {
+        "gitBlob": "344b0722bba67a9a13fc9c9d241bf5eec7ce7475",
+        "sha256": "c0739b521eca4b134503ab3e10455a698140022cb5974517a95585b0023ed1a3",
+        "bytes": 70692
+      },
+      "public/budget-blend.js": {
+        "gitBlob": "1f17d3f389ba355325b70f10133ca9f122fe9e2b",
+        "sha256": "7f7ac82ce8a990d0470e034129f14f11df4dea28f1752357bf62904b470cefb8",
+        "bytes": 110894
+      },
+      "public/budget-gface.css": {
+        "gitBlob": "37f1f47226e3de0c144325194af24054f0b8ffbc",
+        "sha256": "d8edc024b1a7ccf10234cdafabd2ec96c2d05f046e7010aedca6d17487965f48",
+        "bytes": 56306
+      },
+      "public/budget-river.js": {
+        "gitBlob": "38f64e0f9c1f4fd8162e5fe05dfc2d3d7dc26e90",
+        "sha256": "dbff4d71770e510d65a1f79f8a3eaf489a42885dc286e66630b375b661818418",
+        "bytes": 31418
+      },
+      "public/fonts.css": {
+        "gitBlob": "9a66cfaee2545afbb8169f7ef7009b4f0da6211a",
+        "sha256": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
+        "bytes": 403
+      },
+      "public/forecast.js": {
+        "gitBlob": "e990538d9db3c6b3f7970cf7805a90f1ab1f10e9",
+        "sha256": "5781fe6d926efec6f6bebe29681cf89af35aa1b49795e2520c54d53906cf7e3a",
+        "bytes": 1071364
+      },
+      "public/index.html": {
+        "gitBlob": "ca13c1404c18780d26d8a8992394600f32b8ca15",
+        "sha256": "f3a3bb1b3e749310bec43dc7cc482355c5ee1049828ff726264aee60fc8242fa",
+        "bytes": 12662
+      },
+      "public/plan.js": {
+        "gitBlob": "8ca17db6229425681ad20628a83e3a36d05c051f",
+        "sha256": "be5aa3b1935d8268a02849f59e83ad02e48fe91e4c12d6be869266dfa99e3662",
+        "bytes": 519487
+      },
+      "public/styles.css": {
+        "gitBlob": "c25d723d02cfc40c56e88b38f0e80d9624f68af7",
+        "sha256": "77dca1a796719370425fd225e2ff5f6a9d732a38d75a250f7296e8d4ef41aef5",
+        "bytes": 143239
+      },
+      "test/browser-budget-river-port.js": {
+        "gitBlob": "b59f23209e010b2f57575b2387454176fa7e2690",
+        "sha256": "da505a346c8f20b64181ab6b6fad6c70f5a6ea9bf794872ce6b05d1eac7a67b9",
+        "bytes": 58408
+      },
+      "test/fixtures/budget-surface-data.js": {
+        "gitBlob": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc",
+        "sha256": "f6a3c46fb037c41f7371aaaef08ffaab5256bda97cb9bc5f994e4ee54e5fac0b",
+        "bytes": 14528
+      },
+      "test/proof-source-binding.js": {
+        "gitBlob": "0ef3063b8281592e93e7808ca706e5d0c585a0f4",
+        "sha256": "059fdba52361debe5daad8e98b748773552eef9325056e07bab51ec12b37c1ad",
+        "bytes": 3363
+      }
+    },
+    "unchangedAfterRun": true
+  },
+  "results": {
+    "nativeLiveDrag": [
+      {
+        "width": 1440,
+        "theme": "light",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,870.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": null
+      },
+      {
+        "width": 1440,
+        "theme": "dark",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,870.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": null
+      },
+      {
+        "width": 935,
+        "theme": "light",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,705.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": null,
+        "publicationRefresh": {
+          "sameCanvas": true,
+          "rebuiltLabels": true,
+          "faithful": true
+        }
+      },
+      {
+        "width": 935,
+        "theme": "dark",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,705.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": null,
+        "publicationRefresh": {
+          "sameCanvas": true,
+          "rebuiltLabels": true,
+          "faithful": true
+        }
+      },
+      {
+        "width": 390,
+        "theme": "light",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,870.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": {
+          "nativeBeforeRelease": true,
+          "cancelPreservesNative": true
+        }
+      },
+      {
+        "width": 390,
+        "theme": "dark",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,870.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": {
+          "nativeBeforeRelease": true,
+          "cancelPreservesNative": true
+        }
+      },
+      {
+        "width": 320,
+        "theme": "light",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,870.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": null
+      },
+      {
+        "width": 320,
+        "theme": "dark",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,870.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": null
+      }
+    ],
+    "originalComparison": [
+      {
+        "width": 1440,
+        "theme": "light",
+        "geometryComparison": "horizontal identical; vertical affine remap onto approved insets",
+        "originalLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "portLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "staticPixelDifferences": 0,
+        "movingPixelDifferences": 154795,
+        "springIdentical": true,
+        "resize": true,
+        "reducedMotion": true
+      },
+      {
+        "width": 1440,
+        "theme": "dark",
+        "geometryComparison": "horizontal identical; vertical affine remap onto approved insets",
+        "originalLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "portLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "staticPixelDifferences": 0,
+        "movingPixelDifferences": 153530,
+        "springIdentical": true,
+        "resize": true,
+        "reducedMotion": true
+      },
+      {
+        "width": 390,
+        "theme": "light",
+        "geometryComparison": "horizontal identical; vertical affine remap onto approved insets",
+        "originalLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "portLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "staticPixelDifferences": 0,
+        "movingPixelDifferences": 91017,
+        "springIdentical": true,
+        "resize": true,
+        "reducedMotion": true
+      },
+      {
+        "width": 390,
+        "theme": "dark",
+        "geometryComparison": "horizontal identical; vertical affine remap onto approved insets",
+        "originalLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "portLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "staticPixelDifferences": 0,
+        "movingPixelDifferences": 67142,
+        "springIdentical": true,
+        "resize": true,
+        "reducedMotion": true
+      },
+      {
+        "width": 320,
+        "theme": "light",
+        "geometryComparison": "horizontal identical; vertical affine remap onto approved insets",
+        "originalLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "portLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "staticPixelDifferences": 0,
+        "movingPixelDifferences": 93156,
+        "springIdentical": true,
+        "resize": true,
+        "reducedMotion": true
+      },
+      {
+        "width": 320,
+        "theme": "dark",
+        "geometryComparison": "horizontal identical; vertical affine remap onto approved insets",
+        "originalLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "portLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "staticPixelDifferences": 0,
+        "movingPixelDifferences": 69346,
+        "springIdentical": true,
+        "resize": true,
+        "reducedMotion": true
+      }
+    ],
+    "yieldedNeighbourReselect": [
+      {
+        "width": 390,
+        "theme": "dark",
+        "pointer": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true
+        },
+        "keyboard": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1"
+        },
+        "remount": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true,
+          "nodesRetainedAcrossAdopt": true
+        }
+      },
+      {
+        "width": 390,
+        "theme": "light",
+        "pointer": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true
+        },
+        "keyboard": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1"
+        },
+        "remount": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true,
+          "nodesRetainedAcrossAdopt": true
+        }
+      },
+      {
+        "width": 320,
+        "theme": "dark",
+        "pointer": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true
+        },
+        "keyboard": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1"
+        },
+        "remount": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true,
+          "nodesRetainedAcrossAdopt": true
+        }
+      },
+      {
+        "width": 320,
+        "theme": "light",
+        "pointer": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true
+        },
+        "keyboard": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1"
+        },
+        "remount": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true,
+          "nodesRetainedAcrossAdopt": true
+        }
+      },
+      {
+        "width": 390,
+        "theme": "dark",
+        "reducedMotion": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true
+        }
+      }
+    ],
+    "displacedLabelHitTargeting": [
+      {
+        "width": 390,
+        "theme": "dark",
+        "input": "mouse",
+        "displacementPx": 30,
+        "spacingPx": 44,
+        "tapKeptSelection": true,
+        "hoverResolvedToOwnPeriod": true,
+        "neighbourSelectableAtOwnCentre": true,
+        "keyboard": {
+          "left": 1,
+          "right": 2
+        }
+      },
+      {
+        "width": 390,
+        "theme": "light",
+        "input": "mouse",
+        "displacementPx": 30,
+        "spacingPx": 44,
+        "tapKeptSelection": true,
+        "hoverResolvedToOwnPeriod": true,
+        "neighbourSelectableAtOwnCentre": true,
+        "keyboard": {
+          "left": 1,
+          "right": 2
+        }
+      },
+      {
+        "width": 320,
+        "theme": "dark",
+        "input": "mouse",
+        "displacementPx": 30,
+        "spacingPx": 44,
+        "tapKeptSelection": true,
+        "hoverResolvedToOwnPeriod": true,
+        "neighbourSelectableAtOwnCentre": true,
+        "keyboard": {
+          "left": 1,
+          "right": 2
+        }
+      },
+      {
+        "width": 320,
+        "theme": "light",
+        "input": "mouse",
+        "displacementPx": 30,
+        "spacingPx": 44,
+        "tapKeptSelection": true,
+        "hoverResolvedToOwnPeriod": true,
+        "neighbourSelectableAtOwnCentre": true,
+        "keyboard": {
+          "left": 1,
+          "right": 2
+        }
+      },
+      {
+        "width": 390,
+        "theme": "dark",
+        "input": "touch",
+        "displacementPx": 30,
+        "spacingPx": 44,
+        "tapKeptSelection": true
+      },
+      {
+        "width": 320,
+        "theme": "light",
+        "input": "touch",
+        "displacementPx": 30,
+        "spacingPx": 44,
+        "tapKeptSelection": true
+      },
+      {
+        "width": 390,
+        "theme": "dark",
+        "reducedMotion": {
+          "displacementPx": 30,
+          "tapKeptSelection": true
+        }
+      }
+    ],
+    "heldPressNonPanTargeting": [
+      {
+        "width": 700,
+        "theme": "dark",
+        "input": "mouse",
+        "layout": "fit (non-pan)",
+        "holdMs": 1100,
+        "displacementPx": 30,
+        "spacingPx": 54.9,
+        "rawFractionAtCentre": 1.546,
+        "springTargetDuringHold": 1.546,
+        "hitBoxClearedDuringHold": true,
+        "heldPressKeptSelection": true
+      },
+      {
+        "width": 700,
+        "theme": "light",
+        "input": "mouse",
+        "layout": "fit (non-pan)",
+        "holdMs": 1100,
+        "displacementPx": 30,
+        "spacingPx": 54.9,
+        "rawFractionAtCentre": 1.546,
+        "springTargetDuringHold": 1.546,
+        "hitBoxClearedDuringHold": true,
+        "heldPressKeptSelection": true
+      },
+      {
+        "width": 700,
+        "theme": "dark",
+        "input": "touch",
+        "layout": "fit (non-pan)",
+        "holdMs": 1100,
+        "displacementPx": 30,
+        "spacingPx": 54.9,
+        "rawFractionAtCentre": 1.546,
+        "springTargetDuringHold": 1.546,
+        "hitBoxClearedDuringHold": true,
+        "heldPressKeptSelection": true
+      },
+      {
+        "width": 700,
+        "theme": "light",
+        "input": "touch",
+        "layout": "fit (non-pan)",
+        "holdMs": 1100,
+        "displacementPx": 30,
+        "spacingPx": 54.9,
+        "rawFractionAtCentre": 1.546,
+        "springTargetDuringHold": 1.546,
+        "hitBoxClearedDuringHold": true,
+        "heldPressKeptSelection": true
+      },
+      {
+        "width": 700,
+        "theme": "dark",
+        "input": "mouse",
+        "layout": "fit (non-pan)",
+        "holdMs": 700,
+        "displacementPx": 30,
+        "spacingPx": 54.9,
+        "springTargetDuringHold": 1.546,
+        "dragTookOver": true,
+        "releaseCommittedDragPeriod": 4
+      },
+      {
+        "width": 700,
+        "theme": "light",
+        "input": "mouse",
+        "layout": "fit (non-pan)",
+        "holdMs": 700,
+        "displacementPx": 30,
+        "spacingPx": 54.9,
+        "springTargetDuringHold": 1.546,
+        "dragTookOver": true,
+        "releaseCommittedDragPeriod": 4
+      }
+    ]
+  },
+  "pageErrors": [],
+  "failures": [],
+  "remoteVerification": {
+    "method": "GitHub API GET /git/trees/3db73cdb70aec943d8c922a2a6a36d355ae2442a?recursive=1; each bound file's gitBlob compared to the pushed head tree",
+    "pushedHead": "f6614bbbd899602820b0baba735d253b9c66ed67",
+    "headTree": "3db73cdb70aec943d8c922a2a6a36d355ae2442a",
+    "filesChecked": 12,
+    "allBlobsMatch": true,
+    "verifiedAt": "2026-10-11T04:45:40Z"
+  }
+}

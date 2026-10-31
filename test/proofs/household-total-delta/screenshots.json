@@ -1,0 +1,105 @@
+{
+  "syntheticOnly": true,
+  "sourceCandidate": "6c20f00dc98c3b90d8a83714e988dbc1b13a0d34",
+  "productionSource": "9c7ad7f8582454124010230c905eed2cb6952cd8",
+  "qualification": "All five production blobs are identical across those commits. Mobile images are unmodified completed-proof captures. Desktop is one additional capture, not a rerun of the completed tests.",
+  "images": [
+    {
+      "path": "test/proofs/household-total-delta/household-under-320-light.png",
+      "sha256": "5b7cc5c9fe191c81a316238e6b4ef12f0f7a7db079232067fa99d347d4ecde6e",
+      "coverage": "under; rounded subtraction differs from exact-delta ceiling",
+      "recordingSource": "9c7ad7f8582454124010230c905eed2cb6952cd8"
+    },
+    {
+      "path": "test/proofs/household-total-delta/household-zero-320-light.png",
+      "sha256": "bb9061990d094509583d3aad8a12f8a5230dc1bb4191228692ec91d914a280d1",
+      "coverage": "zero; $0 left",
+      "recordingSource": "9c7ad7f8582454124010230c905eed2cb6952cd8"
+    },
+    {
+      "path": "test/proofs/household-total-delta/household-cent-over-320-light.png",
+      "sha256": "de08e39e57f80561170088b4325ced2c058c068bd20d457ba591af5e0839f926",
+      "coverage": "one-cent over; equal rounded pair with $1 over",
+      "recordingSource": "9c7ad7f8582454124010230c905eed2cb6952cd8"
+    },
+    {
+      "path": "test/proofs/household-total-delta/household-missing-320-light.png",
+      "sha256": "7123519abc6e121f5083b0b805c58ab58ae4cfba7174480c99fb8974953c62fa",
+      "coverage": "unknown evidence",
+      "recordingSource": "9c7ad7f8582454124010230c905eed2cb6952cd8"
+    },
+    {
+      "path": "test/proofs/household-total-delta/household-estimated-pending-320-dark.png",
+      "sha256": "8fd2c3e0568a9444e8595f0b7e2791acb2fc7b757d33ca1c3d0f75d4ca3d19a5",
+      "coverage": "estimated complete pending, dark theme",
+      "recordingSource": "9c7ad7f8582454124010230c905eed2cb6952cd8"
+    },
+    {
+      "path": "test/proofs/household-total-delta/household-over-1440-light.png",
+      "sha256": "67404f89cc01fb9b24123bc94ccc57b724cfec6ba91d22652f61653871501490",
+      "coverage": "desktop over",
+      "recordingSource": "6c20f00dc98c3b90d8a83714e988dbc1b13a0d34"
+    },
+    {
+      "path": "test/proofs/household-total-delta/household-over-1440-light-context.png",
+      "sha256": "eec9ce556981fa703a6b990e8bf568f5183a5d123810cd147d164de0a700c225",
+      "coverage": "desktop full-page synthetic context",
+      "recordingSource": "6c20f00dc98c3b90d8a83714e988dbc1b13a0d34"
+    }
+  ],
+  "desktopCapture": {
+    "head": "6c20f00dc98c3b90d8a83714e988dbc1b13a0d34",
+    "syntheticOnly": true,
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "purpose": "additional desktop visual capture only; completed tests were not rerun",
+    "fixture": "other-period-target.build(1034.19)",
+    "sources": {
+      "public/index.html": "817c7918b8b52251eb5c85e0cc9385996af53eac861aeab7ebb6a31be4947dd5",
+      "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
+      "public/fonts.css": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
+      "public/styles.css": "ca789bfd31ab1f4dc38980e6052cb479e26dfb545f2e626ad66204c7028c174e",
+      "public/household-view.css": "e5cb08cfe7d5663fab76da2eb51f68d4890b1c4b550cf80eb1f61930a749620e",
+      "public/budget-polish.css": "29be9b313c3c7b4d402ff730abe76dfd09e07f38df4dfd04a26a12fa479d16fe",
+      "public/bill-detail.css": "df5e707892d09bded4516822edd1c8a056b472e092c353062a645d7a79ef69c0",
+      "public/savings-inventory.css": "39591b0f8fbb0c8109f5f2fe71dd707067dbaf54e85d467989ed96342e4e1a58",
+      "public/running-build.css": "1121433390812139a1c0fc810a882a7b97903e17a6d42f19dcc93fa05a5327d5",
+      "public/budget-surface.css": "69611d57c8ec3b692af7e18e775137d2a6823561eef3faa5ee31fead07bfdc73",
+      "public/budget-blend.css": "515d59ac6a05e8a3e264b4088e50541666dcb188c939a9f1860a1a763806d7b4",
+      "public/budget-gface.css": "603b898221703dee43d55a38ef1c8d58f9114b1770c2ff62fba29f45c81e2f00",
+      "public/budget-sheet-motion.css": "31fbea5e07e133925d3f357c62ddf6d7f38d84e7bc0b654d8473070e5d1ed2c4",
+      "public/app.js": "93244321102856d589ec5a0f2787a705e4c2f70cbe4351ee13b7b98bc143cb27",
+      "public/forecast-card-period.js": "fe23b4d7ddba2bbe136871c51a35336192918dc7e04b73c46e09ba2ed96c9c20",
+      "public/forecast.js": "3c8539d74d5de763a1bae464d2d29f06e2fe75b281efd8b7faa67bce88c44915",
+      "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
+      "public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
+      "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
+      "public/savings-inventory.js": "49a38dd1b246456ba057f1861891020337d650b474b209d0c8a332539d007ea3",
+      "public/budget-surface.js": "af32d9e29d1487496365a1025a0bfb65d2dc062f2534392b8095675857f9552b",
+      "public/budget-card-movements.js": "44edfb4c428e59eeb8abab2606d9d66208a20fada5b871a96f67b9cc8874e189",
+      "public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
+      "public/plan.js": "b9516a6bea4743d6736cbbbe32f014b2b726bdcd78ae210efffa87f0ad4884b8",
+      "public/household-view.js": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
+      "public/budget-polish.js": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
+      "public/aurora.js": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
+      "public/budget-river.js": "dbff4d71770e510d65a1f79f8a3eaf489a42885dc286e66630b375b661818418",
+      "public/budget-blend.js": "7b3c0e09ffcb5ec0390551de7ff4f69e743e5a79990254006dc30e9aa7f81e51",
+      "public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010"
+    },
+    "shots": [
+      {
+        "name": "household-over-1440-light.png",
+        "sha256": "67404f89cc01fb9b24123bc94ccc57b724cfec6ba91d22652f61653871501490"
+      },
+      {
+        "name": "household-over-1440-light-context.png",
+        "sha256": "eec9ce556981fa703a6b990e8bf568f5183a5d123810cd147d164de0a700c225"
+      }
+    ],
+    "errors": [],
+    "external": [],
+    "writes": []
+  }
+}

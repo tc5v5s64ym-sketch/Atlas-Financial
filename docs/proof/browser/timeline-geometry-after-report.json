@@ -1,0 +1,870 @@
+{
+ "label": "after",
+ "expectKey": "after",
+ "shots": [
+  "after-positive-1280-dark.png",
+  "after-positive-1280-light.png",
+  "after-positive-390-dark.png",
+  "after-positive-390-light.png",
+  "after-positive-320-dark.png",
+  "after-positive-320-light.png",
+  "after-negative-1280-dark.png",
+  "after-negative-1280-light.png",
+  "after-negative-390-dark.png",
+  "after-negative-390-light.png",
+  "after-negative-320-dark.png",
+  "after-negative-320-light.png",
+  "after-gap-1280-dark.png",
+  "after-gap-1280-light.png",
+  "after-gap-390-dark.png",
+  "after-gap-390-light.png",
+  "after-gap-320-dark.png",
+  "after-gap-320-light.png",
+  "after-pan-320-dark.png",
+  "after-pan-320-light.png",
+  "after-reduced-motion-1280-dark.png"
+ ],
+ "geometry": [
+  {
+   "tag": "positive-1280-dark",
+   "tileH": 123,
+   "W": 1280,
+   "H": 123,
+   "top": 38,
+   "bot": 72,
+   "y0": 72,
+   "pan": false,
+   "sp": 172.57142857142858,
+   "yTop": 38,
+   "yBot": 72,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 92,
+    "left": 296.55999755859375,
+    "right": 814.2837524414062,
+    "height": 24
+   },
+   "vals": {
+    "top": 79,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 98,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 380.1400146484375,
+    "right": 897.8599853515625,
+    "height": 42
+   }
+  },
+  {
+   "tag": "positive-1280-light",
+   "tileH": 123,
+   "W": 1280,
+   "H": 123,
+   "top": 38,
+   "bot": 72,
+   "y0": 72,
+   "pan": false,
+   "sp": 172.57142857142858,
+   "yTop": 38,
+   "yBot": 72,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 92,
+    "left": 296.55999755859375,
+    "right": 814.2837524414062,
+    "height": 24
+   },
+   "vals": {
+    "top": 79,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 98,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 380.1400146484375,
+    "right": 897.8599853515625,
+    "height": 42
+   }
+  },
+  {
+   "tag": "positive-390-dark",
+   "tileH": 114,
+   "W": 390,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 65,
+   "pan": false,
+   "sp": 48.285714285714285,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 37.98999786376953,
+    "right": 182.85375213623047,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 121.56999969482422,
+    "right": 266.4300003051758,
+    "height": 33
+   }
+  },
+  {
+   "tag": "positive-390-light",
+   "tileH": 114,
+   "W": 390,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 65,
+   "pan": false,
+   "sp": 48.285714285714285,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 37.98999786376953,
+    "right": 182.85375213623047,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 121.56999969482422,
+    "right": 266.4300003051758,
+    "height": 33
+   }
+  },
+  {
+   "tag": "positive-320-dark",
+   "tileH": 114,
+   "W": 320,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 65,
+   "pan": true,
+   "sp": 44,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 29.419998168945312,
+    "right": 121.42375183105469,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 113,
+    "right": 205,
+    "height": 33
+   }
+  },
+  {
+   "tag": "positive-320-light",
+   "tileH": 114,
+   "W": 320,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 65,
+   "pan": true,
+   "sp": 44,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 29.419998168945312,
+    "right": 121.42375183105469,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 113,
+    "right": 205,
+    "height": 33
+   }
+  },
+  {
+   "tag": "negative-1280-dark",
+   "tileH": 123,
+   "W": 1280,
+   "H": 123,
+   "top": 38,
+   "bot": 72,
+   "y0": 64.5625,
+   "pan": false,
+   "sp": 172.57142857142858,
+   "yTop": 38,
+   "yBot": 72,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 92,
+    "left": 296.55999755859375,
+    "right": 814.2837524414062,
+    "height": 24
+   },
+   "vals": {
+    "top": 79,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 98,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 380.1400146484375,
+    "right": 897.8599853515625,
+    "height": 42
+   }
+  },
+  {
+   "tag": "negative-1280-light",
+   "tileH": 123,
+   "W": 1280,
+   "H": 123,
+   "top": 38,
+   "bot": 72,
+   "y0": 64.5625,
+   "pan": false,
+   "sp": 172.57142857142858,
+   "yTop": 38,
+   "yBot": 72,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 92,
+    "left": 296.55999755859375,
+    "right": 814.2837524414062,
+    "height": 24
+   },
+   "vals": {
+    "top": 79,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 98,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 380.1400146484375,
+    "right": 897.8599853515625,
+    "height": 42
+   }
+  },
+  {
+   "tag": "negative-390-dark",
+   "tileH": 114,
+   "W": 390,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 58.65625,
+   "pan": false,
+   "sp": 48.285714285714285,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 37.98999786376953,
+    "right": 182.85375213623047,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 121.56999969482422,
+    "right": 266.4300003051758,
+    "height": 33
+   }
+  },
+  {
+   "tag": "negative-390-light",
+   "tileH": 114,
+   "W": 390,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 58.65625,
+   "pan": false,
+   "sp": 48.285714285714285,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 37.98999786376953,
+    "right": 182.85375213623047,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 121.56999969482422,
+    "right": 266.4300003051758,
+    "height": 33
+   }
+  },
+  {
+   "tag": "negative-320-dark",
+   "tileH": 114,
+   "W": 320,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 58.65625,
+   "pan": true,
+   "sp": 44,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 29.419998168945312,
+    "right": 121.42375183105469,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 113,
+    "right": 205,
+    "height": 33
+   }
+  },
+  {
+   "tag": "negative-320-light",
+   "tileH": 114,
+   "W": 320,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 58.65625,
+   "pan": true,
+   "sp": 44,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 29.419998168945312,
+    "right": 121.42375183105469,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 113,
+    "right": 205,
+    "height": 33
+   }
+  },
+  {
+   "tag": "gap-1280-dark",
+   "tileH": 123,
+   "W": 1280,
+   "H": 123,
+   "top": 38,
+   "bot": 72,
+   "y0": 72,
+   "pan": false,
+   "sp": 172.57142857142858,
+   "yTop": 38,
+   "yBot": 72,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 92,
+    "left": 296.55999755859375,
+    "right": 814.2837524414062,
+    "height": 24
+   },
+   "vals": {
+    "top": 79,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 98,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 380.1400146484375,
+    "right": 897.8599853515625,
+    "height": 42
+   }
+  },
+  {
+   "tag": "gap-1280-light",
+   "tileH": 123,
+   "W": 1280,
+   "H": 123,
+   "top": 38,
+   "bot": 72,
+   "y0": 72,
+   "pan": false,
+   "sp": 172.57142857142858,
+   "yTop": 38,
+   "yBot": 72,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 92,
+    "left": 296.55999755859375,
+    "right": 814.2837524414062,
+    "height": 24
+   },
+   "vals": {
+    "top": 79,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 98,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 380.1400146484375,
+    "right": 897.8599853515625,
+    "height": 42
+   }
+  },
+  {
+   "tag": "gap-390-dark",
+   "tileH": 114,
+   "W": 390,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 65,
+   "pan": false,
+   "sp": 48.285714285714285,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 37.98999786376953,
+    "right": 182.85375213623047,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 121.56999969482422,
+    "right": 266.4300003051758,
+    "height": 33
+   }
+  },
+  {
+   "tag": "gap-390-light",
+   "tileH": 114,
+   "W": 390,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 65,
+   "pan": false,
+   "sp": 48.285714285714285,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 37.98999786376953,
+    "right": 182.85375213623047,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 121.56999969482422,
+    "right": 266.4300003051758,
+    "height": 33
+   }
+  },
+  {
+   "tag": "gap-320-dark",
+   "tileH": 114,
+   "W": 320,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 65,
+   "pan": true,
+   "sp": 44,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 29.419998168945312,
+    "right": 121.42375183105469,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 113,
+    "right": 205,
+    "height": 33
+   }
+  },
+  {
+   "tag": "gap-320-light",
+   "tileH": 114,
+   "W": 320,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 65,
+   "pan": true,
+   "sp": 44,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 29.419998168945312,
+    "right": 121.42375183105469,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 113,
+    "right": 205,
+    "height": 33
+   }
+  },
+  {
+   "tag": "pan-320-dark",
+   "tileH": 114,
+   "W": 320,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 61.21739130434783,
+   "pan": true,
+   "sp": 44,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 29.419998168945312,
+    "right": 121.42375183105469,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 113,
+    "right": 205,
+    "height": 33
+   }
+  },
+  {
+   "tag": "pan-320-light",
+   "tileH": 114,
+   "W": 320,
+   "H": 114,
+   "top": 36,
+   "bot": 65,
+   "y0": 61.21739130434783,
+   "pan": true,
+   "sp": 44,
+   "yTop": 36,
+   "yBot": 65,
+   "beamTopVar": "30px",
+   "pill": {
+    "top": 7,
+    "bottom": 83,
+    "left": 29.419998168945312,
+    "right": 121.42375183105469,
+    "height": 24
+   },
+   "vals": {
+    "top": 70,
+    "bottom": 28,
+    "left": 0,
+    "right": 0,
+    "height": 16
+   },
+   "months": {
+    "top": 89,
+    "bottom": 7,
+    "left": 0,
+    "right": 0,
+    "height": 18
+   },
+   "beam": {
+    "top": 30,
+    "bottom": 51,
+    "left": 113,
+    "right": 205,
+    "height": 33
+   }
+  }
+ ],
+ "failures": []
+}

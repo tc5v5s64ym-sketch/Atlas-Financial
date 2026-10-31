@@ -1,0 +1,17 @@
+#!/bin/sh
+# Refuse any commit that would put personal or raw financial data into git.
+#
+# This replaces the protection the old two-folder split provided, and goes
+# further: it inspects staged CONTENT, not just paths, so an identifier pasted
+# into a document is caught too.
+#
+# Policy and scan live in scripts/privacy-guard.js — this wrapper is the
+# local install point. CI applies that same engine from the trusted default
+# branch so a GitHub API / connector commit cannot skip the guard.
+#
+# Install:  git config core.hooksPath .githooks
+# Bypassing this hook (--no-verify) defeats the local copy of the guard.
+# It does not defeat CI.
+
+root=$(git rev-parse --show-toplevel) || exit 1
+exec node "$root/scripts/privacy-guard.js" --staged

@@ -1,0 +1,373 @@
+name: Merge card check
+
+# Completeness only. This check proves the PR named what it is: heading,
+# required rows, closed primary-risk and current-state openings, and a
+# Required / NOT REQUIRED decision. It does not lock merge on a review SHA,
+# a review outcome (BLOCKERS FOUND / NO BLOCKERS FOUND / INCOMPLETE /
+# PENDING, N/A when NOT REQUIRED, or historical PASS values), or any
+# reviewer's identity. It authenticates nothing.
+#
+# Confidence that the change is not junk comes from `npm test`, the secret
+# hook, and the figures comment. This check only keeps the card aligned
+# with itself so a reader can see the claim.
+#
+# Card text is always read from the live pull request via pulls.get.
+# The Primary-risk helper is loaded from the trusted default branch, never
+# from PR-head JavaScript. Live PR body and labels are data only.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  pull_request_review:
+    types: [submitted]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number whose live merge card must be validated
+        required: true
+        type: number
+      expected_head_sha:
+        description: Exact PR head SHA that must still be live
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  check:
+    name: Merge card mechanical fields
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default-branch helper
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Validate mechanical merge-card facts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            function privateError(error) {
+              try { require('fs').writeFileSync(process.env.RUNNER_TEMP + '/merge-card.private.log', String(error.stack || error), { mode: 0o600 }); } catch { /* Never print raw storage or API errors. */ }
+            }
+            try {
+            const eventName = context.eventName || '';
+            const eventPr = context.payload.pull_request || {};
+            const dispatchInputs = context.payload.inputs || {};
+            const { owner, repo } = context.repo;
+            const problems = [];
+            const REQUIRED_CHECK_NAME = 'Merge card mechanical fields';
+            const runSha = String(context.sha || '');
+            let eventNumber;
+            let eventHead;
+            let reportRequiredCheckOnExpectedHead = false;
+
+            if (!owner || !repo) {
+              core.setFailed('Merge-card check failed closed: the event does not identify the repository.');
+              return;
+            }
+
+            if (eventName === 'workflow_dispatch') {
+              eventNumber = Number(dispatchInputs.pr_number);
+              eventHead = String(dispatchInputs.expected_head_sha || '').replace(/\s+/g, '');
+              if (!/^[0-9a-f]{40}$/i.test(eventHead)) {
+                core.setFailed('Merge-card check failed closed: workflow_dispatch did not identify a 40-character expected head SHA.');
+                return;
+              }
+              if (!/^[0-9a-f]{40}$/i.test(runSha) || runSha.toLowerCase() !== eventHead.toLowerCase()) {
+                const defaultBranch = String(((context.payload.repository || {}).default_branch) || '');
+                const runRefName = String(context.ref || '').replace(/^refs\/heads\//, '');
+                if (!defaultBranch || runRefName !== defaultBranch) {
+                  core.setFailed(
+                    'Merge-card check failed closed: workflow run SHA is not the expected head.'
+                  );
+                  return;
+                }
+                reportRequiredCheckOnExpectedHead = true;
+              }
+            } else if (eventName === 'pull_request' || eventName === 'pull_request_review') {
+              eventNumber = Number(eventPr.number);
+              eventHead = ((eventPr.head || {}).sha) || '';
+            } else {
+              core.setFailed(
+                'Merge-card check failed closed: unsupported event.'
+              );
+              return;
+            }
+
+            if (!Number.isInteger(eventNumber) || eventNumber <= 0) {
+              core.setFailed('Merge-card check failed closed: the event does not identify the pull request.');
+              return;
+            }
+            if (!/^[0-9a-f]{40}$/i.test(eventHead)) {
+              core.setFailed('Merge-card check failed closed: the event does not identify a 40-character head SHA.');
+              return;
+            }
+
+            let livePr;
+            try {
+              const liveResponse = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: eventNumber,
+              });
+              livePr = liveResponse && liveResponse.data;
+            } catch (error) {
+              privateError(error);
+              core.setFailed('Merge-card check failed closed: live pull request fetch failed; private diagnostics withheld.');
+              return;
+            }
+            if (!livePr || typeof livePr !== 'object') {
+              core.setFailed('Merge-card check failed closed: live pull request snapshot is missing.');
+              return;
+            }
+
+            const liveNumber = Number(livePr.number);
+            const liveRepo = ((((livePr.base || {}).repo) || {}).full_name) || '';
+            const expectedRepo = `${owner}/${repo}`;
+            const liveState = livePr.state;
+            const liveBaseRef = ((livePr.base || {}).ref) || '';
+            const liveHead = ((livePr.head || {}).sha) || '';
+
+            if (!Number.isInteger(liveNumber) || liveNumber !== eventNumber) {
+              core.setFailed(
+                `Merge-card check failed closed: live PR ${liveNumber} is not event PR ${eventNumber}.`
+              );
+              return;
+            }
+            if (!liveRepo || liveRepo.toLowerCase() !== expectedRepo.toLowerCase()) {
+              core.setFailed(
+                'Merge-card check failed closed: live repository does not match the event repository.'
+              );
+              return;
+            }
+            if (liveState !== 'open' || livePr.merged === true) {
+              core.setFailed('Merge-card check failed closed: pull request is not open.');
+              return;
+            }
+            if (liveBaseRef !== 'main') {
+              core.setFailed(
+                'Merge-card check failed closed: pull request target is not main.'
+              );
+              return;
+            }
+            if (!/^[0-9a-f]{40}$/i.test(liveHead) || liveHead.toLowerCase() !== eventHead.toLowerCase()) {
+              core.setFailed(
+                'Merge-card check failed closed: live head is not the event head.'
+              );
+              return;
+            }
+
+            const body = livePr.body || '';
+            const head = eventHead;
+            const pull_number = eventNumber;
+
+            // Workspace is the trusted default-branch checkout above, not the
+            // PR head. Live card text stays data from pulls.get.
+            let helper;
+            try {
+              const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+              helper = require(`${workspace}/scripts/atlas-primary-risk.js`);
+            } catch (error) {
+              privateError(error);
+              core.setFailed('Merge-card check failed closed: could not load the Primary-risk helper; private diagnostics withheld.');
+              return;
+            }
+            if (!helper || typeof helper.parsePrimaryRisk !== 'function') {
+              core.setFailed('Merge-card check failed closed: Primary-risk helper is missing parsePrimaryRisk.');
+              return;
+            }
+
+            // A small, closed path set is always high-risk in this repository.
+            // File paths are mechanical facts. The list does not inspect prose or
+            // try to infer risk from wording. Changes outside this set still use
+            // the canonical human trigger decision in CLAUDE.md.
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number,
+              per_page: 100,
+            });
+            const ALWAYS_REVIEW = [
+              /^(?:data|periods)\.json$/i,
+              /^public\//i,
+              /^server\.js$/i,
+              /^(?:package|package-lock)\.json$/i,
+              /^(?:ARCHITECTURE|CLAUDE|CONTEXT)\.md$/i,
+              /^docs\/ACCOUNT_FACTS\.md$/i,
+              /^\.github\/workflows\//i,
+              /^\.githooks\//i,
+              /^test\/test-(?:static|forecast|budget|debt|invariants|authority-coverage|mergecard)\.js$/i,
+              /^scripts\/(?:figures-snapshot|positions-summary)\.js$/i,
+            ];
+            const mechanicallyHighRisk = files
+              .map((file) => file.filename.replace(/\\/g, '/'))
+              .filter((filename) => ALWAYS_REVIEW.some((pattern) => pattern.test(filename)));
+
+            const esc = (value) => value.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+            const sectionAfter = (heading) => body
+              .slice(heading.index + heading[0].length)
+              .split(/\n[ \t]*#{1,6}[ \t]+/)[0];
+            const clean = (value) => value
+              .replace(/<!--[\s\S]*?-->/g, '')
+              .replace(/\*\*/g, '')
+              .trim();
+
+            const cardHeading = /^[ \t]*#{1,4}[ \t]*.*Atlas Merge Card.*$/im.exec(body);
+            if (!cardHeading) {
+              problems.push('The PR body is missing the "Atlas Merge Card" heading.');
+            }
+            const cardSection = cardHeading ? sectionAfter(cardHeading) : '';
+            const rowValue = (label) => {
+              const pattern = esc(label);
+              const table = new RegExp(
+                `^[ \\t]*\\|[ \\t]*\\*{0,2}${pattern}\\*{0,2}[ \\t]*\\|([^\\n|]*)`, 'im'
+              ).exec(cardSection);
+              if (table) return clean(table[1]);
+              const bullet = new RegExp(
+                `^[ \\t]*[-*][ \\t]*\\*{0,2}${pattern}\\*{0,2}[ \\t]*:(.*)$`, 'im'
+              ).exec(cardSection);
+              return bullet ? clean(bullet[1]) : null;
+            };
+
+            const FIELDS = [
+              'Title',
+              'Primary risk',
+              'Files / categories touched',
+              'Current-state verdict',
+              'Builder surface',
+              'Primary builder model',
+              'Supporting / explore models',
+              'Architecture / dispatch authority',
+              'Figures moved',
+              'Reproduced / disproved',
+              'Authority impact',
+              'Tests',
+              'Security',
+              'Advisory review',
+              'Owner decision required',
+              'Estimated inputs added',
+            ];
+
+            for (const label of FIELDS) {
+              const value = rowValue(label);
+              if (value === null) {
+                problems.push(`Merge card row "${label}" is missing.`);
+              } else if (value === '') {
+                problems.push(`Merge card row "${label}" is blank or still a template placeholder.`);
+              }
+            }
+
+            const currentState = rowValue('Current-state verdict') || '';
+            const CURRENT_STATE = [
+              'STILL BROKEN',
+              'ALREADY FIXED',
+              'PARTIALLY FIXED',
+              'FIXED BUT UNTESTED',
+              'STALE-SUPERSEDED',
+              'NEEDS OWNER ANSWER',
+            ];
+            if (currentState && !CURRENT_STATE.some(
+              (value) => new RegExp(`^${esc(value)}(?:\\b|[ \\t]*[—–:.-])`, 'i').test(currentState)
+            )) {
+              problems.push(`"Current-state verdict" must open with one of: ${CURRENT_STATE.join(' / ')}.`);
+            }
+
+            const parsedPrimary = helper.parsePrimaryRisk(body);
+            if (!parsedPrimary.ok && parsedPrimary.code === 'invalid') {
+              problems.push(parsedPrimary.reason);
+            } else if (!parsedPrimary.ok && parsedPrimary.code === 'blank' && rowValue('Primary risk')) {
+              // Presentation-only residue (e.g. empty inline code) looked filled
+              // to the field loop; the helper is the closed-vocabulary authority.
+              problems.push(parsedPrimary.reason);
+            }
+
+            const reviewHeading =
+              /^[ \t]*#{2,4}[ \t]*Atlas Contract \/ Systems Review[ \t]*$/im.exec(body);
+            if (!reviewHeading) {
+              problems.push('The PR body is missing the "Atlas Contract / Systems Review" section.');
+            } else {
+              const section = sectionAfter(reviewHeading);
+              const read = (label) => {
+                const match = new RegExp(
+                  `^[ \\t]*[-*][ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*:(.*)$`, 'im'
+                ).exec(section);
+                return match ? clean(match[1]) : null;
+              };
+              const REVIEW_FIELDS = [
+                'Required',
+                'Exact reviewed head',
+                'Reviewer',
+                'Review outcome',
+                'Findings and fix verification',
+              ];
+              const review = {};
+              for (const label of REVIEW_FIELDS) {
+                const value = read(label);
+                review[label] = value || '';
+                if (value === null) {
+                  problems.push(`The review block is missing "${label}".`);
+                } else if (value === '') {
+                  problems.push(`Review block line "${label}" is blank or still a template placeholder.`);
+                }
+              }
+
+              const required = /^REQUIRED(?:\b|[ \t]*[—–:.-])/i.test(review.Required);
+              const notRequired = /^NOT[ \t]+REQUIRED(?:\b|[ \t]*[—–:.-])/i.test(review.Required);
+              if (review.Required && !required && !notRequired) {
+                problems.push('"Required" must open with REQUIRED or NOT REQUIRED.');
+              }
+
+              // Review SHA and outcome values (BLOCKERS FOUND / NO BLOCKERS
+              // FOUND / INCOMPLETE / PENDING, or historical PASS) are
+              // documentary. They must not fail this check: a later fix
+              // would otherwise invalidate the card and hang the PR.
+              if (notRequired) {
+                for (const label of ['Exact reviewed head', 'Reviewer', 'Review outcome']) {
+                  if (!/^N\/A$/i.test(review[label])) {
+                    problems.push(`A NOT REQUIRED review must record ${label}: N/A.`);
+                  }
+                }
+              }
+            }
+
+            if (reportRequiredCheckOnExpectedHead) {
+              try {
+                await github.rest.checks.create({
+                  owner,
+                  repo,
+                  name: REQUIRED_CHECK_NAME,
+                  head_sha: eventHead,
+                  status: 'completed',
+                  conclusion: problems.length ? 'failure' : 'success',
+                  output: {
+                    title: problems.length
+                      ? `${problems.length} mechanical merge-card problem(s)`
+                      : 'Merge card mechanical fields are complete',
+                    summary: problems.length
+                      ? `- ${problems.join('\n- ')}`
+                      : 'Merge card mechanical fields are complete. Prose remains a reviewer judgement.',
+                  },
+                });
+              } catch (error) {
+                privateError(error);
+                core.setFailed('Merge-card check failed closed: could not record the required check on the expected head; private diagnostics withheld.');
+                return;
+              }
+            }
+
+            if (problems.length) {
+              core.setFailed(`${problems.length} mechanical merge-card problem(s):\n- ${problems.join('\n- ')}`);
+            } else {
+              core.info('Merge card mechanical fields are complete. Prose remains a reviewer judgement.');
+            }
+
+            } catch (error) {
+              privateError(error);
+              core.setFailed('Merge-card check failed closed; private diagnostics withheld.');
+            }

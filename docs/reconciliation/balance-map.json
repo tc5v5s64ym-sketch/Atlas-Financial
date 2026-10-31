@@ -1,0 +1,80 @@
+{
+  "schema": "atlas-balance-reconciliation-map/v1",
+  "source": "docs/positions.csv",
+  "owns": "Stable observation-to-canonical locators for the first B91 closed set of Household cash and debt rows. Not a fact store and not a query language.",
+  "does_not_own": "Financial values, freshness policy, Forecast results, or permission to write data.json.",
+  "canonicalAsOfPath": "meta.asOf",
+  "stale": "Not assigned. No owner-defined age threshold exists. Evidence dates are reported; STALE is not inferred.",
+  "excluded": [
+    {
+      "accountLabel": "Wise account 1 (USD spending)",
+      "reason": "Two Wise rows share one canonical cash id; this slice maps one observation to one id."
+    },
+    {
+      "accountLabel": "Wise account 2 (USD spending)",
+      "reason": "Two Wise rows share one canonical cash id; this slice maps one observation to one id."
+    }
+  ],
+  "mappings": [
+    {
+      "observationId": "pos-chequing-a",
+      "accountLabel": "Chequing A",
+      "canonical": { "collection": "cash", "id": "chequing-a" }
+    },
+    {
+      "observationId": "pos-chequing-b",
+      "accountLabel": "Chequing B",
+      "canonical": { "collection": "cash", "id": "chequing-b" }
+    },
+    {
+      "observationId": "pos-savings",
+      "accountLabel": "Savings",
+      "canonical": { "collection": "cash", "id": "savings" }
+    },
+    {
+      "observationId": "pos-amanda-debt-payments",
+      "accountLabel": "DEBT&PAYMENTS",
+      "canonical": { "collection": "cash", "id": "amanda-debt-payments" }
+    },
+    {
+      "observationId": "pos-savings-dont-touch",
+      "accountLabel": "SAVINGS-DONT TOUCH",
+      "canonical": { "collection": "cash", "id": "savings-dont-touch" }
+    },
+    {
+      "observationId": "pos-tdcc",
+      "accountLabel": "Credit Card",
+      "canonical": { "collection": "debts", "id": "tdcc" }
+    },
+    {
+      "observationId": "pos-cashback",
+      "accountLabel": "Cash Back Visa",
+      "canonical": { "collection": "debts", "id": "cashback" }
+    },
+    {
+      "observationId": "pos-travelvisa",
+      "accountLabel": "Travel Visa",
+      "canonical": { "collection": "debts", "id": "travelvisa" }
+    },
+    {
+      "observationId": "pos-heloc",
+      "accountLabel": "HELOC",
+      "canonical": { "collection": "debts", "id": "heloc" }
+    },
+    {
+      "observationId": "pos-mortgage",
+      "accountLabel": "Mortgage",
+      "canonical": { "collection": "debts", "id": "mortgage" }
+    },
+    {
+      "observationId": "pos-triangle",
+      "accountLabel": "Triangle Mastercard",
+      "canonical": { "collection": "debts", "id": "triangle" }
+    },
+    {
+      "observationId": "pos-mbna",
+      "accountLabel": "Amazon.ca Rewards Mastercard",
+      "canonical": { "collection": "debts", "id": "mbna" }
+    }
+  ]
+}

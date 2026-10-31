@@ -1,0 +1,12 @@
+{
+  "outcome": "PASS",
+  "syntheticOnly": true,
+  "sourceCommit": "bf1798a62411c85b4856900d094da766db658221",
+  "beforeCommit": "7ec5347e9a37ace08cb7291ef77bf996718378dd",
+  "beforeDifferences": [
+    "provenance.transactionWindow.savingsFetchCoverage"
+  ],
+  "afterDifferences": [],
+  "originalHistoryTestBlobUnchanged": true,
+  "method": "independent frozen-v1 keyed-content comparison with existing engine/Household alignment; Windows storage durability remains unqualified"
+}

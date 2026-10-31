@@ -1,0 +1,22 @@
+# One chronological savings pot - owner policy, 2026-10-07
+
+This records explicit owner policy and a planning-date update. It does not establish current account balances, confirmed assignments, transfers, posted expense settlement or issuer deadlines. `data.json` owns the inputs; Forecast owns the calculated allocation and projections.
+
+```evidence-ids
+SAVINGS-ONE-POT-001
+LINDEN-PLANNING-DATE-001
+```
+
+The decision desk delegated the owner instructions at 21:12 and 21:13 UTC on October 7, 2026. At 21:13 the owner explicitly described one pot funding the planned costs, with no separate sports/home/property-tax/insurance pots. This supersedes the earlier protected-pool ordering restriction. The two existing reserve locations remain physically distinct accounts; their prior configuration and confirmation history are retained as evidence. No business, Bills/Weekly, credit, overdraft or other asset is added to savings stock. A hypothetical balance example is not an input.
+
+The owner supplied October 20, 2026 as Linden Burrards' planning date. This updates the existing estimated unpaid row's date/label/when/note only. Amount, estimate confidence, household category and group remain unchanged. Team approval, invoice due date and payment instructions remain unknown. This does not mark it paid or funded. The earlier undated hold is retained in its dated source record.
+
+Warriors is already settled in canonical history and remains there; this policy excludes it from the unpaid queue without removing its posted card obligation or marking debt repaid. San Diego keeps its existing canonical amount and January planning cash date, including the distinction from its trip window. Annual insurance/card bills and property-tax reserve requirements stay in their existing canonical homes, each referenced once. The Travel Visa annual estimate from #544 is preserved. No PDF historical opening, future allowance or bonus amount is imported. Future modelled receipts remain projected and enter the cash walk only on their existing forecast date.
+
+Canonical authorization is the explicit owner-approved edit route in `docs/skills/evidence-intake.md` step 4. The merge card records this dispatch. The preview adds only `plan.savingsEarmarks.allocationPolicy` with `order: due-date-first-combined-pool`, `effectiveFrom: 2026-10-07` and this dated source, and the four Linden display/date fields. Every numeric leaf, opening, prior assignment and settlement remains identical. The policy is shipped atomically with its strict validator, the Forecast producer and its consumers; it is not an early policy-only change.
+
+The sealed current packet is `Forecast.recommend(...).savingsFunding`. Qualified current stock uses exactly two distinct current CAD whole-cent reserve observations, with pending evidence retained. Missing, stale, currency, duplicate, fractional or deficit evidence withholds backing and proposals; unknown is not zero. Known unpaid planning requirements stay visible. Undated/ranged/unresolved requirements retain conservative protection and cannot acquire a fabricated date or allocation.
+
+Calculated backing follows dates globally and does not establish confirmed manual intent or actual money movement. Actual transferred/period saved fields remain unknown without independent evidence. Future and historical selected-period lenses distinguish projected top-ups from actual saving; current observations are not borrowed into historical periods. The bounded location projection reprints the same native cash walk and serial schedule, counting an internal top-up as a location change. Cash-paid requirements reduce the projected ledger once. Card-paid bills retain the incumbent reserved-ledger planning gravity; the projection does not post purchases, capitalize debt or mark issuer settlement. Existing card repayment obligations stay separate and unchanged. These are available/reserved planning amounts, not predicted physical account balances. Later income authority stays unavailable beyond its incumbent boundary.
+
+No provider read/write or production credential access is performed. The parent will obtain current qualified balances as a separate acceptance read, independent exact-head Systems PASS and green required checks before merge. The builder publishes a draft and does not merge.

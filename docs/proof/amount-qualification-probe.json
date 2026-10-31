@@ -1,0 +1,1037 @@
+{
+  "baselineHead": "f453827fde7d82860c44d0a07a9250919ffa1742",
+  "exercisedCodeHead": "0465f65817a719ae4f5198313a5a125e80c8acf6",
+  "base": "fc3e6cfd97b09478559f5bec05556ecd365624a6",
+  "evidenceKind": "invented independent native observation/overlay/Forecast controls",
+  "originalIndependentProbeSha256": "fc2f761d4ec5e1c6fadf3f0f74e830150dc03f8a49f11344e6779d11dc6c8772",
+  "adaptation": "Only module root changed from review548 to pr548-integration; all inputs, expected cents, endpoint qualification and conditions unchanged.",
+  "beforeFailures": 5,
+  "afterFailures": 0,
+  "validProbePublicationsUnchanged": true,
+  "existingNullBehaviorUnchanged": true,
+  "before": [
+    {
+      "name": "numeric-zero",
+      "rawAmount": 0,
+      "malformed": false,
+      "expected": "ready",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 0,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 0,
+        "magnitude": 0,
+        "direction": "flat",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": true
+    },
+    {
+      "name": "numeric-string-zero",
+      "rawAmount": "0.00",
+      "malformed": false,
+      "expected": "ready",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 0,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 0,
+        "magnitude": 0,
+        "direction": "flat",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": true
+    },
+    {
+      "name": "numeric-500",
+      "rawAmount": 500,
+      "malformed": false,
+      "expected": "ready",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 500,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42500,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 500,
+        "magnitude": 500,
+        "direction": "up",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": true
+    },
+    {
+      "name": "numeric-string-500",
+      "rawAmount": "500.00",
+      "malformed": false,
+      "expected": "ready",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 500,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42500,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 500,
+        "magnitude": 500,
+        "direction": "up",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": true
+    },
+    {
+      "name": "empty-string",
+      "rawAmount": "",
+      "malformed": true,
+      "expected": "unavailable",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 0,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 0,
+        "magnitude": 0,
+        "direction": "flat",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": false
+    },
+    {
+      "name": "whitespace-string",
+      "rawAmount": " ",
+      "malformed": true,
+      "expected": "unavailable",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 0,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 0,
+        "magnitude": 0,
+        "direction": "flat",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": false
+    },
+    {
+      "name": "boolean-false",
+      "rawAmount": false,
+      "malformed": true,
+      "expected": "unavailable",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 0,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 0,
+        "magnitude": 0,
+        "direction": "flat",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": false
+    },
+    {
+      "name": "boolean-true",
+      "rawAmount": true,
+      "malformed": true,
+      "expected": "unavailable",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 1,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42001,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 1,
+        "magnitude": 1,
+        "direction": "up",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": false
+    },
+    {
+      "name": "empty-array",
+      "rawAmount": [],
+      "malformed": true,
+      "expected": "unavailable",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 0,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 0,
+        "magnitude": 0,
+        "direction": "flat",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": false
+    },
+    {
+      "name": "missing-null",
+      "rawAmount": null,
+      "malformed": true,
+      "expected": "unavailable",
+      "observation": [],
+      "coverage": {
+        "transactionCoverage": "incomplete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [
+        {
+          "ref": "pc-3a91620cccf9bff218723c3d",
+          "date": "2026-08-16",
+          "reason": "transaction-amount-or-date-unconfirmed"
+        }
+      ],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "unavailable",
+      "netChange": {
+        "amount": null,
+        "magnitude": null,
+        "direction": null,
+        "trust": "unavailable",
+        "completeness": "unavailable"
+      },
+      "reasons": [
+        "posted-coverage-incomplete",
+        "transaction-evidence-unconfirmed"
+      ],
+      "conforms": true
+    }
+  ],
+  "after": [
+    {
+      "name": "numeric-zero",
+      "rawAmount": 0,
+      "malformed": false,
+      "expected": "ready",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 0,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 0,
+        "magnitude": 0,
+        "direction": "flat",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": true
+    },
+    {
+      "name": "numeric-string-zero",
+      "rawAmount": "0.00",
+      "malformed": false,
+      "expected": "ready",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 0,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 0,
+        "magnitude": 0,
+        "direction": "flat",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": true
+    },
+    {
+      "name": "numeric-500",
+      "rawAmount": 500,
+      "malformed": false,
+      "expected": "ready",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 500,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42500,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 500,
+        "magnitude": 500,
+        "direction": "up",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": true
+    },
+    {
+      "name": "numeric-string-500",
+      "rawAmount": "500.00",
+      "malformed": false,
+      "expected": "ready",
+      "observation": [
+        {
+          "date": "2026-08-16",
+          "amount": 500,
+          "currency": "cad"
+        }
+      ],
+      "coverage": {
+        "transactionCoverage": "complete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42500,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "ready",
+      "netChange": {
+        "amount": 500,
+        "magnitude": 500,
+        "direction": "up",
+        "trust": "calculated",
+        "completeness": "complete"
+      },
+      "reasons": [],
+      "conforms": true
+    },
+    {
+      "name": "empty-string",
+      "rawAmount": "",
+      "malformed": true,
+      "expected": "unavailable",
+      "observation": [],
+      "coverage": {
+        "transactionCoverage": "incomplete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [
+        {
+          "ref": "pc-3a91620cccf9bff218723c3d",
+          "date": "2026-08-16",
+          "reason": "transaction-amount-or-date-unconfirmed"
+        }
+      ],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "unavailable",
+      "netChange": {
+        "amount": null,
+        "magnitude": null,
+        "direction": null,
+        "trust": "unavailable",
+        "completeness": "unavailable"
+      },
+      "reasons": [
+        "posted-coverage-incomplete",
+        "transaction-evidence-unconfirmed"
+      ],
+      "conforms": true
+    },
+    {
+      "name": "whitespace-string",
+      "rawAmount": " ",
+      "malformed": true,
+      "expected": "unavailable",
+      "observation": [],
+      "coverage": {
+        "transactionCoverage": "incomplete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [
+        {
+          "ref": "pc-3a91620cccf9bff218723c3d",
+          "date": "2026-08-16",
+          "reason": "transaction-amount-or-date-unconfirmed"
+        }
+      ],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "unavailable",
+      "netChange": {
+        "amount": null,
+        "magnitude": null,
+        "direction": null,
+        "trust": "unavailable",
+        "completeness": "unavailable"
+      },
+      "reasons": [
+        "posted-coverage-incomplete",
+        "transaction-evidence-unconfirmed"
+      ],
+      "conforms": true
+    },
+    {
+      "name": "boolean-false",
+      "rawAmount": false,
+      "malformed": true,
+      "expected": "unavailable",
+      "observation": [],
+      "coverage": {
+        "transactionCoverage": "incomplete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [
+        {
+          "ref": "pc-3a91620cccf9bff218723c3d",
+          "date": "2026-08-16",
+          "reason": "transaction-amount-or-date-unconfirmed"
+        }
+      ],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "unavailable",
+      "netChange": {
+        "amount": null,
+        "magnitude": null,
+        "direction": null,
+        "trust": "unavailable",
+        "completeness": "unavailable"
+      },
+      "reasons": [
+        "posted-coverage-incomplete",
+        "transaction-evidence-unconfirmed"
+      ],
+      "conforms": true
+    },
+    {
+      "name": "boolean-true",
+      "rawAmount": true,
+      "malformed": true,
+      "expected": "unavailable",
+      "observation": [],
+      "coverage": {
+        "transactionCoverage": "incomplete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [
+        {
+          "ref": "pc-3a91620cccf9bff218723c3d",
+          "date": "2026-08-16",
+          "reason": "transaction-amount-or-date-unconfirmed"
+        }
+      ],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42001,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "unavailable",
+      "netChange": {
+        "amount": null,
+        "magnitude": null,
+        "direction": null,
+        "trust": "unavailable",
+        "completeness": "unavailable"
+      },
+      "reasons": [
+        "posted-coverage-incomplete",
+        "transaction-evidence-unconfirmed"
+      ],
+      "conforms": true
+    },
+    {
+      "name": "empty-array",
+      "rawAmount": [],
+      "malformed": true,
+      "expected": "unavailable",
+      "observation": [],
+      "coverage": {
+        "transactionCoverage": "incomplete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [
+        {
+          "ref": "pc-3a91620cccf9bff218723c3d",
+          "date": "2026-08-16",
+          "reason": "transaction-amount-or-date-unconfirmed"
+        }
+      ],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "unavailable",
+      "netChange": {
+        "amount": null,
+        "magnitude": null,
+        "direction": null,
+        "trust": "unavailable",
+        "completeness": "unavailable"
+      },
+      "reasons": [
+        "posted-coverage-incomplete",
+        "transaction-evidence-unconfirmed"
+      ],
+      "conforms": true
+    },
+    {
+      "name": "missing-null",
+      "rawAmount": null,
+      "malformed": true,
+      "expected": "unavailable",
+      "observation": [],
+      "coverage": {
+        "transactionCoverage": "incomplete",
+        "coverageStart": "2026-08-13",
+        "coverageThrough": "2026-08-20"
+      },
+      "markers": [
+        {
+          "ref": "pc-3a91620cccf9bff218723c3d",
+          "date": "2026-08-16",
+          "reason": "transaction-amount-or-date-unconfirmed"
+        }
+      ],
+      "endpointEvidence": {
+        "currency": "CAD",
+        "start": "2026-08-14",
+        "through": "2026-08-20",
+        "opening": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-14",
+          "amount": 42000,
+          "temporalClaim": "before-period-posted-movements",
+          "evidenceRef": "invented-heloc-open"
+        },
+        "closing": {
+          "confirmed": true,
+          "currency": "CAD",
+          "date": "2026-08-20",
+          "amount": 42000,
+          "temporalClaim": "through-published-posted-coverage",
+          "evidenceRef": "invented-heloc-close"
+        }
+      },
+      "status": "unavailable",
+      "netChange": {
+        "amount": null,
+        "magnitude": null,
+        "direction": null,
+        "trust": "unavailable",
+        "completeness": "unavailable"
+      },
+      "reasons": [
+        "posted-coverage-incomplete",
+        "transaction-evidence-unconfirmed"
+      ],
+      "conforms": true
+    }
+  ]
+}

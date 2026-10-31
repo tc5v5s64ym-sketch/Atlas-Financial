@@ -1,0 +1,75 @@
+{
+  "provider": "lunchmoney",
+  "fetchedAt": "2026-08-19T16:00:00.000Z",
+  "transactionWindow": {
+    "startDate": "2026-08-16",
+    "endDate": "2026-08-19",
+    "complete": true,
+    "hasMore": false,
+    "truncated": false
+  },
+  "pendingCoverage": {
+    "complete": true,
+    "basis": "is_pending-unbounded",
+    "hasMore": false,
+    "truncated": false
+  },
+  "accounts": [
+    {
+      "id": 1001,
+      "name": "Fixture Chequing A",
+      "type": "cash",
+      "balance": 1000,
+      "updated_at": "2026-08-19T15:55:00.000Z"
+    },
+    {
+      "id": 1002,
+      "name": "Fixture Chequing B",
+      "type": "cash",
+      "balance": 0,
+      "updated_at": "2026-08-19T15:55:00.000Z"
+    }
+  ],
+  "transactions": [
+    {
+      "id": 8101,
+      "account_id": 1001,
+      "date": "2026-08-17",
+      "amount": 82.96,
+      "is_pending": false,
+      "payee": "Bcaa-adv"
+    },
+    {
+      "id": 8102,
+      "account_id": 1001,
+      "date": "2026-08-17",
+      "amount": 99.91,
+      "is_pending": false,
+      "payee": "Icbc"
+    },
+    {
+      "id": 8103,
+      "account_id": 1001,
+      "date": "2026-08-17",
+      "amount": 100,
+      "is_pending": false,
+      "payee": "TD WATERHOUSE I REP"
+    },
+    {
+      "id": 8104,
+      "account_id": 1001,
+      "date": "2026-08-17",
+      "amount": 25,
+      "is_pending": false,
+      "payee": "CMAWLOCAL1995 FEE"
+    },
+    {
+      "id": 8199,
+      "account_id": 1002,
+      "date": "2026-08-17",
+      "amount": 100,
+      "is_pending": false,
+      "payee": "Fixture unrelated debit"
+    }
+  ]
+}

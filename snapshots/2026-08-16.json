@@ -1,0 +1,167 @@
+{
+    "schema": "atlas-balance-snapshot/v1",
+    "asOf": "2026-08-16",
+    "role": "historical-observation",
+    "currentStateAuthority": "data.json",
+    "spendableCoverage": {
+        "expectedIds": [
+            "chequing-a",
+            "chequing-b",
+            "savings"
+        ],
+        "complete": true
+    },
+    "accounts": [
+        {
+            "id": "cashback",
+            "label": "TD Cash Back Visa",
+            "collection": "debts",
+            "side": "liability",
+            "currency": "CAD",
+            "balance": 4799.43,
+            "pending": null,
+            "pendingUnknown": true,
+            "confidence": "verified",
+            "provenance": {
+                "canonicalLocator": "debts:cashback",
+                "observationId": "pos-cashback",
+                "sourceAsOf": "2026-08-16"
+            }
+        },
+        {
+            "id": "chequing-a",
+            "label": "Chequing A — payroll and fixed costs",
+            "collection": "cash",
+            "side": "asset",
+            "currency": "CAD",
+            "balance": 1320.13,
+            "pot": "spendable",
+            "confidence": "verified",
+            "provenance": {
+                "canonicalLocator": "cash:chequing-a",
+                "observationId": "pos-chequing-a",
+                "sourceAsOf": "2026-08-16"
+            }
+        },
+        {
+            "id": "chequing-b",
+            "label": "Chequing B — daily spending",
+            "collection": "cash",
+            "side": "asset",
+            "currency": "CAD",
+            "balance": 932.05,
+            "pot": "spendable",
+            "confidence": "verified",
+            "provenance": {
+                "canonicalLocator": "cash:chequing-b",
+                "observationId": "pos-chequing-b",
+                "sourceAsOf": "2026-08-16"
+            }
+        },
+        {
+            "id": "heloc",
+            "label": "HELOC",
+            "collection": "debts",
+            "side": "liability",
+            "currency": "CAD",
+            "balance": 200486.16,
+            "pending": 0,
+            "confidence": "verified",
+            "provenance": {
+                "canonicalLocator": "debts:heloc",
+                "observationId": "pos-heloc",
+                "sourceAsOf": "2026-08-16"
+            }
+        },
+        {
+            "id": "mbna",
+            "label": "Amazon.ca Rewards Mastercard (MBNA)",
+            "collection": "debts",
+            "side": "liability",
+            "currency": "CAD",
+            "balance": 8003.61,
+            "pending": 0,
+            "confidence": "verified",
+            "provenance": {
+                "canonicalLocator": "debts:mbna",
+                "observationId": "pos-mbna",
+                "sourceAsOf": "2026-08-16"
+            }
+        },
+        {
+            "id": "mortgage",
+            "label": "Mortgage",
+            "collection": "debts",
+            "side": "liability",
+            "currency": "CAD",
+            "balance": 545188.3,
+            "pending": 0,
+            "confidence": "verified",
+            "provenance": {
+                "canonicalLocator": "debts:mortgage",
+                "observationId": "pos-mortgage",
+                "sourceAsOf": "2026-08-16"
+            }
+        },
+        {
+            "id": "savings",
+            "label": "Savings",
+            "collection": "cash",
+            "side": "asset",
+            "currency": "CAD",
+            "balance": 0.58,
+            "pot": "spendable",
+            "confidence": "verified",
+            "provenance": {
+                "canonicalLocator": "cash:savings",
+                "observationId": "pos-savings",
+                "sourceAsOf": "2026-08-16"
+            }
+        },
+        {
+            "id": "tdcc",
+            "label": "TD credit card",
+            "collection": "debts",
+            "side": "liability",
+            "currency": "CAD",
+            "balance": 1705.94,
+            "pending": 0,
+            "confidence": "verified",
+            "provenance": {
+                "canonicalLocator": "debts:tdcc",
+                "observationId": "pos-tdcc",
+                "sourceAsOf": "2026-08-16"
+            }
+        },
+        {
+            "id": "travelvisa",
+            "label": "Travel Visa (business)",
+            "collection": "debts",
+            "side": "liability",
+            "currency": "CAD",
+            "balance": 862.68,
+            "pending": 250,
+            "confidence": "verified",
+            "provenance": {
+                "canonicalLocator": "debts:travelvisa",
+                "observationId": "pos-travelvisa",
+                "sourceAsOf": "2026-08-16"
+            }
+        },
+        {
+            "id": "triangle",
+            "label": "Triangle Mastercard",
+            "collection": "debts",
+            "side": "liability",
+            "currency": "CAD",
+            "balance": 13197,
+            "pending": 15.62,
+            "confidence": "verified",
+            "provenance": {
+                "canonicalLocator": "debts:triangle",
+                "observationId": "pos-triangle",
+                "sourceAsOf": "2026-08-16"
+            }
+        }
+    ]
+}
