@@ -139,10 +139,11 @@ test('ruling 5: a settlement that could also be a scheduled card bill the seed s
   // Remaining same-card bill on 10-10: the 2000 settlement could be inside it.
   const remaining = { ...cardMinimum('tdcc'), firstDue: '2026-10-10', day: 10, amount: 20 };
   assert.equal(estimated(seedCase({ pay: 2000, alloc: 2000, obligation: remaining }).next), null);
-  // A once-only same-card payment dated before the as-of and represented by
-  // the settlement is already inside the observed stock and not deducted
-  // again: 6000 - (4250 - 2000) = 3750. (A recurring same-card payment has
-  // later occurrences in the dependent horizon and holds; see Q3 below.)
+  // A once-only same-card payment dated before the as-of that nothing
+  // represents is still deducted by the seed, so the 2000 settlement could be
+  // counted twice: the seed holds. (Represented by the settlement, it is
+  // inside the observed stock and the seed is 3750; see the B2 witness below.
+  // A recurring same-card payment has later occurrences and holds; see Q3.)
   const paid = { id: 'card-min', debtId: 'tdcc', effect: 'payment', label: 'Invented card payment',
     frequency: 'once', date: '2026-10-06', firstDue: '2026-10-06', amount: 20, confidence: 'confirmed', payingAccount: 'chequing-a' };
   const x = seedCase({ pay: 2000, alloc: 2000, obligation: paid });
@@ -544,4 +545,163 @@ test('untraceable household evidence (contradictory account aliases) is unknown 
     assert.equal(seed, null);
     if (!policy) assert.equal(next.opening, null);
   }
+});
+
+// Atlas #812 6541992380 / Muse 6542020449: opening inclusion is part of the
+// close basis, linkage is lossless and order-independent, and a scoped close
+// whose cash carry has no inspectable term is not carried (Q6). Invented
+// ledger: Bills 8000 before the settlement, an in-cycle H card purchase of
+// 4250, a confirmed settlement PAY-D (2000 to H unless stated). The snapshot
+// is cash before its own day's flows; a payday-morning opening (as-of on the
+// payday, no snapshot) is the observed stock and may already hold same-day
+// posted cash.
+function inclusionCase({ source = 'snapshot', payDate = '2026-10-02', purchaseDate = '2026-10-02', bills = [],
+  represented = [], policy = true, alloc = 2000, other = 0 } = {}) {
+  const x = ledger();
+  const asOf = source === 'payday-morning' ? '2026-10-02' : '2026-10-07';
+  x.asOf = asOf;
+  x.plan.opening.asOf = asOf;
+  if (source !== 'snapshot') delete x.plan.opening.paydaySnapshot;
+  const packet = x.opts.currentPeriodActuals;
+  packet.observationAsOf = asOf;
+  packet.coverageThrough = asOf;
+  if (packet.savingsFetchCoverage) packet.savingsFetchCoverage.endDate = asOf;
+  x.plan.income = x.plan.income.filter(r => r.id === 'payroll');
+  x.plan.budget = { categories: [{ id: 'groceries', label: 'Groceries', monthly: 0, essential: true }] };
+  if (!policy) delete x.plan.savingsEarmarks.allocationPolicy;
+  x.plan.obligations = [];
+  x.plan.bills = bills;
+  const pay = (alloc + other) / 100;
+  x.plan.startingCash.breakdown[0].value = 80 - pay;
+  x.plan.cardPurchaseCoverage = { payments: [{ id: 'p1', confirmed: true, creditRef: 'pay-c', debitRef: 'pay-d',
+    allocations: alloc ? [{ purchaseRef: 'cov-1', amount: alloc / 100 }] : [], otherAmount: other / 100,
+    ...(other ? { otherPurpose: 'prior-debt' } : {}) }], refunds: [], reversals: [] };
+  packet.transactions = [{ ...purchase(42.5), date: purchaseDate },
+    posted({ id: 'PAY-D', date: payDate, amount: pay, atlasAccountId: 'chequing-a',
+      accountRole: 'household-cash', categoryLabel: 'Credit Card Payment', coverageRef: 'pay-d' }),
+    posted({ id: 'PAY-C', date: payDate, amount: -pay, atlasAccountId: 'tdcc',
+      accountRole: 'revolving-credit', categoryLabel: 'Credit Card Payment', coverageRef: 'pay-c' })];
+  packet.representedActuals = represented;
+  const before = JSON.stringify(x);
+  const a = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: DEBTS });
+  assert.equal(JSON.stringify(x), before, 'no input mutation');
+  const views = a.payPeriodViews.filter(v => v.role !== 'lookback');
+  const est = v => v.cardMatchingEstimate && v.cardMatchingEstimate.trust === 'estimated' ? cents(v.cardMatchingEstimate.opening) : null;
+  return { a, active: views[0], next: views[1], seed: est(views[1]) };
+}
+const paydayBill = { id: 'card-bill', label: 'Invented card bill', frequency: 'monthly', day: 2, amount: 20, confidence: 'confirmed' };
+const paydayRep = [{ id: 'card-bill', date: '2026-10-02', actual: 20, transactionId: 'PAY-D' }];
+
+test('opening inclusion: a same-day settlement after a snapshot is a period flow; on a payday-morning opening it is ambiguous', () => {
+  for (const policy of [true, false]) {
+    // Snapshot 8000 is before the 10-02 settlement: 8000 - 2000 - 2250 = 3750,
+    // which equals the close identity 8000 - 4250. Seed: 6000 - 2250 = 3750.
+    const snap = inclusionCase({ policy });
+    assert.equal(snap.active.openingSource, 'snapshot');
+    assert.deepEqual(closeOf(snap.active), [3750, 'estimated'], `snapshot (policy ${policy})`);
+    if (policy) assert.equal(snap.seed, 3750);
+    else assert.equal(cents(snap.next.opening), 3750, 'the qualified close is carried');
+    // Represented same-day bill: the snapshot close deducts that row and the
+    // unreduced H, so it is unknown (no restoration).
+    const snapBill = inclusionCase({ policy, bills: [paydayBill], represented: paydayRep });
+    assert.equal(snapBill.active.plannedPeriodClose, null);
+    assert.match(snapBill.active.plannedPeriodCloseReason, /counted twice/);
+    // Payday-morning 6000 may or may not hold the 2000: 3750 if it does, 1750
+    // if it does not. Unknown with or without the bill; never 1750.
+    for (const bills of [[], [paydayBill]]) {
+      const pm = inclusionCase({ policy, source: 'payday-morning', bills, represented: bills.length ? paydayRep : [] });
+      assert.equal(pm.active.openingSource, 'payday-morning');
+      assert.equal(cents(pm.active.opening), 6000);
+      assert.equal(pm.active.plannedPeriodClose, null, `payday-morning (bill ${bills.length}, policy ${policy})`);
+      assert.notEqual(cents(pm.active.plannedPeriodClose), 1750);
+      assert.equal(pm.active.plannedPeriodCloseTrust, 'unknown');
+      assert.match(pm.active.plannedPeriodCloseReason, /falls on the opening date/);
+      if (!policy) assert.equal(pm.next.opening, null, 'the ambiguous close feeds no numeric carry');
+      // The observed-stock seed is its own basis: 6000 - 2250 = 3750.
+      if (policy) assert.equal(pm.seed, 3750);
+    }
+  }
+});
+
+test('opening inclusion: a settlement already inside a posted cutover opening is named; a later settlement is a period flow', () => {
+  // As-of 10-07 with no snapshot: the opening is the posted cutover (10-07).
+  // A 10-06 settlement funding H is inside it, so the unreduced hold would
+  // count it again: unknown with its own reason. On the opening day itself
+  // inclusion is ambiguous.
+  const inside = inclusionCase({ source: 'cutover-opening', payDate: '2026-10-06', purchaseDate: '2026-10-05' });
+  assert.equal(inside.active.openingSource, 'cutover-opening');
+  assert.equal(inside.active.plannedPeriodClose, null);
+  assert.match(inside.active.plannedPeriodCloseReason, /already inside the opening cash/);
+  const sameDay = inclusionCase({ source: 'cutover-opening', payDate: '2026-10-07', purchaseDate: '2026-10-05' });
+  assert.match(sameDay.active.plannedPeriodCloseReason, /falls on the opening date/);
+  // After the snapshot (10-06): a period flow, 8000 - 4250 = 3750.
+  assert.deepEqual(closeOf(inclusionCase({ payDate: '2026-10-06', purchaseDate: '2026-10-05' }).active), [3750, 'estimated']);
+});
+
+test('Q6: a non-H settlement share outside the scoped plan keeps the close but withholds its no-policy carry', () => {
+  // 3000 settlement after the snapshot: 2000 to H, 1000 prior debt. Scoped
+  // plan 8000 - 4250 = 3750; physical tail 8000 - 3000 - 2250 = 2750. No
+  // Forecast-owned term reconciles the 1000, so the 3750 is not carried.
+  const nopol = b2Case({ other: 1000, policy: false });
+  assert.deepEqual(closeOf(nopol.active), [3750, 'estimated']);
+  assert.equal(nopol.next.opening, null);
+  // With a policy the observed-stock seed is 5000 - 2250 = 2750, unchanged.
+  assert.equal(b2Case({ other: 1000 }).seed, 2750);
+  // Non-H only, same day as the snapshot: scoped 3750 stands, carry withheld;
+  // seed 6000 - 4250 = 1750.
+  const nonH = inclusionCase({ alloc: 0, other: 2000, policy: false });
+  assert.deepEqual(closeOf(nonH.active), [3750, 'estimated']);
+  assert.equal(nonH.next.opening, null);
+  assert.equal(inclusionCase({ alloc: 0, other: 2000 }).seed, 1750);
+  // On a payday-morning opening a non-H share does not change the scoped
+  // close (6000 - 4250 = 1750), but whether it already left is unknown, so
+  // the carry is withheld.
+  const pmNonH = inclusionCase({ source: 'payday-morning', alloc: 0, other: 2000, policy: false });
+  assert.deepEqual(closeOf(pmNonH.active), [1750, 'estimated']);
+  assert.equal(pmNonH.next.opening, null);
+  // A pure-H settlement after the opening has no share outside the plan: carried.
+  assert.equal(cents(b2Case({ policy: false }).next.opening), 3750);
+});
+
+test('linkage is lossless and order-independent: every distinct debit identity of an occurrence is inspected', () => {
+  // One 2000 bill row on 10-06 represented by the settlement PAY-D (1000, all
+  // to H) and an ordinary debit OTHER-D (1000). Either order: the close
+  // deducts a row the settlement represents, so it is unknown.
+  const bill6 = { id: 'card-bill', label: 'Invented card bill', frequency: 'monthly', day: 6, amount: 20, confidence: 'confirmed' };
+  const other = posted({ id: 'OTHER-D', date: '2026-10-06', amount: 10, atlasAccountId: 'chequing-a',
+    accountRole: 'household-cash', categoryLabel: 'Bills', coverageRef: 'other-d' });
+  const pd = { id: 'card-bill', date: '2026-10-06', actual: 10, transactionId: 'PAY-D' };
+  const od = { id: 'card-bill', date: '2026-10-06', actual: 10, transactionId: 'OTHER-D' };
+  for (const policy of [true, false]) for (const represented of [[pd, od], [od, pd]]) {
+    const r = b2Case({ bills: [bill6], represented, alloc: 1000, otherCash: 1000, extra: [other], policy });
+    assert.equal(r.active.plannedPeriodClose, null, `order ${represented[0].transactionId} first (policy ${policy})`);
+    assert.match(r.active.plannedPeriodCloseReason, /counted twice/);
+    if (!policy) assert.equal(r.next.opening, null);
+    // The observed-stock seed excludes the paid row: 6000 - (4250 - 1000) = 2750.
+    if (policy) assert.equal(r.seed, 2750);
+  }
+  // Exact duplicate evidence adds no identity: the same result as one entry.
+  const once = b2Case({ bills: [bill6], represented: repBy('card-bill', '2026-10-06') });
+  const twice = b2Case({ bills: [bill6], represented: repBy('card-bill', '2026-10-06').concat(repBy('card-bill', '2026-10-06')) });
+  assert.equal(twice.active.plannedPeriodClose, null);
+  assert.equal(twice.active.plannedPeriodCloseReason, once.active.plannedPeriodCloseReason);
+  assert.equal(twice.seed, once.seed);
+  // Conflicting evidence for the settlement debit (two actuals) stays linked.
+  const conflict = b2Case({ bills: [bill6], represented: [{ ...pd, actual: 20 }, { ...pd, actual: 5 }] });
+  assert.equal(conflict.active.plannedPeriodClose, null);
+  // One debit representing two deducted occurrences holds.
+  const bill6b = { ...bill6, id: 'card-bill-b', label: 'Invented second bill' };
+  const multi = b2Case({ bills: [bill6, bill6b], represented: repBy('card-bill', '2026-10-06').concat(repBy('card-bill-b', '2026-10-06')) });
+  assert.equal(multi.active.plannedPeriodClose, null);
+  assert.match(multi.active.plannedPeriodCloseReason, /counted twice/);
+  // Unrelated multi-payment control: the row is represented by two ordinary
+  // debits and the settlement represents nothing. Close 8000 - 2000 - 4250 =
+  // 1750; seed (8000 - 2000 - 2000) - 2250 = 1750; carried without a policy.
+  const o2 = posted({ ...other, id: 'OTHER2-D', coverageRef: 'other2-d' });
+  const unrelated = { bills: [bill6], otherCash: 2000, extra: [{ ...other }, o2],
+    represented: [od, { ...od, transactionId: 'OTHER2-D' }] };
+  const u = b2Case(unrelated);
+  assert.deepEqual(closeOf(u.active), [1750, 'estimated']);
+  assert.equal(u.seed, 1750);
+  assert.equal(cents(b2Case({ ...unrelated, policy: false }).next.opening), 1750);
 });

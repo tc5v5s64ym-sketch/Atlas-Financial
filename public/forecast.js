@@ -10228,11 +10228,15 @@
     if (!rowIsSettledBill(row)) return false;
     if (row.date < openingAsOf) return true;
     if (row.date > openingAsOf) return false;
-    if (openingSource === 'snapshot' || openingSource === 'cutover-walk'
-        || openingSource === 'carry-forward') {
-      return false;
-    }
-    return true;
+    return openingMayHoldSameDayCash(openingSource);
+  }
+  // The one opening-source contract for same-day cash: a snapshot, a
+  // completeness walk and a carry-forward are cash before that day's flows;
+  // any other opening (payday-morning, posted cutover) may already include a
+  // same-day posted debit.
+  function openingMayHoldSameDayCash(openingSource) {
+    return !(openingSource === 'snapshot' || openingSource === 'cutover-walk'
+      || openingSource === 'carry-forward');
   }
 
   function billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource) {
@@ -11674,11 +11678,24 @@
     }
     // Qualified settlements: their allocations (F) and the deducted rows their
     // own debit leg represents (identity across any card or bill shape).
+    // Atlas 6541992380 (2): linkage is lossless and order-independent. Each
+    // occurrence keeps the full set of distinct debit identities that
+    // represent it; an exact duplicate entry adds no identity.
     const representedBy = new Map();
     for (const entry of (packet && packet.representedActuals) || []) {
-      if (entry && entry.transactionId != null) representedBy.set(entry.id + '@' + entry.date, String(entry.transactionId));
+      if (!entry || entry.transactionId == null) continue;
+      const key = entry.id + '@' + entry.date;
+      if (!representedBy.has(key)) representedBy.set(key, new Set());
+      representedBy.get(key).add(String(entry.transactionId));
     }
-    const settled = new Map(), linkedRows = new Set();
+    // Atlas 6541992380 (1): on the close basis, whether the opening already
+    // holds each settlement's cash is part of the basis. (3)/Q6: a non-H
+    // share leaving after the opening is outside the scoped plan, so the
+    // close may stand but its cash carry has no inspectable term.
+    const openingAsOf = kind === 'close' ? basis.openingAsOf : null;
+    if (kind === 'close' && !savingsDate(openingAsOf)) return unknown('basis-unavailable');
+    let carryReason = null;
+    const settled = new Map();
     for (const record of records) {
       const verdict = record && diag.paymentAllocations.get(record.creditRef);
       if (!verdict || verdict.status !== 'reconciled' || verdict.kind !== 'payment') return unknown('card-settlement-unqualified');
@@ -11692,23 +11709,34 @@
         settled.set(String(part.purchaseRef), (settled.get(String(part.purchaseRef)) || 0) + cents);
         alloc += cents;
       }
-      const linked = rows.filter(row => representedBy.get(row.id + '@' + row.date) === String(debit[0].id));
-      if (linked.length > 1) return unknown('card-settlement-overlap-unresolved');
-      for (const row of linked) linkedRows.add(row);
-      if (kind === 'cutover') {
-        // The stock already holds this cash; a deducted row it represents
-        // would be paid twice.
-        if (linked.length) return unknown('card-settlement-overlap-unresolved');
-        continue;
+      const debitCents = savingsCents(debit[0].amount, true);
+      if (debitCents == null || Math.abs(debitCents) < alloc) return unknown('card-settlement-unqualified');
+      // The allocated share funds purchases in this hold (every in-cycle
+      // card purchase is in H); the rest (prior debt) is outside the scoped plan.
+      const outsideH = Math.abs(debitCents) - alloc;
+      if (kind === 'close') {
+        const day = debit[0].date;
+        const inOpening = day < openingAsOf ? true : day > openingAsOf ? false
+          : openingMayHoldSameDayCash(basis.openingSource) ? null : false;
+        // Ambiguous inclusion changes the close whenever the debit funds H.
+        if (inOpening === null && alloc > 0) return unknown('card-settlement-opening-ambiguous');
+        // Known inclusion: the unreduced hold would deduct the funded H a
+        // second time, and no qualified term restores it.
+        if (inOpening === true && alloc > 0) return unknown('card-settlement-opening-included');
+        if (inOpening !== true && outsideH > 0) carryReason = 'card-settlement-carry-unreconciled';
       }
-      // Original-snapshot close (pre-review of 0a152542): a deducted row
-      // represented by this settlement's own debit could be counted in B and
-      // in unreduced H. No inspectable term in the published close identity
-      // carries a restoration, so the close is unknown rather than adjusted.
-      // Unrepresented, the settlement's H share is inside H and its non-H
-      // share is outside the scoped plan, as for any posted unscheduled
-      // payment; the close keeps its published identity.
-      if (linked.length) return unknown('card-settlement-overlap-unresolved');
+      // A deducted row represented by any of this settlement's debit
+      // identities (one row or several) holds on either basis. Cutover: the
+      // stock already holds this cash, so the row would be paid twice.
+      // Original-snapshot close (pre-review of 0a152542): the row could be
+      // counted in B and in unreduced H, and no inspectable term in the
+      // published close identity carries a restoration, so the close is
+      // unknown rather than adjusted. Unrepresented, the settlement's H share
+      // is inside H and its non-H share is outside the scoped plan (Q6 above).
+      if (rows.some(row => {
+        const ids = representedBy.get(row.id + '@' + row.date);
+        return ids != null && ids.has(String(debit[0].id));
+      })) return unknown('card-settlement-overlap-unresolved');
     }
     // Atlas Q3/C3 (6540253159; Muse 6540609418 requirement 3): the
     // accounting horizon decides overlap. A held-card (or card-less) payment
@@ -11725,7 +11753,6 @@
     // card-less) payment row not represented by a qualified settlement could
     // overlap remaining H; nothing qualifies that overlap, so it holds.
     if (heldCards.size) for (const row of rows) {
-      if (linkedRows.has(row)) continue;
       const source = cardPaymentRow(row);
       if (source && (source.debtId == null || heldCards.has(String(source.debtId)))) {
         return unknown('card-payment-overlap-unresolved');
@@ -11765,12 +11792,13 @@
       remaining += rowRemaining;
     }
     if (!Number.isSafeInteger(remaining)) return unknown('cents-unsafe');
-    return { status: 'qualified', reason: null, remainingCents: remaining };
+    return { status: 'qualified', reason: null, remainingCents: remaining, carryReason };
   }
   const CARD_MATCH_UNKNOWN_TEXT = {
     'card-payment-overlap-unresolved': 'a scheduled card payment this close deducts could also pay card purchases already in the household hold',
     'card-settlement-overlap-unresolved': 'a confirmed card settlement may also be a scheduled payment this close deducts, so it could be counted twice',
     'card-settlement-opening-ambiguous': 'a confirmed card settlement falls on the opening date, so whether the opening includes it is unknown',
+    'card-settlement-opening-included': 'a confirmed card settlement is already inside the opening cash, so the household hold would count it a second time',
     'card-payment-purpose-unresolved': 'a card payment or credit has an unconfirmed purpose that could fund card purchases in the household hold',
   };
   // The cutover basis (observed stock at the as-of) for one period: rows it
@@ -12380,7 +12408,7 @@
       // settlement overlap counted once; every other path is unknown.
       const activeCardClose = role === 'active' && !lookback && !planUnavailable && cardCoverage.status === 'unavailable'
         ? (!cardMatchEstimateEligible(plan, cardCoverage, opts) ? { status: 'hard', reason: null }
-          : cardMatchQualification(plan, cardCoverage, budget, { kind: 'close', openingAsOf,
+          : cardMatchQualification(plan, cardCoverage, budget, { kind: 'close', openingAsOf, openingSource,
             rows: assignedBillRows.filter(row => billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)) },
           { ...opts, asOf }))
         : null;
@@ -12579,7 +12607,9 @@
             // PA-4a-2b (C7): a card-held close that is not qualified cannot
             // feed a numeric dependent opening; a qualified one carries its
             // reconciled value.
-            previousEnding = plannedCloseCash;
+            // Q6 (Atlas 6541992380 (3)): a qualified scoped close whose cash
+            // carry has no inspectable reconciliation term is not carried.
+            previousEnding = activeCardClose && activeCardClose.carryReason ? null : plannedCloseCash;
             if (activeCardClose && previousEnding == null) openingChainLost = true;
             let splitBillsStockTrust = null;
             if (previousEnding != null && openingKnown && opening != null) {
