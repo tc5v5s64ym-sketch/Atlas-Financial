@@ -1,10 +1,27 @@
 # Private figures evidence
 
-The public figures comment reports counts, not acceptance. An unchanged
-comparison may succeed. Changed figures or a missing baseline remain incomplete
-until the owner has seen the figure-level diff and reconciled every intended
-change against the merge card, as CLAUDE.md requires. A green count formatter,
-an evidence receipt, and a builder's assertion do not perform that owner look.
+The public figures comment reports counts, not acceptance. A comparison may
+succeed only when no compared field moved, no invented input was added, edited
+or removed, and every declared field class is observed by at least one input; a
+declared class that no input observes reads INCOMPLETE and fails. Changed
+figures or a missing baseline remain incomplete until the owner has seen the
+figure-level diff and reconciled every intended change against the merge card,
+as CLAUDE.md requires. A green count formatter, an evidence receipt, and a
+builder's assertion do not perform that owner look.
+
+An unchanged public result says only that no captured field moved on the
+household dated opening and the invented inputs. It does not cover household
+figures at a live opening, page rendering or page-side decisions, or a branch
+the inputs do not reach. It never replaces the owner's look on a figures-moved
+pull request. When a figures-moved change lands on no input, record the
+affected surface and input on the card and obtain scope-specific evidence
+through this private route; an unchanged comment is not evidence for that move.
+
+Invented inputs in `test/fixtures/figures-inputs/` are genuinely synthetic, so
+their figure-level detail may be discussed publicly (for example in a merge
+card); the CI comment still carries counts only. A household-derived shape is
+never added to that public tree, not even as an input whose output is only
+counted: it stays on this private route.
 
 Use an already authorized local private location. Do not upload these files to
 GitHub comments, logs, checks, artifacts, or the repository. On Windows, verify
@@ -20,7 +37,9 @@ or credentials are provisioned by this change.
    approved private location. The helper runs each revision's **own** snapshot
    script in a detached checkout, with repository tokens removed. Its private
    `figures.md` preserves identifiers, before/after values and deltas, and names
-   both exact revisions. Raw snapshot files and the digest receipt stay private.
+   both exact revisions, in separate sections for household dated-opening
+   figures, invented-input (synthetic) fields, and coverage and input metadata.
+   Raw snapshot files and the digest receipt stay private.
    Missing snapshot code, execution/storage failure, an existing output directory
    or a checkout not on the supplied head returns 78 and does not claim review.
 3. Re-read live PR metadata. If either SHA moved, discard the comparison as stale
@@ -38,4 +57,6 @@ There is currently no verified confidential cross-job delivery/receipt mechanism
 The hosted changed/missing-baseline job therefore stays incomplete; it does not
 consume a self-attested receipt or automatically turn acceptance green. If the
 owner cannot access the approved private evidence, report that delivery blocker
-and keep acceptance withheld. The unchanged job requires no new evidence route.
+and keep acceptance withheld. An unchanged and complete job requires no new
+evidence route for the captured fields; it is not evidence for anything listed
+as not covered.

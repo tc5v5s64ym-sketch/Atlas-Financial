@@ -198,7 +198,11 @@ async function posting(body, apiError, sourceBase, sourceHead, existing = false,
     'planning.CANARY_HOUSEHOLD.remaining', 'private.CANARY_HOUSEHOLD']);
   const safe = Figures.formatPublicFiguresComment(base, head);
   assert.ok(safe.includes('Total: 6 compared; 4 changed.'));
+  assert.ok(safe.includes('| Plan | 1 | 0 | 0 | 0 |'));
   assert.ok(!/CANARY_HOUSEHOLD|947\.31|960\.31|2041-|\$|\+13/.test(safe));
+  // A synthetic map carries no coverage manifest: it is INCOMPLETE as well as
+  // changed, and can never read unchanged and accepted.
+  assert.ok(safe.includes('Coverage: INCOMPLETE.'));
   const posted = await posting(safe, false, base, head);
   assert.strictEqual(posted.posted.length, 1); assert.strictEqual(posted.annotations.length, 1);
   assert.ok(posted.annotations[0].includes('acceptance withheld'));
@@ -209,8 +213,9 @@ async function posting(body, apiError, sourceBase, sourceHead, existing = false,
   }
   assert.strictEqual((await posting(safe, false, undefined, head)).posted.length, 0,
     'missing snapshots cannot produce figures acceptance');
-  for (const body of [safe + CANARY, safe.replace('| Plan | 1 | 0 |', '| Plan | 1 | 2 |'),
+  for (const body of [safe + CANARY, safe.replace('| Plan | 1 | 0 | 0 | 0 |', '| Plan | 1 | 2 | 0 | 0 |'),
     safe.replace('Total: 6 compared; 4 changed.', 'Total: 6 compared; 3 changed.'),
+    safe.replace('Coverage: INCOMPLETE.', 'Coverage: complete.'),
     Figures.formatFiguresComment(base, head, CANARY)]) {
     const rejected = await posting(body, false, base, head);
     assert.strictEqual(rejected.posted.length, 0);
@@ -218,11 +223,31 @@ async function posting(body, apiError, sourceBase, sourceHead, existing = false,
   }
   for (const [a, b] of [[base, base], [null, head], [null, {}]]) {
     const result = await posting(Figures.formatPublicFiguresComment(a, b), false, a, b);
-    assert.strictEqual(result.posted.length, 1); assert.strictEqual(result.annotations.length, a === null ? 1 : 0);
+    assert.strictEqual(result.posted.length, 1); assert.strictEqual(result.annotations.length, 1);
+    assert.strictEqual(result.annotations[0].startsWith('Figures acceptance withheld and coverage incomplete'), a === null);
+    assert.strictEqual(result.annotations[0].startsWith('Figures coverage incomplete'), a !== null);
   }
-  const forgedCounts = safe.replace('| Plan | 1 | 0 |', '| Plan | 947 | 0 |')
+  const forgedCounts = safe.replace('| Plan | 1 | 0 | 0 | 0 |', '| Plan | 947 | 0 | 0 | 0 |')
     .replace('Total: 6 compared; 4 changed.', 'Total: 952 compared; 4 changed.');
   assert.strictEqual((await posting(forgedCounts, false, base, head)).posted.length, 0);
+  // A synthetic check snapshot with a reconciled manifest: every declared class
+  // observed by one invented input and the household. Unchanged and complete
+  // posts green; one moved invented field withholds acceptance.
+  const complete = { 'check.schema': Figures.CHECK_SCHEMA, 'check.collector.sha256': 'c'.repeat(64),
+    'check.household.input.sha256': 'd'.repeat(64), 'fixture.synthetic.input.sha256': 'e'.repeat(64) };
+  for (const cls of Figures.FIELD_CLASSES) {
+    const key = cls.pattern.split('.').map(part => (part === '*' ? 'synthetic' : part)).join('.');
+    const value = { money: 0, tag: 'synthetic', flag: false, true: true }[cls.kind];
+    complete[key] = value; complete['fixture.synthetic.' + key] = value;
+    complete['coverage.' + cls.id + '.household'] = 1; complete['coverage.' + cls.id + '.invented'] = 1;
+  }
+  const completeMoved = { ...complete, 'fixture.synthetic.plan.weeklyCap': 1 };
+  const green = await posting(Figures.formatPublicFiguresComment(complete, complete), false, complete, complete);
+  assert.strictEqual(green.posted.length, 1); assert.deepStrictEqual(green.annotations, []);
+  assert.ok(green.posted[0].includes('Figures acceptance: no compared field moved'));
+  const withheldOnly = await posting(Figures.formatPublicFiguresComment(complete, completeMoved), false, complete, completeMoved);
+  assert.strictEqual(withheldOnly.posted.length, 1);
+  assert.ok(withheldOnly.annotations.length === 1 && withheldOnly.annotations[0].startsWith('Figures acceptance withheld:'));
   const postFailure = await posting(safe, true, base, head);
   assert.strictEqual(postFailure.posted.length, 0);
   assert.strictEqual(postFailure.annotations.length, 1);
@@ -240,18 +265,21 @@ async function posting(body, apiError, sourceBase, sourceHead, existing = false,
   assert.strictEqual(fs.readFileSync(formatted.stdoutFile, 'utf8'), safe);
   // Exercise the shipped workflow's actual --public-summary CLI arguments,
   // independently specified additions/removals/types and the tolerance boundary.
+  const declared = Figures.FIELD_CLASSES.length;
   const cases = [
-    [base, base, false, 'Total: 5 compared; 0 changed.'],
-    [null, head, true, 'Total: 6 compared; 6 changed.'],
-    [null, {}, true, 'Total: 0 compared; 0 changed.'],
-    [{ 'cash.synthetic': 100 }, { 'cash.synthetic': 100.004 }, false, 'Total: 1 compared; 0 changed.'],
-    [{ 'cash.synthetic': 100 }, { 'cash.synthetic': 100.006 }, true, 'Total: 1 compared; 1 changed.'],
+    [base, base, false, true, 'Total: 5 compared; 0 changed.'],
+    [null, head, true, true, 'Total: 6 compared; 6 changed.'],
+    [null, {}, true, true, 'Total: 0 compared; 0 changed.'],
+    [{ 'cash.synthetic': 100 }, { 'cash.synthetic': 100.004 }, false, true, 'Total: 1 compared; 0 changed.'],
+    [{ 'cash.synthetic': 100 }, { 'cash.synthetic': 100.006 }, true, true, 'Total: 1 compared; 1 changed.'],
     [{ 'cash.removed': 3, 'credit.synthetic.rate': 9, 'bills.openCount': 1,
       'planning.date': '2041-07-09', 'planning.null': null },
     { 'cash.added': 4, 'credit.synthetic.rate': 10, 'bills.openCount': 2,
-      'planning.date': '2041-07-10', 'planning.null': 0 }, true, 'Total: 6 compared; 6 changed.'],
+      'planning.date': '2041-07-10', 'planning.null': 0 }, true, true, 'Total: 6 compared; 6 changed.'],
+    [complete, complete, false, false, `Total: ${declared * 4} compared; 0 changed.`],
+    [complete, completeMoved, true, false, `Total: ${declared * 4} compared; 1 changed.`],
   ];
-  for (const [a, b, withheld, total] of cases) {
+  for (const [a, b, withheld, incomplete, total] of cases) {
     fs.writeFileSync(baseFile, JSON.stringify(a)); fs.writeFileSync(headFile, JSON.stringify(b));
     const cli = Capture.runCaptured(process.execPath, [path.join(ROOT, 'scripts/figures-comment.js'),
       baseFile, headFile, 'main', '--public-summary'], { identity: 'figures-comment', env });
@@ -259,9 +287,10 @@ async function posting(body, apiError, sourceBase, sourceHead, existing = false,
     const body = fs.readFileSync(cli.stdoutFile, 'utf8');
     assert.ok(body.includes(total));
     assert.strictEqual(body.includes('acceptance: WITHHELD'), withheld);
+    assert.strictEqual(body.includes('Coverage: INCOMPLETE.'), incomplete);
     const actual = await posting(body, false, a, b);
     assert.strictEqual(actual.posted.length, 1);
-    assert.strictEqual(actual.annotations.length, withheld ? 1 : 0);
+    assert.strictEqual(actual.annotations.length, withheld || incomplete ? 1 : 0);
     assert.strictEqual((await posting(body.replace(/Figures acceptance:.*\n/, ''), false, a, b)).posted.length, 0,
       'missing acceptance disposition cannot post');
   }

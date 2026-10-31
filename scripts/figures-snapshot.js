@@ -8,9 +8,34 @@
  * SEEN, and it has to match what the merge card says was intended.
  *
  * The rule for what belongs in here: if the household could read it off the
- * Plan, Bills, Subscriptions, Credit, or Planning surface and do something
- * differently because of it, it belongs. Anything that is only evidence does
- * not. Deep Dive, Records, and Modellers remain outside this snapshot.
+ * Plan, Budget, Savings, Bills, Subscriptions, Credit, or Planning surface and
+ * do something differently because of it, it belongs, with its trust tag.
+ * Anything that is only evidence does not.
+ * Deep Dive, Records, and Modellers remain outside this snapshot, as do page
+ * rendering and page-side decisions.
+ *
+ * WHAT ONE RUN EMITS (the check snapshot, `node scripts/figures-snapshot.js`):
+ *
+ *   - the household dated opening: data.json + public/periods.json, unprefixed
+ *     keys. It is the only household evidence CI has. Household figures at a
+ *     live opening cannot be observed here at all (no provider access in CI).
+ *   - every invented input in test/fixtures/figures-inputs/*.json, under
+ *     `fixture.<id>.`, with `fixture.<id>.input.sha256` = the digest of that
+ *     complete effective input (its served data and its own periods payload).
+ *     Invented inputs never read data.json or public/periods.json.
+ *   - `check.*` collector and household-input digests, and a coverage manifest
+ *     `coverage.<class>.household` (0 or 1) / `.invented` (how many invented
+ *     inputs observe the class) for the fixed vocabulary in figures-comment.js.
+ *
+ * `--household-only` emits just the household map (the pre-v2 shape), for
+ * local use and for suites that compare against an older revision's script.
+ * `--coverage` prints the manifest with class names, locally; the names never
+ * reach the public summary.
+ *
+ * Every input runs Forecast.recommend with the Budget page's own default
+ * options (pageOptions below): an engine-input parity subset, NOT full page
+ * parity. Page-side decisions the page makes before calling Forecast are not
+ * executed here, and an input on which they could matter is refused.
  *
  * Output is a flat `{ "label": value }` map so the diff is trivial and stable
  * across revisions. Values are numbers where they are money, strings where
@@ -63,19 +88,91 @@
  * mid-branch commit and keep the word "base".
  */
 
+const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const ROOT = path.join(__dirname, '..');
 const F = require(path.join(ROOT, 'public', 'forecast.js'));
+const INPUT_DIR = path.join(ROOT, 'test', 'fixtures', 'figures-inputs');
+const INPUT_SCHEMA = 'atlas-figures-input/v1';
+const INPUT_ID = /^[a-z][a-z0-9-]{0,47}$/;
+const INPUT_KEYS = ['schema', 'id', 'invented', 'description', 'origin', 'limitations', 'periods', 'data'];
+const ORIGIN_KEYS = ['kind', 'source', 'transform'];
+const ORIGIN_KINDS = ['test-builder', 'invented-ledger'];
+const LIMITATIONS = ['absent-periods'];
 
 const round = n => Math.round(n * 100) / 100;
+
+// The Budget page's default Forecast.recommend call, mirrored as an
+// ENGINE-INPUT PARITY SUBSET: public/plan.js simOpts (:211-224) with the knobs
+// loadKnobs takes from plan.defaults, the canonical debts and their policy
+// target and the extra facilities wireControls sets (:9020-9023), then
+// renderPlan's own additions (:8144-8157): the funding sources, the periods
+// payload, and the served overlay. Only currentPeriodActuals is gated on
+// liveOverlay.applied === true; operatingPlan, observedCash and
+// operatingPlanNote are read from any overlay, exactly as the page reads them.
+// Persisted or user-adjusted knobs are not covered. Two page-side decisions are
+// not executed: the PA-5 effective verdict (liveOperatingPlanUnavailable) and
+// ATLAS-080 settlement qualification (planSettlementOutcome). parityExclusions
+// names an input on which either could make the page differ from this call.
+function pageOptions(data, periods) {
+  const plan = data.plan;
+  const overlay = data.liveOverlay;
+  const priority = F.debtPriority(plan, data.debts);
+  return {
+    scenario: plan.defaults.scenario,
+    targetBuffer: plan.defaults.targetBuffer,
+    extraDebtMonthly: plan.defaults.extraDebtMonthly,
+    incomeOverrides: {},
+    disabled: [],
+    debts: data.debts,
+    extraDebtTarget: priority.target && priority.target.id,
+    extraFacilities: data.revolvingExtra,
+    fundingSources: plan.funding && plan.funding.options,
+    periods,
+    currentPeriodActuals: overlay && overlay.applied === true ? overlay.currentPeriodActuals : null,
+    operatingPlan: overlay && overlay.operatingPlan,
+    observedCash: overlay && overlay.observedCash,
+    operatingPlanNote: overlay && overlay.operatingPlanNote,
+  };
+}
+
+// Fail-closed bound of the parity subset: any served settlement outcome
+// (ATLAS-080 qualification may change the options or short-circuit the page),
+// and any overlay that was not applied (the PA-5 verdict may replace the
+// served operatingPlan). Wider than either page predicate on purpose.
+function parityExclusions(data) {
+  const reasons = [];
+  if (data.settlementEvidenceStatus !== undefined || data.settlementEvidence !== undefined) {
+    reasons.push('settlement-outcome');
+  }
+  const overlay = data.liveOverlay;
+  if (overlay !== undefined && overlay !== null && overlay.applied !== true) reasons.push('overlay-not-applied');
+  return reasons;
+}
+
+// Ids and dates become key segments; a dot inside one would change the shape.
+const segment = value => String(value).replace(/\./g, '_');
 
 function buildFiguresSnapshot(data, periods) {
 const plan = data.plan;
 const asOf = data.meta.asOf;
 
 const out = {};
+// Values are inert scalars. A nonfinite number or a structured value is a
+// collector or engine failure, never a legitimate null: it throws.
 const put = (key, value) => {
-  out[key] = typeof value === 'number' && isFinite(value) ? round(value) : value;
+  if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('nonfinite snapshot value: ' + key);
+  if (value !== null && value !== undefined && typeof value === 'object') throw new Error('structured snapshot value: ' + key);
+  if (typeof value === 'function' || typeof value === 'bigint' || typeof value === 'symbol') {
+    throw new Error('unserializable snapshot value: ' + key);
+  }
+  out[key] = typeof value === 'number' ? round(value) : value;
+};
+// A field the publication carries, copied as it is; a missing field stays
+// missing (absent key), an explicit null stays null.
+const putField = (key, row, field) => {
+  if (row && Object.prototype.hasOwnProperty.call(row, field) && row[field] !== undefined) put(key, row[field]);
 };
 
 put('meta.asOf', asOf);
@@ -91,17 +188,11 @@ for (const h of plan.startingCash.heldElsewhere || []) {
 }
 
 /* ---- the recommendation, which is the point of the whole page ---------- */
-const opts = {
-  scenario: plan.defaults.scenario, incomeOverrides: {}, disabled: [],
-  extraDebtMonthly: plan.defaults.extraDebtMonthly || 0,
-  targetBuffer: plan.defaults.targetBuffer,
-};
-// The funding source decides whether covering an opening gap costs anything,
-// so the snapshot uses the same default the page does.
-opts.fundingSources = (plan.funding || {}).options;
-opts.extraFacilities = data.revolvingExtra;
-
-const advice = F.recommend(plan, asOf, opts);
+// ONE call with the Budget page's own default options (pageOptions above). The
+// funding source decides whether covering an opening gap costs anything, and
+// the periods payload feeds the payday risk rows the page renders, so the
+// snapshot reads the page's computation rather than a reduced copy of it.
+const advice = F.recommend(plan, asOf, pageOptions(data, periods));
 const savings = advice.savingsInventory;
 if (savings) {
   put('savings.setup', savings.status);
@@ -124,8 +215,9 @@ if (advice.funding) {
 put('plan.weeklyCap', advice.weekly);
 put('plan.weeklyCapMonthly', F.monthlyFromWeekly(advice.weekly));
 put('plan.effectiveFrom', advice.effectiveFrom);
-put('plan.bindingDate', advice.binding.date);
-put('plan.bindingBalance', advice.binding.balance);
+// A withheld plan publishes no binding day; that is null, not a crash.
+put('plan.bindingDate', advice.binding ? advice.binding.date : null);
+put('plan.bindingBalance', advice.binding ? advice.binding.balance : null);
 put('plan.endingCash', advice.sim.ending);
 put('plan.lowestCash', advice.sim.min.balance);
 put('plan.lowestCashDate', advice.sim.min.date);
@@ -242,7 +334,7 @@ for (const m of proj.marks) {
   put(`scoreboard.${tag}.creditHeadroom`, m.headroom);
   put(`scoreboard.${tag}.facilitiesOverLimit`, m.overLimitCount);
 }
-put('debt.interestOverWindow', proj.marks[proj.marks.length - 1].interestToDate);
+put('debt.interestOverWindow', proj.marks.length ? proj.marks[proj.marks.length - 1].interestToDate : null);
 for (const c of proj.crossings || []) {
   put(`debt.overLimit.${c.id}`, c.alreadyOver ? 'already over today' : c.date);
 }
@@ -298,6 +390,8 @@ put('credit.asOf', accounts.asOf);
 for (const row of [...(accounts.secured || []), ...(accounts.cards || [])]) {
   const p = `credit.${row.id}`;
   put(`${p}.balance`, row.balance);
+  // The account chip and the next payment's date chip the page renders.
+  putField(`${p}.confidence`, row, 'confidence');
   put(`${p}.pendingUnknown`, row.pendingUnknown === true);
   put(`${p}.pending`, row.pending);
   put(`${p}.rate`, row.rate);
@@ -314,6 +408,7 @@ for (const row of [...(accounts.secured || []), ...(accounts.cards || [])]) {
   put(`${p}.minimum`, next ? next.amount : null);
   put(`${p}.due`, next ? next.date : null);
   if (next && next.confidence) put(`${p}.minimumConfidence`, next.confidence);
+  if (next && next.dateConfidence) put(`${p}.minimumDateConfidence`, next.dateConfidence);
   if (row.nextCapitalise) {
     put(`${p}.capitalise`, row.nextCapitalise.amount);
     put(`${p}.capitaliseDate`, row.nextCapitalise.date);
@@ -343,6 +438,7 @@ for (const row of billsView.bills || []) {
   put(`${p}.frequency`, row.frequency);
   put(`${p}.nextDate`, row.nextDate);
   put(`${p}.monthlyEquivalent`, row.monthlyEquivalent);
+  putField(`${p}.confidence`, row, 'confidence');
 }
 
 /* ---- Subscriptions: Forecast.householdSubscriptions, the same roster the page renders */
@@ -358,6 +454,7 @@ for (const row of subscriptionsView.subscriptions || []) {
   put(`${p}.frequency`, row.frequency);
   put(`${p}.nextDate`, row.nextDate);
   put(`${p}.monthlyEquivalent`, row.monthlyEquivalent);
+  putField(`${p}.confidence`, row, 'confidence');
 }
 
 /* ---- Planning: Forecast.majorPlans on the same recommend the pages use */
@@ -452,24 +549,253 @@ if (trajectory.status === 'ready') {
   put('planning.trajectory.reason', trajectory.reason);
 }
 
+putPayPeriods(put, putField, advice);
+putSavingsPublication(put, putField, advice, asOf);
+
 return out;
 }
 
-function loadCanonicalInputs() {
-  const data = require(path.join(ROOT, 'data.json'));
-  let periods = null;
-  try { periods = require(path.join(ROOT, 'public', 'periods.json')); } catch { /* optional */ }
+/* ---- Budget pay periods: Forecast.recommend payPeriodViews, every period the page can select */
+// Copied as published, with each figure's trust tag beside it. Nothing is
+// summed, netted or re-dated here. A period is keyed by its start date and a
+// bill row by its id and date, so a period or row that appears, disappears or
+// moves shows up as a changed key.
+const PERIOD_FIELDS = ['role', 'timelineRole', 'end', 'opening', 'openingTrust', 'openingSource', 'openingBasis',
+  'incomeTotal', 'incomeTrust', 'periodBillLoad', 'periodBillLoadTrust', 'paidBills', 'remainingBills', 'afterBills',
+  'afterBillsTrust', 'budgetHold', 'budgetHoldTrust', 'balanceAfterDeductions', 'balanceAfterDeductionsTrust',
+  'predictedEndingBalance', 'predictedEndingBalanceIdentity', 'paydaySweep', 'paydaySweepTrust', 'plannedPeriodClose',
+  'plannedPeriodCloseTrust', 'plannedPeriodCloseReason', 'operatingPlanUnavailable'];
+const PERIOD_BILL_FIELDS = ['amount', 'status', 'settlement', 'confidence', 'dateConfidence', 'displayAmountBasis',
+  'displayAmountTrust', 'cardPaid'];
+
+// One key per identity; a repeated identity gets an ordinal instead of
+// silently overwriting the first.
+function uniqueKey(used, key) {
+  let candidate = key;
+  for (let n = 2; used.has(candidate); n++) candidate = key + '#' + n;
+  used.add(candidate);
+  return candidate;
+}
+
+function putPayPeriods(put, putField, advice) {
+  const views = Array.isArray(advice.payPeriodViews) ? advice.payPeriodViews : [];
+  const periodKeys = new Set();
+  for (const view of views) {
+    if (!view || typeof view.start !== 'string' || !view.start) throw new Error('pay period without a start date');
+    const p = uniqueKey(periodKeys, 'period.' + segment(view.start));
+    for (const field of PERIOD_FIELDS) putField(p + '.' + field, view, field);
+    const billKeys = new Set();
+    for (const bill of Array.isArray(view.bills) ? view.bills : []) {
+      const b = uniqueKey(billKeys, p + '.bill.' + segment(bill && bill.id) + '@' + segment(bill && bill.date));
+      for (const field of PERIOD_BILL_FIELDS) putField(b + '.' + field, bill, field);
+    }
+  }
+  // "Expected Bills balance at period end": the active period's publication.
+  const atEnd = advice.defaultView && advice.defaultView.billsAccountPeriodBalance;
+  if (atEnd) {
+    for (const field of ['amount', 'status', 'trust', 'end']) putField('period.billsAtEnd.' + field, atEnd, field);
+  }
+}
+
+/* ---- Savings: Forecast.savingsFundingPublication, the selector the Budget and Savings pages call */
+// For each period the page can select: whether the selector published or
+// withheld the packet, the projected Savings close with its nature and trust,
+// each goal row's Saved / Needed / Still to fund, the planned requirements,
+// and the current period's surplus and rows. Copied, never recomputed.
+const CLOSE_FIELDS = ['status', 'nature', 'trust', 'stock', 'operatingCash', 'contribution', 'projectedContributions',
+  'projectedDraws', 'projectedDeficitCoverage', 'unallocated', 'balanceAsOf', 'verifiedReason', 'reason'];
+const CLOSE_ROW_FIELDS = ['forecastSaved', 'forecastContribution', 'needed', 'stillToFund', 'stillToFundTrust'];
+const CLOSE_ITEM_FIELDS = ['forecastSaved', 'needed', 'stillToFund', 'stillToFundTrust'];
+const PLANNED_ROW_FIELDS = ['needed', 'stillToFund', 'stillToFundTrust'];
+const CURRENT_ROW_FIELDS = ['saved', 'savedTrust', 'needed', 'neededTrust', 'thisPeriod', 'thisPeriodTrust',
+  'remainingThisPeriod', 'stillToFund', 'stillToFundTrust'];
+
+function putRows(put, putField, prefix, rows, fields) {
+  const used = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const r = uniqueKey(used, prefix + segment(row && row.key));
+    for (const field of fields) putField(r + '.' + field, row, field);
+    if (row && Array.isArray(row.members)) put(r + '.members', row.members.map(String).join(','));
+  }
+}
+
+function putSavingsPublication(put, putField, advice, asOf) {
+  if (!Object.prototype.hasOwnProperty.call(advice, 'savingsFunding') || advice.savingsFunding === undefined) return;
+  const funding = advice.savingsFunding;
+  put('savings.funding.status', funding && typeof funding.status === 'string' ? funding.status : null);
+  if (!funding) return;
+  const views = Array.isArray(advice.payPeriodViews) ? advice.payPeriodViews : [];
+  const periodKeys = new Set();
+  for (const view of views) {
+    const current = view.timelineRole === 'current';
+    const p = uniqueKey(periodKeys, current ? 'savings.current' : 'savings.period.' + segment(view.start));
+    const packet = F.savingsFundingPublication(funding, { asOf, advice, periodId: view.id });
+    put(p + '.publication', packet ? 'published' : 'withheld');
+    if (!packet) continue;
+    putField(p + '.status', packet, 'status');
+    if (current) {
+      putField(p + '.nativePeriodSurplus', packet.period, 'nativePeriodSurplus');
+      putField(p + '.trust', packet.period, 'trust');
+      putRows(put, putField, p + '.row.', packet.rows, CURRENT_ROW_FIELDS);
+      continue;
+    }
+    const close = packet.forecastClosing;
+    if (close) {
+      for (const field of CLOSE_FIELDS) putField(p + '.close.' + field, close, field);
+      if (close.gap) {
+        putField(p + '.close.gapShortBy', close.gap, 'shortBy');
+        putField(p + '.close.gapDate', close.gap, 'date');
+        putField(p + '.close.gapTrust', close.gap, 'trust');
+      }
+      putRows(put, putField, p + '.close.row.', close.rows, CLOSE_ROW_FIELDS);
+      putRows(put, putField, p + '.close.item.', close.items, CLOSE_ITEM_FIELDS);
+    }
+    if (packet.plannedRequirements) {
+      putRows(put, putField, p + '.planned.row.', packet.plannedRequirements.rows, PLANNED_ROW_FIELDS);
+    }
+  }
+}
+
+/* ---- inputs ----------------------------------------------------------------- */
+const isPlainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const sameKeys = (object, keys) => JSON.stringify(Object.keys(object).sort()) === JSON.stringify([...keys].sort());
+const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
+
+// Key-sorted JSON, so a digest names content rather than file formatting.
+function canonicalJson(value) {
+  if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']';
+  if (isPlainObject(value)) {
+    return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + canonicalJson(value[k])).join(',') + '}';
+  }
+  if (value === undefined || typeof value === 'function' || typeof value === 'bigint' || typeof value === 'symbol'
+    || (typeof value === 'number' && !Number.isFinite(value))) throw new Error('uncanonical input value');
+  return JSON.stringify(value);
+}
+
+function loadCanonicalInputs(root = ROOT) {
+  const data = JSON.parse(fs.readFileSync(path.join(root, 'data.json'), 'utf8'));
+  const periodsFile = path.join(root, 'public', 'periods.json');
+  // An absent periods payload is a real served state; a malformed one is not.
+  const periods = fs.existsSync(periodsFile) ? JSON.parse(fs.readFileSync(periodsFile, 'utf8')) : null;
   return { data, periods };
 }
 
-function main() {
-  const { data, periods } = loadCanonicalInputs();
-  process.stdout.write(JSON.stringify(buildFiguresSnapshot(data, periods), null, 2) + '\n');
+// An invented input is frozen served data plus its own periods payload. The
+// schema is closed: unknown keys, a file name that is not the id, a missing
+// `invented: true`, description or origin, or an input outside the parity
+// subset is refused, never skipped.
+function validateInventedInput(doc, file) {
+  const fail = why => { throw new Error('invalid figures input ' + file + ': ' + why); };
+  if (!isPlainObject(doc) || !sameKeys(doc, INPUT_KEYS)) fail('keys');
+  if (doc.schema !== INPUT_SCHEMA) fail('schema');
+  if (typeof doc.id !== 'string' || !INPUT_ID.test(doc.id) || doc.id + '.json' !== file) fail('id');
+  if (doc.invented !== true) fail('invented');
+  if (typeof doc.description !== 'string' || !doc.description.trim()) fail('description');
+  const origin = doc.origin;
+  if (!isPlainObject(origin) || !sameKeys(origin, ORIGIN_KEYS) || !ORIGIN_KINDS.includes(origin.kind)
+    || typeof origin.source !== 'string' || !origin.source.trim()
+    || typeof origin.transform !== 'string' || !origin.transform.trim()) fail('origin');
+  if (!Array.isArray(doc.limitations) || new Set(doc.limitations).size !== doc.limitations.length
+    || doc.limitations.some(item => !LIMITATIONS.includes(item))) fail('limitations');
+  if (!(doc.periods === null || isPlainObject(doc.periods))) fail('periods');
+  if ((doc.periods === null) !== doc.limitations.includes('absent-periods')) fail('absent-periods limitation');
+  const data = doc.data;
+  if (!isPlainObject(data) || !isPlainObject(data.meta) || typeof data.meta.asOf !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}$/.test(data.meta.asOf) || !isPlainObject(data.plan) || !isPlainObject(data.plan.defaults)
+    || !Array.isArray(data.debts) || !Array.isArray(data.revolvingExtra)) fail('data');
+  const excluded = parityExclusions(data);
+  if (excluded.length) fail('outside the engine-input parity subset (' + excluded.join(', ') + ')');
+  return doc;
+}
+
+function loadInventedInputs(dir = INPUT_DIR) {
+  return fs.readdirSync(dir).sort().map(file => {
+    const full = path.join(dir, file);
+    if (!file.endsWith('.json') || !fs.statSync(full).isFile()) throw new Error('unexpected entry in figures inputs: ' + file);
+    const doc = validateInventedInput(JSON.parse(fs.readFileSync(full, 'utf8')), file);
+    return { id: doc.id, doc, digest: sha256(canonicalJson(doc)) };
+  });
+}
+
+// The instrument's own identity: a moved field on an unedited input can come
+// from the engine or from this collector, and the summary keeps them apart.
+function collectorDigest() {
+  return sha256(['figures-snapshot.js', 'figures-comment.js']
+    .map(file => fs.readFileSync(path.join(__dirname, file), 'utf8').replace(/\r\n/g, '\n')).join('\0'));
+}
+
+function buildCheckSnapshot(canonicalInputs, inputs) {
+  const { CHECK_SCHEMA, FIELD_CLASSES, snapshotObserves } = require('./figures-comment');
+  const excluded = parityExclusions(canonicalInputs.data);
+  if (excluded.length) {
+    throw new Error('the household dated opening is outside the engine-input parity subset (' + excluded.join(', ') + ')');
+  }
+  const out = {
+    'check.schema': CHECK_SCHEMA,
+    'check.collector.sha256': collectorDigest(),
+    'check.household.input.sha256': sha256(canonicalJson({ data: canonicalInputs.data, periods: canonicalInputs.periods })),
+  };
+  const household = buildFiguresSnapshot(canonicalInputs.data, canonicalInputs.periods);
+  for (const [key, value] of Object.entries(household)) {
+    if (/^(check|coverage|fixture)\./.test(key)) throw new Error('reserved household snapshot key: ' + key);
+    if (value !== undefined) out[key] = value;
+  }
+  const invented = [];
+  for (const input of inputs) {
+    const snapshot = buildFiguresSnapshot(input.doc.data, input.doc.periods);
+    const prefix = 'fixture.' + input.id + '.';
+    out[prefix + 'input.sha256'] = input.digest;
+    for (const [key, value] of Object.entries(snapshot)) {
+      if (key.startsWith('input.')) throw new Error('reserved input snapshot key: ' + key);
+      if (value !== undefined) out[prefix + key] = value;
+    }
+    invented.push(snapshot);
+  }
+  for (const cls of FIELD_CLASSES) {
+    out['coverage.' + cls.id + '.household'] = snapshotObserves(household, cls) ? 1 : 0;
+    out['coverage.' + cls.id + '.invented'] = invented.filter(snapshot => snapshotObserves(snapshot, cls)).length;
+  }
+  return out;
+}
+
+function main(argv = process.argv.slice(2)) {
+  const householdOnly = argv.length === 1 && argv[0] === '--household-only';
+  const coverage = argv.length === 1 && argv[0] === '--coverage';
+  if (argv.length && !householdOnly && !coverage) {
+    process.stderr.write('usage: node scripts/figures-snapshot.js [--household-only | --coverage]\n');
+    process.exitCode = 1;
+    return;
+  }
+  const canonicalInputs = loadCanonicalInputs();
+  if (householdOnly) {
+    process.stdout.write(JSON.stringify(buildFiguresSnapshot(canonicalInputs.data, canonicalInputs.periods), null, 2) + '\n');
+    return;
+  }
+  const snapshot = buildCheckSnapshot(canonicalInputs, loadInventedInputs());
+  if (coverage) {
+    // Local only: class names with household 0/1 and invented-input counts.
+    const { FIELD_CLASSES } = require('./figures-comment');
+    for (const cls of FIELD_CLASSES) {
+      process.stdout.write([cls.id, cls.family, snapshot['coverage.' + cls.id + '.household'],
+        snapshot['coverage.' + cls.id + '.invented']].join('\t') + '\n');
+    }
+    return;
+  }
+  process.stdout.write(JSON.stringify(snapshot, null, 2) + '\n');
 }
 
 if (require.main === module) main();
 
 module.exports = {
   buildFiguresSnapshot,
+  buildCheckSnapshot,
+  loadCanonicalInputs,
+  loadInventedInputs,
+  validateInventedInput,
+  pageOptions,
+  parityExclusions,
+  canonicalJson,
+  INPUT_DIR,
+  INPUT_SCHEMA,
   main,
 };
