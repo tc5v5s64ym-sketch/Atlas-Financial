@@ -6163,6 +6163,26 @@
     return 'unknown';
   }
 
+  // PA-4a-2a (Astra #787 6534140193 §3): one strict completeness reading of
+  // coverage evidence, shared by every dependent card/Savings verdict so that
+  // equivalent evidence gets an equal verdict on every path. Accepts the
+  // explicit 'complete' stamp or a supported object with complete:true, an
+  // absent or 'complete' status, no truncation/continuation flag, and (when
+  // it declares a window) a window equal to the packet's coverage dates.
+  // Contradictions win over positive flags; absence is never completeness.
+  // The incumbent lenient selectors below keep their own legacy callers.
+  function coverageEvidenceComplete(value, packet) {
+    if (value === 'complete') return true;
+    if (value == null || typeof value !== 'object' || Array.isArray(value) || value.complete !== true) return false;
+    if (Object.hasOwn(value, 'status') && value.status !== 'complete') return false;
+    if (['truncated', 'hasMore', 'has_more'].some(key => Object.hasOwn(value, key)
+      && value[key] != null && value[key] !== false)) return false;
+    const declared = key => Object.hasOwn(value, key) && value[key] != null;
+    if (declared('startDate') && (!packet || value.startDate !== packet.coverageStart)) return false;
+    if (declared('endDate') && (!packet || value.endDate !== packet.coverageThrough)) return false;
+    return true;
+  }
+
   function transactionCoverageStatus(packet) {
     const cov = packet && packet.transactionCoverage;
     if (cov === 'truncated' || cov === 'incomplete') return 'truncated';
@@ -10948,8 +10968,8 @@
     const origin = validOpening ? opening.asOf : packet.coverageStart;
     if (!savingsDate(asOf) || !savingsDate(origin) || packet.observationAsOf !== asOf
       || !packet.coverageStart || packet.coverageStart > origin || !packet.coverageThrough
-      || packet.coverageThrough < asOf || packet.transactionCoverage !== 'complete'
-      || packet.pendingCoverage !== 'complete') issue('coverage-history-incomplete');
+      || packet.coverageThrough < asOf || !coverageEvidenceComplete(packet.transactionCoverage, packet)
+      || !coverageEvidenceComplete(packet.pendingCoverage, packet)) issue('coverage-history-incomplete');
     const unit = tx => tx.coverageCurrencyConflict !== true
       && typeof tx.currency === 'string' && tx.currency.trim().toLowerCase() === 'cad';
     const money = tx => savingsCents(tx.amount, true);
@@ -22552,9 +22572,8 @@
     if (!cycle || !packet || packet.observationAsOf !== day || packet.currency != null && String(packet.currency).toUpperCase() !== 'CAD'
         || !savingsDate(packet.coverageStart) || packet.coverageStart > cycle.start
         || !savingsDate(packet.coverageThrough) || packet.coverageThrough < day
-        || !(packet.transactionCoverage === 'complete' || packet.transactionCoverage?.complete === true)
-        || transactionCoverageStatus(packet) !== 'complete'
-        || pendingCoverageStatus(packet) !== 'complete' || !Array.isArray(packet.transactions)
+        || !coverageEvidenceComplete(packet.transactionCoverage, packet)
+        || !coverageEvidenceComplete(packet.pendingCoverage, packet) || !Array.isArray(packet.transactions)
         || !Array.isArray(packet.representedActuals)) return unknown('Explicit complete current-cycle cash and transaction evidence is required.');
     const unique = new Map();
     for (const tx of packet.transactions) {
@@ -22580,8 +22599,7 @@
       if (prior && JSON.stringify(prior) !== JSON.stringify(tx)) return unknown('Repeated transaction identity has contradictory evidence.');
       unique.set(id, tx);
     }
-    opts = { ...opts, currentPeriodActuals: { ...packet, transactionCoverage: 'complete', pendingCoverage: 'complete',
-      transactions: Array.from(unique.values()) } };
+    opts = { ...opts, currentPeriodActuals: { ...packet, transactions: Array.from(unique.values()) } };
     const snapshot = establishPaydaySnapshot(plan, cycle.start, opts);
     if (!snapshot) return unknown('No original payday cash observation supports the cycle bridge.');
     let bridgedCash = savingsCents(snapshot.opening, true);
