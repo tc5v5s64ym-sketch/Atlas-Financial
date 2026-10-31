@@ -11565,8 +11565,26 @@
   // card coverage history establishes F = 0. Any unresolved payment or a
   // recorded settlement this slice does not yet qualify leaves F, and so the
   // remaining requirement, unknown (null), never zero.
-  function cardMatchHouseholdRemaining(plan, coverage, budget) {
+  // Atlas #787 6538656590 (1): a remaining scheduled card payment whose
+  // possible overlap with this remaining H could change D, with no evidence
+  // qualifying that overlap, leaves the requirement unknown. A payment row
+  // whose card is a different, unambiguous card is disjoint and stays numeric;
+  // one with no card identity is ambiguous and holds.
+  function cardMatchHouseholdRemaining(plan, coverage, budget, remainingRows) {
     if (!cardMatchOnlyHold(plan, coverage) || !budget || !Array.isArray(budget.items)) return null;
+    const heldCards = new Set();
+    for (const row of budget.items) for (const r of (row && row.recon) || []) {
+      if (r && isRevolvingCardAccount({ account: r.account })) heldCards.add(String(r.account));
+    }
+    if (heldCards.size) {
+      const obligations = new Map(((plan && plan.obligations) || []).filter(o => o && o.id).map(o => [o.id, o]));
+      for (const row of remainingRows || []) {
+        if (!row || row.kind !== 'obligation') continue;
+        const source = obligations.get(row.id);
+        if (!source || source.effect !== 'payment' && source.debtId == null) continue;
+        if (source.debtId == null || heldCards.has(String(source.debtId))) return null;
+      }
+    }
     const codes = (coverage.issues || []).map(issue => issue && issue.code);
     if (codes.includes('coverage-payment-or-credit-purpose-unconfirmed')) return null;
     const policy = plan && plan.cardPurchaseCoverage;
@@ -12275,7 +12293,9 @@
             // qualified settlement terms seeds an ESTIMATED opening.
             const cardHeld = cardCoverage.status === 'unavailable';
             const remainingBudget = !remainingBudgetKnown ? null
-              : cardHeld ? cardMatchHouseholdRemaining(plan, cardCoverage, budget)
+              : cardHeld ? cardMatchHouseholdRemaining(plan, cardCoverage, budget,
+                assignedBillRows.filter(row => row && row.date >= asOf
+                  && billBelongsOnPaydayWaterfall(row, asOf, 'cutover-opening')))
               : budget.items.reduce((sum, row) =>
                 sum + Math.max(0, savingsCents(row.hold) - savingsCents(row.spent, true)), 0);
             if (cardHeld && remainingBudget != null) cardMatchSeedEstimated = true;
