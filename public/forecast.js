@@ -22627,7 +22627,7 @@
           start: dependent.start, end: dependent.end, asOf, currency: 'CAD',
           source: 'Forecast.recommend.savingsFunding', actionPermission: 'not-granted',
           moneyMovementPermission: 'not-granted' });
-        return result;
+        return labelEstimates();
       }
       let eligible = current ? net + overlap - saved - transferred
         : publishedSweep;
@@ -22710,43 +22710,49 @@
         actionPermission: 'not-granted', moneyMovementPermission: 'not-granted',
         reason: 'Forecast at period close. Each period\'s eligible surplus is swept into Savings on the following payday; routine Bills deficits are shown, not covered from Savings. Current-tail receipts are qualified separately; expenses occur once in the native cash walk.' });
     }
-    if (estimate) {
-      const balanceAsOf = reported.balanceThrough || reported.checkedAsOf;
-      const assumptions = [
-        'Starts from the reported Savings balance dated ' + balanceAsOf + '.',
-        'An unqualified Savings movement may or may not already be included in that reported balance.',
-        'The current-period sweep counts proven household transfers only.',
-      ];
-      for (const [end, row] of result) if (row.status === 'ready') result.set(end, { ...row,
-        nature: 'reported-balance-estimate', balanceAsOf, assumptions, verifiedReason: planning.verifiedReason,
-        reason: 'Estimated from the reported Savings balance dated ' + balanceAsOf
-          + '. Verified backing is withheld: ' + planning.verifiedReason });
-    }
-    if (cardBasis) {
-      // Never the clean nature: card purchases whose payment matching is
-      // unconfirmed are funded from the household allowance, not as Bills cash
-      // already spent. Atlas 6538656590 (7): until the sequenced consumer
-      // recognises this nature, the published close stays unknown and the
-      // typed estimate rides beside it, never as the close's own total.
-      const cardAssumption = 'Card purchases whose payment matching is unconfirmed are funded from the remaining household allowance; card spending is not counted as Bills cash already spent.';
-      for (const [end, row] of result) if (row.status === 'ready') {
-        const typed = { ...row,
-          nature: estimate ? 'reported-balance-and-card-matching-estimate' : 'card-matching-estimate',
-          estimateBasis: planning.estimateBasis, estimateReasons: planning.estimateReasons.slice(),
-          assumptions: [...(row.assumptions || []), cardAssumption],
-          verifiedReason: planning.verifiedReason,
-          reason: (estimate ? row.reason + ' ' : '') + 'Card purchase matching is unconfirmed: '
-            + planning.estimateReasons.at(-1) };
-        result.set(end, { status: 'unavailable', stock: null, items: [], rows: [], actualSaved: null,
-          trust: 'unknown', start: row.start, end: row.end, asOf, currency: 'CAD',
-          source: 'Forecast.recommend.savingsFunding',
-          actionPermission: 'not-granted', moneyMovementPermission: 'not-granted',
-          estimateBasis: typed.estimateBasis, estimateReasons: typed.estimateReasons.slice(),
-          reason: 'The estimated close is withheld until card purchase matching is recognised here. ' + typed.reason,
-          cardMatchingEstimate: typed });
+    return labelEstimates();
+    // Every return of computed closes passes through here, so a ready close
+    // never escapes its estimate labels (Codex P1 on #812: the missing-sweep
+    // return below skipped them, for the movement estimate too).
+    function labelEstimates() {
+      if (estimate) {
+        const balanceAsOf = reported.balanceThrough || reported.checkedAsOf;
+        const assumptions = [
+          'Starts from the reported Savings balance dated ' + balanceAsOf + '.',
+          'An unqualified Savings movement may or may not already be included in that reported balance.',
+          'The current-period sweep counts proven household transfers only.',
+        ];
+        for (const [end, row] of result) if (row.status === 'ready') result.set(end, { ...row,
+          nature: 'reported-balance-estimate', balanceAsOf, assumptions, verifiedReason: planning.verifiedReason,
+          reason: 'Estimated from the reported Savings balance dated ' + balanceAsOf
+            + '. Verified backing is withheld: ' + planning.verifiedReason });
       }
+      if (cardBasis) {
+        // Never the clean nature: card purchases whose payment matching is
+        // unconfirmed are funded from the household allowance, not as Bills cash
+        // already spent. Atlas 6538656590 (7): until the sequenced consumer
+        // recognises this nature, the published close stays unknown and the
+        // typed estimate rides beside it, never as the close's own total.
+        const cardAssumption = 'Card purchases whose payment matching is unconfirmed are funded from the remaining household allowance; card spending is not counted as Bills cash already spent.';
+        for (const [end, row] of result) if (row.status === 'ready') {
+          const typed = { ...row,
+            nature: estimate ? 'reported-balance-and-card-matching-estimate' : 'card-matching-estimate',
+            estimateBasis: planning.estimateBasis, estimateReasons: planning.estimateReasons.slice(),
+            assumptions: [...(row.assumptions || []), cardAssumption],
+            verifiedReason: planning.verifiedReason,
+            reason: (estimate ? row.reason + ' ' : '') + 'Card purchase matching is unconfirmed: '
+              + planning.estimateReasons.at(-1) };
+          result.set(end, { status: 'unavailable', stock: null, items: [], rows: [], actualSaved: null,
+            trust: 'unknown', start: row.start, end: row.end, asOf, currency: 'CAD',
+            source: 'Forecast.recommend.savingsFunding',
+            actionPermission: 'not-granted', moneyMovementPermission: 'not-granted',
+            estimateBasis: typed.estimateBasis, estimateReasons: typed.estimateReasons.slice(),
+            reason: 'The estimated close is withheld until card purchase matching is recognised here. ' + typed.reason,
+            cardMatchingEstimate: typed });
+        }
+      }
+      return result;
     }
-    return result;
   }
 
   // Private current-period planning basis, reached only after the incumbent

@@ -279,3 +279,41 @@ test('ruling 8: the below-reserve branch is soft only on qualified operating cas
   assert.equal(hard.plannedPeriodClose, null);
   assert.notEqual(hard.plannedPeriodCloseTrust, 'estimated');
 });
+
+// Codex P1 on #812: when a later period's sweep is unknown, the closes already
+// computed must still carry their estimate labels. Main publishes the
+// movement-only estimate there with the clean nature; the card estimate leaked
+// as a ready unlabelled close at the pre-repair head.
+function missingLaterSweep({ charge = 0, movement = false }) {
+  const x = closingInput();
+  x.plan.income.push({ id: 'p0', label: 'Invented current receipt', frequency: 'once',
+    date: '2026-10-09', amount: 400, confidence: 'confirmed' });
+  x.plan.income.push({ id: 'late', label: 'Invented unknown receipt', frequency: 'once',
+    date: '2026-10-30', amount: null, confidence: 'unknown' });
+  x.opts.disabled = ['late'];
+  if (movement) x.opts.currentPeriodActuals.savingsMovementUnconfirmed =
+    [{ accountId: 'savings', reason: 'transaction-posting-status-unconfirmed' }];
+  if (charge) x.opts.currentPeriodActuals.transactions = (x.opts.currentPeriodActuals.transactions || [])
+    .concat([purchase(charge / 100)]);
+  const a = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [] });
+  return start => a.savingsFunding.periodViews.find(p => p.start === start).packet.forecastClosing;
+}
+
+test('a missing later sweep never lets an earlier card-matching close publish unlabelled', () => {
+  const closing = missingLaterSweep({ charge: 4250 });
+  const first = closing(FUTURE[0]);
+  assert.equal(first.status, 'unavailable');
+  assert.equal(first.stock, null);
+  assert.equal(cents(first.cardMatchingEstimate.stock), 47650);
+  assert.equal(first.cardMatchingEstimate.nature, 'card-matching-estimate');
+  assert.equal(closing(FUTURE[1]).status, 'unavailable');
+});
+
+test('a missing later sweep keeps the movement-only estimate label on earlier closes', () => {
+  const closing = missingLaterSweep({ movement: true });
+  const first = closing(FUTURE[0]);
+  assert.equal(first.status, 'ready');
+  assert.equal(cents(first.stock), 51900);
+  assert.equal(first.nature, 'reported-balance-estimate');
+  assert.ok(first.verifiedReason, 'the withheld verified reason is named');
+});
