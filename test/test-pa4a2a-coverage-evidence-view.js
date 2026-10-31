@@ -54,6 +54,9 @@ test('card coverage: incomplete, contradictory or absent evidence stays a hard h
     [{ complete: true, truncated: true }, 'complete'],
     [{ complete: true, hasMore: true }, 'complete'],
     [{ complete: true, has_more: true }, 'complete'],
+    [{ complete: true, hasMore: 'true' }, 'complete'],
+    [{ complete: 1 }, 'complete'],
+    [{ complete: 'true' }, 'complete'],
     [{ complete: true, status: 'partial' }, 'complete'],
     [{ complete: false }, 'complete'],
     [{}, 'complete'],
@@ -112,11 +115,51 @@ test('recommend: verdicts are stable across a cloned input and reversed call ord
   assert.equal(withoutCoverageEcho(a2), withoutCoverageEcho(a1));
 });
 
-test('PA-1 Savings path: a contradictory pending window stays withheld under the strict rule', () => {
-  const x = closingInput();
-  x.opts.currentPeriodActuals.pendingCoverage = { complete: true, status: 'bounded-window' };
-  const a = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [] });
-  assert.equal(a.savingsFunding.status, 'unavailable');
-  const ok = F.recommend(closingInput().plan, closingInput().asOf, { ...closingInput().opts, weeklyVariable: 0, debts: [] });
-  assert.equal(ok.savingsFunding.status, 'ready', 'control: the supported object form is ready');
+// The PA-1 Savings evidence check (savingsDailyFunding). Status alone does not
+// discriminate: an older provenance hold also withholds some of these, so the
+// tests pin the period figure the strict check withholds and its reason.
+const STRICT_REASON = 'Explicit complete current-cycle cash and transaction evidence is required.';
+function savingsFor(mutate) {
+  const x = closingInput(); mutate(x.opts.currentPeriodActuals);
+  return F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [] }).savingsFunding;
+}
+
+test('PA-1 Savings path: contradictory or incomplete evidence withholds the period figure with the strict reason', () => {
+  const control = savingsFor(() => {});
+  assert.equal(control.status, 'ready');
+  assert.equal(control.rows[0].thisPeriod, 0, 'fixture: the control publishes a period figure');
+  for (const [label, mutate] of [
+    ['contradictory transaction window', p => { p.transactionCoverage = { complete: true, startDate: '2026-10-06', endDate: p.coverageThrough }; }],
+    ['transaction hasMore', p => { p.transactionCoverage = { complete: true, hasMore: true }; }],
+    ['transaction partial status', p => { p.transactionCoverage = { complete: true, status: 'partial' }; }],
+    ['pending hasMore', p => { p.pendingCoverage = { complete: true, hasMore: true }; }],
+    ['pending truncated', p => { p.pendingCoverage = { complete: true, truncated: true }; }],
+    ['pending bounded window', p => { p.pendingCoverage = { complete: true, status: 'bounded-window' }; }],
+  ]) {
+    const s = savingsFor(mutate);
+    assert.equal(s.status, 'unavailable', label);
+    assert.equal(s.rows[0].thisPeriod, null, `${label}: period figure withheld, never 0`);
+    assert.equal(s.reason, STRICT_REASON, label);
+  }
+});
+
+test('PA-1 Savings path: string and object complete evidence publish the same Savings packet', () => {
+  const stamp = savingsFor(p => { p.transactionCoverage = 'complete'; p.pendingCoverage = 'complete'; });
+  const object = savingsFor(p => { p.transactionCoverage = { complete: true }; p.pendingCoverage = { complete: true }; });
+  assert.equal(stamp.status, 'ready');
+  assert.equal(withoutCoverageEcho(object), withoutCoverageEcho(stamp));
+});
+
+// The card-period publication reports the reconciler's allocations, so it
+// reads coverage with the same strict rule.
+test('card-period publication: string and object evidence report the same coverage; incomplete stays incomplete', () => {
+  const window = { start: '2026-10-02', end: '2026-10-15' };
+  const tdcc = (tx, pend) => F.cardPeriodMovements(plan(), [], ASOF, window,
+    { currentPeriodActuals: packet(tx, pend) }).cards.find(card => card.id === 'tdcc');
+  const stamp = tdcc('complete', 'complete');
+  assert.deepEqual([stamp.postedCoverage, stamp.pendingCoverage], ['complete-provider-response', 'complete-provider-response']);
+  const object = tdcc({ complete: true }, { complete: true });
+  assert.equal(withoutCoverageEcho(object), withoutCoverageEcho(stamp));
+  assert.equal(tdcc({ complete: true, hasMore: true }, 'complete').postedCoverage, 'incomplete');
+  assert.equal(tdcc('complete', { complete: true, truncated: true }).pendingCoverage, 'unavailable');
 });
