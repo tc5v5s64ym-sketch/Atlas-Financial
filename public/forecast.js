@@ -11603,7 +11603,7 @@
   // unsuccessful path returns status 'unknown' with its reason; only
   // 'qualified' may be published or carried.
   function cardMatchQualification(plan, coverage, budget, basis, opts) {
-    const unknown = reason => ({ status: 'unknown', reason, remainingCents: null, closeAdjustCents: null });
+    const unknown = reason => ({ status: 'unknown', reason, remainingCents: null });
     if (!cardMatchEstimateEligible(plan, coverage, opts)) return unknown('card-hold-not-matching-only');
     if (!budget || !Array.isArray(budget.items)) return unknown('household-budget-unavailable');
     const rows = (basis && basis.rows) || [];
@@ -11614,7 +11614,6 @@
       const source = row && row.kind === 'obligation' ? obligations.get(row.id) : null;
       return source && (source.effect === 'payment' || source.debtId != null) ? source : null;
     };
-    const rowCents = row => savingsCents(row.scheduledFeeAllowance ? row.scheduledFeeAllowance.periodCost : billAssignedAmount(row));
     // Each recon row is classified from its own packet transaction with the
     // reconciler's predicate (accountRole or a known card id) and one
     // unambiguous account identity. A row that cannot be traced holds.
@@ -11680,7 +11679,6 @@
       if (entry && entry.transactionId != null) representedBy.set(entry.id + '@' + entry.date, String(entry.transactionId));
     }
     const settled = new Map(), linkedRows = new Set();
-    let closeAdjust = 0;
     for (const record of records) {
       const verdict = record && diag.paymentAllocations.get(record.creditRef);
       if (!verdict || verdict.status !== 'reconciled' || verdict.kind !== 'payment') return unknown('card-settlement-unqualified');
@@ -11694,7 +11692,6 @@
         settled.set(String(part.purchaseRef), (settled.get(String(part.purchaseRef)) || 0) + cents);
         alloc += cents;
       }
-      const other = savingsCents(record.otherAmount) || 0;
       const linked = rows.filter(row => representedBy.get(row.id + '@' + row.date) === String(debit[0].id));
       if (linked.length > 1) return unknown('card-settlement-overlap-unresolved');
       for (const row of linked) linkedRows.add(row);
@@ -11704,17 +11701,25 @@
         if (linked.length) return unknown('card-settlement-overlap-unresolved');
         continue;
       }
-      // Original-snapshot close: the settlement leaves Bills after the
-      // snapshot. A row it represents already deducts its whole cash, so the
-      // allocated H share is counted once by restoring it (bounded by the
-      // row). Unrepresented, its H share is inside H and only its non-H share
-      // (other) is cash outside B and H, deducted once.
-      if (!(debit[0].date > basis.openingAsOf)) return unknown('card-settlement-opening-ambiguous');
-      if (linked.length) {
-        const cents = rowCents(linked[0]);
-        if (cents == null) return unknown('card-settlement-overlap-unresolved');
-        closeAdjust += Math.min(alloc, cents);
-      } else closeAdjust -= other;
+      // Original-snapshot close (pre-review of 0a152542): a deducted row
+      // represented by this settlement's own debit could be counted in B and
+      // in unreduced H. No inspectable term in the published close identity
+      // carries a restoration, so the close is unknown rather than adjusted.
+      // Unrepresented, the settlement's H share is inside H and its non-H
+      // share is outside the scoped plan, as for any posted unscheduled
+      // payment; the close keeps its published identity.
+      if (linked.length) return unknown('card-settlement-overlap-unresolved');
+    }
+    // Atlas Q3/C3 (6540253159; Muse 6540609418 requirement 3): the
+    // accounting horizon decides overlap. A held-card (or card-less) payment
+    // obligation with any occurrence after the as-of could pay purchases in
+    // remaining H in a dependent later period; nothing qualifies that, so it
+    // holds. A once-only payment dated before the as-of is judged by rows.
+    if (heldCards.size) for (const o of (plan && plan.obligations) || []) {
+      if (!o || !(o.effect === 'payment' || o.debtId != null)) continue;
+      if (o.debtId != null && !heldCards.has(String(o.debtId))) continue;
+      if (o.frequency === 'once' && savingsDate(o.date) && o.date < financialDate(opts && opts.asOf || coverage.asOf)) continue;
+      return unknown('card-payment-overlap-unresolved');
     }
     // Atlas 6538656590 (1) on the consuming basis: a deducted held-card (or
     // card-less) payment row not represented by a qualified settlement could
@@ -11759,8 +11764,8 @@
       if (rowRemaining < Math.max(0, pendingCash) + bound) return unknown('card-floor-unqualified');
       remaining += rowRemaining;
     }
-    if (!Number.isSafeInteger(remaining) || !Number.isSafeInteger(closeAdjust)) return unknown('cents-unsafe');
-    return { status: 'qualified', reason: null, remainingCents: remaining, closeAdjustCents: closeAdjust };
+    if (!Number.isSafeInteger(remaining)) return unknown('cents-unsafe');
+    return { status: 'qualified', reason: null, remainingCents: remaining };
   }
   const CARD_MATCH_UNKNOWN_TEXT = {
     'card-payment-overlap-unresolved': 'a scheduled card payment this close deducts could also pay card purchases already in the household hold',
@@ -12381,7 +12386,7 @@
         : null;
       const plannedCloseCash = !activeCardClose ? cashAfterHouseholdBudget
         : activeCardClose.status === 'qualified' && cashAfterHouseholdBudget != null
-          ? roundCent(cashAfterHouseholdBudget + activeCardClose.closeAdjustCents / 100) : null;
+          ? cashAfterHouseholdBudget : null;
       // S1 payday sweep (owner direction 2026-10-14 via Atlas, superseding
       // the net-surplus-only sweep of PR #616 where they conflict): one
       // Forecast-owned sweep per future period, published on the period
