@@ -1,2 +1,0 @@
-if(process.env.GITHUB_TOKEN||process.env.GH_TOKEN)process.exit(9);
-console.log("{\"cash.synthetic\":113,\"credit.synthetic.rate\":10,\"bills.openCount\":2,\"planning.date\":\"2041-07-10\",\"planning.null\":0,\"cash.added\":4}");
