@@ -135,9 +135,53 @@ test('ruling 1: a remaining scheduled card payment that could overlap H holds; a
   assert.equal(estimated(seedCase({ obligation: cardMinimum('travelvisa') }).next), 2750);
 });
 
-test('ruling 5: a settlement that could also be this period\'s scheduled card-payment bill withholds the seed', () => {
-  const ob = { ...cardMinimum('tdcc'), firstDue: '2026-10-06', day: 6 };
-  assert.equal(estimated(seedCase({ pay: 2000, alloc: 2000, obligation: ob }).next), null);
+test('ruling 5: a settlement that could also be a scheduled card bill the seed still deducts withholds the seed', () => {
+  // Remaining same-card bill on 10-10: the 2000 settlement could be inside it.
+  const remaining = { ...cardMinimum('tdcc'), firstDue: '2026-10-10', day: 10, amount: 20 };
+  assert.equal(estimated(seedCase({ pay: 2000, alloc: 2000, obligation: remaining }).next), null);
+  // A same-card bill dated before the as-of is already inside the observed
+  // stock and is not deducted again: 6000 - (4250 - 2000) = 3750.
+  const paid = { ...cardMinimum('tdcc'), firstDue: '2026-10-06', day: 6, amount: 20 };
+  assert.equal(estimated(seedCase({ pay: 2000, alloc: 2000, obligation: paid }).next), 3750);
+});
+
+test('Atlas #812 B2: the active planned close never deducts a settlement twice (bill in B and unreduced H)', () => {
+  // Snapshot 8000 on 10-02; card purchase 4250 on 10-05; a confirmed 2000
+  // Bills payment on 10-06 allocated to it; observed Bills 6000. The same-card
+  // 2000 minimum on 10-06 is represented by that payment, so the close (from
+  // the 10-02 snapshot) still deducts it: 8000 - 2000 - 4250 = 1750 double-counts
+  // the 2000. The qualified answer is 6000 - (4250 - 2000) = 3750.
+  const ob = { ...cardMinimum('tdcc'), firstDue: '2026-10-06', day: 6, amount: 20 };
+  const represented = [{ id: 'card-min', date: '2026-10-06', actual: 20, transactionId: 'PAY-D' }];
+  const run = rows => {
+    const x = ledger();
+    x.plan.income = x.plan.income.filter(r => r.id === 'payroll');
+    x.plan.budget = { categories: [{ id: 'groceries', label: 'Groceries', monthly: 0, essential: true }] };
+    x.plan.obligations = [ob];
+    x.plan.startingCash.breakdown[0].value = 60;
+    x.plan.cardPurchaseCoverage = { payments: [{ id: 'p1', confirmed: true, creditRef: 'pay-c', debitRef: 'pay-d',
+      allocations: [{ purchaseRef: 'cov-1', amount: 20 }], otherAmount: 0 }], refunds: [], reversals: [] };
+    x.opts.currentPeriodActuals.transactions = [purchase(42.5),
+      posted({ id: 'PAY-D', date: '2026-10-06', amount: 20, atlasAccountId: 'chequing-a',
+        accountRole: 'household-cash', categoryLabel: 'Credit Card Payment', coverageRef: 'pay-d' }),
+      posted({ id: 'PAY-C', date: '2026-10-06', amount: -20, atlasAccountId: 'tdcc',
+        accountRole: 'revolving-credit', categoryLabel: 'Credit Card Payment', coverageRef: 'pay-c' })];
+    x.opts.currentPeriodActuals.representedActuals = rows;
+    const a = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: DEBTS });
+    return a.payPeriodViews.filter(v => v.role !== 'lookback');
+  };
+  const [active, next] = run(represented);
+  assert.notEqual(cents(active.plannedPeriodClose), 1750, 'never the double-deducted close');
+  assert.equal(active.plannedPeriodClose, null);
+  assert.equal(active.plannedPeriodCloseTrust, 'unknown');
+  assert.match(active.plannedPeriodCloseReason, /could deduct it twice/);
+  // The seed reads the observed stock, where the bill is already paid: 3750.
+  assert.equal(estimated(next), 3750);
+  // Control: unrepresented, the bill sits inside the opening and is not
+  // deducted, so the estimated close is the qualified 3750.
+  const [control] = run([]);
+  assert.equal(control.plannedPeriodCloseTrust, 'estimated');
+  assert.equal(cents(control.plannedPeriodClose), 3750);
 });
 
 test('a confirmed reversal is not yet qualified by this slice: unknown, never the unreversed figure', () => {

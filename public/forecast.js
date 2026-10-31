@@ -10318,6 +10318,11 @@
         plannedPeriodCloseReason: ['The planned period close is unavailable: card coverage is unavailable for a reason other than matching.',
           cardReason].filter(Boolean).join(' ') };
     }
+    if (cardState === 'overlap') {
+      return { plannedPeriodClose: null, plannedPeriodCloseTrust: 'unknown', plannedPeriodCloseTerms: null,
+        plannedPeriodCloseReason: ['The planned period close is unavailable: a confirmed card settlement may also be this period\'s scheduled card payment, so the close could deduct it twice.',
+          cardReason].filter(Boolean).join(' ') };
+    }
     const cardMatchUnresolved = cardState === 'match';
     const known = typeof value === 'number' && Number.isFinite(value)
       && [terms.opening, terms.incomeAdded, terms.periodBillLoad, terms.budgetHold, terms.annualSavingsNeed]
@@ -11586,7 +11591,7 @@
   // qualifying that overlap, leaves the requirement unknown. A payment row
   // whose card is a different, unambiguous card is disjoint and stays numeric;
   // one with no card identity is ambiguous and holds.
-  function cardMatchHouseholdRemaining(plan, coverage, budget, periodRows, asOf, opts) {
+  function cardMatchHouseholdRemaining(plan, coverage, budget, periodRows, asOf, opts, out, deductedRows) {
     if (!cardMatchEstimateEligible(plan, coverage, opts) || !budget || !Array.isArray(budget.items)) return null;
     const remainingRows = (periodRows || []).filter(row => row && row.date >= asOf
       && billBelongsOnPaydayWaterfall(row, asOf, 'cutover-opening'));
@@ -11660,13 +11665,17 @@
         const verdict = record && diag.paymentAllocations.get(record.creditRef);
         if (!verdict || verdict.status !== 'reconciled' || verdict.kind !== 'payment') return null;
         const parts = Array.isArray(record.allocations) ? record.allocations : [];
-        // Atlas 6538656590 (5): a settlement that could also be this period's
-        // scheduled card-payment bill would be deducted twice in the native
-        // close. Without evidence separating them, withhold.
-        if (parts.length && (periodRows || []).some(row => {
+        // Atlas 6538656590 (5): a settlement that could also be a scheduled
+        // card-payment bill this basis still deducts would be counted twice.
+        // Without evidence separating them, withhold. A bill the basis does
+        // not deduct (already inside the observed opening) cannot double.
+        if (parts.length && (deductedRows || remainingRows).some(row => {
           const source = cardPaymentRow(row);
           return source && (source.debtId == null || heldCards.has(String(source.debtId)));
-        })) return null;
+        })) {
+          if (out) out.reason = 'settlement-bill-overlap';
+          return null;
+        }
         for (const part of parts) {
           const cents = part && savingsCents(part.amount);
           if (!part || part.purchaseRef == null || cents == null || cents <= 0) return null;
@@ -11714,9 +11723,9 @@
   }
   // One card-corrected remaining household allowance (cents) for a period:
   // the S1 seed, the Savings daily walk and the closing walk share it.
-  function cardMatchPeriodRemaining(plan, coverage, period, asOf, opts) {
+  function cardMatchPeriodRemaining(plan, coverage, period, asOf, opts, out, deductedRows) {
     return cardMatchHouseholdRemaining(plan, coverage, { items: (period && period.householdBudget) || [] },
-      (period && period.bills) || [], asOf, opts);
+      (period && period.bills) || [], asOf, opts, out, deductedRows);
   }
   // PA-4 (Atlas 6527529634): when the only Bills issue is a known balance
   // below the matching-derived reserve, disclose that gap on its own. It is a
@@ -12623,7 +12632,16 @@
           budgetHold: planUnavailable ? null : budget.hold, annualSavingsNeed,
         }, [plannedTermsTrust, annualSavingsNeedTrust, plannedOpeningTrust],
         lookback || cardCoverage.status !== 'unavailable' ? 'none'
-          : cardMatchEstimateEligible(plan, cardCoverage, opts) ? 'match' : 'hard', cardCoverage.reason,
+          : !cardMatchEstimateEligible(plan, cardCoverage, opts) ? 'hard'
+          // Atlas #812 B2 (ruling 5): a qualified settlement that could also
+          // be a scheduled card bill this close deducts would be counted twice
+          // (in B and in unreduced H), so the active close is withheld.
+          : role === 'active' && (() => {
+            const out = {};
+            cardMatchPeriodRemaining(plan, cardCoverage, { householdBudget: budget.items, bills: assignedBillRows }, asOf, opts, out,
+              assignedBillRows.filter(row => billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)));
+            return out.reason === 'settlement-bill-overlap';
+          })() ? 'overlap' : 'match', cardCoverage.reason,
         projected && openingKnown && !openingCarried
           ? 'The planned period close is unavailable: its opening comes from a fallback cash walk whose trust is not established.'
           : null),
