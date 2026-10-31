@@ -11666,23 +11666,38 @@
     for (const row of budget.items) {
       const hold = savingsCents(row && row.hold), spent = savingsCents(row && row.spent, true);
       if (hold == null || spent == null) return null;
-      let card = 0, funded = 0;
+      // F is posted cash spending plus qualified settlement allocations.
+      // Pending cash has not left Bills, so it stays inside the requirement.
+      let card = 0, funded = 0, pendingCash = 0, bound = 0;
       for (const r of (row.recon || [])) {
         if (!r || (r.pendingPostedDuplicate === true && r.pending === true)) continue;
         if (r.account == null || r.account === '') return null;
-        if (!isRevolvingCardAccount({ account: r.account })) continue;
         const cents = savingsCents(r.amount, true);
         if (cents == null) return null;
-        card += cents;
-        if (!settled.size) continue;
-        const ref = r.id == null ? undefined : refs.get(String(r.id));
-        if (ref === undefined) return null;
-        if (ref != null && settled.has(ref)) {
-          funded += settled.get(ref);
-          settled.delete(ref);
+        if (!isRevolvingCardAccount({ account: r.account })) {
+          if (r.pending === true) pendingCash += cents;
+          continue;
         }
+        card += cents;
+        let share = 0;
+        if (settled.size) {
+          const ref = r.id == null ? undefined : refs.get(String(r.id));
+          if (ref === undefined) return null;
+          if (ref != null && settled.has(ref)) {
+            share = settled.get(ref);
+            settled.delete(ref);
+          }
+        }
+        funded += share;
+        if (cents > 0) bound += Math.max(0, cents - share);
       }
-      remaining += Math.max(0, hold - (spent - card) - funded);
+      const rowRemaining = Math.max(0, hold - (spent - card - pendingCash) - funded);
+      // Atlas 6538656590 (9): each eligible purchase's unknown remaining is
+      // bounded by its gross less qualified settlement. Only when this
+      // maximum dominates pending cash plus that bound can the unknown
+      // per-purchase floor not change it; otherwise it stays unknown.
+      if (rowRemaining < Math.max(0, pendingCash) + bound) return null;
+      remaining += rowRemaining;
     }
     return Number.isSafeInteger(remaining) ? remaining : null;
   }
@@ -22677,7 +22692,6 @@
           trust: 'unknown', start: row.start, end: row.end, asOf, currency: 'CAD',
           source: 'Forecast.recommend.savingsFunding',
           actionPermission: 'not-granted', moneyMovementPermission: 'not-granted',
-          ...(row.gap ? { gap: row.gap } : {}),
           estimateBasis: typed.estimateBasis, estimateReasons: typed.estimateReasons.slice(),
           reason: 'The estimated close is withheld until card purchase matching is recognised here. ' + typed.reason,
           cardMatchingEstimate: typed });
