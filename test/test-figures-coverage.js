@@ -409,6 +409,13 @@ test('legitimate zero is observed money; explicit null and missing are not; tran
   // A nonfinite or structured published value is a failure, not a null.
   assert.throws(() => perturb('recommend', advice => { advice.payPeriodViews[0].opening = NaN; return advice; },
     () => Snapshot.buildFiguresSnapshot(inputs[0].doc.data, null)), /nonfinite snapshot value/);
+  // A summed term that is nonfinite fails too; it is not coerced to zero.
+  assert.throws(() => perturb('recommend', advice => {
+    const risks = advice.paydayAllocation && advice.paydayAllocation.risks;
+    if (risks && risks.length) risks[0].shortfall = NaN;
+    else if (advice.paydayAllocation) advice.paydayAllocation.risks = [{ shortfall: NaN }];
+    return advice;
+  }, () => Snapshot.buildFiguresSnapshot(inputs[0].doc.data, null)), /nonfinite snapshot value: payday\.riskShortfall/);
   assert.throws(() => perturb('recommend', advice => { advice.payPeriodViews[0].opening = { amount: 1 }; return advice; },
     () => Snapshot.buildFiguresSnapshot(inputs[0].doc.data, null)), /structured snapshot value/);
 });

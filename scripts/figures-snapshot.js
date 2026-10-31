@@ -169,6 +169,13 @@ const put = (key, value) => {
   }
   out[key] = typeof value === 'number' ? round(value) : value;
 };
+// A summed term: an absent term is zero, but a nonfinite one is a failure
+// and must not be coerced to a legitimate zero by `|| 0`.
+const term = (value, key) => {
+  if (value === null || value === undefined) return 0;
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('nonfinite snapshot value: ' + key);
+  return value;
+};
 // A field the publication carries, copied as it is; a missing field stays
 // missing (absent key), an explicit null stays null.
 const putField = (key, row, field) => {
@@ -232,10 +239,10 @@ if (advice.paydayAllocation) {
   put('payday.obligations', pa.obligations && pa.obligations.allocated);
   put('payday.essentials', pa.essentials && pa.essentials.allocated);
   put('payday.liquidity', pa.liquidity && pa.liquidity.allocated);
-  put('payday.futureCosts', (pa.futureCosts || []).reduce((s, r) => s + (r.allocated || 0), 0));
+  put('payday.futureCosts', (pa.futureCosts || []).reduce((s, r) => s + term(r.allocated, 'payday.futureCosts'), 0));
   put('payday.extraDebt', pa.extraDebt && pa.extraDebt.allocated);
   put('payday.unallocated', pa.unallocated);
-  put('payday.riskShortfall', (pa.risks || []).reduce((s, r) => s + (r.shortfall || 0), 0));
+  put('payday.riskShortfall', (pa.risks || []).reduce((s, r) => s + term(r.shortfall, 'payday.riskShortfall'), 0));
 }
 
 const operating = (advice.defaultView && advice.defaultView.calendarPeriods) || [];
@@ -489,7 +496,7 @@ if (advice.operatingPlanUnavailable === true) {
       put(`${p}.projectedByDeadline`, payday.projectedByDeadline);
     }
     if (payday) {
-      put(`${p}.allocated`, payday.allocated || 0);
+      put(`${p}.allocated`, term(payday.allocated, `${p}.allocated`));
     } else if (unresolvedIds.has(row.id)) {
       put(`${p}.allocated`, 'not-assigned');
     }
