@@ -137,13 +137,63 @@ financial-data connectivity, or a direction change. The owner gate in
 
 ### Published figures review — advisory reconciliation
 
-`figures-review.yml` runs the engine on the base and head and comments with the
-figures that changed. `scripts/figures-snapshot.js` covers Plan, Bills,
-Subscriptions, Credit, and Planning household-facing figures; Deep Dive,
-Records, and Modellers remain outside. It exists because the shipped weekly-cap defect changed a
-derived answer without crashing. The workflow is advisory because moving a
-figure is often the purpose of a PR; an unexplained mismatch between the comment
-and merge card is still a correctness defect to resolve.
+`figures-review.yml` runs each revision's own `scripts/figures-snapshot.js` on
+the base and head and comments with counts of the captured fields that changed.
+It exists because the shipped weekly-cap defect changed a derived answer
+without crashing. The workflow is advisory because moving a figure is often the
+purpose of a PR; an unexplained mismatch between the comment and merge card is
+still a correctness defect to resolve.
+
+What one comparison observes:
+
+- **Inputs.** The household dated opening (`data.json` with
+  `public/periods.json`), which is the only household evidence CI has and
+  whose figures leave the runner as counts only, and the invented inputs in
+  `test/fixtures/figures-inputs/`. Each invented input is frozen served data
+  with `invented: true`, a description, a reviewable origin in an existing
+  invented builder or ledger, and its own periods payload or an explicit
+  `absent-periods` limitation. An invented input is compared like for like only
+  when its digest is unchanged; an added, edited or removed input is counted as
+  such and withholds acceptance, never reading as an engine move.
+- **Fields.** Plan, every Budget pay period (opening, bill load, hold, Balance
+  After Deductions, sweep, planned close and each bill row), Savings closes and
+  every goal row and grouped member the Budget savings card renders (Saved,
+  Needed or its range endpoints, This period, Still to fund, Paid facts and the
+  member allocations), Bills, Subscriptions, Credit and Planning, each with its
+  trust tag,
+  read through Forecast's own publications with the Budget page's default
+  `recommend()` options. That is an engine-input parity subset, not page parity.
+- **Declared field classes.** A fixed vocabulary in `scripts/figures-comment.js`,
+  mirrored by the posting step. A class is observed on an input when a matching
+  field holds a finite amount (a legitimate zero counts), a non-empty tag, or the
+  declared boolean; an explicit null is a withheld state, not coverage. One
+  observed value establishes that the field is published, not that every branch
+  of it is exercised.
+
+Results: **changed** or **introduced** withholds acceptance, as before.
+**INCOMPLETE** means a declared class is observed by no input, or the coverage
+manifest is missing, malformed or does not reconcile with the captured fields;
+it fails with its own message and is reported even when values also changed.
+**Unchanged** passes only when nothing compared moved, no invented input was
+added, edited or removed, and every declared class is observed. It means no
+captured field moved on those inputs, nothing more.
+
+Not covered, and stated on every comment: household figures at a live opening
+(no provider access in CI; private route only), page rendering and page-side
+decisions (the PA-5 unavailable verdict, ATLAS-080 settlement qualification),
+persisted or adjusted page knobs, spending-period history on invented inputs
+that declare none, and branches inside an observed class. Deep Dive, Records,
+and Modellers remain outside. A figures-moved PR whose move lands on no input
+still reads unchanged for that move; that result is not figures evidence for it
+(`PRIVATE_FIGURES_REVIEW.md`).
+
+The posting step loads no PR JavaScript: it recomputes the whole public body
+from the inert snapshots and posts only on byte equality, after re-checking the
+live base and head SHAs. Snapshots stay in `RUNNER_TEMP`. The control is
+permanent while figures-moved PRs are accepted on this comment plus the owner's
+private look; the hand-declared class list retires when a mechanical
+publication registry derives it, and the invented half narrows when a
+page-rendered snapshot over the same inputs supersedes it.
 
 ### Atlas Contract / Systems Review — trigger-based required governance
 

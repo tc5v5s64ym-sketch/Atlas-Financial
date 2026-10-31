@@ -8,9 +8,34 @@
  * SEEN, and it has to match what the merge card says was intended.
  *
  * The rule for what belongs in here: if the household could read it off the
- * Plan, Bills, Subscriptions, Credit, or Planning surface and do something
- * differently because of it, it belongs. Anything that is only evidence does
- * not. Deep Dive, Records, and Modellers remain outside this snapshot.
+ * Plan, Budget, Savings, Bills, Subscriptions, Credit, or Planning surface and
+ * do something differently because of it, it belongs, with its trust tag.
+ * Anything that is only evidence does not.
+ * Deep Dive, Records, and Modellers remain outside this snapshot, as do page
+ * rendering and page-side decisions.
+ *
+ * WHAT ONE RUN EMITS (the check snapshot, `node scripts/figures-snapshot.js`):
+ *
+ *   - the household dated opening: data.json + public/periods.json, unprefixed
+ *     keys. It is the only household evidence CI has. Household figures at a
+ *     live opening cannot be observed here at all (no provider access in CI).
+ *   - every invented input in test/fixtures/figures-inputs/*.json, under
+ *     `fixture.<id>.`, with `fixture.<id>.input.sha256` = the digest of that
+ *     complete effective input (its served data and its own periods payload).
+ *     Invented inputs never read data.json or public/periods.json.
+ *   - `check.*` collector and household-input digests, and a coverage manifest
+ *     `coverage.<class>.household` (0 or 1) / `.invented` (how many invented
+ *     inputs observe the class) for the fixed vocabulary in figures-comment.js.
+ *
+ * `--household-only` emits just the household map (the pre-v2 shape), for
+ * local use and for suites that compare against an older revision's script.
+ * `--coverage` prints the manifest with class names, locally; the names never
+ * reach the public summary.
+ *
+ * Every input runs Forecast.recommend with the Budget page's own default
+ * options (pageOptions below): an engine-input parity subset, NOT full page
+ * parity. Page-side decisions the page makes before calling Forecast are not
+ * executed here, and an input on which they could matter is refused.
  *
  * Output is a flat `{ "label": value }` map so the diff is trivial and stable
  * across revisions. Values are numbers where they are money, strings where
@@ -63,19 +88,113 @@
  * mid-branch commit and keep the word "base".
  */
 
+const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const ROOT = path.join(__dirname, '..');
 const F = require(path.join(ROOT, 'public', 'forecast.js'));
+const INPUT_DIR = path.join(ROOT, 'test', 'fixtures', 'figures-inputs');
+const INPUT_SCHEMA = 'atlas-figures-input/v1';
+const INPUT_ID = /^[a-z][a-z0-9-]{0,47}$/;
+const INPUT_KEYS = ['schema', 'id', 'invented', 'description', 'origin', 'limitations', 'periods', 'data'];
+const ORIGIN_KEYS = ['kind', 'source', 'transform'];
+const ORIGIN_KINDS = ['test-builder', 'invented-ledger'];
+const LIMITATIONS = ['absent-periods'];
 
 const round = n => Math.round(n * 100) / 100;
+
+// The Budget page's default Forecast.recommend call, mirrored as an
+// ENGINE-INPUT PARITY SUBSET: public/plan.js simOpts (:211-224) with the knobs
+// loadKnobs takes from plan.defaults, the canonical debts and their policy
+// target and the extra facilities wireControls sets (:9020-9023), then
+// renderPlan's own additions (:8144-8157): the funding sources, the periods
+// payload, and the served overlay. Only currentPeriodActuals is gated on
+// liveOverlay.applied === true; operatingPlan, observedCash and
+// operatingPlanNote are read from any overlay, exactly as the page reads them.
+// Persisted or user-adjusted knobs are not covered. Two page-side decisions are
+// not executed: the PA-5 effective verdict (liveOperatingPlanUnavailable) and
+// ATLAS-080 settlement qualification (planSettlementOutcome). parityExclusions
+// names an input on which either could make the page differ from this call.
+function pageOptions(data, periods) {
+  const plan = data.plan;
+  const overlay = data.liveOverlay;
+  const priority = F.debtPriority(plan, data.debts);
+  return {
+    scenario: plan.defaults.scenario,
+    targetBuffer: plan.defaults.targetBuffer,
+    extraDebtMonthly: plan.defaults.extraDebtMonthly,
+    incomeOverrides: {},
+    disabled: [],
+    debts: data.debts,
+    extraDebtTarget: priority.target && priority.target.id,
+    extraFacilities: data.revolvingExtra,
+    fundingSources: plan.funding && plan.funding.options,
+    periods,
+    currentPeriodActuals: overlay && overlay.applied === true ? overlay.currentPeriodActuals : null,
+    operatingPlan: overlay && overlay.operatingPlan,
+    observedCash: overlay && overlay.observedCash,
+    operatingPlanNote: overlay && overlay.operatingPlanNote,
+  };
+}
+
+// Fail-closed bound of the parity subset: any served settlement outcome
+// (ATLAS-080 qualification may change the options or short-circuit the page),
+// and any overlay that was not applied (the PA-5 verdict may replace the
+// served operatingPlan). Wider than either page predicate on purpose.
+function parityExclusions(data) {
+  const reasons = [];
+  if (data.settlementEvidenceStatus !== undefined || data.settlementEvidence !== undefined) {
+    reasons.push('settlement-outcome');
+  }
+  const overlay = data.liveOverlay;
+  if (overlay !== undefined && overlay !== null && overlay.applied !== true) reasons.push('overlay-not-applied');
+  return reasons;
+}
+
+// Ids and dates become key segments; a dot inside one would change the shape.
+const segment = value => String(value).replace(/\./g, '_');
 
 function buildFiguresSnapshot(data, periods) {
 const plan = data.plan;
 const asOf = data.meta.asOf;
 
 const out = {};
+// Values are inert scalars. A nonfinite number or a structured value is a
+// collector or engine failure, never a legitimate null: it throws.
 const put = (key, value) => {
-  out[key] = typeof value === 'number' && isFinite(value) ? round(value) : value;
+  if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('nonfinite snapshot value: ' + key);
+  if (value !== null && value !== undefined && typeof value === 'object') throw new Error('structured snapshot value: ' + key);
+  if (typeof value === 'function' || typeof value === 'bigint' || typeof value === 'symbol') {
+    throw new Error('unserializable snapshot value: ' + key);
+  }
+  if (typeof value === 'number') {
+    // Validated before AND after rounding: a finite value whose cents are not
+    // a safe integer (1e308 * 100 overflows to Infinity, which JSON writes as
+    // null) is corrupt numerical output, never a legitimate null or zero.
+    if (!Number.isSafeInteger(Math.round(value * 100))) throw new Error('unrepresentable snapshot value: ' + key);
+    const rounded = round(value);
+    if (!Number.isFinite(rounded)) throw new Error('unrepresentable snapshot value: ' + key);
+    out[key] = rounded;
+    return;
+  }
+  out[key] = value;
+};
+// A summed term: an absent term is zero, but a nonfinite one is a failure
+// and must not be coerced to a legitimate zero by `|| 0`.
+const term = (value, key) => {
+  if (value === null || value === undefined) return 0;
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('nonfinite snapshot value: ' + key);
+  return value;
+};
+// A required summed term: it must be a finite number. Absent is not zero here.
+const finite = (value, key) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('nonfinite snapshot value: ' + key);
+  return value;
+};
+// A field the publication carries, copied as it is; a missing field stays
+// missing (absent key), an explicit null stays null.
+const putField = (key, row, field) => {
+  if (row && Object.prototype.hasOwnProperty.call(row, field) && row[field] !== undefined) put(key, row[field]);
 };
 
 put('meta.asOf', asOf);
@@ -86,22 +205,18 @@ put('meta.scenario', plan.defaults.scenario);
 /* ---- the cash position ------------------------------------------------- */
 put('cash.spendableToday', F.startingCashAmount(plan));
 for (const h of plan.startingCash.heldElsewhere || []) {
-  put(`cash.elsewhere.${(h.class || 'unclassified')}`,
-    (out[`cash.elsewhere.${h.class || 'unclassified'}`] || 0) + h.value);
+  const key = `cash.elsewhere.${(h.class || 'unclassified')}`;
+  // A missing value makes its class total unknown (null), never a zero.
+  const prior = Object.prototype.hasOwnProperty.call(out, key) ? out[key] : 0;
+  put(key, prior === null || h.value === null || h.value === undefined ? null : prior + finite(h.value, key));
 }
 
 /* ---- the recommendation, which is the point of the whole page ---------- */
-const opts = {
-  scenario: plan.defaults.scenario, incomeOverrides: {}, disabled: [],
-  extraDebtMonthly: plan.defaults.extraDebtMonthly || 0,
-  targetBuffer: plan.defaults.targetBuffer,
-};
-// The funding source decides whether covering an opening gap costs anything,
-// so the snapshot uses the same default the page does.
-opts.fundingSources = (plan.funding || {}).options;
-opts.extraFacilities = data.revolvingExtra;
-
-const advice = F.recommend(plan, asOf, opts);
+// ONE call with the Budget page's own default options (pageOptions above). The
+// funding source decides whether covering an opening gap costs anything, and
+// the periods payload feeds the payday risk rows the page renders, so the
+// snapshot reads the page's computation rather than a reduced copy of it.
+const advice = F.recommend(plan, asOf, pageOptions(data, periods));
 const savings = advice.savingsInventory;
 if (savings) {
   put('savings.setup', savings.status);
@@ -124,8 +239,9 @@ if (advice.funding) {
 put('plan.weeklyCap', advice.weekly);
 put('plan.weeklyCapMonthly', F.monthlyFromWeekly(advice.weekly));
 put('plan.effectiveFrom', advice.effectiveFrom);
-put('plan.bindingDate', advice.binding.date);
-put('plan.bindingBalance', advice.binding.balance);
+// A withheld plan publishes no binding day; that is null, not a crash.
+put('plan.bindingDate', advice.binding ? advice.binding.date : null);
+put('plan.bindingBalance', advice.binding ? advice.binding.balance : null);
 put('plan.endingCash', advice.sim.ending);
 put('plan.lowestCash', advice.sim.min.balance);
 put('plan.lowestCashDate', advice.sim.min.date);
@@ -140,10 +256,10 @@ if (advice.paydayAllocation) {
   put('payday.obligations', pa.obligations && pa.obligations.allocated);
   put('payday.essentials', pa.essentials && pa.essentials.allocated);
   put('payday.liquidity', pa.liquidity && pa.liquidity.allocated);
-  put('payday.futureCosts', (pa.futureCosts || []).reduce((s, r) => s + (r.allocated || 0), 0));
+  put('payday.futureCosts', (pa.futureCosts || []).reduce((s, r) => s + term(r.allocated, 'payday.futureCosts'), 0));
   put('payday.extraDebt', pa.extraDebt && pa.extraDebt.allocated);
   put('payday.unallocated', pa.unallocated);
-  put('payday.riskShortfall', (pa.risks || []).reduce((s, r) => s + (r.shortfall || 0), 0));
+  put('payday.riskShortfall', (pa.risks || []).reduce((s, r) => s + term(r.shortfall, 'payday.riskShortfall'), 0));
 }
 
 const operating = (advice.defaultView && advice.defaultView.calendarPeriods) || [];
@@ -242,27 +358,36 @@ for (const m of proj.marks) {
   put(`scoreboard.${tag}.creditHeadroom`, m.headroom);
   put(`scoreboard.${tag}.facilitiesOverLimit`, m.overLimitCount);
 }
-put('debt.interestOverWindow', proj.marks[proj.marks.length - 1].interestToDate);
+put('debt.interestOverWindow', proj.marks.length ? proj.marks[proj.marks.length - 1].interestToDate : null);
 for (const c of proj.crossings || []) {
   put(`debt.overLimit.${c.id}`, c.alreadyOver ? 'already over today' : c.date);
 }
 
 /* ---- the balance sheet -------------------------------------------------- */
 put('balance.assets', F.publicationTotals(data).assets);
-put('balance.debts',
-  data.debts.reduce((s, x) => s + (x.balance || 0), 0));
+// A total over balances: a missing balance makes the total unknown (null),
+// never a zero; a non-numeric or nonfinite one is a failure. A missing
+// pending amount is no pending charge.
+const balanceTotal = (rows, key, withPending = false) => {
+  let sum = 0;
+  for (const x of rows) {
+    if (x.balance === null || x.balance === undefined) return null;
+    sum += finite(x.balance, key);
+    if (withPending) sum += term(x.pending, key);
+  }
+  return sum;
+};
+const unsecuredDebts = data.debts.filter(x => !x.secured);
+put('balance.debts', balanceTotal(data.debts, 'balance.debts'));
 // POSTED only, and named so. The scoreboard's consumer-debt figure is posted
 // PLUS known pending, because a pending charge is money already spent; these
 // two sat in one report as `balance.consumerDebt` $29,842.83 against
 // `scoreboard.today.consumerDebt` $30,090.01 with nothing saying why.
-put('balance.consumerDebtPosted',
-  data.debts.filter(x => !x.secured).reduce((s, x) => s + x.balance, 0));
+put('balance.consumerDebtPosted', balanceTotal(unsecuredDebts, 'balance.consumerDebtPosted'));
 put('balance.consumerDebtPending',
-  data.debts.filter(x => !x.secured).reduce((s, x) => s + (x.pending || 0), 0));
-put('balance.consumerDebtEffective',
-  data.debts.filter(x => !x.secured).reduce((s, x) => s + x.balance + (x.pending || 0), 0));
-put('balance.securedDebt',
-  data.debts.filter(x => x.secured).reduce((s, x) => s + x.balance, 0));
+  unsecuredDebts.reduce((s, x) => s + term(x.pending, 'balance.consumerDebtPending'), 0));
+put('balance.consumerDebtEffective', balanceTotal(unsecuredDebts, 'balance.consumerDebtEffective', true));
+put('balance.securedDebt', balanceTotal(data.debts.filter(x => x.secured), 'balance.securedDebt'));
 
 const helocSnap = F.compactSnapshot(data.debts, data.helocHistory);
 if (helocSnap.heloc) {
@@ -298,6 +423,8 @@ put('credit.asOf', accounts.asOf);
 for (const row of [...(accounts.secured || []), ...(accounts.cards || [])]) {
   const p = `credit.${row.id}`;
   put(`${p}.balance`, row.balance);
+  // The account chip and the next payment's date chip the page renders.
+  putField(`${p}.confidence`, row, 'confidence');
   put(`${p}.pendingUnknown`, row.pendingUnknown === true);
   put(`${p}.pending`, row.pending);
   put(`${p}.rate`, row.rate);
@@ -314,6 +441,7 @@ for (const row of [...(accounts.secured || []), ...(accounts.cards || [])]) {
   put(`${p}.minimum`, next ? next.amount : null);
   put(`${p}.due`, next ? next.date : null);
   if (next && next.confidence) put(`${p}.minimumConfidence`, next.confidence);
+  if (next && next.dateConfidence) put(`${p}.minimumDateConfidence`, next.dateConfidence);
   if (row.nextCapitalise) {
     put(`${p}.capitalise`, row.nextCapitalise.amount);
     put(`${p}.capitaliseDate`, row.nextCapitalise.date);
@@ -343,6 +471,7 @@ for (const row of billsView.bills || []) {
   put(`${p}.frequency`, row.frequency);
   put(`${p}.nextDate`, row.nextDate);
   put(`${p}.monthlyEquivalent`, row.monthlyEquivalent);
+  putField(`${p}.confidence`, row, 'confidence');
 }
 
 /* ---- Subscriptions: Forecast.householdSubscriptions, the same roster the page renders */
@@ -358,6 +487,7 @@ for (const row of subscriptionsView.subscriptions || []) {
   put(`${p}.frequency`, row.frequency);
   put(`${p}.nextDate`, row.nextDate);
   put(`${p}.monthlyEquivalent`, row.monthlyEquivalent);
+  putField(`${p}.confidence`, row, 'confidence');
 }
 
 /* ---- Planning: Forecast.majorPlans on the same recommend the pages use */
@@ -370,9 +500,9 @@ if (advice.operatingPlanUnavailable === true) {
 } else {
   const knowledge = advice.knowledge || {};
   if (knowledge.end) put('planning.horizonEnd', knowledge.end);
-  if (knowledge.encumbered != null && isFinite(Number(knowledge.encumbered))) {
-    put('planning.encumbered', knowledge.encumbered);
-  }
+  // Absent stays absent; a present value must be a finite number. A
+  // nonfinite or non-numeric one is a collector failure, never filtered out.
+  if (knowledge.encumbered != null) put('planning.encumbered', finite(knowledge.encumbered, 'planning.encumbered'));
   const alloc = advice.paydayAllocation || {};
   const paydayRows = [...(alloc.futureCosts || []), ...(alloc.optional || [])];
   const unresolvedIds = new Set((alloc.unresolved || []).map(r => r && r.id).filter(Boolean));
@@ -392,7 +522,7 @@ if (advice.operatingPlanUnavailable === true) {
       put(`${p}.projectedByDeadline`, payday.projectedByDeadline);
     }
     if (payday) {
-      put(`${p}.allocated`, payday.allocated || 0);
+      put(`${p}.allocated`, term(payday.allocated, `${p}.allocated`));
     } else if (unresolvedIds.has(row.id)) {
       put(`${p}.allocated`, 'not-assigned');
     }
@@ -452,24 +582,321 @@ if (trajectory.status === 'ready') {
   put('planning.trajectory.reason', trajectory.reason);
 }
 
+putPayPeriods(put, putField, advice);
+putSavingsPublication(put, putField, advice, asOf);
+
 return out;
 }
 
-function loadCanonicalInputs() {
-  const data = require(path.join(ROOT, 'data.json'));
-  let periods = null;
-  try { periods = require(path.join(ROOT, 'public', 'periods.json')); } catch { /* optional */ }
+/* ---- Budget pay periods: Forecast.recommend payPeriodViews, every period the page can select */
+// Copied as published, with each figure's trust tag beside it. Nothing is
+// summed, netted or re-dated here. A period is keyed by its start date and a
+// bill row by its id and date, so a period or row that appears, disappears or
+// moves shows up as a changed key.
+const PERIOD_FIELDS = ['role', 'timelineRole', 'end', 'opening', 'openingTrust', 'openingSource', 'openingBasis',
+  'incomeTotal', 'incomeTrust', 'periodBillLoad', 'periodBillLoadTrust', 'paidBills', 'remainingBills', 'afterBills',
+  'afterBillsTrust', 'budgetHold', 'budgetHoldTrust', 'balanceAfterDeductions', 'balanceAfterDeductionsTrust',
+  'predictedEndingBalance', 'predictedEndingBalanceIdentity', 'paydaySweep', 'paydaySweepTrust', 'plannedPeriodClose',
+  'plannedPeriodCloseTrust', 'plannedPeriodCloseReason', 'operatingPlanUnavailable'];
+const PERIOD_BILL_FIELDS = ['amount', 'status', 'settlement', 'confidence', 'dateConfidence', 'displayAmountBasis',
+  'displayAmountTrust', 'cardPaid'];
+
+// One key per identity; a repeated identity gets an ordinal instead of
+// silently overwriting the first.
+function uniqueKey(used, key) {
+  let candidate = key;
+  for (let n = 2; used.has(candidate); n++) candidate = key + '#' + n;
+  used.add(candidate);
+  return candidate;
+}
+
+function putPayPeriods(put, putField, advice) {
+  const views = Array.isArray(advice.payPeriodViews) ? advice.payPeriodViews : [];
+  const periodKeys = new Set();
+  for (const view of views) {
+    if (!view || typeof view.start !== 'string' || !view.start) throw new Error('pay period without a start date');
+    const p = uniqueKey(periodKeys, 'period.' + segment(view.start));
+    for (const field of PERIOD_FIELDS) putField(p + '.' + field, view, field);
+    const billKeys = new Set();
+    for (const bill of Array.isArray(view.bills) ? view.bills : []) {
+      const b = uniqueKey(billKeys, p + '.bill.' + segment(bill && bill.id) + '@' + segment(bill && bill.date));
+      for (const field of PERIOD_BILL_FIELDS) putField(b + '.' + field, bill, field);
+    }
+  }
+  // "Expected Bills balance at period end": the active period's publication.
+  const atEnd = advice.defaultView && advice.defaultView.billsAccountPeriodBalance;
+  if (atEnd) {
+    for (const field of ['amount', 'status', 'trust', 'end']) putField('period.billsAtEnd.' + field, atEnd, field);
+  }
+}
+
+/* ---- Savings: Forecast.savingsFundingPublication, the selector the Budget and Savings pages call */
+// For each period the page can select: whether the selector published or
+// withheld the packet, the projected Savings close with its nature and trust,
+// and every figure the Budget savings card and its evidence sheet render from
+// that packet: each goal row's Saved / Needed (point or range endpoints, with
+// the trust the page falls back to) / This period / Still to fund / Paid
+// facts, each grouped member's Saved / Needed / This period, the published
+// member allocations, and the current period's surplus. The row and member
+// rosters follow the page's own selection (budgetDailySavingsRows and
+// budgetSavingsRowMembers in public/plan.js). Copied, never recomputed.
+const CLOSE_FIELDS = ['status', 'nature', 'trust', 'stock', 'operatingCash', 'contribution', 'projectedContributions',
+  'projectedDraws', 'projectedDeficitCoverage', 'unallocated', 'balanceAsOf', 'verifiedReason', 'reason'];
+const CLOSE_ROW_FIELDS = ['forecastSaved', 'forecastContribution', 'needed', 'neededTrust', 'trust', 'stillToFund',
+  'stillToFundTrust'];
+const CLOSE_ITEM_FIELDS = ['forecastSaved', 'forecastTrust', 'needed', 'neededTrust', 'trust', 'stillToFund',
+  'stillToFundTrust'];
+const PLANNED_ROW_FIELDS = ['needed', 'neededTrust', 'trust', 'stillToFund', 'stillToFundTrust'];
+const PLANNED_ITEM_FIELDS = ['needed', 'neededTrust', 'trust', 'stillToFund', 'stillToFundTrust'];
+const CURRENT_ROW_FIELDS = ['saved', 'savedTrust', 'needed', 'neededTrust', 'trust', 'thisPeriod', 'thisPeriodTrust',
+  'remainingThisPeriod', 'stillToFund', 'stillToFundTrust'];
+const CURRENT_ITEM_FIELDS = ['saved', 'trust', 'needed', 'neededTrust', 'stillToFund', 'stillToFundTrust'];
+const COST_FACTS = ['originalCost', 'confirmedLinkedPaid', 'unpaidCost'];
+
+// A structured sub-figure the page renders: present means a plain object with
+// the published members; anything else is corrupt, never silently skipped.
+function subFigure(key, value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) throw new Error('malformed snapshot value: ' + key);
+  return value;
+}
+
+// What a row or member renders beyond its scalar fields: the Needed range
+// endpoints (budgetDailyNeededHtml) and the Paid / original / unpaid cost
+// facts (budgetGoalPaidProgressHtml, SavingsInventory.commitmentCostHtml).
+function putFigureParts(put, putField, prefix, row) {
+  const range = subFigure(prefix + '.neededRange', row.neededRange);
+  if (range) {
+    putField(prefix + '.neededRange.min', range, 'min');
+    putField(prefix + '.neededRange.max', range, 'max');
+  }
+  const cost = subFigure(prefix + '.commitmentCost', row.commitmentCost);
+  if (!cost) return;
+  for (const name of COST_FACTS) {
+    const fact = subFigure(prefix + '.cost.' + name, cost[name]);
+    if (!fact) continue;
+    putField(prefix + '.cost.' + name + '.status', fact, 'status');
+    putField(prefix + '.cost.' + name + '.amount', fact, 'amount');
+    const factRange = subFigure(prefix + '.cost.' + name + '.range', fact.range);
+    if (factRange) {
+      putField(prefix + '.cost.' + name + '.range.min', factRange, 'min');
+      putField(prefix + '.cost.' + name + '.range.max', factRange, 'max');
+    }
+  }
+}
+
+function putRows(put, putField, prefix, rows, fields, identity = 'key') {
+  const used = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const r = uniqueKey(used, prefix + segment(row && row[identity]));
+    for (const field of fields) putField(r + '.' + field, row, field);
+    if (!row) continue;
+    putFigureParts(put, putField, r, row);
+    if (Array.isArray(row.members)) put(r + '.members', row.members.map(String).join(','));
+  }
+}
+
+// The member distribution: one amount per published allocation identity,
+// exactly the entries budgetSavingsRowMembers joins to a member.
+function putAllocations(put, prefix, allocations) {
+  const used = new Set();
+  for (const part of Array.isArray(allocations) ? allocations : []) {
+    const a = uniqueKey(used, prefix + segment(part && part.id));
+    put(a + '.amount', part ? part.amount : undefined);
+  }
+}
+
+function putSavingsPublication(put, putField, advice, asOf) {
+  if (!Object.prototype.hasOwnProperty.call(advice, 'savingsFunding') || advice.savingsFunding === undefined) return;
+  const funding = advice.savingsFunding;
+  put('savings.funding.status', funding && typeof funding.status === 'string' ? funding.status : null);
+  if (!funding) return;
+  const views = Array.isArray(advice.payPeriodViews) ? advice.payPeriodViews : [];
+  const periodKeys = new Set();
+  for (const view of views) {
+    const current = view.timelineRole === 'current';
+    const p = uniqueKey(periodKeys, current ? 'savings.current' : 'savings.period.' + segment(view.start));
+    const packet = F.savingsFundingPublication(funding, { asOf, advice, periodId: view.id });
+    put(p + '.publication', packet ? 'published' : 'withheld');
+    if (!packet) continue;
+    putField(p + '.status', packet, 'status');
+    const kind = packet.period && packet.period.kind;
+    const close = kind === 'projected' ? packet.forecastClosing : null;
+    if (current) {
+      putField(p + '.nativePeriodSurplus', packet.period, 'nativePeriodSurplus');
+      putField(p + '.trust', packet.period, 'trust');
+    }
+    if (close) {
+      for (const field of CLOSE_FIELDS) putField(p + '.close.' + field, close, field);
+      if (close.gap) {
+        putField(p + '.close.gapShortBy', close.gap, 'shortBy');
+        putField(p + '.close.gapDate', close.gap, 'date');
+        putField(p + '.close.gapTrust', close.gap, 'trust');
+      }
+      putRows(put, putField, p + '.close.row.', close.rows, CLOSE_ROW_FIELDS);
+      putRows(put, putField, p + '.close.item.', close.items, CLOSE_ITEM_FIELDS);
+      putAllocations(put, p + '.close.allocation.', close.allocations);
+    }
+    if (kind === 'projected' && packet.plannedRequirements) {
+      putRows(put, putField, p + '.planned.row.', packet.plannedRequirements.rows, PLANNED_ROW_FIELDS);
+      putRows(put, putField, p + '.planned.item.', packet.plannedRequirements.items, PLANNED_ITEM_FIELDS);
+    }
+    // Every other packet renders its own rows (budgetDailySavingsRows): the
+    // current period, a historical period, and a projected period that
+    // publishes no close. Members join backing and unresolved items and the
+    // period's cycle allocations; a historical packet withholds member
+    // figures on the page, so none are captured for it.
+    if (!close) {
+      putRows(put, putField, p + '.row.', packet.rows, CURRENT_ROW_FIELDS);
+      if (kind !== 'historical' && !(kind === 'projected' && packet.plannedRequirements)) {
+        const members = [...((packet.backing && packet.backing.items) || []), ...(packet.unresolved || [])];
+        putRows(put, putField, p + '.item.', members, CURRENT_ITEM_FIELDS);
+        putAllocations(put, p + '.allocation.', packet.period && packet.period.cycleAllocations);
+      }
+    }
+  }
+}
+
+/* ---- inputs ----------------------------------------------------------------- */
+const isPlainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const sameKeys = (object, keys) => JSON.stringify(Object.keys(object).sort()) === JSON.stringify([...keys].sort());
+const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
+
+// Key-sorted JSON, so a digest names content rather than file formatting.
+function canonicalJson(value) {
+  if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']';
+  if (isPlainObject(value)) {
+    return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + canonicalJson(value[k])).join(',') + '}';
+  }
+  if (value === undefined || typeof value === 'function' || typeof value === 'bigint' || typeof value === 'symbol'
+    || (typeof value === 'number' && !Number.isFinite(value))) throw new Error('uncanonical input value');
+  return JSON.stringify(value);
+}
+
+function loadCanonicalInputs(root = ROOT) {
+  const data = JSON.parse(fs.readFileSync(path.join(root, 'data.json'), 'utf8'));
+  const periodsFile = path.join(root, 'public', 'periods.json');
+  // An absent periods payload is a real served state; a malformed one is not.
+  const periods = fs.existsSync(periodsFile) ? JSON.parse(fs.readFileSync(periodsFile, 'utf8')) : null;
   return { data, periods };
 }
 
-function main() {
-  const { data, periods } = loadCanonicalInputs();
-  process.stdout.write(JSON.stringify(buildFiguresSnapshot(data, periods), null, 2) + '\n');
+// An invented input is frozen served data plus its own periods payload. The
+// schema is closed: unknown keys, a file name that is not the id, a missing
+// `invented: true`, description or origin, or an input outside the parity
+// subset is refused, never skipped.
+function validateInventedInput(doc, file) {
+  const fail = why => { throw new Error('invalid figures input ' + file + ': ' + why); };
+  if (!isPlainObject(doc) || !sameKeys(doc, INPUT_KEYS)) fail('keys');
+  if (doc.schema !== INPUT_SCHEMA) fail('schema');
+  if (typeof doc.id !== 'string' || !INPUT_ID.test(doc.id) || doc.id + '.json' !== file) fail('id');
+  if (doc.invented !== true) fail('invented');
+  if (typeof doc.description !== 'string' || !doc.description.trim()) fail('description');
+  const origin = doc.origin;
+  if (!isPlainObject(origin) || !sameKeys(origin, ORIGIN_KEYS) || !ORIGIN_KINDS.includes(origin.kind)
+    || typeof origin.source !== 'string' || !origin.source.trim()
+    || typeof origin.transform !== 'string' || !origin.transform.trim()) fail('origin');
+  if (!Array.isArray(doc.limitations) || new Set(doc.limitations).size !== doc.limitations.length
+    || doc.limitations.some(item => !LIMITATIONS.includes(item))) fail('limitations');
+  if (!(doc.periods === null || isPlainObject(doc.periods))) fail('periods');
+  if ((doc.periods === null) !== doc.limitations.includes('absent-periods')) fail('absent-periods limitation');
+  const data = doc.data;
+  if (!isPlainObject(data) || !isPlainObject(data.meta) || typeof data.meta.asOf !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}$/.test(data.meta.asOf) || !isPlainObject(data.plan) || !isPlainObject(data.plan.defaults)
+    || !Array.isArray(data.debts) || !Array.isArray(data.revolvingExtra)) fail('data');
+  const excluded = parityExclusions(data);
+  if (excluded.length) fail('outside the engine-input parity subset (' + excluded.join(', ') + ')');
+  return doc;
+}
+
+function loadInventedInputs(dir = INPUT_DIR) {
+  return fs.readdirSync(dir).sort().map(file => {
+    const full = path.join(dir, file);
+    if (!file.endsWith('.json') || !fs.statSync(full).isFile()) throw new Error('unexpected entry in figures inputs: ' + file);
+    const doc = validateInventedInput(JSON.parse(fs.readFileSync(full, 'utf8')), file);
+    return { id: doc.id, doc, digest: sha256(canonicalJson(doc)) };
+  });
+}
+
+// The instrument's own identity: a moved field on an unedited input can come
+// from the engine or from this collector, and the summary keeps them apart.
+function collectorDigest() {
+  return sha256(['figures-snapshot.js', 'figures-comment.js']
+    .map(file => fs.readFileSync(path.join(__dirname, file), 'utf8').replace(/\r\n/g, '\n')).join('\0'));
+}
+
+function buildCheckSnapshot(canonicalInputs, inputs) {
+  const { CHECK_SCHEMA, FIELD_CLASSES, snapshotObserves } = require('./figures-comment');
+  const excluded = parityExclusions(canonicalInputs.data);
+  if (excluded.length) {
+    throw new Error('the household dated opening is outside the engine-input parity subset (' + excluded.join(', ') + ')');
+  }
+  const out = {
+    'check.schema': CHECK_SCHEMA,
+    'check.collector.sha256': collectorDigest(),
+    'check.household.input.sha256': sha256(canonicalJson({ data: canonicalInputs.data, periods: canonicalInputs.periods })),
+  };
+  const household = buildFiguresSnapshot(canonicalInputs.data, canonicalInputs.periods);
+  for (const [key, value] of Object.entries(household)) {
+    if (/^(check|coverage|fixture)\./.test(key)) throw new Error('reserved household snapshot key: ' + key);
+    if (value !== undefined) out[key] = value;
+  }
+  const invented = [];
+  for (const input of inputs) {
+    const snapshot = buildFiguresSnapshot(input.doc.data, input.doc.periods);
+    const prefix = 'fixture.' + input.id + '.';
+    out[prefix + 'input.sha256'] = input.digest;
+    for (const [key, value] of Object.entries(snapshot)) {
+      if (key.startsWith('input.')) throw new Error('reserved input snapshot key: ' + key);
+      if (value !== undefined) out[prefix + key] = value;
+    }
+    invented.push(snapshot);
+  }
+  for (const cls of FIELD_CLASSES) {
+    out['coverage.' + cls.id + '.household'] = snapshotObserves(household, cls) ? 1 : 0;
+    out['coverage.' + cls.id + '.invented'] = invented.filter(snapshot => snapshotObserves(snapshot, cls)).length;
+  }
+  return out;
+}
+
+function main(argv = process.argv.slice(2)) {
+  const householdOnly = argv.length === 1 && argv[0] === '--household-only';
+  const coverage = argv.length === 1 && argv[0] === '--coverage';
+  if (argv.length && !householdOnly && !coverage) {
+    process.stderr.write('usage: node scripts/figures-snapshot.js [--household-only | --coverage]\n');
+    process.exitCode = 1;
+    return;
+  }
+  const canonicalInputs = loadCanonicalInputs();
+  if (householdOnly) {
+    process.stdout.write(JSON.stringify(buildFiguresSnapshot(canonicalInputs.data, canonicalInputs.periods), null, 2) + '\n');
+    return;
+  }
+  const snapshot = buildCheckSnapshot(canonicalInputs, loadInventedInputs());
+  if (coverage) {
+    // Local only: class names with household 0/1 and invented-input counts.
+    const { FIELD_CLASSES } = require('./figures-comment');
+    for (const cls of FIELD_CLASSES) {
+      process.stdout.write([cls.id, cls.family, snapshot['coverage.' + cls.id + '.household'],
+        snapshot['coverage.' + cls.id + '.invented']].join('\t') + '\n');
+    }
+    return;
+  }
+  process.stdout.write(JSON.stringify(snapshot, null, 2) + '\n');
 }
 
 if (require.main === module) main();
 
 module.exports = {
   buildFiguresSnapshot,
+  buildCheckSnapshot,
+  loadCanonicalInputs,
+  loadInventedInputs,
+  validateInventedInput,
+  pageOptions,
+  parityExclusions,
+  canonicalJson,
+  INPUT_DIR,
+  INPUT_SCHEMA,
   main,
 };
