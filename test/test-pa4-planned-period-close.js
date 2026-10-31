@@ -213,7 +213,7 @@ test('PA-1 movement hold: every projected planned close is estimated, with a rea
 // and enters the close as annualSavingsNeed; its own confidence must feed the
 // close's trust. Invented fixture: 200 premium due 2026-10-25 against a
 // purpose-reserve goal; every other input confirmed.
-function annualFixture(confidence) {
+function annualFixture(confidence, amount = 200) {
   const { ledger } = require('./fixtures/chronological-savings-data');
   const { advance } = require('./fixtures/savings-daily-allocation-contract');
   const i = advance(ledger(), '2026-10-10');
@@ -223,7 +223,7 @@ function annualFixture(confidence) {
   i.plan.opening.representedEvents = [];
   i.opts.currentPeriodActuals.coverageStart = '2026-10-09';
   i.opts.currentPeriodActuals.savingsFetchCoverage.startDate = '2026-10-09';
-  i.plan.bills = [{ id: 'annual', label: 'Invented annual premium', amount: 200, frequency: 'yearly',
+  i.plan.bills = [{ id: 'annual', label: 'Invented annual premium', amount, frequency: 'yearly',
     month: 10, day: 25, firstDue: '2026-10-25', jointCash: false, confidence }];
   i.plan.savingsEarmarks.pools[1].goalRefs = [{ kind: 'yearly-bill', id: 'annual' }];
   const a = F.recommend(i.plan, i.asOf, { ...i.opts, debts: [], weeklyVariable: 0 });
@@ -241,9 +241,20 @@ test('annual provision confirmed (control): the close is calculated with the pro
 
 // Carry redesign (Atlas 6535096443 point 4): the future carry restores the
 // annual provision exactly (availableRemainder adds annualSavingsNeed back
-// before the one sweep), so later closes do not depend on it. Proved by
-// amount independence: a confirmed 200 and a confirmed 900 provision give
-// the same sweep and next opening.
+// before the one sweep), so later closes do not depend on it. The next test
+// proves that amount independence directly: a confirmed 200 and a confirmed
+// 900 provision give the same sweep and the same later openings and closes.
+test('exactly restored annual provision: its amount does not move the sweep or later closes', () => {
+  const small = annualFixture('confirmed', 200), large = annualFixture('confirmed', 900);
+  assert.notEqual(c(large.due.plannedPeriodClose), c(small.due.plannedPeriodClose), 'fixture: the due-period close moves with it');
+  assert.equal(c(large.due.paydaySweep), c(small.due.paydaySweep), 'the sweep basis restores the provision exactly');
+  assert.ok(small.later.length);
+  small.later.forEach((p, n) => {
+    assert.equal(c(large.later[n].opening), c(p.opening), `${p.start}: opening independent of the amount`);
+    assert.equal(c(large.later[n].plannedPeriodClose), c(p.plannedPeriodClose));
+  });
+});
+
 test('annual provision estimated: the due-period close is estimated; the exactly restored provision does not taint later closes', () => {
   const { due, later } = annualFixture('estimated');
   assert.ok(due.plannedPeriodCloseTerms.annualSavingsNeed > 0);
