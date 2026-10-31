@@ -11556,6 +11556,37 @@
     }
     return true;
   }
+  // PA-4a-2b (Astra #787 6534140193 §1-2; Atlas 6531287856): under an eligible
+  // card-MATCHING-only hold, a current-cycle card purchase inside H has not
+  // left Bills cash unless a qualified settlement shows it. The remaining
+  // household requirement relieves each row by its cash spending only
+  // (the incumbent pooled scope otherwise unchanged), less qualified card
+  // settlements F. With no qualified settlement evidence at all, complete
+  // card coverage history establishes F = 0. Any unresolved payment or a
+  // recorded settlement this slice does not yet qualify leaves F, and so the
+  // remaining requirement, unknown (null), never zero.
+  function cardMatchHouseholdRemaining(plan, coverage, budget) {
+    if (!cardMatchOnlyHold(plan, coverage) || !budget || !Array.isArray(budget.items)) return null;
+    const codes = (coverage.issues || []).map(issue => issue && issue.code);
+    if (codes.includes('coverage-payment-or-credit-purpose-unconfirmed')) return null;
+    const policy = plan && plan.cardPurchaseCoverage;
+    if (policy && ((policy.payments || []).length || (policy.reversals || []).length)) return null;
+    let remaining = 0;
+    for (const row of budget.items) {
+      const hold = savingsCents(row && row.hold), spent = savingsCents(row && row.spent, true);
+      if (hold == null || spent == null) return null;
+      let card = 0;
+      for (const r of (row.recon || [])) {
+        if (!r || (r.pendingPostedDuplicate === true && r.pending === true)) continue;
+        if (!isRevolvingCardAccount({ account: r.account })) continue;
+        const cents = savingsCents(r.amount, true);
+        if (cents == null) return null;
+        card += cents;
+      }
+      remaining += Math.max(0, hold - (spent - card));
+    }
+    return Number.isSafeInteger(remaining) ? remaining : null;
+  }
   // PA-4 (Atlas 6527529634): when the only Bills issue is a known balance
   // below the matching-derived reserve, disclose that gap on its own. It is a
   // diagnostic, never deducted from the plan and never the plan deficit: the
@@ -11708,6 +11739,8 @@
     // from the inputs that carry actually uses. Null whenever no numeric
     // carry exists, so no stale provenance reaches a fallback opening.
     let carryTrust = null;
+    // PA-4a-2b: the active seed used the card-matching estimate.
+    let cardMatchSeedEstimated = false;
     let unavailableOpeningLost = false;
     let openingChainLost = false;
     const heldCycleStarts = new Set();
@@ -12088,7 +12121,7 @@
         : periodWaterfallCombinedTrust(...startingCashOpeningRows(plan).map(startingCashRowTrust));
       const plannedOpeningTrust = !projected ? activeOpeningTrust
         : periodWaterfallCombinedTrust(openingCarried ? (incomingCarryTrust || 'unavailable') : 'unavailable',
-          opts.s1CurrentBoundaryCreditEstimated === true ? 'estimated' : 'calculated');
+          opts.s1CurrentBoundaryCreditEstimated === true || cardMatchSeedEstimated ? 'estimated' : 'calculated');
       // The planned close and its carry add only incomeAdded (receipts not
       // already inside the opening); the BAD identity keeps incomeTrust.
       const incomeAddedTrust = periodWaterfallTotalTrust(incomeAddedRows, 0, calendarIncomeContribution);
@@ -12237,8 +12270,15 @@
             const stock = opts.s1CurrentBillsStockCents;
             const remainingBudgetKnown = budget.items.every(row =>
               savingsCents(row.hold) != null && savingsCents(row.spent, true) != null);
-            const remainingBudget = remainingBudgetKnown ? budget.items.reduce((sum, row) =>
-              sum + Math.max(0, savingsCents(row.hold) - savingsCents(row.spent, true)), 0) : null;
+            // PA-4a-2b: under a card hold, card spend is not relieved as if
+            // Bills cash had left. Only an eligible matching-only hold with
+            // qualified settlement terms seeds an ESTIMATED opening.
+            const cardHeld = cardCoverage.status === 'unavailable';
+            const remainingBudget = !remainingBudgetKnown ? null
+              : cardHeld ? cardMatchHouseholdRemaining(plan, cardCoverage, budget)
+              : budget.items.reduce((sum, row) =>
+                sum + Math.max(0, savingsCents(row.hold) - savingsCents(row.spent, true)), 0);
+            if (cardHeld && remainingBudget != null) cardMatchSeedEstimated = true;
             const futureIncome = income.filter(row => row.date > asOf
               && !row.alreadyInCash && !row.notReliedUpon
               && !['represented', 'opening', 'not-relied-upon'].includes(row.settlement));
@@ -12399,9 +12439,13 @@
         afterHouseholdBudget,
         balanceAfterDeductions,
         paydaySweep,
-        ...(opts.s1CurrentBoundaryCreditEstimated === true && projected
+        // Decision 1 / PA-4a-2b: openings and sweeps derived from an
+        // estimated basis carry the estimated tag and their typed basis.
+        ...((opts.s1CurrentBoundaryCreditEstimated === true || cardMatchSeedEstimated) && projected
           ? { openingTrust: 'estimated', paydaySweepTrust: 'estimated',
-            openingBasis: 'reported-balance-movement-hold' } : {}),
+            openingBasis: opts.s1CurrentBoundaryCreditEstimated === true && cardMatchSeedEstimated
+              ? 'reported-balance-movement-and-card-matching'
+              : cardMatchSeedEstimated ? 'card-matching-unresolved' : 'reported-balance-movement-hold' } : {}),
         predictedEndingBalance: afterHouseholdBudget,
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
           ? 'balance-after-deductions' : null,
