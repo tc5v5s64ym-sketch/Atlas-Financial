@@ -705,3 +705,212 @@ test('linkage is lossless and order-independent: every distinct debit identity o
   assert.equal(u.seed, 1750);
   assert.equal(cents(b2Case({ ...unrelated, policy: false }).next.opening), 1750);
 });
+
+// Atlas #812 6542560178 / Muse 6542634657: the H share of a settlement is
+// only what it allocates to purchases this hold contains (the same recon
+// universe the remaining-requirement loop consumes); everything else left
+// Bills outside the scoped plan. The same split drives opening inclusion and
+// the Q6 carry. Invented ledger: snapshot 8000 on payday 10-02 (as-of 10-07)
+// unless stated, packet coverage from 09-25, H purchase CARD-1 4250, a
+// prior-cycle card purchase CARD-0 1000 (09-28) and a current-cycle
+// Restaurants purchase CARD-2 2000 that no budget row holds.
+const cardTx = (id, date, amountCents, o = {}) => posted({ id, date, amount: amountCents / 100, atlasAccountId: 'tdcc',
+  accountRole: 'revolving-credit', categoryLabel: 'Groceries', coverageRef: id.toLowerCase(), ...o });
+const P1 = (date = '2026-10-05') => cardTx('CARD-1', date, 4250, { coverageRef: 'cov-1' });
+const P0 = cardTx('CARD-0', '2026-09-28', 1000, { coverageRef: 'cov-0' });
+const P2 = cardTx('CARD-2', '2026-10-04', 2000, { coverageRef: 'cov-2', categoryLabel: 'Restaurants' });
+function settle({ id = 'p1', d = 'PAY-D', c = 'PAY-C', date, alloc = [], other = 0 }) {
+  const total = alloc.reduce((s, a) => s + a[1], 0) + other;
+  return {
+    txs: [posted({ id: d, date, amount: total / 100, atlasAccountId: 'chequing-a', accountRole: 'household-cash',
+      categoryLabel: 'Credit Card Payment', coverageRef: d.toLowerCase() }),
+    posted({ id: c, date, amount: -total / 100, atlasAccountId: 'tdcc', accountRole: 'revolving-credit',
+      categoryLabel: 'Credit Card Payment', coverageRef: c.toLowerCase() })],
+    record: { id, confirmed: true, creditRef: c.toLowerCase(), debitRef: d.toLowerCase(),
+      allocations: alloc.map(([ref, a]) => ({ purchaseRef: ref, amount: a / 100 })), otherAmount: other / 100,
+      ...(other ? { otherPurpose: 'prior-debt' } : {}) },
+  };
+}
+// source: 'snapshot' | 'payday-morning' | 'walk' (no snapshot; plan.opening.asOf = dated).
+function shareCase({ source = 'snapshot', stock, purchases, settlements = [], bills = [], represented = [], extra = [],
+  policy = true, dated = null, gap = null, movement = false } = {}) {
+  const x = ledger();
+  const asOf = source === 'payday-morning' ? '2026-10-02' : '2026-10-07';
+  x.asOf = asOf;
+  x.plan.opening.asOf = dated || asOf;
+  if (source !== 'snapshot') delete x.plan.opening.paydaySnapshot;
+  const packet = x.opts.currentPeriodActuals;
+  packet.observationAsOf = asOf;
+  packet.coverageThrough = asOf;
+  packet.coverageStart = '2026-09-25';
+  if (packet.savingsFetchCoverage) Object.assign(packet.savingsFetchCoverage, { startDate: '2026-09-25', endDate: asOf });
+  if (movement) packet.savingsMovementUnconfirmed = [{ accountId: 'savings', reason: 'transaction-posting-status-unconfirmed' }];
+  x.plan.income = x.plan.income.filter(r => r.id === 'payroll');
+  x.plan.budget = { categories: [{ id: 'groceries', label: 'Groceries', monthly: 0, essential: true }] };
+  if (!policy) delete x.plan.savingsEarmarks.allocationPolicy;
+  x.plan.obligations = [];
+  x.plan.bills = bills;
+  x.plan.startingCash.breakdown[0].value = stock / 100;
+  const sets = settlements.map(settle);
+  if (sets.length) x.plan.cardPurchaseCoverage = { payments: sets.map(s => s.record), refunds: [], reversals: [] };
+  packet.transactions = [].concat(purchases, ...sets.map(s => s.txs), extra);
+  packet.representedActuals = represented;
+  const before = JSON.stringify(x);
+  const a = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: DEBTS, ...(gap ? { paydayGapCash: gap } : {}) });
+  assert.equal(JSON.stringify(x), before, 'no input mutation');
+  const views = a.payPeriodViews.filter(v => v.role !== 'lookback');
+  const est = v => v.cardMatchingEstimate && v.cardMatchingEstimate.trust === 'estimated' ? cents(v.cardMatchingEstimate.opening) : null;
+  return { a, active: views[0], next: views[1], later: views[2], seed: est(views[1]) };
+}
+// The published close equals its own terms identity, never adjusted.
+const termsOf = v => {
+  const t = v.plannedPeriodCloseTerms;
+  return cents(t.opening) + cents(t.incomeAdded) - cents(t.periodBillLoad) - cents(t.budgetHold) - cents(t.annualSavingsNeed);
+};
+
+test('Q6: the H share is this hold\'s own recon universe; cash allocated outside H is outside the scoped plan', () => {
+  // [shape, observed stock at 10-07, settlement(s), seed oracle]. Every shape
+  // posts its payment on 10-06, after the snapshot: scoped close
+  // 8000 - 4250 = 3750 stands; the no-policy carry is withheld when any cent
+  // left outside H; the observed-stock seed is stock - (4250 - H share).
+  const cases = {
+    'prior debt as otherAmount': [5000, [{ date: '2026-10-06', alloc: [['cov-1', 2000]], other: 1000 }], 2750],
+    'prior-cycle purchase as an allocation': [5000, [{ date: '2026-10-06', alloc: [['cov-1', 2000], ['cov-0', 1000]] }], 2750],
+    'separate records': [5000, [{ id: 'p0', d: 'PAY0-D', c: 'PAY0-C', date: '2026-10-06', alloc: [['cov-0', 1000]] },
+      { date: '2026-10-06', alloc: [['cov-1', 2000]] }], 2750],
+    'current-cycle purchase no budget row holds': [4000, [{ date: '2026-10-06', alloc: [['cov-1', 2000], ['cov-2', 2000]] }], 1750],
+    'wholly outside H': [7000, [{ date: '2026-10-06', alloc: [['cov-0', 1000]] }], 2750],
+  };
+  for (const [name, [stock, settlements, seed]] of Object.entries(cases)) {
+    const purchases = [P0, P1(), P2];
+    const nopol = shareCase({ stock, purchases, settlements, policy: false });
+    assert.deepEqual(closeOf(nopol.active), [3750, 'estimated'], `${name}: scoped close`);
+    assert.equal(termsOf(nopol.active), 3750, `${name}: close identity`);
+    assert.equal(nopol.next.opening, null, `${name}: the unreconciled carry is withheld`);
+    assert.equal(nopol.next.paydaySweep, null, `${name}: no sweep from it`);
+    assert.equal(nopol.next.plannedPeriodClose, null, `${name}: no later close from it`);
+    assert.equal(nopol.later.opening, null, `${name}: never resurrected later`);
+    const pol = shareCase({ stock, purchases, settlements });
+    assert.deepEqual(closeOf(pol.active), [3750, 'estimated']);
+    assert.equal(pol.seed, seed, `${name}: independent seed (outside-H cash not subtracted again)`);
+  }
+  // Entirely H-funded and partly H-funded controls carry: 8000 - 2000 - 2250
+  // = 3750 and 8000 - 1000 - 3250 = 3750 physically.
+  for (const [stock, alloc] of [[6000, 2000], [7000, 1000]]) {
+    const purchases = [P0, P1()];
+    const h = shareCase({ stock, purchases, settlements: [{ date: '2026-10-06', alloc: [['cov-1', alloc]] }], policy: false });
+    assert.deepEqual(closeOf(h.active), [3750, 'estimated']);
+    assert.equal(cents(h.next.opening), 3750, `H-only ${alloc}: carried`);
+    assert.equal(shareCase({ stock, purchases, settlements: [{ date: '2026-10-06', alloc: [['cov-1', alloc]] }] }).seed, 3750);
+  }
+  // A combined Savings movement hold changes none of this.
+  const moved = shareCase({ stock: 5000, purchases: [P0, P1()], movement: true, policy: false,
+    settlements: [{ date: '2026-10-06', alloc: [['cov-1', 2000], ['cov-0', 1000]] }] });
+  assert.deepEqual(closeOf(moved.active), [3750, 'estimated']);
+  assert.equal(moved.next.opening, null);
+});
+
+test('opening inclusion uses the same H split: only an H-funding debit makes the close ambiguous', () => {
+  // Payday-morning opening (as-of 10-02, opening 7000), H purchase on 10-02,
+  // a same-day payment wholly to the prior-cycle purchase: the scoped close
+  // 7000 - 4250 = 2750 does not depend on inclusion, so it stands; whether the
+  // cash already left is unknown, so the carry is withheld. Seed 7000 - 4250.
+  const wholly = shareCase({ source: 'payday-morning', stock: 7000, purchases: [P0, P1('2026-10-02')], policy: false,
+    settlements: [{ date: '2026-10-02', alloc: [['cov-0', 1000]] }] });
+  assert.equal(wholly.active.openingSource, 'payday-morning');
+  assert.deepEqual(closeOf(wholly.active), [2750, 'estimated']);
+  assert.equal(wholly.next.opening, null);
+  assert.equal(shareCase({ source: 'payday-morning', stock: 7000, purchases: [P0, P1('2026-10-02')],
+    settlements: [{ date: '2026-10-02', alloc: [['cov-0', 1000]] }] }).seed, 2750);
+  // Mixed on the same day: the H share makes inclusion matter, so the close
+  // is unknown; the seed is 5000 - 2250 = 2750.
+  const mixed = shareCase({ source: 'payday-morning', stock: 5000, purchases: [P0, P1('2026-10-02')],
+    settlements: [{ date: '2026-10-02', alloc: [['cov-1', 2000], ['cov-0', 1000]] }] });
+  assert.equal(mixed.active.plannedPeriodClose, null);
+  assert.match(mixed.active.plannedPeriodCloseReason, /falls on the opening date/);
+  assert.equal(mixed.seed, 2750);
+  // A snapshot is before its own day's flows: the same wholly-outside payment
+  // on 10-02 keeps 8000 - 4250 = 3750 and withholds only the carry.
+  const snap = shareCase({ stock: 7000, purchases: [P0, P1('2026-10-02')], policy: false,
+    settlements: [{ date: '2026-10-02', alloc: [['cov-0', 1000]] }] });
+  assert.deepEqual(closeOf(snap.active), [3750, 'estimated']);
+  assert.equal(snap.next.opening, null);
+});
+
+test('a zero-gap cutover-walk opening is the dated reading itself and may hold same-day cash; a reconstructed morning does not', () => {
+  // No snapshot, as-of 10-07, H purchase 4250 on 10-02, settlement 2000 to H.
+  // Zero gap: the plan's dated opening IS the payday (10-02), so the 8000 is
+  // a reading of unknown time of day: a same-day H-funding debit is unknown.
+  const zero = date => shareCase({ source: 'walk', dated: '2026-10-02', stock: 8000, purchases: [P1('2026-10-02')],
+    settlements: [{ date, alloc: [['cov-1', 2000]] }], policy: false });
+  const sameDay = zero('2026-10-02');
+  assert.equal(sameDay.active.openingSource, 'cutover-walk');
+  assert.equal(sameDay.active.plannedPeriodClose, null);
+  assert.match(sameDay.active.plannedPeriodCloseReason, /falls on the opening date/);
+  assert.equal(sameDay.next.opening, null);
+  // After the opening day it is a period flow: 8000 - 4250 = 3750.
+  assert.deepEqual(closeOf(zero('2026-10-06').active), [3750, 'estimated']);
+  // Positive gap: the morning is reconstructed from a 09-30 reading plus a
+  // complete (empty) gap, so it is cash before 10-02's flows: 3750, carried.
+  const walk = shareCase({ source: 'walk', dated: '2026-09-30', stock: 8000, purchases: [P1('2026-10-02')], policy: false,
+    settlements: [{ date: '2026-10-02', alloc: [['cov-1', 2000]] }],
+    gap: { complete: true, movements: [], coverageStart: '2026-10-01', coverageThrough: '2026-10-01' } });
+  assert.equal(walk.active.openingSource, 'cutover-walk');
+  assert.deepEqual(closeOf(walk.active), [3750, 'estimated']);
+  assert.equal(cents(walk.next.opening), 3750);
+});
+
+test('cutover linkage stands on its own: a plain bill paid early by the settlement, and one debit claimed twice', () => {
+  // A plain monthly bill due 10-10 (after the 10-07 as-of; not a payment
+  // obligation, so neither ruling 1 nor the Q3 horizon applies) paid early on
+  // 10-06 by the settlement debit. The seed would deduct the row and relieve
+  // H by the same cash: 6000 - 2000 - 2250 = 1750 against 3750 counted once.
+  const early = { id: 'early-bill', label: 'Invented bill', frequency: 'monthly', day: 10, amount: 20, confidence: 'confirmed' };
+  const other = posted({ id: 'OTHER-D', date: '2026-10-06', amount: 10, atlasAccountId: 'chequing-a',
+    accountRole: 'household-cash', categoryLabel: 'Bills', coverageRef: 'other-d' });
+  const single = shareCase({ stock: 6000, purchases: [P1()], bills: [early],
+    settlements: [{ date: '2026-10-06', alloc: [['cov-1', 2000]] }],
+    represented: [{ id: 'early-bill', date: '2026-10-10', actual: 20, transactionId: 'PAY-D' }] });
+  assert.equal(single.seed, null, 'cutover linkage holds the seed');
+  const pd = { id: 'early-bill', date: '2026-10-10', actual: 10, transactionId: 'PAY-D' };
+  const od = { id: 'early-bill', date: '2026-10-10', actual: 10, transactionId: 'OTHER-D' };
+  for (const represented of [[pd, od], [od, pd]]) {
+    const r = shareCase({ stock: 6000, purchases: [P1()], bills: [early], extra: [other], represented,
+      settlements: [{ date: '2026-10-06', alloc: [['cov-1', 1000]] }] });
+    assert.equal(r.seed, null, `order ${represented[0].transactionId} first: the seed holds`);
+  }
+  // One debit claimed by two occurrences (two 2000 bills on 10-06, both
+  // represented by the 2000 settlement that also funds H): it cannot be
+  // attributed once, so both bases hold.
+  const bill6 = { id: 'bill-a', label: 'Invented card bill', frequency: 'monthly', day: 6, amount: 20, confidence: 'confirmed' };
+  const bill6b = { ...bill6, id: 'bill-b', label: 'Invented second bill' };
+  const twice = shareCase({ stock: 6000, purchases: [P1()], bills: [bill6, bill6b],
+    settlements: [{ date: '2026-10-06', alloc: [['cov-1', 2000]] }],
+    represented: [{ id: 'bill-a', date: '2026-10-06', actual: 20, transactionId: 'PAY-D' },
+      { id: 'bill-b', date: '2026-10-06', actual: 20, transactionId: 'PAY-D' }] });
+  assert.equal(twice.active.plannedPeriodClose, null);
+  assert.equal(twice.seed, null);
+  // The legitimate side: the settlement represents exactly one occurrence that
+  // neither basis deducts (next month's), so nothing is counted twice:
+  // close 8000 - 4250 = 3750; seed 6000 - 2250 = 3750.
+  const once = shareCase({ stock: 6000, purchases: [P1()], bills: [bill6],
+    settlements: [{ date: '2026-10-06', alloc: [['cov-1', 2000]] }],
+    represented: [{ id: 'bill-a', date: '2026-11-06', actual: 20, transactionId: 'PAY-D' }] });
+  assert.deepEqual(closeOf(once.active), [3750, 'estimated']);
+  assert.equal(once.seed, 3750);
+});
+
+test('excluded pending twins cannot reach the H split: the reconciler already holds them hard', () => {
+  // A pending duplicate of the H purchase (with or without its own reference)
+  // raises an identity or replacement issue before matching, so the hold is
+  // not matching-only and nothing numeric is published on either basis.
+  for (const ref of ['cov-1p', undefined]) {
+    const twin = cardTx('CARD-1P', '2026-10-05', 4250, { coverageRef: ref, pending: true, pendingPostedDuplicate: true });
+    for (const policy of [true, false]) {
+      const r = shareCase({ stock: 6000, purchases: [P1(), twin], policy, settlements: [{ date: '2026-10-06', alloc: [['cov-1', 2000]] }] });
+      assert.equal(r.active.plannedPeriodClose, null);
+      assert.equal(r.seed, null);
+      if (!policy) assert.equal(r.next.opening, null);
+    }
+  }
+});

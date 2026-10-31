@@ -11636,12 +11636,16 @@
       return { tx, account: String(ids[0]), card: isRevolvingCardAccount(tx),
         ref: tx.coverageRef == null ? null : String(tx.coverageRef) };
     };
-    const heldCards = new Set();
+    // heldRefs: each held card purchase reference and how many held recon
+    // rows own it, under the same row-source validation and pending-twin
+    // exclusion as the remaining-requirement loop below.
+    const heldCards = new Set(), heldRefs = new Map();
     for (const row of budget.items) for (const r of (row && row.recon) || []) {
       if (!r || (r.pendingPostedDuplicate === true && r.pending === true)) continue;
       const source = rowSource(r);
       if (!source) return unknown('household-row-untraceable');
       if (source.card) heldCards.add(source.account);
+      if (source.card && source.ref != null) heldRefs.set(source.ref, (heldRefs.get(source.ref) || 0) + 1);
     }
     const policy = plan && plan.cardPurchaseCoverage;
     if (policy && (policy.reversals || []).length) return unknown('card-reversal-unqualified');
@@ -11688,12 +11692,25 @@
       if (!representedBy.has(key)) representedBy.set(key, new Set());
       representedBy.get(key).add(String(entry.transactionId));
     }
+    // Atlas 6542560178 (4): the occurrences each debit identity claims. A
+    // settlement debit claimed by more than one occurrence cannot be
+    // attributed once on either basis.
+    const claimedBy = new Map();
+    for (const [key, ids] of representedBy) for (const id of ids) {
+      if (!claimedBy.has(id)) claimedBy.set(id, new Set());
+      claimedBy.get(id).add(key);
+    }
     // Atlas 6541992380 (1): on the close basis, whether the opening already
     // holds each settlement's cash is part of the basis. (3)/Q6: a non-H
     // share leaving after the opening is outside the scoped plan, so the
     // close may stand but its cash carry has no inspectable term.
     const openingAsOf = kind === 'close' ? basis.openingAsOf : null;
     if (kind === 'close' && !savingsDate(openingAsOf)) return unknown('basis-unavailable');
+    // Atlas 6542560178 (3): a cutover-walk opening with no gap is the plan's
+    // dated reading itself, not a reconstructed morning stock, so it may
+    // already hold same-day posted cash.
+    const zeroGapWalk = kind === 'close' && basis.openingSource === 'cutover-walk'
+      && plan && plan.opening && plan.opening.asOf === openingAsOf;
     let carryReason = null;
     const settled = new Map();
     for (const record of records) {
@@ -11702,27 +11719,32 @@
       const parts = Array.isArray(record.allocations) ? record.allocations : [];
       const debit = transactions.filter(tx => tx && tx.coverageRef != null && String(tx.coverageRef) === String(record.debitRef));
       if (debit.length !== 1 || debit[0].id == null || !savingsDate(debit[0].date)) return unknown('card-settlement-unqualified');
-      let alloc = 0;
+      let alloc = 0, heldAlloc = 0;
       for (const part of parts) {
         const cents = part && savingsCents(part.amount);
         if (!part || part.purchaseRef == null || cents == null || cents <= 0) return unknown('card-settlement-unqualified');
         settled.set(String(part.purchaseRef), (settled.get(String(part.purchaseRef)) || 0) + cents);
         alloc += cents;
+        const owners = heldRefs.get(String(part.purchaseRef)) || 0;
+        // Ambiguous ownership cannot be attributed to H exactly once.
+        if (owners > 1) return unknown('card-settlement-unqualified');
+        if (owners === 1) heldAlloc += cents;
       }
       const debitCents = savingsCents(debit[0].amount, true);
       if (debitCents == null || Math.abs(debitCents) < alloc) return unknown('card-settlement-unqualified');
-      // The allocated share funds purchases in this hold (every in-cycle
-      // card purchase is in H); the rest (prior debt) is outside the scoped plan.
-      const outsideH = Math.abs(debitCents) - alloc;
+      // Only allocations to purchases this hold contains fund H. Everything
+      // else (prior debt, purchases before the cycle or outside any budget
+      // row) left Bills outside the scoped plan.
+      const outsideH = Math.abs(debitCents) - heldAlloc;
       if (kind === 'close') {
         const day = debit[0].date;
         const inOpening = day < openingAsOf ? true : day > openingAsOf ? false
-          : openingMayHoldSameDayCash(basis.openingSource) ? null : false;
+          : openingMayHoldSameDayCash(basis.openingSource) || zeroGapWalk ? null : false;
         // Ambiguous inclusion changes the close whenever the debit funds H.
-        if (inOpening === null && alloc > 0) return unknown('card-settlement-opening-ambiguous');
+        if (inOpening === null && heldAlloc > 0) return unknown('card-settlement-opening-ambiguous');
         // Known inclusion: the unreduced hold would deduct the funded H a
         // second time, and no qualified term restores it.
-        if (inOpening === true && alloc > 0) return unknown('card-settlement-opening-included');
+        if (inOpening === true && heldAlloc > 0) return unknown('card-settlement-opening-included');
         if (inOpening !== true && outsideH > 0) carryReason = 'card-settlement-carry-unreconciled';
       }
       // A deducted row represented by any of this settlement's debit
@@ -11733,7 +11755,7 @@
       // published close identity carries a restoration, so the close is
       // unknown rather than adjusted. Unrepresented, the settlement's H share
       // is inside H and its non-H share is outside the scoped plan (Q6 above).
-      if (rows.some(row => {
+      if ((claimedBy.get(String(debit[0].id)) || new Set()).size > 1 || rows.some(row => {
         const ids = representedBy.get(row.id + '@' + row.date);
         return ids != null && ids.has(String(debit[0].id));
       })) return unknown('card-settlement-overlap-unresolved');
