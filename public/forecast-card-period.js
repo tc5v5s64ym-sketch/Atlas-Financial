@@ -28,6 +28,9 @@
     const ledgerValid = Array.isArray(packet?.transactions);
     const rows = ledgerValid ? packet.transactions : [];
     const packetCurrent = packet?.schema === 'atlas-current-period-actuals/v1' && packet.observationAsOf === asOf;
+    // PA-4a-2a: no coverage label without valid, ordered coverage bounds.
+    const boundsValid = !!(date(packet?.coverageStart) && date(packet?.coverageThrough)
+      && packet.coverageStart <= packet.coverageThrough);
     const coverage = packetCurrent && ledgerValid && covered(packet.transactionCoverage)
       && date(packet.coverageStart) && date(packet.coverageThrough)
       && packet.coverageStart <= start && packet.coverageThrough >= through;
@@ -81,7 +84,7 @@
         netChange: { amount: null, magnitude: null, direction: null, trust: 'unavailable', completeness: 'unavailable' },
         opening: null, closing: null, reportedBalance: null, posted: [], pending: [],
         postedCoverage: coverage ? 'complete-provider-response' : 'incomplete',
-        pendingCoverage: role !== 'current' ? 'not-observed' : packetCurrent && ledgerValid && covered(packet.pendingCoverage) ? 'complete-provider-response' : 'unavailable',
+        pendingCoverage: role !== 'current' ? 'not-observed' : packetCurrent && ledgerValid && boundsValid && covered(packet.pendingCoverage) ? 'complete-provider-response' : 'unavailable',
         manualStatement: id === 'triangle' || id === 'mbna', reasons: issues };
       const debt = (debts || []).find(row => row?.id === id);
       // Preserve the actual observation date; never retime a manual balance.

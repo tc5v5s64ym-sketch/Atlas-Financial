@@ -243,3 +243,30 @@ test('card-period publication and the PA-1 Savings path also hold malformed boun
     }
   }
 });
+
+// Re-check of 9d5e9d74 (same failure class): a history that begins after the
+// as-of covers nothing up to it, and no coverage label publishes without
+// valid, ordered bounds.
+test('a coverage window that starts after the as-of is never complete or matching-only', () => {
+  for (const [form, tx, pend] of STAMPS) {
+    const p = packet(tx, pend); p.coverageStart = '2026-10-08'; p.coverageThrough = '2026-10-09';
+    const a = F.recommend(plan(), ASOF, { weeklyVariable: 0, debts: [], currentPeriodActuals: p });
+    assert.ok(codes(a.cardPurchaseCoverage).includes(HISTORY), `${form}: history hold`);
+    for (const v of a.payPeriodViews.filter(x => x.role !== 'lookback').slice(0, 2)) {
+      assert.notEqual(v.plannedPeriodCloseTrust, 'estimated', `${form} ${v.start}`);
+    }
+  }
+});
+
+test('card-period pending label requires valid ordered bounds', () => {
+  const window = { start: '2026-10-02', end: '2026-10-15' };
+  for (const [form, tx, pend] of STAMPS) {
+    for (const [label, start, through] of MALFORMED) {
+      const p = packet(tx, pend); p.coverageStart = start; p.coverageThrough = through;
+      const tdcc = F.cardPeriodMovements(plan(), [], ASOF, window, { currentPeriodActuals: p }).cards.find(card => card.id === 'tdcc');
+      assert.equal(tdcc.pendingCoverage, 'unavailable', `${form} ${label}`);
+    }
+    const ok = F.cardPeriodMovements(plan(), [], ASOF, window, { currentPeriodActuals: packet(tx, pend) }).cards.find(card => card.id === 'tdcc');
+    assert.equal(ok.pendingCoverage, 'complete-provider-response', `${form}: control`);
+  }
+});

@@ -10974,7 +10974,7 @@
       // PA-4a-2a (Atlas #811 B1): the coverage bounds must be valid calendar
       // dates, in order, before any stamp can make this history complete.
       || !savingsDate(packet.coverageStart) || !savingsDate(packet.coverageThrough)
-      || packet.coverageStart > packet.coverageThrough
+      || packet.coverageStart > packet.coverageThrough || packet.coverageStart > asOf
       || packet.coverageStart > origin || packet.coverageThrough < asOf
       || !coverageEvidenceComplete(packet.transactionCoverage, packet)
       || !coverageEvidenceComplete(packet.pendingCoverage, packet)) issue('coverage-history-incomplete');
