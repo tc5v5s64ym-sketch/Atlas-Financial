@@ -11,6 +11,10 @@
     ['triangle', 'Triangle'], ['mbna', 'Amazon Mastercard']];
   function publish(input, primitives) {
     const { date, cents, skipParent, classify } = primitives;
+    // PA-4a-2a: read coverage evidence with Forecast's one strict rule, so this
+    // publication agrees with the reconciliation it reports.
+    const covered = typeof primitives.coverageComplete === 'function'
+      ? primitives.coverageComplete : value => value === 'complete';
     const { plan, debts, asOf, window, packet, balanceEvidence, overlay, paymentAllocations } = input;
     // HELOC is the owner's existing revolving facility. Use the same native
     // movement and endpoint evidence; its recorded balance is never a net.
@@ -24,7 +28,10 @@
     const ledgerValid = Array.isArray(packet?.transactions);
     const rows = ledgerValid ? packet.transactions : [];
     const packetCurrent = packet?.schema === 'atlas-current-period-actuals/v1' && packet.observationAsOf === asOf;
-    const coverage = packetCurrent && ledgerValid && packet.transactionCoverage === 'complete'
+    // PA-4a-2a: no coverage label without valid, ordered coverage bounds.
+    const boundsValid = !!(date(packet?.coverageStart) && date(packet?.coverageThrough)
+      && packet.coverageStart <= packet.coverageThrough);
+    const coverage = packetCurrent && ledgerValid && covered(packet.transactionCoverage)
       && date(packet.coverageStart) && date(packet.coverageThrough)
       && packet.coverageStart <= start && packet.coverageThrough >= through;
     const known = new Set(identities.map(([id]) => id));
@@ -77,7 +84,7 @@
         netChange: { amount: null, magnitude: null, direction: null, trust: 'unavailable', completeness: 'unavailable' },
         opening: null, closing: null, reportedBalance: null, posted: [], pending: [],
         postedCoverage: coverage ? 'complete-provider-response' : 'incomplete',
-        pendingCoverage: role !== 'current' ? 'not-observed' : packetCurrent && ledgerValid && packet.pendingCoverage === 'complete' ? 'complete-provider-response' : 'unavailable',
+        pendingCoverage: role !== 'current' ? 'not-observed' : packetCurrent && ledgerValid && boundsValid && covered(packet.pendingCoverage) ? 'complete-provider-response' : 'unavailable',
         manualStatement: id === 'triangle' || id === 'mbna', reasons: issues };
       const debt = (debts || []).find(row => row?.id === id);
       // Preserve the actual observation date; never retime a manual balance.
@@ -135,7 +142,7 @@
           // Pending/replacement/duplicate and incomplete-window evidence cannot
           // turn a recorded purpose into a confirmed posted match.
           const qualified = allocation?.status === 'reconciled' && !published.pending
-            && packetCurrent && coverage && packet.pendingCoverage === 'complete'
+            && packetCurrent && coverage && covered(packet.pendingCoverage)
             && published.id && value !== null && !duplicateCards.has(id) && !aliasCards.has(id)
             && !tx.pendingPostedAmbiguous && !tx.pendingPostedDuplicate && !tx.contradictoryEvidence;
           published.paymentAllocation = qualified ? allocation : {

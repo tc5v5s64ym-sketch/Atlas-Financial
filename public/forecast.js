@@ -29,6 +29,8 @@
       windowQualified: cycle?.start === window?.start && cycle?.end === window?.end,
       balanceEvidence: opts.cardPeriodBalanceEvidence || null, overlay: opts.liveOverlay || null }, {
       date: savingsDate, cents: savingsCents, skipParent: skipSplitParent,
+      // PA-4a-2a: the same strict evidence reading the reconciler used.
+      coverageComplete: value => coverageEvidenceComplete(value, packet),
       classify: (tx, selectedPlan) => classifyCurrentPeriodTransaction(tx, selectedPlan,
         Object.assign({}, opts, { currentPeriodActuals: packet, useActuals: true })),
     });
@@ -6163,6 +6165,28 @@
     return 'unknown';
   }
 
+  // PA-4a-2a (Astra #787 6534140193 §3): one strict completeness reading of
+  // coverage evidence, shared by every dependent card/Savings verdict so that
+  // equivalent evidence gets an equal verdict on every path. Accepts the
+  // explicit 'complete' stamp or a supported object with complete:true, an
+  // absent or 'complete' status, no truncation/continuation flag, and (when
+  // it declares a window) a window equal to the packet's coverage dates.
+  // Contradictions win over positive flags; absence is never completeness.
+  // The incumbent lenient selectors below keep their own legacy callers.
+  function coverageEvidenceComplete(value, packet) {
+    if (value === 'complete') return true;
+    if (value == null || typeof value !== 'object' || Array.isArray(value) || value.complete !== true) return false;
+    if (Object.hasOwn(value, 'status') && value.status !== 'complete') return false;
+    if (['truncated', 'hasMore', 'has_more'].some(key => Object.hasOwn(value, key)
+      && value[key] != null && value[key] !== false)) return false;
+    // A declared window qualifies only as a valid calendar date equal to the
+    // packet's own bound; equality to an invalid packet date is not proof.
+    const declared = key => Object.hasOwn(value, key) && value[key] != null;
+    if (declared('startDate') && (!packet || !savingsDate(value.startDate) || value.startDate !== packet.coverageStart)) return false;
+    if (declared('endDate') && (!packet || !savingsDate(value.endDate) || value.endDate !== packet.coverageThrough)) return false;
+    return true;
+  }
+
   function transactionCoverageStatus(packet) {
     const cov = packet && packet.transactionCoverage;
     if (cov === 'truncated' || cov === 'incomplete') return 'truncated';
@@ -10947,9 +10971,13 @@
     if (!validOpening) issue('coverage-opening-unconfirmed');
     const origin = validOpening ? opening.asOf : packet.coverageStart;
     if (!savingsDate(asOf) || !savingsDate(origin) || packet.observationAsOf !== asOf
-      || !packet.coverageStart || packet.coverageStart > origin || !packet.coverageThrough
-      || packet.coverageThrough < asOf || packet.transactionCoverage !== 'complete'
-      || packet.pendingCoverage !== 'complete') issue('coverage-history-incomplete');
+      // PA-4a-2a (Atlas #811 B1): the coverage bounds must be valid calendar
+      // dates, in order, before any stamp can make this history complete.
+      || !savingsDate(packet.coverageStart) || !savingsDate(packet.coverageThrough)
+      || packet.coverageStart > packet.coverageThrough || packet.coverageStart > asOf
+      || packet.coverageStart > origin || packet.coverageThrough < asOf
+      || !coverageEvidenceComplete(packet.transactionCoverage, packet)
+      || !coverageEvidenceComplete(packet.pendingCoverage, packet)) issue('coverage-history-incomplete');
     const unit = tx => tx.coverageCurrencyConflict !== true
       && typeof tx.currency === 'string' && tx.currency.trim().toLowerCase() === 'cad';
     const money = tx => savingsCents(tx.amount, true);
@@ -22552,9 +22580,8 @@
     if (!cycle || !packet || packet.observationAsOf !== day || packet.currency != null && String(packet.currency).toUpperCase() !== 'CAD'
         || !savingsDate(packet.coverageStart) || packet.coverageStart > cycle.start
         || !savingsDate(packet.coverageThrough) || packet.coverageThrough < day
-        || !(packet.transactionCoverage === 'complete' || packet.transactionCoverage?.complete === true)
-        || transactionCoverageStatus(packet) !== 'complete'
-        || pendingCoverageStatus(packet) !== 'complete' || !Array.isArray(packet.transactions)
+        || !coverageEvidenceComplete(packet.transactionCoverage, packet)
+        || !coverageEvidenceComplete(packet.pendingCoverage, packet) || !Array.isArray(packet.transactions)
         || !Array.isArray(packet.representedActuals)) return unknown('Explicit complete current-cycle cash and transaction evidence is required.');
     const unique = new Map();
     for (const tx of packet.transactions) {
@@ -22580,8 +22607,7 @@
       if (prior && JSON.stringify(prior) !== JSON.stringify(tx)) return unknown('Repeated transaction identity has contradictory evidence.');
       unique.set(id, tx);
     }
-    opts = { ...opts, currentPeriodActuals: { ...packet, transactionCoverage: 'complete', pendingCoverage: 'complete',
-      transactions: Array.from(unique.values()) } };
+    opts = { ...opts, currentPeriodActuals: { ...packet, transactions: Array.from(unique.values()) } };
     const snapshot = establishPaydaySnapshot(plan, cycle.start, opts);
     if (!snapshot) return unknown('No original payday cash observation supports the cycle bridge.');
     let bridgedCash = savingsCents(snapshot.opening, true);
