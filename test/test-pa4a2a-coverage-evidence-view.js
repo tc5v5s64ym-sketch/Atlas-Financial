@@ -163,3 +163,83 @@ test('card-period publication: string and object evidence report the same covera
   assert.equal(tdcc({ complete: true, hasMore: true }, 'complete').postedCoverage, 'incomplete');
   assert.equal(tdcc('complete', { complete: true, truncated: true }).pendingCoverage, 'unavailable');
 });
+
+// Atlas #811 B1: the coverage bounds must be valid, ordered calendar dates
+// before any stamp (string or object) can make the history complete. Atlas's
+// witness: a confirmed opening, empty records and ledger, object stamps and a
+// truthy invalid coverageThrough. On 13065cfc that published ready with
+// reservedCash 0. Every dependent path now holds it.
+const MALFORMED = [
+  ['truthy invalid end', '2026-10-02', 'garbage'],
+  ['numeric end', '2026-10-02', 20261007],
+  ['null end', '2026-10-02', null],
+  ['impossible calendar end', '2026-10-02', '2026-02-30'],
+  ['invalid start', 'garbage', ASOF],
+  ['numeric start', 20261002, ASOF],
+  ['inverted bounds', '2026-10-08', ASOF],
+];
+const STAMPS = [['string', 'complete', 'complete'], ['object', { complete: true }, { complete: true }]];
+function reconciled(start, through, tx, pend) {
+  const plan = { cardPurchaseCoverage: { opening: { confirmed: true, asOf: '2026-10-02', currency: 'cad',
+    fundingAccountId: 'chequing-a', purchases: [] }, payments: [], refunds: [], reversals: [] },
+    startingCash: { breakdown: [{ id: 'chequing-a', value: 500 }] } };
+  const packet = { schema: 'atlas-current-period-actuals/v1', observationAsOf: ASOF, coverageStart: start,
+    coverageThrough: through, transactionCoverage: tx, pendingCoverage: pend, transactions: [], representedActuals: [] };
+  return F.visaPaymentReconciliation([], { plan, asOf: ASOF, packet });
+}
+
+test('reconciler: valid bounds with either stamp form are ready (control)', () => {
+  for (const [form, tx, pend] of STAMPS) {
+    const r = reconciled('2026-10-02', ASOF, tx, pend);
+    assert.equal(r.status, 'ready', form);
+    assert.deepEqual(r.issues, [], form);
+  }
+});
+
+test('reconciler: malformed coverage bounds are never complete, whatever the stamp form', () => {
+  for (const [form, tx, pend] of STAMPS) {
+    for (const [label, start, through] of MALFORMED) {
+      const r = reconciled(start, through, tx, pend);
+      assert.equal(r.status, 'unavailable', `${form} ${label}`);
+      assert.ok(r.issues.some(issue => issue.code === HISTORY), `${form} ${label}: history hold`);
+      assert.equal(r.reservedCash, null, `${form} ${label}: never a ready zero reserve`);
+    }
+  }
+});
+
+test('reconciler: a declared window equal to an invalid packet bound is not qualification', () => {
+  for (const tx of [{ complete: true, endDate: 'garbage' }, { complete: true, startDate: 'garbage' }]) {
+    const r = reconciled(tx.startDate || '2026-10-02', tx.endDate || ASOF, tx, 'complete');
+    assert.ok(r.issues.some(issue => issue.code === HISTORY), JSON.stringify(tx));
+  }
+  const ok = reconciled('2026-10-02', ASOF, { complete: true, startDate: '2026-10-02', endDate: ASOF }, 'complete');
+  assert.equal(ok.status, 'ready', 'control: a valid declared window equal to the bounds qualifies');
+});
+
+test('recommend: malformed bounds never become a matching-only estimate', () => {
+  for (const [form, tx, pend] of STAMPS) {
+    for (const [label, start, through] of MALFORMED) {
+      const p = packet(tx, pend); p.coverageStart = start; p.coverageThrough = through;
+      const a = F.recommend(plan(), ASOF, { weeklyVariable: 0, debts: [], currentPeriodActuals: p });
+      const cov = a.cardPurchaseCoverage;
+      if (cov) assert.notDeepEqual(codes(cov), ['coverage-opening-unconfirmed'], `${form} ${label}: not matching-only`);
+      for (const v of a.payPeriodViews.filter(x => x.role !== 'lookback').slice(0, 2)) {
+        assert.notEqual(v.plannedPeriodCloseTrust, 'estimated', `${form} ${label} ${v.start}: no matching-only estimate`);
+      }
+    }
+  }
+});
+
+test('card-period publication and the PA-1 Savings path also hold malformed bounds', () => {
+  const window = { start: '2026-10-02', end: '2026-10-15' };
+  for (const [form, tx, pend] of STAMPS) {
+    for (const [label, start, through] of MALFORMED) {
+      const p = packet(tx, pend); p.coverageStart = start; p.coverageThrough = through;
+      const tdcc = F.cardPeriodMovements(plan(), [], ASOF, window, { currentPeriodActuals: p }).cards.find(card => card.id === 'tdcc');
+      assert.equal(tdcc.postedCoverage, 'incomplete', `${form} ${label}: card-period`);
+      const s = savingsFor(q => { q.transactionCoverage = tx; q.pendingCoverage = pend; q.coverageStart = start; q.coverageThrough = through; });
+      assert.equal(s.status, 'unavailable', `${form} ${label}: Savings`);
+      assert.equal(s.rows[0].thisPeriod, null, `${form} ${label}: Savings period figure withheld`);
+    }
+  }
+});

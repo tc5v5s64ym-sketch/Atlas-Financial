@@ -6179,9 +6179,11 @@
     if (Object.hasOwn(value, 'status') && value.status !== 'complete') return false;
     if (['truncated', 'hasMore', 'has_more'].some(key => Object.hasOwn(value, key)
       && value[key] != null && value[key] !== false)) return false;
+    // A declared window qualifies only as a valid calendar date equal to the
+    // packet's own bound; equality to an invalid packet date is not proof.
     const declared = key => Object.hasOwn(value, key) && value[key] != null;
-    if (declared('startDate') && (!packet || value.startDate !== packet.coverageStart)) return false;
-    if (declared('endDate') && (!packet || value.endDate !== packet.coverageThrough)) return false;
+    if (declared('startDate') && (!packet || !savingsDate(value.startDate) || value.startDate !== packet.coverageStart)) return false;
+    if (declared('endDate') && (!packet || !savingsDate(value.endDate) || value.endDate !== packet.coverageThrough)) return false;
     return true;
   }
 
@@ -10969,8 +10971,12 @@
     if (!validOpening) issue('coverage-opening-unconfirmed');
     const origin = validOpening ? opening.asOf : packet.coverageStart;
     if (!savingsDate(asOf) || !savingsDate(origin) || packet.observationAsOf !== asOf
-      || !packet.coverageStart || packet.coverageStart > origin || !packet.coverageThrough
-      || packet.coverageThrough < asOf || !coverageEvidenceComplete(packet.transactionCoverage, packet)
+      // PA-4a-2a (Atlas #811 B1): the coverage bounds must be valid calendar
+      // dates, in order, before any stamp can make this history complete.
+      || !savingsDate(packet.coverageStart) || !savingsDate(packet.coverageThrough)
+      || packet.coverageStart > packet.coverageThrough
+      || packet.coverageStart > origin || packet.coverageThrough < asOf
+      || !coverageEvidenceComplete(packet.transactionCoverage, packet)
       || !coverageEvidenceComplete(packet.pendingCoverage, packet)) issue('coverage-history-incomplete');
     const unit = tx => tx.coverageCurrencyConflict !== true
       && typeof tx.currency === 'string' && tx.currency.trim().toLowerCase() === 'cad';
