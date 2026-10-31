@@ -490,3 +490,18 @@ test('C1: a negative-pot card close withholds its gap, diagnostics and amounts b
   assert.equal(cents(card.cardMatchingEstimate.gap.shortBy), 4350);
   assert.equal(card.cardMatchingEstimate.nature, 'card-matching-estimate');
 });
+
+test('untraceable household evidence (contradictory account aliases) is unknown on both bases', () => {
+  const contradictory = posted({ id: 'CASH-1', date: '2026-10-05', amount: 5, atlasAccountId: 'chequing-a',
+    accountId: 'chequing-b', accountRole: 'household-cash', categoryLabel: 'Groceries' });
+  for (const policy of [true, false]) {
+    // Control: the same scene without the contradictory row qualifies (3750).
+    assert.deepEqual(closeOf(b2Case({ policy }).active), [3750, 'estimated']);
+    const { active, next, seed } = b2Case({ extra: [contradictory], policy });
+    assert.equal(active.plannedPeriodClose, null);
+    assert.match(active.plannedPeriodCloseReason, /cannot qualify it/);
+    assert.equal(active.plannedPeriodCloseTrust, 'unknown');
+    assert.equal(seed, null);
+    if (!policy) assert.equal(next.opening, null);
+  }
+});
