@@ -11595,21 +11595,33 @@
       const source = row && row.kind === 'obligation' ? obligations.get(row.id) : null;
       return source && (source.effect === 'payment' || source.debtId != null) ? source : null;
     };
+    // Each recon row is classified from its own packet transaction with the
+    // reconciler's predicate (accountRole or a known card id) and one
+    // unambiguous account identity. A row that cannot be traced holds.
+    const packet = currentPeriodActualsPacket(opts || {});
+    const byId = new Map();
+    for (const tx of (packet && Array.isArray(packet.transactions) ? packet.transactions : [])) {
+      if (!tx || tx.id == null) continue;
+      const id = String(tx.id);
+      byId.set(id, byId.has(id) && JSON.stringify(byId.get(id)) !== JSON.stringify(tx) ? null : tx);
+    }
+    const rowSource = r => {
+      const tx = r && r.id != null ? byId.get(String(r.id)) : null;
+      const ids = tx ? [tx.atlasAccountId, tx.accountId, tx.account].filter(id => id != null && id !== '') : [];
+      if (!tx || !ids.length || ids.some(id => String(id) !== String(ids[0]))) return null;
+      return { tx, account: String(ids[0]), card: isRevolvingCardAccount(tx),
+        ref: tx.coverageRef == null ? null : String(tx.coverageRef) };
+    };
     const heldCards = new Set();
     for (const row of budget.items) for (const r of (row && row.recon) || []) {
-      if (r && isRevolvingCardAccount({ account: r.account })) heldCards.add(String(r.account));
+      if (!r || (r.pendingPostedDuplicate === true && r.pending === true)) continue;
+      const source = rowSource(r);
+      if (!source) return null;
+      if (source.card) heldCards.add(source.account);
     }
     if (heldCards.size) for (const row of remainingRows) {
       const source = cardPaymentRow(row);
       if (source && (source.debtId == null || heldCards.has(String(source.debtId)))) return null;
-    }
-    const packet = currentPeriodActualsPacket(opts || {});
-    const refs = new Map();
-    for (const tx of (packet && Array.isArray(packet.transactions) ? packet.transactions : [])) {
-      if (!tx || tx.id == null) continue;
-      const id = String(tx.id), ref = tx.coverageRef == null ? null : String(tx.coverageRef);
-      if (refs.has(id) && refs.get(id) !== ref) refs.set(id, undefined);
-      else refs.set(id, ref);
     }
     const policy = plan && plan.cardPurchaseCoverage;
     if (policy && (policy.reversals || []).length) return null;
@@ -11671,18 +11683,17 @@
       let card = 0, funded = 0, pendingCash = 0, bound = 0;
       for (const r of (row.recon || [])) {
         if (!r || (r.pendingPostedDuplicate === true && r.pending === true)) continue;
-        if (r.account == null || r.account === '') return null;
+        const source = rowSource(r);
         const cents = savingsCents(r.amount, true);
-        if (cents == null) return null;
-        if (!isRevolvingCardAccount({ account: r.account })) {
+        if (!source || cents == null) return null;
+        if (!source.card) {
           if (r.pending === true) pendingCash += cents;
           continue;
         }
         card += cents;
         let share = 0;
         if (settled.size) {
-          const ref = r.id == null ? undefined : refs.get(String(r.id));
-          if (ref === undefined) return null;
+          const ref = source.ref;
           if (ref != null && settled.has(ref)) {
             share = settled.get(ref);
             settled.delete(ref);
@@ -11760,7 +11771,28 @@
   }
 
 
+  // PA-4a-2b (Atlas 6538656590, ruling 7): when the active seed rests on the
+  // card-matching estimate, the published periods keep the seed unknown (the
+  // same chain as any unknown seed). A private second pass carries the
+  // estimated chain, attached beside each projected period, never as it.
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
+    const result = calendarPeriodWaterfallsCore(plan, asOf, alloc, plans, debts, opts);
+    const marked = (result.calendarPeriods || []).find(p => p.cardMatchingEstimate);
+    if (!marked || opts?.cardMatchingPrivateChain === true) return result;
+    const chain = calendarPeriodWaterfallsCore(plan, asOf, alloc, plans, debts,
+      { ...opts, cardMatchingPrivateChain: true }).calendarPeriods || [];
+    const { basis, reason } = marked.cardMatchingEstimate;
+    for (const period of result.calendarPeriods) {
+      if (!period.projected) continue;
+      const twin = chain.find(row => row.id === period.id && row.start === period.start && row.end === period.end);
+      period.cardMatchingEstimate = twin && twin.opening != null ? { trust: 'estimated', basis, reason,
+        opening: twin.opening, paydaySweep: twin.paydaySweep ?? null,
+        plannedPeriodClose: twin.plannedPeriodClose ?? null } : { trust: 'unknown', basis, reason,
+        opening: null, paydaySweep: null, plannedPeriodClose: null };
+    }
+    return result;
+  }
+  function calendarPeriodWaterfallsCore(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
     if (!windows.length) return { calendarPeriods: [], activeCalendarPeriodId: null };
@@ -11859,8 +11891,11 @@
     // from the inputs that carry actually uses. Null whenever no numeric
     // carry exists, so no stale provenance reaches a fallback opening.
     let carryTrust = null;
-    // PA-4a-2b: the active seed used the card-matching estimate.
-    let cardMatchSeedEstimated = false;
+    // PA-4a-2b: the active seed used the card-matching estimate. Atlas
+    // 6538656590 (7): until the sequenced consumer recognises that nature,
+    // the projected opening it would seed stays unknown and the typed
+    // estimate rides beside the next period, never as its opening.
+    let cardMatchSeedEstimated = false, cardMatchOpeningEstimate = null;
     let unavailableOpeningLost = false;
     let openingChainLost = false;
     const heldCycleStarts = new Set();
@@ -12425,6 +12460,13 @@
             // account to make this Bills-only seam work. Preserve its current
             // funding disclosure, but withhold the dependent projection.
             previousEnding = Number.isSafeInteger(seed) && !(credit > 0 && seed < 0) ? seed / 100 : null;
+            if (previousEnding != null && cardMatchSeedEstimated && opts.cardMatchingPrivateChain !== true) {
+              cardMatchOpeningEstimate = { opening: previousEnding, trust: 'estimated',
+                basis: opts.s1CurrentBoundaryCreditEstimated === true
+                  ? 'reported-balance-movement-and-card-matching' : 'card-matching-unresolved',
+                reason: 'Estimated opening withheld until card purchase matching is recognised here: ' + cardCoverage.reason };
+              previousEnding = null;
+            }
             if (previousEnding == null) openingChainLost = true;
             else {
               // Seed provenance: qualified Bills stock (calculated), the
@@ -12567,11 +12609,16 @@
         paydaySweep,
         // Decision 1 / PA-4a-2b: openings and sweeps derived from an
         // estimated basis carry the estimated tag and their typed basis.
-        ...((opts.s1CurrentBoundaryCreditEstimated === true || cardMatchSeedEstimated) && projected
+        ...(opts.s1CurrentBoundaryCreditEstimated === true && !cardMatchSeedEstimated && projected
           ? { openingTrust: 'estimated', paydaySweepTrust: 'estimated',
-            openingBasis: opts.s1CurrentBoundaryCreditEstimated === true && cardMatchSeedEstimated
-              ? 'reported-balance-movement-and-card-matching'
-              : cardMatchSeedEstimated ? 'card-matching-unresolved' : 'reported-balance-movement-hold' } : {}),
+            openingBasis: 'reported-balance-movement-hold' } : {}),
+        ...(cardMatchSeedEstimated && projected && opts.cardMatchingPrivateChain === true
+          ? { openingTrust: 'estimated', paydaySweepTrust: 'estimated' } : {}),
+        ...(projected && cardMatchOpeningEstimate ? (() => {
+          const estimate = cardMatchOpeningEstimate;
+          cardMatchOpeningEstimate = null;
+          return { cardMatchingEstimate: estimate };
+        })() : {}),
         predictedEndingBalance: afterHouseholdBudget,
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
           ? 'balance-after-deductions' : null,
@@ -15469,8 +15516,7 @@
         if (spendingFailures(p, false).length) {
           return unavailable('Current-period spending evidence is incomplete; future funding is unavailable.');
         }
-        allowance = cardRemaining != null && p === current ? cardRemaining / 100
-          : roundCent(items.reduce((s, r) => s + Math.max(0, r.hold - r.spent), 0));
+        allowance = roundCent(items.reduce((s, r) => s + Math.max(0, r.hold - r.spent), 0));
       }
       const from = p.start < asOf ? asOf : p.start;
       // Monotonic pennies preserve the exact period allowance, including
@@ -22569,8 +22615,12 @@
       // now withholds the dependent closes; net surplus is not a fallback.
       // Current-period expected salary remains a hypothetical planning input;
       // matched received/transferred amounts are already in the observed pot.
-      const publishedSweep = !current && typeof period.paydaySweep === 'number'
-        ? savingsCents(period.paydaySweep) : null;
+      // PA-4a-2b: under the card-matching estimate the published sweep is
+      // withheld; the close reads the typed estimated sweep beside it.
+      const sweepValue = cardBasis ? period.cardMatchingEstimate?.trust === 'estimated'
+        && period.cardMatchingEstimate.paydaySweep : period.paydaySweep;
+      const publishedSweep = !current && typeof sweepValue === 'number'
+        ? savingsCents(sweepValue) : null;
       if (!current && publishedSweep == null) {
         for (const dependent of ordered.slice(index)) result.set(dependent.end, {
           status: 'unavailable', reason: 'The shared Bills sweep is unavailable.',

@@ -15,6 +15,13 @@ const closingInput = require('./fixtures/savings-future-closing-data');
 
 const CARD_REASON = 'Confirm the card-coverage opening, transaction units and explicit purchase/payment links before using available cash.';
 const cents = v => v == null ? v : Math.round(v * 100);
+// Ruling 7: the published opening stays unknown; the typed estimate rides beside it.
+const estimated = view => {
+  assert.equal(view.opening, null, 'the card-matching opening is never published as the opening');
+  assert.equal(view.paydaySweep, null);
+  return view.cardMatchingEstimate && view.cardMatchingEstimate.trust === 'estimated'
+    ? cents(view.cardMatchingEstimate.opening) : null;
+};
 const posted = o => ({ pending: false, currency: 'CAD', savingsPostingEvidence: 'posted', ...o });
 const purchase = amount => posted({ id: 'CARD-1', date: '2026-10-05', amount, atlasAccountId: 'tdcc',
   accountRole: 'revolving-credit', categoryLabel: 'Groceries', coverageRef: 'cov-1' });
@@ -25,11 +32,11 @@ const DEBTS = [{ id: 'tdcc', label: 'Emerald', balance: 500, pending: 0, rate: 0
 // category target 0, so H is the card charge itself and R is the next
 // Bills opening (current net is not positive, so the boundary credit Q = 0).
 function seedCase({ charge = 4250, pay = 0, payCard = 'tdcc', alloc = null, other = 0, record = true,
-  creditOnly = false, reversal = false, obligation = null } = {}) {
+  creditOnly = false, reversal = false, obligation = null, card = 'tdcc', extra = [] } = {}) {
   const x = ledger();
   x.plan.income = x.plan.income.filter(r => r.id === 'payroll');
   x.plan.budget = { categories: [{ id: 'groceries', label: 'Groceries', monthly: 0, essential: true }] };
-  const t = charge ? [purchase(charge / 100)] : [];
+  const t = (charge ? [{ ...purchase(charge / 100), atlasAccountId: card }] : []).concat(extra);
   if (pay) {
     if (!creditOnly) t.push(posted({ id: 'PAY-D', date: '2026-10-06', amount: pay / 100, atlasAccountId: 'chequing-a',
       accountRole: 'household-cash', categoryLabel: 'Credit Card Payment', coverageRef: 'pay-d' }));
@@ -55,21 +62,33 @@ const cardMinimum = debtId => ({ id: 'card-min', ...(debtId ? { debtId } : {}), 
   confidence: 'confirmed', payingAccount: 'chequing-a' });
 
 test('active seed, card charge 4250: R = 8000 - 4250 = 3750, estimated with the card-matching basis', () => {
-  const { a, next } = seedCase();
+  const { a, active, next } = seedCase();
   assert.deepEqual(a.cardPurchaseCoverage.issues.map(i => i.code), ['coverage-opening-unconfirmed']);
-  assert.equal(cents(next.opening), 3750);
-  assert.equal(cents(next.paydaySweep), 3750);
-  assert.equal(next.openingTrust, 'estimated');
-  assert.equal(next.paydaySweepTrust, 'estimated');
-  assert.equal(next.openingBasis, 'card-matching-unresolved');
+  assert.equal(estimated(next), 3750);
+  assert.equal(cents(next.cardMatchingEstimate.paydaySweep), 3750);
+  assert.equal(next.cardMatchingEstimate.basis, 'card-matching-unresolved');
+  assert.match(next.cardMatchingEstimate.reason, /card purchase matching/);
+  assert.equal(next.openingTrust, undefined, 'no published estimated opening for a nature the page does not read');
+  // The seed and the active planned close agree on the same requirement.
+  assert.equal(cents(active.plannedPeriodClose), 3750);
+});
+
+test('a card identified only by accountRole is a card, not cash: the same 3750', () => {
+  assert.equal(estimated(seedCase({ card: 'amexgold' }).next), 3750);
+});
+
+test('pending Bills cash is never relieved as spent: the seed holds (incumbent pending guard)', () => {
+  const pendingCash = posted({ id: 'CASH-P', date: '2026-10-06', amount: 10, pending: true,
+    atlasAccountId: 'chequing-a', accountRole: 'household-cash', categoryLabel: 'Groceries' });
+  const { next } = seedCase({ extra: [pendingCash] });
+  assert.equal(estimated(next), null);
 });
 
 test('active seed, card charge 500000: R = 8000 - 500000 = -492000 and the next sweep is 0', () => {
   const { a, next } = seedCase({ charge: 500000 });
   assert.ok(a.cardPurchaseCoverage.issues.some(i => i.code === 'coverage-bills-backing-unconfirmed'));
-  assert.equal(cents(next.opening), -492000);
-  assert.equal(cents(next.paydaySweep), 0);
-  assert.equal(next.openingTrust, 'estimated');
+  assert.equal(estimated(next), -492000);
+  assert.equal(cents(next.cardMatchingEstimate.paydaySweep), 0);
 });
 
 test('ready control: no card purchase keeps the calculated seed (8000) with no estimate marker', () => {
@@ -78,53 +97,52 @@ test('ready control: no card purchase keeps the calculated seed (8000) with no e
   assert.equal(cents(next.opening), 8000);
   assert.notEqual(next.openingTrust, 'estimated');
   assert.equal(next.openingBasis, undefined);
+  assert.equal(next.cardMatchingEstimate, undefined);
 });
 
 test('qualified H settlement already in the observed opening: stock 6000, H_remaining 4250 - 2000; close stays 3750', () => {
   const { a, next } = seedCase({ pay: 2000, alloc: 2000 });
   assert.deepEqual(a.cardPurchaseCoverage.payments.map(p => p.status), ['reconciled']);
-  assert.equal(cents(next.opening), 6000 - (4250 - 2000));
-  assert.equal(cents(next.opening), 3750);
-  assert.equal(next.openingTrust, 'estimated');
+  assert.equal(estimated(next), 6000 - (4250 - 2000));
+  assert.equal(estimated(next), 3750);
 });
 
 test('posted mixed payment 3000 = 2000 to H + 1000 prior debt: 5000 - 2250 = 2750; the debt share is not a second debit', () => {
   const { next } = seedCase({ pay: 3000, alloc: 2000, other: 1000 });
-  assert.equal(cents(next.opening), 5000 - 2250);
+  assert.equal(estimated(next), 5000 - 2250);
 });
 
 test('posted payment with genuinely unresolved purpose on the held card: unknown (null), never a numeric guess', () => {
   const { a, next } = seedCase({ pay: 2000, record: false });
   assert.ok(a.cardPurchaseCoverage.issues.some(i => i.code === 'coverage-payment-or-credit-purpose-unconfirmed'));
-  assert.equal(next.opening, null);
-  assert.equal(next.paydaySweep, null);
+  assert.equal(estimated(next), null);
 });
 
 test('ruling 6: an unresolved credit on a card holding no purchase inside H is excluded from F; R = 8000 - 4250', () => {
   const { a, next } = seedCase({ pay: 2000, payCard: 'travelvisa', record: false, creditOnly: true });
   assert.ok(a.cardPurchaseCoverage.issues.some(i => i.code === 'coverage-payment-or-credit-purpose-unconfirmed'));
-  assert.equal(cents(next.opening), 3750);
+  assert.equal(estimated(next), 3750);
   // The same credit on the card that holds the H purchase cannot be proved non-contributing.
-  assert.equal(seedCase({ pay: 2000, payCard: 'tdcc', record: false, creditOnly: true }).next.opening, null);
+  assert.equal(estimated(seedCase({ pay: 2000, payCard: 'tdcc', record: false, creditOnly: true }).next), null);
   // An unpaired cash leg names no card, so its contribution is ambiguous.
-  assert.equal(seedCase({ pay: 2000, payCard: 'travelvisa', record: false }).next.opening, null);
+  assert.equal(estimated(seedCase({ pay: 2000, payCard: 'travelvisa', record: false }).next), null);
 });
 
 test('ruling 1: a remaining scheduled card payment that could overlap H holds; a proven different card stays numeric', () => {
-  assert.equal(seedCase({ obligation: cardMinimum('tdcc') }).next.opening, null);
-  assert.equal(seedCase({ obligation: cardMinimum(null) }).next.opening, null);
+  assert.equal(estimated(seedCase({ obligation: cardMinimum('tdcc') }).next), null);
+  assert.equal(estimated(seedCase({ obligation: cardMinimum(null) }).next), null);
   // Disjoint: 8000 - 4250 - the 1000 minimum on another card = 2750.
-  assert.equal(cents(seedCase({ obligation: cardMinimum('travelvisa') }).next.opening), 2750);
+  assert.equal(estimated(seedCase({ obligation: cardMinimum('travelvisa') }).next), 2750);
 });
 
 test('ruling 5: a settlement that could also be this period\'s scheduled card-payment bill withholds the seed', () => {
   const ob = { ...cardMinimum('tdcc'), firstDue: '2026-10-06', day: 6 };
-  assert.equal(seedCase({ pay: 2000, alloc: 2000, obligation: ob }).next.opening, null);
+  assert.equal(estimated(seedCase({ pay: 2000, alloc: 2000, obligation: ob }).next), null);
 });
 
 test('a confirmed reversal is not yet qualified by this slice: unknown, never the unreversed figure', () => {
   const { next } = seedCase({ pay: 2000, alloc: 2000, reversal: true });
-  assert.equal(next.opening, null);
+  assert.equal(estimated(next), null);
 });
 
 test('hard holds stay hard: incomplete history gives no seed', () => {
@@ -174,6 +192,14 @@ test('Savings ready control: the clean closes are unchanged (51900 / 159900 / 25
 
 test('card-only estimate: typed closes 51900 - 4250 = 47650 / 155650 / 255650 ride beside an unknown published close', () => {
   const { a, closing, published } = savingsCase({ charge: 4250 });
+  // The card spend is still owed from Bills and the current sweep is 4250
+  // smaller, so Bills at each close equals the clean control's.
+  const control = savingsCase();
+  assert.deepEqual(FUTURE.map(s => cents(closing(s).cardMatchingEstimate.operatingCash)),
+    FUTURE.map(s => cents(control.closing(s).operatingCash)));
+  const next = a.payPeriodViews.find(p => p.start === FUTURE[0]);
+  assert.equal(next.opening, null);
+  assert.equal(next.cardMatchingEstimate.trust, 'estimated');
   // The public packet keeps the incumbent card reason; nothing is promoted.
   assert.equal(a.savingsFunding.status, 'unavailable');
   assert.equal(a.savingsFunding.reason, CARD_REASON);
@@ -195,6 +221,17 @@ test('card-only estimate: typed closes 51900 - 4250 = 47650 / 155650 / 255650 ri
     assert.equal(p.forecastClosing.status, 'unavailable');
     assert.equal(p.forecastClosing.stock, null);
   }
+});
+
+test('a role-only card gives the same typed closes as a known card id', () => {
+  const x = closingInput();
+  x.plan.income.push({ id: 'p0', label: 'Invented current receipt', frequency: 'once',
+    date: '2026-10-09', amount: 400, confidence: 'confirmed' });
+  x.opts.currentPeriodActuals.transactions = (x.opts.currentPeriodActuals.transactions || [])
+    .concat([{ ...purchase(42.5), atlasAccountId: 'amexgold' }]);
+  const a = F.recommend(x.plan, x.asOf, { ...x.opts, weeklyVariable: 0, debts: [] });
+  const stock = s => cents(a.savingsFunding.periodViews.find(p => p.start === s).packet.forecastClosing.cardMatchingEstimate.stock);
+  assert.deepEqual(FUTURE.map(stock), [47650, 155650, 255650]);
 });
 
 test('combined movement + card estimate: both reasons, never the movement-only nature', () => {

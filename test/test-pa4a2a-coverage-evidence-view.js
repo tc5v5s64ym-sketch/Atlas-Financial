@@ -96,7 +96,11 @@ test('recommend: string and object evidence produce the same publication end to 
   assert.ok(!codes(object.cardPurchaseCoverage).includes(HISTORY));
   const trusts = a => a.payPeriodViews.filter(v => v.role !== 'lookback').slice(0, 3).map(v => v.plannedPeriodCloseTrust);
   assert.deepEqual(trusts(object), trusts(stamp));
-  assert.deepEqual(trusts(stamp), ['estimated', 'estimated', 'estimated'], 'fixture: matching-only estimate');
+  // PA-4a-2b (ruling 7): later closes built on the card-matching seed ride
+  // beside the period as a typed estimate, not as its published close.
+  assert.equal(trusts(stamp)[0], 'estimated', 'fixture: matching-only estimate');
+  const future = stamp.payPeriodViews.filter(v => v.role !== 'lookback').slice(1, 3);
+  assert.deepEqual(future.map(v => v.cardMatchingEstimate && v.cardMatchingEstimate.trust), ['estimated', 'estimated']);
   assert.equal(withoutCoverageEcho(object), withoutCoverageEcho(stamp), 'every published field agrees');
 });
 
