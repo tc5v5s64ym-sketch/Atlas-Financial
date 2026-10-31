@@ -11669,9 +11669,18 @@
         // card-payment bill this basis still deducts would be counted twice.
         // Without evidence separating them, withhold. A bill the basis does
         // not deduct (already inside the observed opening) cannot double.
+        // A deducted row represented by this settlement's own debit leg is
+        // the same cash, whatever its card or bill shape (pre-review #812).
+        const debit = (packet && Array.isArray(packet.transactions) ? packet.transactions : [])
+          .filter(tx => tx && tx.coverageRef != null && String(tx.coverageRef) === String(record.debitRef));
+        const debitIds = new Set(debit.map(tx => String(tx.id)));
+        const representedBy = new Set(((packet && packet.representedActuals) || [])
+          .filter(entry => entry && entry.transactionId != null && debitIds.has(String(entry.transactionId)))
+          .map(entry => entry.id + '@' + entry.date));
         if (parts.length && (deductedRows || remainingRows).some(row => {
           const source = cardPaymentRow(row);
-          return source && (source.debtId == null || heldCards.has(String(source.debtId)));
+          return representedBy.has(row.id + '@' + row.date)
+            || source && (source.debtId == null || heldCards.has(String(source.debtId)));
         })) {
           if (out) out.reason = 'settlement-bill-overlap';
           return null;

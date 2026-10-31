@@ -153,11 +153,16 @@ test('Atlas #812 B2: the active planned close never deducts a settlement twice (
   // the 2000. The qualified answer is 6000 - (4250 - 2000) = 3750.
   const ob = { ...cardMinimum('tdcc'), firstDue: '2026-10-06', day: 6, amount: 20 };
   const represented = [{ id: 'card-min', date: '2026-10-06', actual: 20, transactionId: 'PAY-D' }];
-  const run = rows => {
+  const run = (rows, shape = 'obligation') => {
     const x = ledger();
     x.plan.income = x.plan.income.filter(r => r.id === 'payroll');
     x.plan.budget = { categories: [{ id: 'groceries', label: 'Groceries', monthly: 0, essential: true }] };
-    x.plan.obligations = [ob];
+    if (shape === 'obligation') x.plan.obligations = [ob];
+    // The same cash under another card's id, or as a plain bill row: its
+    // representation by the settlement's own debit still identifies it.
+    if (shape === 'other-card') x.plan.obligations = [{ ...ob, debtId: 'travelvisa' }];
+    if (shape === 'bill') x.plan.bills = [{ id: 'card-min', label: 'Invented card bill', frequency: 'monthly',
+      day: 6, amount: 20, confidence: 'confirmed' }];
     x.plan.startingCash.breakdown[0].value = 60;
     x.plan.cardPurchaseCoverage = { payments: [{ id: 'p1', confirmed: true, creditRef: 'pay-c', debitRef: 'pay-d',
       allocations: [{ purchaseRef: 'cov-1', amount: 20 }], otherAmount: 0 }], refunds: [], reversals: [] };
@@ -182,6 +187,12 @@ test('Atlas #812 B2: the active planned close never deducts a settlement twice (
   const [control] = run([]);
   assert.equal(control.plannedPeriodCloseTrust, 'estimated');
   assert.equal(cents(control.plannedPeriodClose), 3750);
+  for (const shape of ['other-card', 'bill']) {
+    const [held] = run(represented, shape);
+    assert.equal(held.plannedPeriodClose, null, `${shape}: never the double-deducted 1750`);
+    const [open] = run([], shape);
+    assert.equal(cents(open.plannedPeriodClose), 3750, `${shape}: unrepresented, the bill is inside the opening`);
+  }
 });
 
 test('a confirmed reversal is not yet qualified by this slice: unknown, never the unreversed figure', () => {
