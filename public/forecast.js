@@ -11775,14 +11775,10 @@
   // card-matching estimate, the published periods keep the seed unknown (the
   // same chain as any unknown seed). A private second pass carries the
   // estimated chain, attached beside each projected period, never as it.
-  function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
-    const result = calendarPeriodWaterfallsCore(plan, asOf, alloc, plans, debts, opts);
-    const marked = (result.calendarPeriods || []).find(p => p.cardMatchingEstimate);
-    if (!marked || opts?.cardMatchingPrivateChain === true) return result;
-    const chain = calendarPeriodWaterfallsCore(plan, asOf, alloc, plans, debts,
-      { ...opts, cardMatchingPrivateChain: true }).calendarPeriods || [];
+  function attachCardMatchingChain(periods, chain) {
+    const marked = periods.find(p => p.cardMatchingEstimate);
     const { basis, reason } = marked.cardMatchingEstimate;
-    for (const period of result.calendarPeriods) {
+    for (const period of periods) {
       if (!period.projected) continue;
       const twin = chain.find(row => row.id === period.id && row.start === period.start && row.end === period.end);
       period.cardMatchingEstimate = twin && twin.opening != null ? { trust: 'estimated', basis, reason,
@@ -11790,9 +11786,8 @@
         plannedPeriodClose: twin.plannedPeriodClose ?? null } : { trust: 'unknown', basis, reason,
         opening: null, paydaySweep: null, plannedPeriodClose: null };
     }
-    return result;
   }
-  function calendarPeriodWaterfallsCore(plan, asOf, alloc, plans, debts, opts) {
+  function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
     if (!windows.length) return { calendarPeriods: [], activeCalendarPeriodId: null };
@@ -12672,6 +12667,10 @@
         operatingCashExplanationWindow(active, asOf),
         calendarOpts);
       active.billsAccountPeriodBalance = billsAccountPeriodBalance(plan, asOf, calendarOpts);
+    }
+    if (opts.cardMatchingPrivateChain !== true && periods.some(p => p.cardMatchingEstimate)) {
+      attachCardMatchingChain(periods, calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts,
+        { ...opts, cardMatchingPrivateChain: true }).calendarPeriods || []);
     }
     return {
       calendarPeriods: periods,
@@ -22470,7 +22469,7 @@
     // same card-corrected allowance; either side alone holds.
     const cardBasis = ['card-matching-unresolved', 'reported-balance-movement-and-card-matching']
       .includes(planning?.estimateBasis);
-    if (planning?.status === 'ready' && (cardBasis !== (context?.estimateBasis === 'card-matching-unresolved')
+    if (planning?.status === 'ready' && context?.sim && (cardBasis !== (context?.estimateBasis === 'card-matching-unresolved')
         || cardBasis && (!Number.isSafeInteger(planning.cardRemainingHouseholdCents)
           || planning.cardRemainingHouseholdCents !== context.cardRemainingHouseholdCents))) {
       return hold('The card-matching estimate and the Budget cash walk do not share one remaining household allowance.');
