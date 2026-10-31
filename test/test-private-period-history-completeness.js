@@ -236,6 +236,21 @@ try {
     assert.equal(legacyPublication.paydaySweep, null,
       'S1: a captured closing period never carries a payday sweep');
     delete legacyPublication.paydaySweep;
+    // PA-4 authorized addition (adopted packet #787 6526949494): the
+    // regenerated publication carries the opening-inclusive planned close,
+    // which the frozen v1 record predates. No card hold applies here, so it
+    // is calculated and reconciles to its own published terms; validate it
+    // concretely (invented 1500 opening + 200 income - 80 budget = 1620),
+    // then exclude only those four fields.
+    assert.equal(legacyPublication.plannedPeriodCloseTrust, 'calculated');
+    assert.equal(legacyPublication.plannedPeriodCloseReason, null);
+    const pa4 = legacyPublication.plannedPeriodCloseTerms, cc = v => Math.round(v * 100);
+    assert.equal(cc(legacyPublication.plannedPeriodClose), 162000, 'PA-4: hand-derived planned close');
+    assert.equal(cc(legacyPublication.plannedPeriodClose), cc(pa4.opening) + cc(pa4.incomeAdded)
+      - cc(pa4.periodBillLoad) - cc(pa4.budgetHold) - cc(pa4.annualSavingsNeed), 'PA-4: close reconciles to its terms');
+    for (const key of ['plannedPeriodClose', 'plannedPeriodCloseTrust', 'plannedPeriodCloseTerms', 'plannedPeriodCloseReason']) {
+      delete legacyPublication[key];
+    }
     assert.deepEqual(legacyPublication, record.content.publication, 'every existing publication field remains exact');
     regenerated.content.engine = clone(record.content.engine);
     const publicationOnly = clone(regenerated);

@@ -10248,6 +10248,25 @@
     return trust;
   }
 
+  // PA-4: the startingCash rows behind a pooled active opening, and their
+  // qualification under the S1 stock qualifier's tag rule.
+  function startingCashOpeningRows(plan) {
+    const cash = (plan && plan.startingCash) || {};
+    const rows = cash.breakdown || [];
+    if (!rows.length) return [{ value: cash.amount }];
+    if (rows.some(b => b && HOUSEHOLD_CHEQUING_IDS.includes(b.id))) {
+      return rows.filter(b => b && HOUSEHOLD_CHEQUING_IDS.includes(b.id));
+    }
+    const pools = Array.isArray(plan.savingsEarmarks && plan.savingsEarmarks.pools) ? plan.savingsEarmarks.pools : [];
+    return rows.filter(b => b && b.id !== DESIGNATED_RESERVE_ID && !pools.some(p => p && p.accountId === b.id));
+  }
+  function startingCashRowTrust(row) {
+    if (!row || row.unknown === true || row.value == null || !Number.isFinite(Number(row.value))) return 'unavailable';
+    const tags = [row.confidence, row.status].filter(tag => tag != null);
+    if (tags.some(tag => tag === 'unknown' || tag === 'unavailable')) return 'unavailable';
+    return tags.every(tag => ['verified', 'confirmed', 'calculated'].includes(tag)) ? 'calculated' : 'estimated';
+  }
+
   function periodWaterfallCombinedTrust(...terms) {
     if (terms.some(trust => trust !== 'calculated' && trust !== 'estimated')) return 'unavailable';
     return terms.includes('estimated') ? 'estimated' : 'calculated';
@@ -10259,6 +10278,52 @@
   // Budget. The payday-boundary opening is not a term. Predicted Ending
   // Balance as a pooled remaining-household-money identity is superseded
   // on this surface.
+  // PA-4 (owner direction 2026-10-30; adopted packet #787 6526949494): the
+  // opening-inclusive planned period close, published under its own name so
+  // the balance-after-deductions identity (no opening) is unchanged. The
+  // value is the incumbent walk's cash after bills and household budget;
+  // a negative value is a deficit and is published, never clamped. While
+  // card purchase/payment matching is unresolved it is a plan, not
+  // verified safe-to-spend cash, so it carries estimated trust and a reason.
+  function plannedPeriodClosePublication(value, terms, trusts, cardState, cardReason, unavailableReason) {
+    if (cardState === 'hard') {
+      // A card hold caused by anything other than unresolved MATCHING
+      // (missing history or amounts, unknown Bills, unavailable minimum)
+      // leaves the plan's cash basis unknown: never a number, never zero.
+      return { plannedPeriodClose: null, plannedPeriodCloseTrust: 'unknown', plannedPeriodCloseTerms: null,
+        plannedPeriodCloseReason: ['The planned period close is unavailable: card coverage is unavailable for a reason other than matching.',
+          cardReason].filter(Boolean).join(' ') };
+    }
+    const cardMatchUnresolved = cardState === 'match';
+    const known = typeof value === 'number' && Number.isFinite(value)
+      && [terms.opening, terms.incomeAdded, terms.periodBillLoad, terms.budgetHold, terms.annualSavingsNeed]
+        .every(v => typeof v === 'number' && Number.isFinite(v));
+    if (!known) {
+      return { plannedPeriodClose: null, plannedPeriodCloseTrust: 'unknown', plannedPeriodCloseTerms: null,
+        plannedPeriodCloseReason: 'The planned period close is unavailable: its opening or a deduction is not known.' };
+    }
+    const base = periodWaterfallCombinedTrust(...trusts);
+    const trust = base === 'unavailable' ? 'unknown'
+      : cardMatchUnresolved || base === 'estimated' ? 'estimated' : 'calculated';
+    if (trust === 'unknown') {
+      return { plannedPeriodClose: null, plannedPeriodCloseTrust: 'unknown', plannedPeriodCloseTerms: null,
+        plannedPeriodCloseReason: unavailableReason
+          || 'The planned period close is unavailable: a deduction, or the opening it carries from, has unavailable trust.' };
+    }
+    const close = roundCent(value);
+    return {
+      plannedPeriodClose: close,
+      plannedPeriodCloseTrust: trust,
+      plannedPeriodCloseTerms: { ...terms, identity: 'opening-plus-income-minus-bills-budget-and-annual-savings',
+        deficit: close < 0 },
+      // Every estimate source carries its own reason; one never hides another.
+      plannedPeriodCloseReason: [
+        cardMatchUnresolved ? 'Planned remainder: card purchase and payment matching is unresolved, so this is an estimated plan, not verified safe-to-spend cash or proof that card balances are paid.' : null,
+        base === 'estimated' ? 'Planned remainder: an input to this close (or an earlier period it carries from) is estimated.' : null,
+      ].filter(Boolean).join(' ') || null,
+    };
+  }
+
   function composeBalanceAfterDeductionsTerms(
     periodIncome, assignedBills, householdBudgetHold, balanceAfterDeductions
   ) {
@@ -11443,6 +11508,39 @@
       backfill: row.backfill, cardPayment: row.cardPayment, otherPurpose: row.otherPurpose || null,
       purchases: (row.purchases || []).map(p => ({ date: p.date, amount: p.amount, categoryLabel: p.categoryLabel })) } : null;
   }
+  // PA-4 (adopted packet #787 6526949494; Atlas classification 6527529634):
+  // a card hold whose only causes are unresolved MATCHING (an unconfirmed
+  // coverage opening, an unconfirmed payment/credit purpose, or a single
+  // known Bills balance below the matching-derived reserve) may feed an
+  // estimated planning projection. Missing amounts or history, an
+  // unavailable card minimum, or an absent/invalid/unknown Bills balance
+  // stay hard holds. Verified coverage and available-now are unchanged.
+  const CARD_MATCH_ISSUES = new Set(['coverage-opening-unconfirmed',
+    'coverage-payment-or-credit-purpose-unconfirmed', 'coverage-bills-backing-unconfirmed']);
+  function cardMatchOnlyHold(plan, coverage) {
+    if (!coverage || coverage.status !== 'unavailable' || coverage.cardMinimumPayments) return false;
+    const codes = (coverage.issues || []).map(issue => issue && issue.code);
+    if (!codes.length || !codes.every(code => CARD_MATCH_ISSUES.has(code))) return false;
+    if (codes.includes('coverage-bills-backing-unconfirmed')) {
+      const bills = (plan?.startingCash?.breakdown || []).filter(row => row && row.id === BILLS_ACCOUNT_ID);
+      if (bills.length !== 1 || typeof bills[0].value !== 'number' || !Number.isFinite(bills[0].value)
+        || bills[0].unknown === true) return false;
+    }
+    return true;
+  }
+  // PA-4 (Atlas 6527529634): when the only Bills issue is a known balance
+  // below the matching-derived reserve, disclose that gap on its own. It is a
+  // diagnostic, never deducted from the plan and never the plan deficit: the
+  // reserve itself rests on unresolved matching, so it is estimated.
+  function cardReserveShortfallDisclosure(plan, coverage) {
+    if (!cardMatchOnlyHold(plan, coverage)
+      || !(coverage.issues || []).some(issue => issue && issue.code === 'coverage-bills-backing-unconfirmed')) return null;
+    const bills = (plan.startingCash.breakdown || []).find(row => row && row.id === BILLS_ACCOUNT_ID);
+    const reserve = savingsCents(coverage.knownObservedReserve), cash = savingsCents(bills.value, true);
+    if (reserve == null || cash == null || cash >= reserve) return null;
+    return { status: 'disclosed', amount: (reserve - cash) / 100, trust: 'estimated', deducted: false,
+      reason: 'The Bills balance is below the card purchases not yet matched to payments. Because matching is unresolved this gap is an estimate; it is shown, not deducted, and is not the plan deficit.' };
+  }
   function cardCoverageState(plan, asOf, opts) {
     const packet = currentPeriodActualsPacket(opts) || {};
     const coverage = visaPaymentReconciliation(packet.transactions, { plan, asOf, packet, debts: opts && opts.debts });
@@ -11577,6 +11675,11 @@
       Object.assign({}, opts, { debts: debts || opts.debts || [] }), priority);
     const periods = [];
     let previousEnding = null;
+    // PA-4 (#809 carry-trust redesign, Muse 6535162602 / Atlas 6535096443):
+    // the trust of the numeric previousEnding, derived at each assignment
+    // from the inputs that carry actually uses. Null whenever no numeric
+    // carry exists, so no stale provenance reaches a fallback opening.
+    let carryTrust = null;
     let unavailableOpeningLost = false;
     let openingChainLost = false;
     const heldCycleStarts = new Set();
@@ -11749,6 +11852,7 @@
         : resolvePaydayPeriodOpening(
           plan, asOf, window, opts, previousEnding, opts.sim);
       if (activeOpeningBasisMissing) openingChainLost = true;
+      const incomingCarryTrust = carryTrust;
       const opening = snapshot.opening;
       const openingKnown = snapshot.openingKnown === true;
       const openingAsOf = snapshot.openingAsOf || null;
@@ -11846,6 +11950,7 @@
         || (income || []).some(row => row && invalidAdjustedRows.has(row)
           && row.notReliedUpon !== true && row.settlement !== 'not-relied-upon'));
       let incomeAdded = 0;
+      const incomeAddedRows = [];
       for (const row of income) {
         if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) {
           row.alreadyInCash = false;
@@ -11857,10 +11962,12 @@
         if (role === 'future') {
           row.alreadyInCash = false;
           incomeAdded += calendarIncomeContribution(row);
+          incomeAddedRows.push(row);
         } else if (openingKnown && !incomeAlreadyInPaydayOpening(
           row, openingAsOf, plan, opts, openingSource
         )) {
           incomeAdded += calendarIncomeContribution(row);
+          incomeAddedRows.push(row);
         }
       }
       // Dated opening cash is not today's operating plan. Do not add
@@ -11936,14 +12043,42 @@
       const afterBillsTrust = periodWaterfallCombinedTrust(incomeTrust, periodBillLoadTrust);
       const afterHouseholdBudget = afterBills != null
         ? roundCent(afterBills - budget.hold) : null;
-      const balanceAfterDeductionsTrust = periodWaterfallCombinedTrust(afterBillsTrust,
-        typeof budget.hold === 'number' && Number.isFinite(budget.hold)
-          ? (budget.holdTrust === 'estimated' ? 'estimated' : 'calculated') : 'unavailable');
+      const budgetHoldTermTrust = typeof budget.hold === 'number' && Number.isFinite(budget.hold)
+        ? (budget.holdTrust === 'estimated' ? 'estimated' : 'calculated') : 'unavailable';
+      const balanceAfterDeductionsTrust = periodWaterfallCombinedTrust(afterBillsTrust, budgetHoldTermTrust);
+      // PA-4 opening provenance for the planned close. The active opening is
+      // the recorded/qualified opening; a projected opening is the carry's
+      // own provenance only when it really is the carry. Any other projected
+      // opening (the cutover-walk fallback) has no established trust, so the
+      // close discloses unknown rather than borrowing a label. PA-1's
+      // movement hold marks every projected opening estimated.
+      const openingCarried = projected && openingSource === 'carry-forward';
+      // An active opening read from startingCash rows takes those rows' own
+      // qualification (the S1 stock qualifier's tag rule); a recorded
+      // payday snapshot is calculated.
+      const activeOpeningTrust = openingSource === 'snapshot' ? 'calculated'
+        : periodWaterfallCombinedTrust(...startingCashOpeningRows(plan).map(startingCashRowTrust));
+      const plannedOpeningTrust = !projected ? activeOpeningTrust
+        : periodWaterfallCombinedTrust(openingCarried ? (incomingCarryTrust || 'unavailable') : 'unavailable',
+          opts.s1CurrentBoundaryCreditEstimated === true ? 'estimated' : 'calculated');
+      // The planned close and its carry add only incomeAdded (receipts not
+      // already inside the opening); the BAD identity keeps incomeTrust.
+      const incomeAddedTrust = periodWaterfallTotalTrust(incomeAddedRows, 0, calendarIncomeContribution);
+      const plannedTermsTrust = periodWaterfallCombinedTrust(incomeAddedTrust, periodBillLoadTrust, budgetHoldTermTrust);
       const balanceAfterDeductions = afterHouseholdBudget;
-      const annualSavingsNeed = roundCent(annualSavingsEvents.filter(e => {
+      const annualSavingsWindowEvents = annualSavingsEvents.filter(e => {
         const date = cashWalkDate(e, asOf);
         return date >= window.start && date <= window.end;
-      }).reduce((sum, e) => sum + Math.max(0, -operatingEventAmount(e)), 0));
+      });
+      const annualSavingsNeedAmount = e => Math.max(0, -operatingEventAmount(e));
+      const annualSavingsNeed = roundCent(annualSavingsWindowEvents
+        .reduce((sum, e) => sum + annualSavingsNeedAmount(e), 0));
+      // PA-4 (Atlas #809 B1): the annual provision is a deduction of the
+      // planned close, so its own confidence feeds the close's trust. An
+      // estimated provision is estimated; unknown confidence is unavailable,
+      // never calculated merely because the amount is numeric.
+      const annualSavingsNeedTrust = periodWaterfallTotalTrust(
+        annualSavingsWindowEvents, annualSavingsNeed, annualSavingsNeedAmount);
       const predictedEndingBalanceTerms = composeBalanceAfterDeductionsTerms(
         incomeTotal,
         periodBillLoad,
@@ -11989,6 +12124,10 @@
       // projection's hold.
       let goalOverlap = 0;
       let goalOverlapUnknown = false;
+      // Rows whose restoration cancels their bill-load deduction exactly
+      // (same row; billAssignedAmount equals planned/amount): no longer a
+      // dependency of the future carry's trust.
+      const goalRestoredRows = new Set();
       if (goalPayments.length && periodBillLoad != null && role !== 'lookback') {
         for (const payment of goalPayments) {
           if (payment.date < (role === 'active' ? asOf : window.start) || payment.date > window.end) continue;
@@ -11999,6 +12138,7 @@
             const cents = savingsCents(deducted[0].planned != null ? deducted[0].planned : deducted[0].amount);
             if (cents == null) { goalOverlapUnknown = true; break; }
             goalOverlap = roundCent(goalOverlap + cents / 100);
+            if (!deducted[0].scheduledFeeAllowance && cents >= 0) goalRestoredRows.add(deducted[0]);
           }
         }
       }
@@ -12050,6 +12190,7 @@
       };
       const visaPaymentBackfill = planUnavailable ? [] : publishedVisaPayments(plan, asOf, opts).filter(row =>
         row && row.date && row.date >= window.start && row.date <= window.end);
+      carryTrust = null;
       if (planUnavailable) {
         previousEnding = null;
         unavailableOpeningLost = true;
@@ -12091,9 +12232,39 @@
             // funding disclosure, but withhold the dependent projection.
             previousEnding = Number.isSafeInteger(seed) && !(credit > 0 && seed < 0) ? seed / 100 : null;
             if (previousEnding == null) openingChainLost = true;
+            else {
+              // Seed provenance: qualified Bills stock (calculated), the
+              // selected future receipts, remaining bills net of the goal
+              // rows the overlap restores exactly, remaining budget and the
+              // boundary credit. The Savings-funded annual provision is not
+              // in this expression and does not taint it.
+              const goalIds = goalPayments.filter(p => p.date >= asOf && p.date <= window.end)
+                .map(p => p.id + '@' + p.date);
+              const seedBillRows = assignedBillRows.filter(row => billBelongsOnPaydayWaterfall(row, asOf, 'cutover-opening')
+                && !goalIds.includes(row.id + '@' + row.date));
+              // The boundary credit is max(0, native surplus + restored goal
+              // overlap - saved - transferred) - unreceived income: it moves
+              // with every active income, bill and budget term except the
+              // goal rows its overlap restores exactly. Sign-sensitive, so a
+              // zero credit keeps those dependencies.
+              const creditBillRows = assignedBillRows.filter(row =>
+                billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)
+                && !(goalIds.includes(row.id + '@' + row.date) && !row.scheduledFeeAllowance
+                  && billAssignedAmount(row) === Number(row.planned != null ? row.planned : row.amount)));
+              const creditTrust = Number.isSafeInteger(credit) ? periodWaterfallCombinedTrust(
+                opts.s1CurrentBoundaryCreditEstimated === true ? 'estimated' : 'calculated', incomeTrust,
+                periodWaterfallTotalTrust(creditBillRows, periodBillLoad, row => row.planned != null ? row.planned : row.amount),
+                budgetHoldTermTrust) : 'calculated';
+              carryTrust = periodWaterfallCombinedTrust(
+                periodWaterfallTotalTrust(futureIncome, 0, calendarIncomeContribution),
+                periodWaterfallTotalTrust(seedBillRows, remainingBills,
+                  row => row.scheduledFeeAllowance ? row.scheduledFeeAllowance.periodCost : billAssignedAmount(row)),
+                budgetHoldTermTrust, creditTrust);
+            }
           } else {
             // Incumbent noncombined publication, with no Savings sweep consumer.
             previousEnding = cashAfterHouseholdBudget;
+            let splitBillsStockTrust = null;
             if (previousEnding != null && openingKnown && opening != null) {
               const rows = (plan.startingCash?.breakdown || []).filter(r =>
                 r && HOUSEHOLD_CHEQUING_IDS.includes(r.id));
@@ -12107,7 +12278,10 @@
                 const split = finite(bills) && rows.every(finite)
                   && others.every(id => !present(id) || finite(rowOf(id)))
                   && roundCent(rows.reduce((sum, r) => sum + Number(r.value), 0)) === roundCent(opening);
-                if (split) previousEnding = roundCent(previousEnding - (opening - Number(bills.value)));
+                if (split) {
+                  previousEnding = roundCent(previousEnding - (opening - Number(bills.value)));
+                  splitBillsStockTrust = startingCashRowTrust(bills);
+                }
                 else if (!others.every(id => rowOf(id) ? Number(rowOf(id).value) === 0 : !listed(id))) {
                   previousEnding = null;
                   openingChainLost = true;
@@ -12115,10 +12289,28 @@
               }
             }
             if (periodBillLoad == null || goalOverlapUnknown) openingChainLost = true;
+            // The carry is this close's cash: recorded opening (or, after
+            // the split, the recorded Bills stock), income, bills, budget
+            // and the annual provision it deducts.
+            if (previousEnding != null) {
+              carryTrust = periodWaterfallCombinedTrust(splitBillsStockTrust || activeOpeningTrust,
+                plannedTermsTrust, annualSavingsNeedTrust);
+            }
           }
         } else {
           previousEnding = paydaySweep != null ? roundCent(availableRemainder - paydaySweep) : null;
           if (paydaySweep == null) openingChainLost = true;
+          // remainder - max(0, remainder) is sign-sensitive, so every input
+          // that can move the remainder stays a dependency, even when the
+          // carry is zero. The annual provision is restored exactly (same
+          // variable) and exact goal-row restorations cancel their load.
+          if (previousEnding != null) {
+            const carryBillRows = assignedBillRows.filter(row =>
+              billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource) && !goalRestoredRows.has(row));
+            carryTrust = periodWaterfallCombinedTrust(plannedOpeningTrust, incomeAddedTrust,
+              periodWaterfallTotalTrust(carryBillRows, periodBillLoad, row => row.planned != null ? row.planned : row.amount),
+              budgetHoldTermTrust);
+          }
         }
       } else {
         previousEnding = null;
@@ -12186,6 +12378,17 @@
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
           ? 'balance-after-deductions' : null,
         predictedEndingBalanceTerms,
+        ...plannedPeriodClosePublication(lookback ? null : cashAfterHouseholdBudget, {
+          opening: paydayBoundaryOpening ? opening : null, incomeAdded, periodBillLoad,
+          budgetHold: planUnavailable ? null : budget.hold, annualSavingsNeed,
+        }, [plannedTermsTrust, annualSavingsNeedTrust, plannedOpeningTrust],
+        lookback || cardCoverage.status !== 'unavailable' ? 'none'
+          : cardMatchOnlyHold(plan, cardCoverage) ? 'match' : 'hard', cardCoverage.reason,
+        projected && openingKnown && !openingCarried
+          ? 'The planned period close is unavailable: its opening comes from a fallback cash walk whose trust is not established.'
+          : null),
+        ...(role === 'active' && cardReserveShortfallDisclosure(plan, cardCoverage)
+          ? { cardReserveShortfall: cardReserveShortfallDisclosure(plan, cardCoverage) } : {}),
 
         extraDebt,
         firstCard: cards.firstCard,
