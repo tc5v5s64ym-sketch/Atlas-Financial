@@ -64,7 +64,6 @@ const scenarios = [
   },
   {
     id: '6.4', basis: 'spec', name: 'a 100 bill with 40 allocated: partial, 60 remaining',
-    fixedBy: 'A7a #841',
     async run(H) {
       const w = billsWorld(H);
       w.bills[0].amount = 100;
@@ -83,7 +82,6 @@ const scenarios = [
   },
   {
     id: '6.5', basis: 'blueprint', name: 'payment of 100 on a 90 bill: Paid, with the 10 excess disclosed',
-    fixedBy: 'A7a #841',
     async run(H) {
       const w = billsWorld(H);
       // Explicit allocation: this bill's rule accepts a payment of at least

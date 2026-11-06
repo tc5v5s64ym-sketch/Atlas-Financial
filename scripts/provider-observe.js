@@ -1364,12 +1364,23 @@ function currencyRulesForTransaction(tx, accountMap, rules, plan) {
   if (!accountMap) return [];
   const mapping = mappingFor(accountMap, tx && tx.providerAccountId);
   const accountId = mapping && mapping.canonical && mapping.canonical.id;
-  return (rules || []).filter(rule => rule.requiredCurrency
-    && (!rule.atlasAccountId || rule.atlasAccountId === accountId)
-    // Reuse the incumbent matcher for direction and occurrence eligibility.
-    // Removing this one guard tests candidacy; it never qualifies settlement.
-    && collectIdentityHits(tx, { accountMap, plan },
-      [{ ...rule, requiredCurrency: null }]).length > 0);
+  return (rules || []).filter(rule => {
+    if (!rule.requiredCurrency || rule.atlasAccountId && rule.atlasAccountId !== accountId) return false;
+    const candidateRule = { ...rule, requiredCurrency: null };
+    const amount = lunchMoneyDebitAmount(tx.amount);
+    if (rule.direction === 'debit' && !(amount > 0) || rule.direction === 'credit' && !(amount < 0)) return false;
+    const bill = isBillOrObligationEvent(plan, rule.eventId);
+    const candidateTx = bill ? { ...tx, currency: 'cad', currencySettlementUnconfirmed: false } : tx;
+    if (!bill || isIncumbentCardCredit(mapping, amount)) {
+      return collectIdentityHits(candidateTx, { accountMap, plan }, [candidateRule]).length > 0;
+    }
+    if (!(amount > 0)) return false;
+    // Unit candidacy precedes settlement. A single eligible split leg must
+    // retain its currency hold before a pair can qualify. This hypothetical
+    // copy tests eligibility only; it never changes the actual row's units.
+    const candidates = billIdentityMatches({ plan, accountMap, transactions: [candidateTx] }, [candidateRule]);
+    return candidates.matches.length > 0 || candidates.unresolved.some(issue => issue.occurrences.length > 0);
+  });
 }
 
 function ruleIdentityLabel(rule) {
@@ -2229,6 +2240,12 @@ function isBillOrObligationEvent(plan, eventId) {
     .some(row => row && row.id === eventId);
 }
 
+// A7a allocates household bill debits. Signed card credits retain the
+// incumbent receipt path, including its confirmation and exclusion gates.
+function isIncumbentCardCredit(mapping, amount) {
+  return atlasAccountRole(mapping) === 'revolving-credit' && amount < 0;
+}
+
 // A posted card payment proves a balance movement, not the household's
 // purpose for it. Purchase backfills can have the same payee, date and amount
 // as a minimum payment. Generic identity leaves these occurrences unconfirmed;
@@ -2247,14 +2264,96 @@ function cardMinimumNeedsConfirmation(plan, eventId, accountMap) {
   return mappedCard || !!(debt && !debt.secured && /^Revolving\b/i.test(debt.structure || ''));
 }
 
+// Only private identity predicates live here. Forecast enumerates windows,
+// resolves ambiguity and consumes payment cents. Payroll keeps its own rules.
+function billIdentityMatches(input, rules) {
+  const plan = input.plan;
+  if (!plan || input.transactionWindow?.complete === false) return { matches: [], unresolved: [] };
+  const eligibleRules = (rules || []).filter(rule => isBillOrObligationEvent(plan, rule.eventId)
+    && ruleHasIdentity(rule) && !cardMinimumNeedsConfirmation(plan, rule.eventId, input.accountMap)
+    && rule.settlesWhen !== SETTLES_WHEN_SCHEDULE_TRUST_ON_DUE);
+  const native = (input.transactions || []).filter(tx => tx && tx.contradictoryEvidence !== true
+    && tx.isGroup !== true && !(tx.pending === true && tx.pendingPostedDuplicate) && !tx.pendingPostedAmbiguous
+    && !isIncumbentCardCredit(mappingFor(input.accountMap, tx.providerAccountId), lunchMoneyDebitAmount(tx.amount)));
+  const dates = native.map(tx => parseIsoDate(tx.date)).filter(Boolean).sort();
+  if (!dates.length || !eligibleRules.length) return { matches: [], unresolved: [] };
+  const from = Forecast.addDays(dates[0], -62), to = Forecast.addDays(dates[dates.length - 1], 62);
+  const sources = [...(plan.bills || []), ...(plan.obligations || [])];
+  // A refreshed cash opening may already contain an earlier covered receipt.
+  // Keep that receipt's occurrence eligible from the earliest opening basis.
+  // Historical receipts use the covered history; current receipts keep the
+  // active opening window even when acquired beside older transactions.
+  const occurrenceStart = [plan.opening?.priorAsOf, plan.opening?.asOf]
+    .filter(parseIsoDate).sort()[0] || parseIsoDate(input.transactionWindow?.startDate);
+  const occurrences = scheduledEventsOnRange(plan, from, to)
+    .filter(e => isBillOrObligationEvent(plan, e.id))
+    .map(e => ({ id: e.id, date: e.date, due: Math.abs(e.amount),
+      frequency: sources.find(row => row.id === e.id)?.frequency }));
+  const payments = native.map(tx => {
+    const mapping = mappingFor(input.accountMap, tx.providerAccountId);
+    const accountId = mapping?.canonical?.id;
+    const identities = [];
+    for (const rule of eligibleRules) {
+      if (rule.atlasAccountId && rule.atlasAccountId !== accountId
+          || !ruleMatchesTransactionIdentity(tx, rule) || !ruleCurrencyQualified(tx, rule)
+          || rule.direction && rule.direction !== 'debit') continue;
+      if (rule.transactionKind === 'transfer' && countTransferCounterparts(tx, rule, input, tx.amount) !== 1) continue;
+      identities.push({ eventId: rule.eventId, qualified: true, accountId, currency: 'cad',
+        windowStartDate: sources.find(row => row.id === rule.eventId)?.frequency === 'once' ? null
+          : occurrenceStart && tx.date >= occurrenceStart ? occurrenceStart : input.transactionWindow?.startDate,
+        postingDateRule: rule.postingDateRule, earlyPayLookaheadDays: rule.earlyPayLookaheadDays,
+        cycleStart: rule.postingDateRule === COVER_STATEMENT_CYCLE_OR_LATEST_DUE
+          ? coveringStatementCycleDates(plan, rule, tx.date).map(date => statementCloseDateForDue(date,
+            (plan.debts || []).find(d => d.id === sources.find(s => s.id === rule.eventId)?.debtId)?.statementCloseDay)).filter(Boolean)[0] : null,
+        settlesWhen: rule.settlesWhen, sameAccountSplitLegs: rule.sameAccountSplitLegs === true });
+    }
+    if (tx.pendingReplacementHit && tx.pending === false && tx.savingsPostingEvidence === 'posted') {
+      const hit = tx.pendingReplacementHit;
+      identities.splice(0, identities.length, { eventId: hit.id, qualified: true, accountId, currency: 'cad',
+        occurrenceDate: hit.date, explicitOccurrence: true, settlesWhen: hit.settlesWhen,
+        sameAccountSplitLegs: hit.sameAccountSplitLegs === true });
+    }
+    return { id: isTrustworthyTransactionId(tx.providerTransactionId) ? tx.providerTransactionId : null,
+      accountId, currency: tx.currency, direction: tx.amount > 0 ? 'debit' : 'credit',
+      amount: Math.abs(tx.amount), date: tx.date,
+      state: tx.savingsPostingEvidence, identities, privateTransaction: tx };
+  });
+  return Forecast.matchBillPayments({ occurrences, payments, asOf: input.asOf });
+}
+
+function billMatchHit(match) {
+  const posted = match.payments.filter(p => p.state === 'posted');
+  const payments = posted.length ? posted : match.payments;
+  const first = payments[0], last = payments[payments.length - 1];
+  const tx = first.privateTransaction;
+  return { id: match.id, date: match.date, postingDate: last.date,
+    ...(tx.pendingReplacementHit?.inheritedPendingReplacement === true
+      ? { inheritedPendingReplacement: true } : {}),
+    postingDateRelation: tx.pendingReplacementHit?.postingDateRelation
+      || postingDateRelation(match.date, last.date, first.identities[0]) || 'identity-window', direction: 'debit',
+    providerTransactionId: first.id, providerTransactionIds: payments.map(p => p.id),
+    providerAccountId: tx.providerAccountId, atlasAccountId: first.accountId,
+    ...(first.identities[0]?.settlesWhen === SETTLES_WHEN_TWO_LEG_SUM
+      ? { atlasAccountIds: payments.map(p => p.accountId) } : {}),
+    payee: tx.payee, identity: first.identities[0]?.settlesWhen === SETTLES_WHEN_TWO_LEG_SUM
+      ? 'two-leg-payee+account+date' : 'payee+account+date', amountNotUsed: true,
+    observedAmount: (posted.length ? match.allocatedCents : match.pendingCents) / 100,
+    due: match.dueCents / 100, paymentStatus: match.status, postingState: posted.length ? 'posted' : 'pending',
+    pending: !posted.length, settlesWhen: first.identities[0]?.settlesWhen || null,
+    sameAccountSplitLegs: payments.every(p => p.identities.every(i => i.sameAccountSplitLegs === true))
+      && new Set(payments.map(p => p.accountId)).size === 1,
+    billMatch: match };
+}
+
 function collectIdentityHits(tx, input, rules) {
   if (!tx || tx.contradictoryEvidence === true) return [];
   const mapDoc = input && input.accountMap;
   const mapping = mappingFor(mapDoc, tx.providerAccountId);
   if (!mapping || !mapping.canonical || !mapping.canonical.id) return [];
   const amount = lunchMoneyDebitAmount(tx.amount);
-  const hits = [];
+  const hits = billIdentityMatches({ ...input, transactions: [tx] }, rules).matches.map(billMatchHit);
   for (const rule of rules || []) {
+    if (isBillOrObligationEvent(input.plan, rule.eventId) && !isIncumbentCardCredit(mapping, amount)) continue;
     if (cardMinimumNeedsConfirmation(input.plan, rule.eventId, mapDoc)) continue;
     if (rule.atlasAccountId && mapping.canonical.id !== rule.atlasAccountId) continue;
     if (!ruleMatchesTransactionIdentity(tx, rule)) continue;
@@ -2595,6 +2694,7 @@ function representedEventHitGroups(input) {
     if (!mapping || !mapping.canonical || !mapping.canonical.id) continue;
     const amount = lunchMoneyDebitAmount(tx.amount);
     for (const rule of rules) {
+      if (isBillOrObligationEvent(input.plan, rule.eventId) && !isIncumbentCardCredit(mapping, amount)) continue;
       if (rule.atlasAccountId && mapping.canonical.id !== rule.atlasAccountId) continue;
       if (!ruleMatchesTransactionIdentity(tx, rule)) continue;
       if (!ruleCurrencyQualified(tx, rule)) continue;
@@ -2659,7 +2759,8 @@ function representedEventHitGroups(input) {
   }
   for (const tx of input.transactions || []) {
     const inherited = tx && tx.pendingReplacementHit;
-    if (!inherited || !inherited.id || !inherited.date || tx.pending === true) continue;
+    if (!inherited || !inherited.id || !inherited.date || tx.pending === true
+        || isBillOrObligationEvent(input.plan, inherited.id)) continue;
     if (cardMinimumNeedsConfirmation(input.plan, inherited.id, input.accountMap)) continue;
     const key = inherited.id + '@' + inherited.date;
     const list = eventHits.get(key) || [];
@@ -2789,6 +2890,13 @@ function representedEventHitGroups(input) {
       reason: 'multiple-compatible-candidates',
       candidateCount: row.candidateCount,
     });
+  }
+  const bills = billIdentityMatches(input, rules);
+  for (const match of bills.matches) if (match.status === 'paid') uniqueOnce.push(billMatchHit(match));
+  for (const issue of bills.unresolved) for (const key of issue.occurrences) {
+    const split = key.lastIndexOf('@');
+    ambiguous.push({ key, id: key.slice(0, split), date: key.slice(split + 1), hits: [],
+      reason: issue.reason, candidateCount: issue.candidateCount || issue.occurrences.length });
   }
   diagnostic?.resolve();
   return { unique: uniqueOnce.map(hit => {
@@ -3058,7 +3166,7 @@ function occurrenceInsideObservationWindow(scheduledDate, window, rules) {
 
 function ambiguousGroupFor(id, date, groups) {
   for (const group of groups || []) {
-    if (group.reason === 'multiple-compatible-candidates'
+    if (['multiple-compatible-candidates', 'ambiguous-occurrence'].includes(group.reason)
       && group.id === id && group.date === date) return group;
     if (group.reason === 'transaction-consumed-twice'
       && (group.hits || []).some(hit => hit && hit.id === id && hit.date === date)) {
@@ -3267,7 +3375,8 @@ function reconciliationReceipt(report, opts) {
     let candidateCount = 0;
     if (ambiguous) {
       settlement = 'ambiguous';
-      candidateCount = (ambiguous.hits || []).length;
+      candidateCount = Number.isInteger(ambiguous.candidateCount) && ambiguous.candidateCount >= 0
+        ? ambiguous.candidateCount : (ambiguous.hits || []).length;
       evidenceFingerprints = (ambiguous.hits || [])
         .map(hit => sanitizedEvidenceFingerprint(hit && hit.providerTransactionId))
         .filter(Boolean)
@@ -3385,7 +3494,8 @@ function reconciliationReceipt(report, opts) {
         settlement: 'ambiguous',
         plannedAmount: planned,
         observedAmount: null,
-        candidateCount: groupHits.length,
+        candidateCount: Number.isInteger(group.candidateCount) && group.candidateCount >= 0
+          ? group.candidateCount : groupHits.length,
         evidenceFingerprints: groupHits
           .map(hit => sanitizedEvidenceFingerprint(hit && hit.providerTransactionId))
           .filter(Boolean)
@@ -4398,6 +4508,7 @@ function pendingOnlyBillActuals(collapsed, opts, representedActuals, existingLoc
       actual: Math.round(amt * 100) / 100,
       postedOn: hit.postingDate || hit.date,
       transactionId: list[0].localId,
+      pending: true, postingState: 'pending', paymentStatus: 'pending',
     });
   }
   return rows;
@@ -4787,8 +4898,22 @@ function sanitizedCurrentPeriodActualsPass(report, opts) {
     }
   }
   const representedActuals = [];
+  const pendingBillActuals = [];
   const linkedLocalIds = new Set();
-  for (const candidate of (report && report.representedEventCandidates) || []) {
+  const billMatches = billIdentityMatches({ plan: opts.planForIdentity || opts.plan, accountMap: mapDoc,
+    transactions: collapsed, transactionWindow: window, asOf }, (opts.identityRules || []).filter(ruleHasIdentity));
+  const billCandidates = billMatches.matches.flatMap(match => ['posted', 'pending'].flatMap(state => {
+    const payments = match.payments.filter(payment => payment.state === state);
+    if (!payments.length) return [];
+    return [{ id: match.id, date: match.date, postingDate: payments.map(p => p.date).sort().pop(),
+      observedAmount: payments.reduce((sum, payment) => sum + Math.round(payment.amount * 100), 0) / 100,
+      providerTransactionId: payments[0].id, providerTransactionIds: payments.map(p => p.id),
+      due: match.dueCents / 100, amountRule: match.amountRule, paymentStatus: match.status,
+      postingState: state, pending: state === 'pending' }];
+  }));
+  const candidates = ((report && report.representedEventCandidates) || [])
+    .filter(candidate => !billCandidates.some(b => b.id === candidate.id && b.date === candidate.date));
+  for (const candidate of candidates.concat(billCandidates)) {
     if (!candidate || !candidate.id || !candidate.date) continue;
     const amt = Number(candidate.observedAmount);
     if (!isFinite(amt)) continue;
@@ -4798,6 +4923,8 @@ function sanitizedCurrentPeriodActualsPass(report, opts) {
       actual: Math.round(amt * 100) / 100,
       postedOn: candidate.postingDate || candidate.date,
     };
+    if (candidate.postingState) Object.assign(row, { pending: candidate.pending === true,
+      postingState: candidate.postingState, paymentStatus: candidate.paymentStatus, due: candidate.due, amountRule: candidate.amountRule });
     const localIds = [];
     const seenLocal = new Set();
     for (const rawId of candidateTransactionIds(candidate)) {
@@ -4809,9 +4936,16 @@ function sanitizedCurrentPeriodActualsPass(report, opts) {
     if (localIds.length) {
       row.transactionId = localIds[0];
       if (localIds.length > 1) row.transactionIds = localIds;
-      for (const localId of localIds) linkedLocalIds.add(localId);
     }
-    representedActuals.push(row);
+    // Legacy representedActuals consumers treat a linked card purchase as
+    // settlement. Pending card evidence stays available to bill state while
+    // the incumbent pending-card classification/protection retains it.
+    if (row.pending === true && localIds.some(id => txs.some(tx => tx.id === id
+        && tx.accountRole === 'revolving-credit'))) pendingBillActuals.push(row);
+    else {
+      for (const localId of localIds) linkedLocalIds.add(localId);
+      representedActuals.push(row);
+    }
   }
   for (const row of pendingOnlyBillActuals(collapsed, {
     transactionWindow: window,
@@ -4940,6 +5074,11 @@ function sanitizedCurrentPeriodActualsPass(report, opts) {
       accountMap: mapDoc,
     }),
     representedActuals,
+    ...(pendingBillActuals.length ? { pendingBillActuals } : {}),
+    ...(billMatches.unresolved.some(issue => issue.occurrences.length) ? { billPaymentIssues: billMatches.unresolved.flatMap(issue => issue.occurrences.map(key => {
+      const at = key.lastIndexOf('@');
+      return { id: key.slice(0, at), date: key.slice(at + 1), reason: issue.reason };
+    })) } : {}),
     transactions: txs,
     ...(savingsLinks ? { savingsLinks } : {}),
   };
@@ -4957,6 +5096,7 @@ function sanitizedCurrentPeriodActualsPass(report, opts) {
       actual: row.actual,
       postedOn: row.postedOn,
       transactionId: row.transactionId || undefined,
+      pending: row.pending, postingState: row.postingState, paymentStatus: row.paymentStatus, due: row.due, amountRule: row.amountRule,
     }));
     packet.transactionCoverage = 'incomplete';
     packet.paydayGapComplete = false;

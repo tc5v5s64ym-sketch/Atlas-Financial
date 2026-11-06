@@ -816,10 +816,10 @@ console.log('\n=== R. automatic-payment identity uses explicit payee+account+dat
     }],
     categories: [{ id: 11, name: 'Insurance', is_income: false, exclude_from_totals: false }],
     transactions: [
-      { id: 1, account_id: 1001, date: '2026-08-16', amount: 103, category_id: 11, is_pending: false, payee: 'BCAA-AdvAutoIns INS' },
-      { id: 2, account_id: 1001, date: '2026-08-16', amount: 99.91, category_id: 11, is_pending: false, payee: 'ICBC INS' },
-      { id: 3, account_id: 1001, date: '2026-08-16', amount: 100, category_id: 11, is_pending: false, payee: 'INTERNAL TRANSFER RESP' },
-      { id: 4, account_id: 1001, date: '2026-08-16', amount: 25, category_id: 11, is_pending: false, payee: 'CMAW LOCAL 1995' },
+      { id: 1, account_id: 1001, date: '2026-08-16', amount: 103, category_id: 11, is_pending: false, currency: 'cad', payee: 'BCAA-AdvAutoIns INS' },
+      { id: 2, account_id: 1001, date: '2026-08-16', amount: 99.91, category_id: 11, is_pending: false, currency: 'cad', payee: 'ICBC INS' },
+      { id: 3, account_id: 1001, date: '2026-08-16', amount: 100, category_id: 11, is_pending: false, currency: 'cad', payee: 'INTERNAL TRANSFER RESP' },
+      { id: 4, account_id: 1001, date: '2026-08-16', amount: 25, category_id: 11, is_pending: false, currency: 'cad', payee: 'CMAW LOCAL 1995' },
     ],
   };
   const report = O.observe({
@@ -838,7 +838,7 @@ console.log('\n=== R. automatic-payment identity uses explicit payee+account+dat
 
   const amountOnly = JSON.parse(JSON.stringify(payload));
   amountOnly.transactions = [
-    { id: 5, account_id: 1001, date: '2026-08-16', amount: 82.96, is_pending: false, payee: 'UNKNOWN DEBIT' },
+    { id: 5, account_id: 1001, date: '2026-08-16', amount: 82.96, is_pending: false, currency: 'cad', payee: 'UNKNOWN DEBIT' },
   ];
   const rejected = O.observe({
     provider: 'lunchmoney', payload: amountOnly, accountMap: map, data, identity,
@@ -848,7 +848,7 @@ console.log('\n=== R. automatic-payment identity uses explicit payee+account+dat
 
   const wrongAccount = JSON.parse(JSON.stringify(payload));
   wrongAccount.transactions = [
-    { id: 6, account_id: 1002, date: '2026-08-16', amount: 82.96, is_pending: false, payee: 'BCAA-AdvAutoIns INS' },
+    { id: 6, account_id: 1002, date: '2026-08-16', amount: 82.96, is_pending: false, currency: 'cad', payee: 'BCAA-AdvAutoIns INS' },
   ];
   const misplaced = O.observe({
     provider: 'lunchmoney', payload: wrongAccount, accountMap: map, data, identity,
@@ -858,7 +858,7 @@ console.log('\n=== R. automatic-payment identity uses explicit payee+account+dat
 
   const wrongDate = JSON.parse(JSON.stringify(payload));
   wrongDate.transactions = [
-    { id: 7, account_id: 1001, date: '2026-08-15', amount: 82.96, is_pending: false, payee: 'BCAA-AdvAutoIns INS' },
+    { id: 7, account_id: 1001, date: '2026-08-15', amount: 82.96, is_pending: false, currency: 'cad', payee: 'BCAA-AdvAutoIns INS' },
   ];
   const dated = O.observe({
     provider: 'lunchmoney', payload: wrongDate, accountMap: map, data, identity,
@@ -917,8 +917,8 @@ console.log('\n=== R2. grocery with the same date and amount as a represented bi
       { id: 22, name: 'Groceries', is_income: false, exclude_from_totals: false },
     ],
     transactions: [
-      { id: 41, account_id: 1001, date: '2026-08-16', amount: 103, category_id: 11, is_pending: false, payee: 'BCAA-AdvAutoIns INS' },
-      { id: 42, account_id: 1001, date: '2026-08-16', amount: 103, category_id: 22, is_pending: false, payee: 'SYNTHETIC GROCER' },
+      { id: 41, account_id: 1001, date: '2026-08-16', amount: 103, category_id: 11, is_pending: false, currency: 'cad', payee: 'BCAA-AdvAutoIns INS' },
+      { id: 42, account_id: 1001, date: '2026-08-16', amount: 103, category_id: 22, is_pending: false, currency: 'cad', payee: 'SYNTHETIC GROCER' },
     ],
   };
   const report = O.observe({

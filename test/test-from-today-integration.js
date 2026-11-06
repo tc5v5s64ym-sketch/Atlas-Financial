@@ -80,7 +80,7 @@ assert.equal(fs.readFileSync(require.resolve('../data.json'), 'utf8'), diskBefor
 const paidPayload = structuredClone(payload);
 paidPayload.accounts[0].balance = 700;
 paidPayload.transactions.push({ id: 91004, account_id: 1001, date: '2026-08-19', amount: 100,
-  payee: 'Synthetic due bill', is_pending: false, status: 'cleared' });
+  currency: 'cad', payee: 'Synthetic due bill', is_pending: false, status: 'cleared' });
 const settled = refresh(paidPayload);
 assert.ok(settled.overlay.data.plan.opening.representedEvents.some(e => e.id === 'synthetic-due'));
 assert.equal(settled.current.fromTodayFunding.currentCash, 700);

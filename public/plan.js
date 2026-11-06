@@ -1330,11 +1330,15 @@ function currentPeriodBillGroup(title, state, rows) {
   const list = rows || [];
   const body = list.length
     ? list.map(row => {
+      const payment = Forecast.billPaymentState.forRow(row);
+      const rowState = ['partial', 'pending'].includes(payment.status) ? payment.status : state;
       const actual = row.actual != null
         ? `<span>Observed ${money2(row.actual)}</span>`
         : '<span>Observed amount unavailable</span>';
       let amount;
-      if (state === 'represented') {
+      if (rowState === 'partial' || rowState === 'pending') {
+        amount = `${actual}<span>${rowState === 'partial' ? 'Remaining' : 'Pending'} ${row.remaining != null ? money2(row.remaining) : '—'}</span>`;
+      } else if (state === 'represented') {
         amount = `${actual}<span${row.confidence === 'estimated' ? ' class="est"' : ''}>Plan ${
           row.planned != null ? money2(row.planned) : '—'
         }${currentPeriodConfidence(row)}</span>`;
@@ -1349,14 +1353,16 @@ function currentPeriodBillGroup(title, state, rows) {
       } else {
         amount = '<span>Amount unavailable</span>';
       }
-      const status = state === 'represented'
+      const status = rowState === 'partial' ? 'Partial payment; an amount remains.'
+        : rowState === 'pending' ? 'Payment pending; settlement is not confirmed.'
+        : state === 'represented'
         ? 'Forecast says this occurrence is represented / handled.'
         : state === 'unverified'
           ? 'Settlement unverified. This is not a claim that the bill is unpaid.'
           : state === 'upcoming'
             ? 'Forecast says this item is still due in the current period.'
             : 'Forecast returned an unresolved settlement state; no handled or due claim is made.';
-      return `<div class="current-period-row" data-current-bill-id="${row.id}" data-current-bill-state="${state}">
+      return `<div class="current-period-row" data-current-bill-id="${row.id}" data-current-bill-state="${rowState}">
         <div><b>${row.label}</b><span>${row.date ? fmtDate(row.date) : 'Date unavailable'} · ${status}</span></div>
         <div class="current-period-values">${amount}</div>
       </div>`;
@@ -2099,6 +2105,11 @@ function operatingCashExplanationHtml(explanation) {
 }
 
 function periodBillLine(row) {
+  const payment = Forecast.billPaymentState.forRow(row);
+  const excess = payment.status === 'paid' && Number.isFinite(payment.excess) && payment.excess > 0
+    ? `<p class="operating-note">${money2(payment.excess)} excess payment, unapplied.</p>` : '';
+  if (payment.status === 'partial' || payment.status === 'pending') row = { ...row,
+    status: payment.status, glanceKind: 'still-due', settlement: payment.status === 'pending' ? 'pending' : 'unverified' };
   const kind = row.glanceKind || (row.status === 'in' ? 'in'
     : (row.status === 'PAID' ? 'paid'
       : (row.status === 'planned' || row.status === 'unknown' ? 'planned' : 'still-due')));
@@ -2106,6 +2117,7 @@ function periodBillLine(row) {
     : row.status === 'PAID' ? 'PAID'
     : row.status === 'planned' ? 'planned'
     : row.status === 'unknown' ? 'unknown'
+    : row.status === 'partial' ? 'partial'
     : row.status === 'pending' ? 'pending'
     : row.status === 'needs-date' ? 'needs confirmation'
     : row.settlement === 'unverified' ? 'to confirm'
@@ -2120,13 +2132,13 @@ function periodBillLine(row) {
     return BillDetail.html(row, App.data, {
       label: glanceLineLabel(row, status),
       amount: amount != null ? about + amount : '—', status,
-    });
+    }) + excess;
   }
   const dateAttr = row.date && /^\d{4}-\d{2}-\d{2}$/.test(String(row.date))
     ? ` data-bill-date="${row.date}"` : '';
   return `<div class="operating-line" data-period-bill="${row.id || ''}" data-bill-status="${status}" data-bill-settlement="${String(row.settlement || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))}"${dateAttr}>
     <span>${glanceLineLabel(row, status)}</span><span>${amount != null ? about + amount : '—'}</span>
-  </div>`;
+  </div>` + excess;
 }
 
 function calendarCurrentUnavailableHtml(period) {
@@ -7176,6 +7188,11 @@ function budgetSpendingSectionHtml(period, ctx) {
 }
 
 function budgetBillPresentation(row) {
+  const payment = Forecast.billPaymentState.forRow(row);
+  if (payment.status === 'partial') return { kind: 'check', label: row.cashPaymentStatus === 'sent' ? 'Not paid' : 'Partial payment', qualifier: row.cashPaymentStatus === 'sent' ? 'Partial payment sent' : 'Amount remaining' };
+  if (payment.status === 'pending') return { kind: 'pending', label: 'Payment pending' };
+  if (row.billPaymentState && payment.status === 'to-confirm') return { kind: 'check', label: 'To confirm' };
+  if (row.billPaymentState && payment.status === 'unknown') return { kind: 'unknown', label: 'Status unavailable' };
   if (row.status === 'pending' || row.settlement === 'pending') return { kind: 'pending', label: 'Payment pending' };
   if (row.status === 'planned' && row.settlement === 'upcoming'
       && row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'paid') {
@@ -7190,7 +7207,9 @@ function budgetBillPresentation(row) {
   if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'sent') return { kind: settled ? 'paid' : 'check', label: settled ? 'Paid' : 'To confirm', qualifier: 'Money sent; minimum amount unconfirmed' };
   if (row.settlement === 'unverified') return { kind: 'check', label: 'To confirm' };
   if (row.settlement === 'unknown' || row.status === 'unknown') return { kind: 'unknown', label: 'Status unavailable' };
-  if (row.status === 'PAID' || row.settlement === 'represented') return { kind: 'paid', label: 'Paid' };
+  if (row.status === 'PAID' || row.settlement === 'represented') return { kind: 'paid', label: 'Paid',
+    ...(Number.isFinite(payment.excess) && payment.excess > 0
+      ? { qualifier: `${money2(payment.excess)} excess, unapplied` } : {}) };
   if (row.needsDate || row.status === 'needs-date') return { kind: 'check', label: 'Needs a date' };
   if (row.settlement === 'upcoming') {
     // Forecast's upcoming settlement already qualifies the dated occurrence.

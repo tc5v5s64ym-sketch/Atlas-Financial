@@ -44,12 +44,27 @@ for (const month of ['04', '05']) for (const payee of ['Shaw Cable', 'Shaw'])
   });
 test('bank descriptor displayed remains supported', () => paid(run(input('04', 'SHAW CABLE TV BPY'))));
 test('exact short alias is case-insensitive and trimmed', () => paid(run(input('04', '  sHaW  '))));
-test('positive observed amount is not bill identity or the authored plan', () => {
+test('a unique overpayment covers the scheduled liability and discloses unapplied excess', () => {
   const x = input(); x.payload.transactions[0].amount = 21.07; x.payload.accounts[0].balance = 478.93;
+  x.identity = structuredClone(require('../docs/connectivity/transaction-identity.json'));
+  x.identity.rules = x.identity.rules.map(rule => rule.eventId === 'shaw'
+    ? { ...rule, settlesWhen: 'amount-at-least' } : rule);
   const r = run(x); paid(r, 21.07);
-  assert.equal(r.period.liveCurrentBalance, 500 - 21.07, 'observed stock carries the actual debit');
-  assert.equal(r.period.balanceAfterDeductions, 1000 - 150 - 17.23, 'incumbent authored period cost is not rewritten from a receipt');
+  assert.equal(r.bill.billPaymentState.due, 17.23, 'a receipt does not rewrite the scheduled liability');
+  assert.equal(r.bill.billPaymentState.excess, 3.84);
+  assert.equal(r.period.liveCurrentBalance, 478.93, 'independent observed stock remains visible');
 });
+test('a unique smaller posted receipt settles the variable invoice by default', () => {
+  const x = input(); x.payload.transactions[0].amount = 10; x.payload.accounts[0].balance = 490;
+  const r = run(x);
+  assert.equal(r.hits.length, 1);
+  assert.equal(r.actuals.length, 1);
+  assert.equal(r.bill.status, 'PAID');
+  assert.equal(r.bill.billPaymentState.due, 10);
+  assert.equal(r.bill.actual, 10);
+  assert.equal(r.bill.remaining, 0);
+});
+
 for (const [name, mutate] of [
   ['missing original descriptor', x => { delete x.payload.transactions[0].original_name; }],
   ['wrong original descriptor', x => { x.payload.transactions[0].original_name = 'Invented unrelated descriptor'; }],
@@ -62,19 +77,31 @@ test('refund does not settle a bill', () => {
   const r = run(x); held(r); assert.equal(r.other, 0);
   assert.equal(F.classifyCurrentPeriodTransaction(r.packet.transactions[0], r.live.data.plan, { currentPeriodActuals: r.packet }).kind, 'refund');
 });
-test('ambiguous duplicate posted payments do not settle one occurrence', () => {
-  const x = input(); x.payload.transactions.push({ ...x.payload.transactions[0], id: 'invented-second-payment' });
-  x.payload.accounts[0].balance = 500 - 2 * 17.23;
-  const r = run(x); held(r); assert.equal(r.other, 34.46);
+test('competing automatic full receipts stay To confirm', () => {
+  const x = input(); x.payload.transactions.push({ ...x.payload.transactions[0], id: 'invented-competing-payment' });
+  const r = run(x); held(r);
+  assert.equal(r.bill.status, 'to-confirm');
+  assert.equal(r.bill.remaining, null);
 });
+test('explicit partial allocations accumulate once with unapplied excess', () => {
+  const x = input(); x.payload.transactions.push({ ...x.payload.transactions[0], id: 'invented-second-payment' });
+  x.identity = structuredClone(require('../docs/connectivity/transaction-identity.json')); x.identity.rules = x.identity.rules.map(rule => rule.eventId === 'shaw' ? { ...rule, settlesWhen: 'partial' } : rule);
+  x.payload.accounts[0].balance = 500 - 2 * 17.23;
+  const r = run(x); assert.equal(r.hits.length, 1); assert.equal(r.actuals.length, 1);
+  assert.equal(r.actuals[0].transactionIds.length, 2);
+  assert.equal(r.bill.actual, 34.46); assert.equal(r.bill.remaining, 0);
+  assert.equal(r.bill.billPaymentState.excess, 17.23); assert.equal(r.other, 0);
+});
+
 for (const [name, mutate] of [
   ['pending', x => { x.payload.transactions[0].is_pending = true; }],
   ['unknown posting', x => { delete x.payload.transactions[0].is_pending; }],
 ]) test('new short alias cannot enter pending-only Bills through ' + name, () => { const x = input(); mutate(x); held(run(x)); });
-test('existing long alias pending-only semantics stay separate and unchanged', () => {
+test('existing long alias keeps pending separate from paid', () => {
   const x = input('04', 'Shaw Cable'); x.payload.transactions[0].is_pending = true;
   const r = run(x); assert.equal(r.hits.length, 0); assert.equal(r.actuals.length, 1);
-  assert.equal(r.bill.status, 'PAID', 'inherited pending-only display is pinned, not repaired or endorsed here');
+  assert.equal(r.bill.status, 'pending', 'A7a repairs the pending-only false Paid display');
+  assert.equal(r.bill.remaining, 17.23);
   assert.equal(F.representedOccurrence(r.live.data.plan, 'shaw', '2031-04-14', x.asOf), false);
 });
 for (const currency of [undefined, 'usd']) test('short alias requires native CAD evidence ' + currency, () => {
