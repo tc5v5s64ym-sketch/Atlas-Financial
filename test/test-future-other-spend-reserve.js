@@ -484,10 +484,13 @@ console.log('\n=== 4. Forecast stays the authority; unrelated published figures 
       && !/data-budget-category="other-spend"/.test(livePastHtml),
     'a live past pay period does not receive the future-only Other Spend reserve marker');
   // An estimated engine remainder does not establish qualified whole-period
-  // historical BAD. Require withholding at each aggregate publication hook;
-  // source terms and the current/future estimated-state checks stay separate.
+  // historical BAD. This live past period has no transaction actuals at all
+  // (coverage absent, household spending unavailable), so #818 5.7's
+  // reconstruction does not apply: missing spending is never zero (Atlas
+  // 6701429360). Require withholding at each aggregate publication hook.
   ok(livePast && Number.isFinite(livePast.balanceAfterDeductions)
       && livePast.balanceAfterDeductionsTrust === 'estimated'
+      && livePast.budgetProgress?.household?.actual?.completeness === 'unavailable'
       && /data-budget-result-trust="unavailable"/.test(livePastBad)
       && /Unavailable<span data-budget-result-amount><\/span>/.test(livePastBad)
       && !/data-balance-trust="estimated"/.test(livePastBad),
@@ -496,8 +499,19 @@ console.log('\n=== 4. Forecast stays the authority; unrelated published figures 
       && /Unavailable<span data-budget-result-amount><\/span>/.test(livePastResult),
     'historical hero withholds the aggregate result with an empty amount hook');
   ok(/data-bad-term="balanceAfterDeductions" data-bad-term-trust="unavailable"><span data-bad-term-label>[^<]*<\/span><span data-bad-term-value>Unavailable<span data-bad-term-amount><\/span>/.test(livePastBad)
-      && /data-bad-historical-withheld/.test(livePastBad),
+      && /data-bad-historical-withheld/.test(livePastBad) && !/data-bad-historical-reconstructed/.test(livePastBad),
     'historical BAD term is unavailable with no amount and retains the whole-period qualification warning');
+  const untrusted = { ...livePast, periodBillLoadTrust: 'unknown' };
+  const untrustedHtml = composer.calendarWaterfallHtml(untrusted);
+  const untrustedBad = questionBlock(untrustedHtml, 'Balance After Deductions');
+  ok(/data-budget-result-trust="unavailable"/.test(untrustedBad)
+      && /Unavailable<span data-budget-result-amount><\/span>/.test(untrustedBad)
+      && /data-bad-term="balanceAfterDeductions" data-bad-term-trust="unavailable">/.test(untrustedBad)
+      && /data-bad-historical-withheld/.test(untrustedBad)
+      && !/data-bad-historical-reconstructed/.test(untrustedBad),
+    'one untrusted term keeps the historical BAD Unavailable with the whole-period warning');
+  ok(JSON.stringify(livePast) === JSON.stringify(viewsA.find(row => row && row.timelineRole === 'past')),
+    'presentation only: the Forecast publication keeps its native trust');
 }
 
 if (failures) {
