@@ -71,8 +71,8 @@ const oldPacket = old.liveOverlay.currentPeriodActuals;
 const oldRow = F.cardPeriodMovements(old.plan, old.debts, oldPacket.observationAsOf,
   F.spendingCycle(old.plan, oldPacket.observationAsOf), { currentPeriodActuals: oldPacket, liveOverlay: old.liveOverlay })
   .cards.find(c => c.id === 'travelvisa').postedMovement;
-eq(oldRow.amount, 0, 'real path: known old date in a stale balance refusal is retained, not blanked');
-eq(oldRow.observation, { kind: 'provider-balance', date: '2026-08-01', showDate: true }, 'refused balance still supplies its actual known observation date');
+eq(oldRow.amount, null, 'real path: a refused different balance cannot date the displayed canonical balance');
+eq(oldRow.observation, undefined, 'no date association is invented from a refusal without a matching value');
 for (const change of [
   y => { y.overlay.refused[0].fact = 'pending'; },
   y => { y.overlay.refused[0].reason = 'unknown-value'; },

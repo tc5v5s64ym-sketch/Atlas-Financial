@@ -3,7 +3,7 @@
   "fixture": "invented",
   "sources": {
     "public/forecast.js": "c1bd5bfeeae05231be15b8384569338d7e1206e5c99ebe02f223d4a7f28d4635",
-    "public/forecast-card-period.js": "6efef523eafae1d99cffe6a75df7545ad431ca9e2f305c5257461e0dccdd40da",
+    "public/forecast-card-period.js": "3ca2feed8728f7936bbe8e6ca1724a18e59d7b429d0971afdfe06140617054bf",
     "public/budget-card-movements.js": "6f1a2737c2f864f9914af23e174a3a0348c5d448e69be272ab45dc812f234319",
     "public/budget-blend.js": "e8131d822653d664b88f7e74cb26047d793be9a71bd3e695a27e406222341dd2",
     "public/plan.js": "c8d21e4a07d256f78bdf490514acebe9c4fc12ce840717168fb51c72a9b7bfdb",

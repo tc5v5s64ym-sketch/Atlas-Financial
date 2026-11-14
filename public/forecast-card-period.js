@@ -190,16 +190,10 @@
         // successful-sync instant or a transaction-through watermark. A MATCH
         // with no overlay row, or a canonical fallback date, cannot supply it.
         const ownDates = observations.filter(row => row?.locator === 'debts:' + id && row.field === 'balance');
-        const refusedDates = (Array.isArray(overlay?.refused) ? overlay.refused : [])
-          .filter(row => row?.locator === 'debts:' + id && row.fact === 'posted-balance');
-        // A dated provider balance may predate the canonical opening and be
-        // refused from the balance overlay. Its date is still known evidence;
-        // retaining it here does not apply that balance or truncate the ledger.
-        const oldObservation = refusedDates.length === 1 && refusedDates[0].reason === 'stale-not-current'
-          && date(refusedDates[0].evidenceDate) && refusedDates[0].evidenceDate <= asOf ? refusedDates[0] : null;
-        const ownDate = overlay?.applied !== true ? null
-          : ownDates.length === 1 && ownDates[0] === observed && !refusedDates.length ? observed.evidenceDate
-          : !ownDates.length && oldObservation ? oldObservation.evidenceDate : null;
+        // Refusal metadata has no value to bind its date to the shown balance.
+        // It cannot substitute for this matching dated observation.
+        const ownDate = overlay?.applied === true && ownDates.length === 1 && ownDates[0] === observed
+          ? observed.evidenceDate : null;
         if (!ownDate) gaps.push('account-date-evidence-unavailable');
         const query = packet?.transactionWindow;
         if (role !== 'current') gaps.push('current-period-not-observed');
